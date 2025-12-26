@@ -51,9 +51,9 @@
         }
         .particle:active { cursor: grabbing; transform: scale(1.1); z-index: 100; }
         
-        .proton { background: radial-gradient(circle at 30% 30%, #ef4444, #991b1b); border: 1px solid #f87171; position: relative; } /* Relative for nucleus flex packing */
-        .neutron { background: radial-gradient(circle at 30% 30%, #94a3b8, #475569); border: 1px solid #cbd5e1; position: relative; }
-        .electron { background: radial-gradient(circle at 30% 30%, #3b82f6, #1e3a8a); border: 1px solid #60a5fa; width: 20px; height: 20px; font-size: 10px; position: absolute; }
+        .proton { background: radial-gradient(circle at 30% 30%, #ef4444, #991b1b); border: 1px solid #f87171; }
+        .neutron { background: radial-gradient(circle at 30% 30%, #94a3b8, #475569); border: 1px solid #cbd5e1; }
+        .electron { background: radial-gradient(circle at 30% 30%, #3b82f6, #1e3a8a); border: 1px solid #60a5fa; width: 20px; height: 20px; font-size: 10px; }
 
         /* Orbital Animations */
         @keyframes orbit-spin {
@@ -70,10 +70,6 @@
         
         /* Ensure electrons inside rotating layers are clickable */
         .orbit-layer .particle { pointer-events: auto; transform-origin: center center; }
-        /* Keep electron upright? Optional, but looks better if they don't spin on axis. 
-           Actually, they are spheres, so rotation doesn't show much, but text '-' might rotate.
-           To counter-rotate text: animation on inner div. Simplified here.
-        */
 
         #orbit-k { animation-duration: 4s; }
         #orbit-l { animation-duration: 8s; animation-direction: reverse; }
@@ -101,6 +97,28 @@
             font-size: 12px;
             color: #94a3b8;
             font-weight: bold;
+        }
+
+        /* Nucleus 3D Style */
+        #nucleus-container {
+            perspective: 1000px;
+        }
+        #nucleus {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            transform-style: preserve-3d;
+            animation: nucleus-spin 20s linear infinite;
+        }
+        @keyframes nucleus-spin {
+            from { transform: rotateY(0deg) rotateX(10deg); }
+            to { transform: rotateY(360deg) rotateX(10deg); }
+        }
+        .nucleon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin: -15px 0 0 -15px; /* Center the particle */
         }
 
         /* Periodic Table Box */
@@ -190,8 +208,10 @@
                 </svg>
 
                 <!-- Nucleus Container (Particles go here) -->
-                <div id="nucleus" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-24 h-24 flex items-center justify-center flex-wrap content-center gap-1 z-20">
-                    <!-- Protons/Neutrons placed here -->
+                <div id="nucleus-container" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-24 h-24 flex items-center justify-center z-20">
+                    <div id="nucleus">
+                        <!-- Protons/Neutrons placed here in 3D -->
+                    </div>
                 </div>
 
                 <!-- Electron Orbits (Electrons go here) -->
@@ -301,22 +321,45 @@
             const nucleus = document.getElementById('nucleus');
             nucleus.innerHTML = '';
             
-            // Render P and N randomly packed in center
-            // Simple approach: Flexbox packing
-            for(let i=0; i<pCount; i++) {
-                const el = document.createElement('div');
-                el.className = 'particle proton scale-75 cursor-pointer hover:scale-90';
-                el.innerText = '+';
-                el.onclick = () => removeParticle('p');
-                nucleus.appendChild(el);
+            const particles = [];
+            for(let i=0; i<pCount; i++) particles.push({type: 'p', id: i});
+            for(let i=0; i<nCount; i++) particles.push({type: 'n', id: i});
+
+            // Shuffle for random distribution
+            for (let i = particles.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [particles[i], particles[j]] = [particles[j], particles[i]];
             }
-            for(let i=0; i<nCount; i++) {
+
+            // Simple sphere packing using spherical coordinates
+            // We'll place them in layers. 1st layer = 1, 2nd = 12, etc.
+            // A simpler approach for visual is to use the golden spiral on a sphere.
+            const phi = Math.PI * (3 - Math.sqrt(5)); // golden angle in radians
+            const radiusStep = 12; // radius for each particle to have space
+
+            particles.forEach((p, i) => {
+                const y = 1 - (i / (particles.length - 1 + 1e-9)) * 2; // y goes from 1 to -1
+                const r = Math.sqrt(1 - y * y); // radius at y
+                
+                const theta = phi * i; // golden angle increment
+
+                const x = Math.cos(theta) * r;
+                const z = Math.sin(theta) * r;
+
+                // Scale the sphere
+                const sphereRadius = Math.cbrt(particles.length) * radiusStep;
+                const posX = x * sphereRadius;
+                const posY = y * sphereRadius;
+                const posZ = z * sphereRadius;
+
                 const el = document.createElement('div');
-                el.className = 'particle neutron scale-75 cursor-pointer hover:scale-90';
-                el.innerText = '0';
-                el.onclick = () => removeParticle('n');
+                el.className = `particle nucleon cursor-pointer hover:scale-90 ${p.type === 'p' ? 'proton' : 'neutron'}`;
+                el.innerText = p.type === 'p' ? '+' : '0';
+                el.onclick = () => removeParticle(p.type);
+                el.style.transform = `translate3d(${posX}px, ${posY}px, ${posZ}px)`;
                 nucleus.appendChild(el);
-            }
+            });
+
 
             // 2. Update Electrons (Shells)
             // K=2, L=8, M=18
