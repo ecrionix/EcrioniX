@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clock Gating Design Lab - EcrioniX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+        .code-font { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 5rem;
+            font-weight: 900;
+            color: rgba(99, 102, 241, 0.08);
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+            z-index: 9999;
+        }
+
+        /* Waveform Canvas */
+        .wave-canvas {
+            background-color: #111827;
+            border-left: 2px solid #374151;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* Component Styling */
+        .comp-body { fill: #1e293b; stroke: #94a3b8; stroke-width: 2; }
+        .comp-pin { stroke: #94a3b8; stroke-width: 2; }
+        
+        /* Signal Wires */
+        .wire { fill: none; stroke: #475569; stroke-width: 3; transition: stroke 0.1s; }
+        .wire-high { stroke: #facc15; filter: drop-shadow(0 0 3px #facc15); }
+        .wire-low { stroke: #1e293b; opacity: 0.5; }
+        .wire-glitch { stroke: #ef4444; filter: drop-shadow(0 0 5px #ef4444); }
+
+        /* Power Meter */
+        .power-bar-bg { background: #334155; height: 10px; border-radius: 5px; overflow: hidden; }
+        .power-bar-fill { height: 100%; transition: width 0.3s ease; }
+
+        /* Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #6366f1;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #6366f1;
+        }
+
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen flex flex-col relative overflow-x-hidden">
+
+    <div class="watermark">EcrioniX Labs</div>
+
+    <div class="max-w-[1400px] mx-auto w-full flex-grow relative z-10">
+        
+        <!-- Navigation -->
+        <div class="flex justify-between items-start mb-2">
+            <button onclick="window.history.back()" class="group flex items-center text-gray-500 hover:text-white transition-colors duration-200">
+                <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center group-hover:border-indigo-500 group-hover:bg-indigo-900/20 mr-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </div>
+                <span class="text-sm font-bold tracking-wide group-hover:text-indigo-400">EXIT LAB</span>
+            </button>
+        </div>
+
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white tech-font tracking-wide">CLOCK GATING <span class="text-indigo-500 text-sm align-top">ICG</span></h1>
+                <p class="text-gray-400 text-sm">Low Power Design: Glitch-Free Integrated Clock Gating</p>
+            </div>
+            
+            <div class="mt-4 md:mt-0 flex items-center space-x-6">
+                <!-- Power Meter -->
+                <div class="w-48">
+                    <div class="flex justify-between text-[10px] text-gray-400 font-bold mb-1">
+                        <span>DYNAMIC POWER</span>
+                        <span id="power-val" class="text-green-400">0%</span>
+                    </div>
+                    <div class="power-bar-bg">
+                        <div id="power-bar" class="power-bar-fill bg-green-500" style="width: 0%"></div>
+                    </div>
+                    <div class="text-[9px] text-right text-gray-500 mt-1">Relative to free-running clock</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- LEFT COLUMN: Controls & Explanation -->
+            <div class="lg:col-span-4 space-y-6">
+                
+                <!-- Controls -->
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
+                    <h2 class="text-sm font-bold text-white mb-6">GATER CONFIGURATION</h2>
+
+                    <!-- Architecture Selection -->
+                    <div class="mb-6">
+                        <label class="text-xs text-gray-400 font-bold mb-2 block">ARCHITECTURE</label>
+                        <div class="flex bg-gray-900 p-1 rounded-lg">
+                            <button onclick="setMode('SIMPLE')" id="btn-simple" class="flex-1 py-2 rounded text-xs font-bold transition">SIMPLE AND</button>
+                            <button onclick="setMode('ICG')" id="btn-icg" class="flex-1 py-2 rounded text-xs font-bold transition bg-indigo-600 text-white shadow-lg">LATCH-BASED (ICG)</button>
+                        </div>
+                        <p id="arch-desc" class="text-[10px] text-gray-400 mt-2 h-8">
+                            Standard Industry Cell. Uses a level-sensitive latch to filter glitches on the Enable line.
+                        </p>
+                    </div>
+
+                    <!-- Enable Control -->
+                    <div class="mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="text-xs text-gray-400 font-bold">ENABLE SIGNAL</label>
+                            <span id="en-status" class="text-xs font-mono font-bold text-red-400">OFF (GATED)</span>
+                        </div>
+                        
+                        <button id="btn-toggle" onmousedown="toggleEnable()" class="w-full h-12 rounded-lg bg-gray-700 border-2 border-gray-600 text-gray-300 font-bold shadow-inner hover:bg-gray-600 active:bg-green-600 active:border-green-500 active:text-white transition-all">
+                            TOGGLE ENABLE
+                        </button>
+                        <p class="text-[10px] text-gray-500 mt-2 text-center">
+                            Click repeatedly to toggle enable. <br>
+                            <span class="text-yellow-500">Try toggling rapidly when Clock is HIGH!</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Theory -->
+                <div class="bg-gray-900 rounded-xl border border-gray-700 p-4">
+                    <h3 class="text-xs font-bold text-indigo-400 mb-2">WHY DO WE NEED A LATCH?</h3>
+                    <div class="space-y-2 text-xs text-gray-400 leading-relaxed">
+                        <p>
+                            <strong class="text-white">1. The Problem:</strong> In a simple <code class="bg-gray-800 px-1 rounded">CLK & EN</code> gate, if <code class="text-yellow-200">EN</code> changes while <code class="text-yellow-200">CLK</code> is High, the output immediately changes. This creates narrow pulses or <strong>Glitches</strong> that can corrupt data downstream.
+                        </p>
+                        <p>
+                            <strong class="text-white">2. The Solution (ICG):</strong> An Integrated Clock Gating cell adds a <strong>Level-Sensitive Latch</strong> (active Low) before the AND gate.
+                        </p>
+                        <ul class="list-disc list-inside pl-1 text-gray-500">
+                            <li>When <code class="text-yellow-200">CLK=0</code>, Latch is transparent. It captures <code class="text-yellow-200">EN</code>.</li>
+                            <li>When <code class="text-yellow-200">CLK=1</code>, Latch is Opaque (Locked).</li>
+                        </ul>
+                        <p class="text-green-400 mt-1">
+                            Result: The enable signal seen by the AND gate only changes when CLK is Low, ensuring clean, full pulses.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: Visualization -->
+            <div class="lg:col-span-8 space-y-6">
+                
+                <!-- Schematic -->
+                <div class="bg-gray-800 rounded-xl shadow-xl border border-gray-700 p-1 relative">
+                    <div class="absolute top-2 left-3 text-[10px] font-bold text-gray-500 tracking-widest">LOGIC SCHEMATIC</div>
+                    
+                    <div class="bg-gray-900 h-64 w-full rounded-lg mt-6 overflow-hidden flex items-center justify-center relative">
+                        
+                        <svg id="schematic" width="100%" height="100%" viewBox="0 0 600 200">
+                            
+                            <!-- Inputs -->
+                            <text x="50" y="55" fill="#94a3b8" font-family="monospace" font-size="12">ENABLE</text>
+                            <text x="50" y="145" fill="#94a3b8" font-family="monospace" font-size="12">CLK_SRC</text>
+                            
+                            <line id="w-en-in" x1="100" y1="50" x2="180" y2="50" class="wire" />
+                            <line id="w-clk-in" x1="100" y1="140" x2="180" y2="140" class="wire" />
+
+                            <!-- LATCH (Only visible in ICG Mode) -->
+                            <g id="grp-latch" transform="translate(180, 20)">
+                                <rect x="0" y="0" width="80" height="80" class="comp-body" rx="4" />
+                                <text x="40" y="25" fill="#94a3b8" text-anchor="middle" font-size="10">LATCH</text>
+                                <text x="10" y="35" fill="#64748b" font-size="9">D</text>
+                                <text x="10" y="70" fill="#64748b" font-size="9">ENn</text> <!-- Active Low Enable usually -->
+                                <text x="65" y="35" fill="#64748b" font-size="9">Q</text>
+
+                                <!-- Internal logic visual -->
+                                <circle cx="40" cy="50" r="2" fill="#475569" />
+                            </g>
+                            
+                            <!-- Wires from Latch to AND -->
+                            <line id="w-latch-q" x1="260" y1="50" x2="350" y2="50" class="wire" />
+                            
+                            <!-- Bypass Wire (Visible in Simple Mode) -->
+                            <path id="w-bypass" d="M150,50 L350,50" class="wire" style="opacity:0" />
+
+                            <!-- Clock to Latch & AND -->
+                            <circle cx="220" cy="95" r="3" fill="#94a3b8" id="inv-latch-clk"/> <!-- Inverter bubble for Latch -->
+                            <line id="w-clk-split" x1="180" y1="140" x2="350" y2="140" class="wire" /> <!-- Main CLK line -->
+                            <line id="w-clk-latch" x1="220" y1="140" x2="220" y2="100" class="wire" /> <!-- Vertical to Latch -->
+
+                            <!-- AND GATE -->
+                            <g transform="translate(350, 30)">
+                                <path d="M0,0 V130 H40 A65,65 0 0,0 40,0 Z" class="comp-body" />
+                            </g>
+
+                            <!-- Output -->
+                            <line id="w-gated-out" x1="455" y1="95" x2="550" y2="95" class="wire" />
+                            <text x="560" y="100" fill="#facc15" font-family="monospace" font-size="12" font-weight="bold">GCLK</text>
+
+                        </svg>
+
+                        <!-- Error/Glitch Flash Overlay -->
+                        <div id="glitch-flash" class="absolute inset-0 bg-red-500/30 pointer-events-none opacity-0 transition-opacity duration-100"></div>
+                    </div>
+                </div>
+
+                <!-- Waveforms -->
+                <div class="bg-gray-900 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-300">TIMING DIAGRAM</span>
+                        <div class="flex space-x-4">
+                            <span class="text-[10px] text-yellow-500 font-mono">CLK_SRC</span>
+                            <span class="text-[10px] text-blue-400 font-mono">ENABLE</span>
+                            <span class="text-[10px] text-indigo-400 font-mono">LATCH_Q</span>
+                            <span class="text-[10px] text-green-400 font-mono">GCLK_OUT</span>
+                        </div>
+                    </div>
+                    <div class="p-2 relative">
+                        <canvas id="waveCanvas" height="200" width="800" class="wave-canvas w-full"></canvas>
+                        
+                        <!-- Axis Labels -->
+                        <div class="absolute left-2 top-2 space-y-9 pointer-events-none">
+                            <div class="text-[10px] font-mono text-yellow-500">CLK</div>
+                            <div class="text-[10px] font-mono text-blue-400">EN</div>
+                            <div class="text-[10px] font-mono text-indigo-400">LAT</div>
+                            <div class="text-[10px] font-mono text-green-400">OUT</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-12 py-6 border-t border-gray-800 text-center relative z-10 bg-gray-900/80 backdrop-blur-sm">
+        <p class="text-gray-400 font-semibold mb-1">Owned & Operated by Elangovan</p>
+        <p class="text-gray-600 text-sm">© 2026 EcrioniX Labs. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // --- State ---
+        let mode = 'ICG'; // 'SIMPLE' or 'ICG'
+        let enable = 0;
+        let clock = 0;
+        let latchQ = 0; // The internal latch state
+        let outClock = 0;
+        
+        let powerTotal = 0;
+        let powerGated = 0; // How many ticks happened on GCLK
+        
+        // Simulation resolution
+        let simTime = 0;
+        const CLK_PERIOD = 60; // Frames
+        
+        // History for Canvas
+        let history = []; 
+        const MAX_HISTORY = 600;
+
+        // --- DOM Elements ---
+        const btnSimple = document.getElementById('btn-simple');
+        const btnIcg = document.getElementById('btn-icg');
+        const descText = document.getElementById('arch-desc');
+        const enStatus = document.getElementById('en-status');
+        const glitchFlash = document.getElementById('glitch-flash');
+        
+        const grpLatch = document.getElementById('grp-latch');
+        const wireBypass = document.getElementById('w-bypass');
+        const wireLatchQ = document.getElementById('w-latch-q');
+        const wireClkLatch = document.getElementById('w-clk-latch');
+        const invLatchClk = document.getElementById('inv-latch-clk');
+
+        // Wires
+        const wEnIn = document.getElementById('w-en-in');
+        const wClkIn = document.getElementById('w-clk-in');
+        const wGatedOut = document.getElementById('w-gated-out');
+
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        const powerBar = document.getElementById('power-bar');
+        const powerVal = document.getElementById('power-val');
+
+        // --- Logic ---
+
+        function setMode(m) {
+            mode = m;
+            if(mode === 'SIMPLE') {
+                btnSimple.classList.add('bg-indigo-600', 'text-white', 'shadow-lg');
+                btnIcg.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg');
+                descText.innerText = "WARNING: Simple AND logic. If ENABLE changes while CLK is High, glitches will occur!";
+                descText.classList.add('text-red-400');
+                
+                // Schematic Update
+                grpLatch.style.opacity = '0.1';
+                wireBypass.style.opacity = '1';
+                wireLatchQ.style.opacity = '0';
+                wireClkLatch.style.opacity = '0';
+                invLatchClk.style.opacity = '0';
+            } else {
+                btnIcg.classList.add('bg-indigo-600', 'text-white', 'shadow-lg');
+                btnSimple.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg');
+                descText.innerText = "Standard Industry Cell. Uses a level-sensitive latch to filter glitches on the Enable line.";
+                descText.classList.remove('text-red-400');
+
+                // Schematic Update
+                grpLatch.style.opacity = '1';
+                wireBypass.style.opacity = '0';
+                wireLatchQ.style.opacity = '1';
+                wireClkLatch.style.opacity = '1';
+                invLatchClk.style.opacity = '1';
+            }
+        }
+
+        function toggleEnable() {
+            enable = !enable;
+            enStatus.innerText = enable ? "ON (ENABLED)" : "OFF (GATED)";
+            enStatus.className = enable ? "text-xs font-mono font-bold text-green-400" : "text-xs font-mono font-bold text-red-400";
+        }
+
+        function step() {
+            simTime++;
+
+            // 1. Generate Source Clock
+            let prevClock = clock;
+            clock = Math.floor(simTime / (CLK_PERIOD/2)) % 2;
+
+            // 2. Logic Evaluation
+            let glitchDetected = false;
+
+            if (mode === 'ICG') {
+                // Latch Behavior (Active Low Latch)
+                // When Clock is 0, Latch is transparent (Q = D)
+                // When Clock is 1, Latch holds previous Q
+                if (clock === 0) {
+                    latchQ = enable;
+                } 
+                // else latchQ stays same
+            } else {
+                // Simple Mode: No Latch. Logic effectively sees 'Enable' directly
+                // To visualize the difference, we say LatchQ *is* Enable for the diagram
+                // But check for glitch condition
+                latchQ = enable;
+
+                // Glitch Detection: If Enable changes while Clock is 1
+                // We need to track prev enable state? 
+                // Simpler: If Clock is 1, and we toggle enable, output changes mid-cycle.
+            }
+
+            // Final Output Logic
+            let prevOut = outClock;
+            outClock = clock && latchQ;
+
+            // Glitch Check for Simple Mode
+            if (mode === 'SIMPLE' && clock === 1) {
+                // If output changed *during* high phase, it wasn't a clean clock edge
+                // It was caused by enable changing.
+                if (outClock !== prevOut && prevClock === clock) {
+                    glitchDetected = true;
+                }
+            }
+
+            // 3. Power Calculation
+            // Count Transitions (0->1)
+            if (clock && !prevClock) powerTotal++;
+            if (outClock && !prevOut) powerGated++;
+
+            // Update Power Meter
+            if (simTime % 20 === 0) {
+                let ratio = powerTotal > 0 ? (powerGated / powerTotal) : 0;
+                let pct = Math.round(ratio * 100);
+                powerBar.style.width = `${pct}%`;
+                powerVal.innerText = `${pct}% Active`;
+            }
+
+            // 4. Visual Updates
+            updateWires(glitchDetected);
+            if(glitchDetected) {
+                glitchFlash.style.opacity = 1;
+                setTimeout(() => glitchFlash.style.opacity = 0, 100);
+            }
+
+            // 5. Canvas History
+            history.push({
+                clk: clock,
+                en: enable,
+                lat: latchQ,
+                out: outClock,
+                glitch: glitchDetected
+            });
+            if (history.length > MAX_HISTORY) history.shift();
+
+            drawWaveforms();
+            requestAnimationFrame(step);
+        }
+
+        function updateWires(isGlitch) {
+            const set = (el, val, glitch) => {
+                if(!el) return;
+                el.className.baseVal = "wire " + (glitch ? "wire-glitch" : (val ? "wire-high" : "wire-low"));
+            };
+
+            set(wEnIn, enable);
+            set(wClkIn, clock);
+            set(wGatedOut, outClock, isGlitch);
+            set(wireLatchQ, latchQ);
+        }
+
+        function drawWaveforms() {
+            if(canvas.width !== canvas.offsetWidth) canvas.width = canvas.offsetWidth;
+            const w = canvas.width;
+            const h = canvas.height;
+            const ctx = canvas.getContext('2d');
+            const step = w / MAX_HISTORY;
+
+            ctx.clearRect(0,0,w,h);
+
+            const lanes = [
+                { id: 'clk', y: 30, color: '#facc15' },
+                { id: 'en', y: 70, color: '#60a5fa' },
+                { id: 'lat', y: 110, color: '#818cf8' },
+                { id: 'out', y: 150, color: '#4ade80' }
+            ];
+
+            lanes.forEach(lane => {
+                ctx.strokeStyle = lane.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                for(let i=0; i<history.length; i++) {
+                    const val = history[i][lane.id];
+                    const x = i * step;
+                    const y = val ? lane.y - 15 : lane.y + 15;
+
+                    // Specific Glitch drawing for OUT lane
+                    if (lane.id === 'out' && history[i].glitch) {
+                        ctx.strokeStyle = '#ef4444'; // Red
+                    } else {
+                        ctx.strokeStyle = lane.color;
+                    }
+
+                    if (i===0) ctx.moveTo(x, y);
+                    else {
+                        ctx.lineTo(x, y);
+                        if (history[i-1][lane.id] !== val) {
+                            ctx.lineTo(x, val ? lane.y + 15 : lane.y - 15);
+                            ctx.moveTo(x, y);
+                        }
+                    }
+                    
+                    ctx.stroke();
+                    ctx.beginPath(); // Reset path to handle color changes mid-stream
+                    ctx.moveTo(x, y);
+                }
+            });
+        }
+
+        // Init
+        setMode('ICG'); // Default to good design
+        requestAnimationFrame(step);
+
+    </script>
+</body>
+</html>
