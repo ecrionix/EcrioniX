@@ -142,6 +142,78 @@
         const recipientPanel = document.getElementById('recipient-panel');
         const surprisePanel = document.getElementById('surprise-panel');
 
+        // --- Audio System ---
+        let audioCtx;
+        let noiseBuffer;
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create white noise buffer for explosions
+            const bufferSize = audioCtx.sampleRate * 1.5;
+            noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+        }
+
+        function playFireworkSound(volume = 1) {
+            if (!audioCtx || audioCtx.state !== 'running') return;
+
+            const now = audioCtx.currentTime;
+            
+            // 1. The "Thump" (Low frequency)
+            const thump = audioCtx.createOscillator();
+            const thumpGain = audioCtx.createGain();
+            thump.type = 'sine';
+            thump.frequency.setValueAtTime(120, now);
+            thump.frequency.exponentialRampToValueAtTime(10, now + 0.3);
+            thumpGain.gain.setValueAtTime(0.5 * volume, now);
+            thumpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            thump.connect(thumpGain);
+            thumpGain.connect(audioCtx.destination);
+            thump.start(now);
+            thump.stop(now + 0.3);
+
+            // 2. The "Burst" (Filtered Noise)
+            const burst = audioCtx.createBufferSource();
+            const burstGain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+            
+            burst.buffer = noiseBuffer;
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1500, now);
+            filter.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+            
+            burstGain.gain.setValueAtTime(0.3 * volume, now);
+            burstGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            
+            burst.connect(filter);
+            filter.connect(burstGain);
+            burstGain.connect(audioCtx.destination);
+            burst.start(now);
+            burst.stop(now + 0.5);
+
+            // 3. Crackle (Random sharp noises)
+            if (volume > 0.5) {
+                for (let i = 0; i < 5; i++) {
+                    const cNow = now + 0.1 + Math.random() * 0.4;
+                    const crackle = audioCtx.createOscillator();
+                    const crackleGain = audioCtx.createGain();
+                    crackle.type = 'square';
+                    crackle.frequency.setValueAtTime(Math.random() * 2000 + 500, cNow);
+                    crackleGain.gain.setValueAtTime(0.05 * volume, cNow);
+                    crackleGain.gain.exponentialRampToValueAtTime(0.01, cNow + 0.05);
+                    crackle.connect(crackleGain);
+                    crackleGain.connect(audioCtx.destination);
+                    crackle.start(cNow);
+                    crackle.stop(cNow + 0.05);
+                }
+            }
+        }
+
         window.onload = () => {
             if (senderName) {
                 // Showing a shared link
@@ -153,15 +225,18 @@
         };
 
         function triggerSurprise() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
             surprisePanel.classList.add('opacity-0');
             setTimeout(() => {
                 surprisePanel.classList.add('hidden');
                 recipientPanel.classList.remove('hidden');
                 setTimeout(() => {
                     recipientPanel.classList.remove('scale-90', 'opacity-0');
-                    // Launch heavy fireworks
+                    // Launch heavy initial celebratory fireworks
                     for(let i=0; i<10; i++) {
-                        setTimeout(createFirework, i * 300);
+                        setTimeout(createFirework, i * 400);
                     }
                 }, 50);
             }, 500);
@@ -176,6 +251,9 @@
 
         // --- Sharing Logic ---
         async function shareGreeting() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
             const name = document.getElementById('input-name').value.trim();
             const msg = document.getElementById('input-msg').value.trim();
             
@@ -271,12 +349,15 @@
             }
         }
 
-        function createFirework() {
+        function createFirework(manual = true) {
             const x = Math.random() * width;
             const y = Math.random() * (height * 0.6);
             const hue = Math.random() * 360;
             const color = `hsl(${hue}, 100%, 60%)`;
             
+            // Play procedural sound
+            playFireworkSound(manual ? 1.0 : 0.4);
+
             for (let i = 0; i < 50; i++) {
                 particles.push(new Particle(x, y, color));
             }
@@ -287,8 +368,8 @@
             ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             ctx.fillRect(0, 0, width, height);
 
-            // Occasional random firework
-            if (Math.random() < 0.02) createFirework();
+            // Occasional random background firework
+            if (Math.random() < 0.02) createFirework(false);
 
             particles = particles.filter(p => p.life > 0);
             particles.forEach(p => {
