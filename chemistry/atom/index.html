@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build an Atom - EcrioniX Labs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background-color: #020617; color: #f8fafc; overflow: hidden; }
+        .brand-font { font-family: 'Orbitron', sans-serif; }
+        
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 8rem;
+            font-weight: 900;
+            color: rgba(45, 212, 191, 0.03);
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+            z-index: 0;
+        }
+
+        /* Atom Canvas */
+        #atom-canvas {
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 70%);
+            border-radius: 50%;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        /* Particles */
+        .particle {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: white;
+            box-shadow: inset -2px -2px 6px rgba(0,0,0,0.3), 2px 2px 5px rgba(0,0,0,0.3);
+            cursor: grab;
+            position: absolute;
+            transition: transform 0.1s;
+            user-select: none;
+            z-index: 50;
+        }
+        .particle:active { cursor: grabbing; transform: scale(1.1); z-index: 100; }
+        
+        .proton { background: radial-gradient(circle at 30% 30%, #ef4444, #991b1b); border: 1px solid #f87171; position: relative; } /* Relative for nucleus flex packing */
+        .neutron { background: radial-gradient(circle at 30% 30%, #94a3b8, #475569); border: 1px solid #cbd5e1; position: relative; }
+        .electron { background: radial-gradient(circle at 30% 30%, #3b82f6, #1e3a8a); border: 1px solid #60a5fa; width: 20px; height: 20px; font-size: 10px; position: absolute; }
+
+        /* Orbital Animations */
+        @keyframes orbit-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .orbit-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* Let clicks pass through container */
+            animation: orbit-spin linear infinite;
+        }
+        
+        /* Ensure electrons inside rotating layers are clickable */
+        .orbit-layer .particle { pointer-events: auto; transform-origin: center center; }
+        /* Keep electron upright? Optional, but looks better if they don't spin on axis. 
+           Actually, they are spheres, so rotation doesn't show much, but text '-' might rotate.
+           To counter-rotate text: animation on inner div. Simplified here.
+        */
+
+        #orbit-k { animation-duration: 4s; }
+        #orbit-l { animation-duration: 8s; animation-direction: reverse; }
+        #orbit-m { animation-duration: 16s; }
+
+        /* Buckets */
+        .bucket {
+            background: rgba(30, 41, 59, 0.5);
+            border: 2px dashed #475569;
+            border-radius: 12px;
+            padding: 10px;
+            min-height: 80px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            gap: 5px;
+            position: relative;
+        }
+        .bucket-label {
+            position: absolute;
+            bottom: -20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: bold;
+        }
+
+        /* Periodic Table Box */
+        .pt-box {
+            width: 100px; height: 100px;
+            border: 2px solid #2dd4bf;
+            background: rgba(45, 212, 191, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="relative h-screen flex flex-col">
+
+    <div class="watermark">EcrioniX</div>
+
+    <!-- Header -->
+    <nav class="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 py-3 flex justify-between items-center">
+        <div class="flex items-center">
+            <span class="brand-font text-2xl font-bold text-white tracking-wider">Ecrioni<span class="text-teal-500">X</span></span>
+            <span class="ml-4 px-2 py-1 bg-teal-500/10 text-teal-400 text-xs rounded border border-teal-500/20">ATOM BUILDER</span>
+        </div>
+        <a href="chemistry.html" class="text-sm text-slate-400 hover:text-white transition flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Back to Chemistry
+        </a>
+    </nav>
+
+    <!-- Main Workspace -->
+    <div class="flex-grow flex relative overflow-hidden">
+        
+        <!-- Left: Controls & Buckets -->
+        <div class="w-80 bg-slate-900 border-r border-slate-800 p-6 z-10 flex flex-col gap-8 shadow-xl">
+            
+            <div class="text-center mb-2">
+                <h2 class="text-xl font-bold text-white brand-font">Particle Source</h2>
+                <p class="text-xs text-slate-500">Click particles to add</p>
+            </div>
+
+            <!-- Proton Bucket -->
+            <div class="relative group">
+                <div class="bucket" id="bucket-p">
+                    <!-- Javascript will fill this with draggable clones -->
+                </div>
+                <div class="bucket-label text-red-400">Protons (+1)</div>
+                <div class="absolute top-2 right-2 text-xs font-mono text-slate-500" id="count-p">0</div>
+            </div>
+
+            <!-- Neutron Bucket -->
+            <div class="relative group">
+                <div class="bucket" id="bucket-n"></div>
+                <div class="bucket-label text-slate-400">Neutrons (0)</div>
+                <div class="absolute top-2 right-2 text-xs font-mono text-slate-500" id="count-n">0</div>
+            </div>
+
+            <!-- Electron Bucket -->
+            <div class="relative group">
+                <div class="bucket" id="bucket-e"></div>
+                <div class="bucket-label text-blue-400">Electrons (-1)</div>
+                <div class="absolute top-2 right-2 text-xs font-mono text-slate-500" id="count-e">0</div>
+            </div>
+
+            <button onclick="resetAtom()" class="mt-auto w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg font-bold transition border border-slate-700 hover:border-red-500/50">
+                Reset Atom
+            </button>
+        </div>
+
+        <!-- Center: Visualization -->
+        <div class="flex-grow relative bg-slate-950 flex items-center justify-center" id="drop-zone">
+            
+            <!-- Atom Model (SVG/Canvas Layer) -->
+            <div id="atom-container" class="relative w-[600px] h-[600px]">
+                <!-- Orbital Shells (SVG) -->
+                <svg width="100%" height="100%" viewBox="0 0 600 600" class="absolute inset-0 pointer-events-none">
+                    <!-- Shell 3 (M) -->
+                    <circle cx="300" cy="300" r="250" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="5,5" />
+                    <!-- Shell 2 (L) -->
+                    <circle cx="300" cy="300" r="180" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="5,5" />
+                    <!-- Shell 1 (K) -->
+                    <circle cx="300" cy="300" r="100" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="5,5" />
+                    
+                    <!-- Nucleus Zone Highlight -->
+                    <circle cx="300" cy="300" r="40" fill="rgba(255,255,255,0.02)" stroke="none" />
+                </svg>
+
+                <!-- Nucleus Container (Particles go here) -->
+                <div id="nucleus" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-24 h-24 flex items-center justify-center flex-wrap content-center gap-1 z-20">
+                    <!-- Protons/Neutrons placed here -->
+                </div>
+
+                <!-- Electron Orbits (Electrons go here) -->
+                <div id="orbit-m" class="orbit-layer"></div>
+                <div id="orbit-l" class="orbit-layer"></div>
+                <div id="orbit-k" class="orbit-layer"></div>
+            </div>
+
+            <!-- Dynamic Info Panels (Floating) -->
+            <div class="absolute top-6 right-6 flex flex-col gap-4 w-64">
+                
+                <!-- Element Card -->
+                <div class="glass-panel bg-slate-800/90 backdrop-blur border border-teal-500/30 p-4 rounded-xl shadow-2xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="text-4xl font-bold text-white brand-font" id="symbol">H</div>
+                            <div class="text-sm text-teal-400 font-bold" id="element-name">Hydrogen</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-slate-400">Mass Number</div>
+                            <div class="text-xl font-mono text-white" id="mass-num">1</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-slate-700 flex justify-between text-xs">
+                        <span class="text-slate-400">Atomic #: <span id="atomic-num" class="text-white">1</span></span>
+                        <span class="text-slate-400">Charge: <span id="net-charge" class="text-white">0</span></span>
+                    </div>
+                </div>
+
+                <!-- Stability Indicator -->
+                <div class="glass-panel bg-slate-900/80 border border-slate-700 p-3 rounded-lg flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-300">NUCLEUS STATUS</span>
+                    <span id="stability-tag" class="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/50">STABLE</span>
+                </div>
+
+                <!-- Ion Indicator -->
+                <div class="glass-panel bg-slate-900/80 border border-slate-700 p-3 rounded-lg flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-300">ION STATUS</span>
+                    <span id="ion-tag" class="px-2 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300">NEUTRAL ATOM</span>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // --- Data ---
+        const elements = [
+            { name: "Vacuum", sym: "?", stable: [] }, // 0
+            { name: "Hydrogen", sym: "H", stable: [1, 2] },
+            { name: "Helium", sym: "He", stable: [3, 4] },
+            { name: "Lithium", sym: "Li", stable: [6, 7] },
+            { name: "Beryllium", sym: "Be", stable: [9] },
+            { name: "Boron", sym: "B", stable: [10, 11] },
+            { name: "Carbon", sym: "C", stable: [12, 13] },
+            { name: "Nitrogen", sym: "N", stable: [14, 15] },
+            { name: "Oxygen", sym: "O", stable: [16, 17, 18] },
+            { name: "Fluorine", sym: "F", stable: [19] },
+            { name: "Neon", sym: "Ne", stable: [20, 21, 22] }
+        ];
+
+        let pCount = 1;
+        let nCount = 0;
+        let eCount = 1;
+
+        // --- Init ---
+        const bucketP = document.getElementById('bucket-p');
+        const bucketN = document.getElementById('bucket-n');
+        const bucketE = document.getElementById('bucket-e');
+        const dropZone = document.getElementById('drop-zone');
+        
+        // Fill source buckets (Visual only, Logic handles counts)
+        function fillBuckets() {
+            bucketP.innerHTML = `<div class="particle proton cursor-pointer" onclick="addParticle('p')">p+</div>`.repeat(5);
+            bucketN.innerHTML = `<div class="particle neutron cursor-pointer" onclick="addParticle('n')">n0</div>`.repeat(5);
+            bucketE.innerHTML = `<div class="particle electron cursor-pointer" onclick="addParticle('e')">e-</div>`.repeat(5);
+        }
+
+        function addParticle(type) {
+            if (type === 'p') {
+                if (pCount < 10) pCount++;
+            } else if (type === 'n') {
+                if (nCount < 12) nCount++;
+            } else if (type === 'e') {
+                if (eCount < 10) eCount++;
+            }
+            updateAtom();
+        }
+
+        function removeParticle(type) {
+            if (type === 'p' && pCount > 0) pCount--;
+            if (type === 'n' && nCount > 0) nCount--;
+            if (type === 'e' && eCount > 0) eCount--;
+            updateAtom();
+        }
+
+        function resetAtom() {
+            pCount = 1; nCount = 0; eCount = 1;
+            updateAtom();
+        }
+
+        // --- Render Logic ---
+        function updateAtom() {
+            // 1. Update Nucleus
+            const nucleus = document.getElementById('nucleus');
+            nucleus.innerHTML = '';
+            
+            // Render P and N randomly packed in center
+            // Simple approach: Flexbox packing
+            for(let i=0; i<pCount; i++) {
+                const el = document.createElement('div');
+                el.className = 'particle proton scale-75 cursor-pointer hover:scale-90';
+                el.innerText = '+';
+                el.onclick = () => removeParticle('p');
+                nucleus.appendChild(el);
+            }
+            for(let i=0; i<nCount; i++) {
+                const el = document.createElement('div');
+                el.className = 'particle neutron scale-75 cursor-pointer hover:scale-90';
+                el.innerText = '0';
+                el.onclick = () => removeParticle('n');
+                nucleus.appendChild(el);
+            }
+
+            // 2. Update Electrons (Shells)
+            // K=2, L=8, M=18
+            const shellK = Math.min(eCount, 2);
+            const shellL = Math.min(Math.max(eCount - 2, 0), 8);
+            const shellM = Math.max(eCount - 10, 0);
+
+            renderOrbit('orbit-k', shellK, 100);
+            renderOrbit('orbit-l', shellL, 180);
+            renderOrbit('orbit-m', shellM, 250);
+
+            // 3. Update Stats
+            document.getElementById('count-p').innerText = pCount;
+            document.getElementById('count-n').innerText = nCount;
+            document.getElementById('count-e').innerText = eCount;
+
+            const elData = elements[pCount] || { name: "Unknown", sym: "?", stable: [] };
+            
+            document.getElementById('symbol').innerText = elData.sym;
+            document.getElementById('element-name').innerText = elData.name;
+            document.getElementById('atomic-num').innerText = pCount;
+            
+            const mass = pCount + nCount;
+            document.getElementById('mass-num').innerText = mass;
+
+            // Stability Check
+            const isStable = elData.stable.includes(mass);
+            const stabTag = document.getElementById('stability-tag');
+            if (pCount === 0) {
+                stabTag.innerText = "--"; stabTag.className = "px-2 py-1 rounded text-xs font-bold bg-slate-800 text-slate-500";
+            } else if (isStable) {
+                stabTag.innerText = "STABLE";
+                stabTag.className = "px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/50";
+            } else {
+                stabTag.innerText = "UNSTABLE";
+                stabTag.className = "px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/50 animate-pulse";
+            }
+
+            // Charge Check
+            const charge = pCount - eCount;
+            const chargeText = charge > 0 ? `+${charge}` : charge;
+            document.getElementById('net-charge').innerText = chargeText;
+            
+            const ionTag = document.getElementById('ion-tag');
+            if (charge === 0) {
+                ionTag.innerText = "NEUTRAL ATOM";
+                ionTag.className = "px-2 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300";
+            } else {
+                ionTag.innerText = charge > 0 ? "POSITIVE ION (CATION)" : "NEGATIVE ION (ANION)";
+                ionTag.className = "px-2 py-1 rounded text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/50";
+            }
+        }
+
+        function renderOrbit(id, count, radius) {
+            const layer = document.getElementById(id);
+            layer.innerHTML = ''; // Clear previous electrons
+
+            for(let i=0; i<count; i++) {
+                // Calculate position on the circle relative to 300,300 (center of 600x600 container)
+                const angle = (i / count) * 2 * Math.PI;
+                const x = 300 + Math.cos(angle) * radius - 10; // -10 to center the 20px particle
+                const y = 300 + Math.sin(angle) * radius - 10;
+                
+                const el = document.createElement('div');
+                el.className = `particle electron cursor-pointer hover:scale-125`;
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.innerText = '-';
+                
+                // When clicking a spinning electron, we need to handle the removal
+                el.onmousedown = (e) => {
+                    e.stopPropagation(); // Prevent drag issues if any
+                    removeParticle('e');
+                };
+                
+                layer.appendChild(el);
+            }
+        }
+
+        // Init
+        fillBuckets();
+        updateAtom();
+
+    </script>
+</body>
+</html>
