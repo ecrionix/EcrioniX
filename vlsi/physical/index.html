@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VLSI Physical Design Lab - EcrioniX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+        
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 5rem;
+            font-weight: 900;
+            color: rgba(99, 102, 241, 0.08);
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+            z-index: 9999;
+        }
+
+        /* Chip Canvas */
+        #chip-canvas {
+            background-color: #1e1e1e;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+            border: 2px solid #475569;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 50px #000;
+        }
+
+        /* Macros (Draggable) */
+        .macro {
+            background: #1e293b;
+            border: 2px solid #3b82f6;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            color: #60a5fa;
+            cursor: grab;
+            z-index: 20;
+            transition: box-shadow 0.2s;
+        }
+        .macro:active { cursor: grabbing; box-shadow: 0 0 15px #3b82f6; z-index: 30; }
+        .macro-pins {
+            position: absolute; width: 100%; height: 100%; pointer-events: none;
+        }
+        .pin { width: 4px; height: 4px; background: #fbbf24; position: absolute; }
+
+        /* Standard Cells */
+        .std-cell {
+            width: 8px; height: 4px;
+            background: #475569;
+            position: absolute;
+            z-index: 10;
+        }
+
+        /* Layers */
+        .metal-v { width: 2px; background: #ef4444; position: absolute; opacity: 0.6; pointer-events: none; } /* M2 Vertical */
+        .metal-h { height: 2px; background: #3b82f6; position: absolute; opacity: 0.6; pointer-events: none; } /* M3 Horizontal */
+        
+        /* Clock Tree */
+        .cts-wire { stroke: #facc15; stroke-width: 2; fill: none; stroke-linecap: round; }
+
+        /* Flow Steps */
+        .step-btn {
+            @apply px-4 py-2 rounded text-xs font-bold border border-gray-600 bg-gray-800 text-gray-400 transition-all duration-200;
+        }
+        .step-active {
+            @apply border-indigo-500 bg-indigo-900/30 text-indigo-400 ring-1 ring-indigo-500;
+        }
+        .step-done {
+            @apply border-green-600 bg-green-900/20 text-green-500;
+        }
+
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen flex flex-col relative overflow-x-hidden">
+
+    <div class="watermark">EcrioniX Labs</div>
+
+    <div class="max-w-[1400px] mx-auto w-full flex-grow relative z-10">
+        
+        <!-- Navigation -->
+        <div class="flex justify-between items-start mb-2">
+            <button onclick="window.history.back()" class="group flex items-center text-gray-500 hover:text-white transition-colors duration-200">
+                <div class="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center group-hover:border-indigo-500 group-hover:bg-indigo-900/20 mr-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </div>
+                <span class="text-sm font-bold tracking-wide group-hover:text-indigo-400">EXIT LAB</span>
+            </button>
+        </div>
+
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white tech-font tracking-wide">PHYSICAL DESIGN <span class="text-indigo-500 text-sm align-top">BACKEND</span></h1>
+                <p class="text-gray-400 text-sm">RTL-to-GDSII Flow Visualizer</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex space-x-6">
+                <div class="text-right">
+                    <div class="text-[10px] uppercase text-gray-500 font-bold">Utilization</div>
+                    <div id="util-val" class="text-green-400 font-mono text-xl font-bold">0%</div>
+                </div>
+                <div class="h-8 w-px bg-gray-700"></div>
+                <div class="text-right">
+                    <div class="text-[10px] uppercase text-gray-500 font-bold">Congestion</div>
+                    <div id="cong-val" class="text-indigo-400 font-mono text-xl font-bold">Low</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- LEFT: Controls & Flow -->
+            <div class="lg:col-span-3 space-y-6">
+                
+                <!-- Flow Pipeline -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-lg">
+                    <h2 class="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">PD FLOW STAGES</h2>
+                    <div class="space-y-2 flex flex-col">
+                        <button onclick="runStep(1)" id="btn-fp" class="step-btn step-active text-left">1. Floorplanning</button>
+                        <button onclick="runStep(2)" id="btn-place" class="step-btn text-left" disabled>2. Placement</button>
+                        <button onclick="runStep(3)" id="btn-cts" class="step-btn text-left" disabled>3. CTS (Clock Tree)</button>
+                        <button onclick="runStep(4)" id="btn-route" class="step-btn text-left" disabled>4. Routing</button>
+                    </div>
+                    
+                    <div class="mt-6 pt-4 border-t border-gray-700">
+                        <button onclick="resetLab()" class="w-full py-2 rounded bg-red-900/30 text-red-400 border border-red-800 hover:bg-red-900/50 text-xs font-bold">RESET DESIGN</button>
+                    </div>
+                </div>
+
+                <!-- Info Box -->
+                <div class="bg-gray-900 rounded-xl border border-gray-700 p-4">
+                    <h3 id="step-title" class="text-sm font-bold text-white mb-2">FLOORPLANNING</h3>
+                    <p id="step-desc" class="text-xs text-gray-400 leading-relaxed">
+                        Arrange the hard macros (RAMs, IP blocks) around the core boundary. Ideally, place them near IO pins to reduce wire length. Avoid blocking the center.
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- RIGHT: Chip Canvas -->
+            <div class="lg:col-span-9 relative">
+                
+                <!-- The Chip -->
+                <div id="chip-canvas" class="w-full h-[600px] rounded-lg relative">
+                    
+                    <!-- IO Ring (Visual Border) -->
+                    <div class="absolute inset-0 border-[20px] border-gray-800 pointer-events-none z-50"></div>
+                    <div class="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-600 z-50">IO PADS TOP</div>
+                    
+                    <!-- Core Area -->
+                    <div id="core-area" class="absolute inset-[20px] w-auto h-auto">
+                        
+                        <!-- Macros (Draggable) -->
+                        <div class="macro" id="macro-1" style="width: 100px; height: 120px; top: 20px; left: 20px;">SRAM_1</div>
+                        <div class="macro" id="macro-2" style="width: 120px; height: 80px; top: 200px; left: 20px;">SRAM_2</div>
+                        <div class="macro" id="macro-3" style="width: 80px; height: 80px; top: 20px; right: 20px;">PLL</div>
+
+                        <!-- Standard Cells Container -->
+                        <div id="std-cells-layer" class="absolute inset-0 pointer-events-none"></div>
+
+                        <!-- Routing Layer -->
+                        <div id="routing-layer" class="absolute inset-0 pointer-events-none"></div>
+
+                        <!-- Clock Tree SVG -->
+                        <svg id="cts-layer" class="absolute inset-0 w-full h-full pointer-events-none z-40"></svg>
+                    </div>
+
+                </div>
+                
+                <div class="absolute bottom-4 right-4 bg-black/80 px-3 py-1 rounded text-[10px] text-gray-400 border border-gray-700">
+                    Resolution: 40nm | Die Size: 2mm x 2mm
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        let currentStep = 1;
+        const chip = document.getElementById('chip-canvas');
+        const core = document.getElementById('core-area');
+        const macros = document.querySelectorAll('.macro');
+        const stdLayer = document.getElementById('std-cells-layer');
+        const routeLayer = document.getElementById('routing-layer');
+        const ctsLayer = document.getElementById('cts-layer');
+
+        // --- Drag Logic ---
+        let draggedEl = null;
+        let shiftX, shiftY;
+
+        macros.forEach(macro => {
+            macro.addEventListener('mousedown', (e) => {
+                if (currentStep !== 1) return; // Lock after placement
+                draggedEl = macro;
+                const rect = macro.getBoundingClientRect();
+                shiftX = e.clientX - rect.left;
+                shiftY = e.clientY - rect.top;
+                macro.style.zIndex = 100;
+            });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!draggedEl) return;
+            const coreRect = core.getBoundingClientRect();
+            
+            let x = e.clientX - shiftX - coreRect.left;
+            let y = e.clientY - shiftY - coreRect.top;
+
+            // Boundaries
+            x = Math.max(0, Math.min(x, coreRect.width - draggedEl.offsetWidth));
+            y = Math.max(0, Math.min(y, coreRect.height - draggedEl.offsetHeight));
+
+            draggedEl.style.left = x + 'px';
+            draggedEl.style.top = y + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (draggedEl) {
+                draggedEl.style.zIndex = 20;
+                draggedEl = null;
+            }
+        });
+
+        // --- Flow Logic ---
+        function runStep(step) {
+            if (step < currentStep) return; // Can't go back easily in this demo
+            
+            // Mark previous done
+            document.getElementById(getBtnId(currentStep)).classList.replace('step-active', 'step-done');
+            
+            currentStep = step;
+            const btn = document.getElementById(getBtnId(step));
+            btn.classList.add('step-active');
+            btn.disabled = false;
+
+            updateInfo(step);
+
+            if (step === 2) runPlacement();
+            if (step === 3) runCTS();
+            if (step === 4) runRouting();
+        }
+
+        function getBtnId(s) {
+            return ['btn-fp', 'btn-fp', 'btn-place', 'btn-cts', 'btn-route'][s];
+        }
+
+        function updateInfo(step) {
+            const titles = ["", "FLOORPLANNING", "PLACEMENT", "CLOCK TREE SYNTHESIS", "ROUTING"];
+            const descs = [
+                "",
+                "Arrange macros. Ideally near edges to keep the center free for standard cells logic.",
+                "Algorithm places millions of standard cells (NAND, NOR, FF) in the empty spaces (Rows). Optimization targets wire length and timing.",
+                "Building a balanced H-Tree network to distribute the clock signal to all Flip-Flops with minimal skew.",
+                "Connecting the pins using metal layers. Vertical (M2, M4) and Horizontal (M3, M5) tracks."
+            ];
+            document.getElementById('step-title').innerText = titles[step];
+            document.getElementById('step-desc').innerText = descs[step];
+        }
+
+        // --- Step 2: Placement ---
+        function runPlacement() {
+            stdLayer.innerHTML = '';
+            const coreW = core.offsetWidth;
+            const coreH = core.offsetHeight;
+            const cellCount = 1000; // Visual count
+
+            // Simple random placement avoiding macros (Bounding Box Check)
+            // For demo, we just scatter them.
+            
+            let html = '';
+            for(let i=0; i<cellCount; i++) {
+                const x = Math.random() * (coreW - 10);
+                const y = Math.random() * (coreH - 5);
+                
+                // Check collision with macros?
+                // Skip for perf/simplicity in HTML string build
+                html += `<div class="std-cell" style="left:${x}px; top:${y}px; opacity: ${Math.random()*0.5 + 0.2}"></div>`;
+            }
+            stdLayer.innerHTML = html;
+            
+            document.getElementById('util-val').innerText = "72%";
+            document.getElementById('util-val').className = "text-yellow-400 font-mono text-xl font-bold";
+            
+            // Enable next step
+            setTimeout(() => { document.getElementById('btn-cts').disabled = false; }, 1000);
+        }
+
+        // --- Step 3: CTS ---
+        function runCTS() {
+            const w = core.offsetWidth;
+            const h = core.offsetHeight;
+            
+            // Draw H-Tree
+            const cx = w/2; 
+            const cy = h/2;
+            
+            // Root
+            let svg = `<circle cx="${cx}" cy="${cy}" r="4" fill="#facc15" />`; // PLL
+            
+            // Level 1 H
+            svg += `<path d="M${cx-100} ${cy} H${cx+100}" class="cts-wire" />`; // Center bar
+            svg += `<path d="M${cx-100} ${cy-80} V${cy+80}" class="cts-wire" />`; // Left vert
+            svg += `<path d="M${cx+100} ${cy-80} V${cy+80}" class="cts-wire" />`; // Right vert
+            
+            // Level 2
+            const pts = [
+                {x: cx-100, y: cy-80}, {x: cx-100, y: cy+80},
+                {x: cx+100, y: cy-80}, {x: cx+100, y: cy+80}
+            ];
+            
+            pts.forEach(p => {
+                svg += `<circle cx="${p.x}" cy="${p.y}" r="2" fill="#facc15" />`; // Buffer
+                svg += `<path d="M${p.x-40} ${p.y} H${p.x+40}" class="cts-wire" stroke-width="1" />`;
+            });
+            
+            ctsLayer.innerHTML = svg;
+            
+            // Enable next
+            setTimeout(() => { document.getElementById('btn-route').disabled = false; }, 1000);
+        }
+
+        // --- Step 4: Routing ---
+        function runRouting() {
+            const w = core.offsetWidth;
+            const h = core.offsetHeight;
+            const count = 50;
+            
+            let html = '';
+            
+            // Create Manhattan routes (L-shapes)
+            for(let i=0; i<count; i++) {
+                const x1 = Math.random() * w;
+                const y1 = Math.random() * h;
+                const x2 = Math.random() * w;
+                const y2 = Math.random() * h;
+                
+                // Horizontal Segment
+                const width = Math.abs(x2 - x1);
+                const left = Math.min(x1, x2);
+                html += `<div class="metal-h" style="left:${left}px; top:${y1}px; width:${width}px;"></div>`;
+                
+                // Vertical Segment
+                const height = Math.abs(y2 - y1);
+                const top = Math.min(y1, y2);
+                // Connect at x2
+                html += `<div class="metal-v" style="left:${x2}px; top:${top}px; height:${height}px;"></div>`;
+                
+                // Via
+                html += `<div class="absolute w-1 h-1 bg-white rounded-full z-20" style="left:${x2-0.5}px; top:${y1-0.5}px"></div>`;
+            }
+            
+            routeLayer.innerHTML = html;
+            
+            document.getElementById('cong-val').innerText = "High";
+            document.getElementById('cong-val').className = "text-red-400 font-mono text-xl font-bold";
+        }
+
+        function resetLab() {
+            location.reload();
+        }
+
+    </script>
+</body>
+</html>
