@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravity & Orbital Lab - EcrioniX Labs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background-color: #020617; color: #f8fafc; overflow: hidden; touch-action: none; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 8rem; font-weight: 900;
+            color: rgba(99, 102, 241, 0.03);
+            pointer-events: none; user-select: none; z-index: 0;
+        }
+
+        #sim-canvas {
+            background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+            width: 100%;
+            height: 100%;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+        }
+
+        /* Tooltip style */
+        #telemetry {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #4ade80;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            display: none;
+            z-index: 100;
+        }
+
+        input[type=range] { accent-color: #6366f1; }
+        
+        .btn-mass {
+            @apply px-3 py-2 rounded text-[10px] font-bold border transition-all;
+        }
+        .btn-mass-active { @apply border-indigo-500 bg-indigo-500/20 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]; }
+        .btn-mass-inactive { @apply border-slate-700 bg-slate-800 text-slate-400; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col relative">
+
+    <div class="watermark">EcrioniX Physics</div>
+
+    <!-- Header -->
+    <nav class="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex justify-between items-center z-20">
+        <div>
+            <h1 class="text-2xl font-bold text-indigo-400 tech-font">GRAVITY <span class="text-white">SIMULATOR</span></h1>
+            <p class="text-xs text-slate-400 uppercase tracking-widest font-bold">N-Body Orbital Mechanics Lab</p>
+        </div>
+        <div class="flex gap-4 items-center">
+            <button onclick="resetSim()" class="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 px-4 py-2 rounded-lg text-xs font-bold transition">CLEAR ALL</button>
+            <button onclick="window.history.back()" class="group flex items-center text-slate-400 hover:text-white transition bg-slate-800/80 px-4 py-2 rounded-lg border border-slate-700 hover:border-indigo-500">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                <span class="text-xs font-bold uppercase">Exit Lab</span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="flex-grow flex relative overflow-hidden">
+        
+        <!-- Left: Controls -->
+        <div class="w-72 absolute left-6 top-6 bottom-6 z-20 flex flex-col gap-4 pointer-events-none">
+            
+            <div class="glass-panel p-5 pointer-events-auto">
+                <h2 class="text-indigo-400 font-bold mb-4 uppercase text-[10px] tracking-widest">Add Objects</h2>
+                <div class="space-y-3">
+                    <div class="flex gap-2">
+                        <button id="m-small" onclick="setMassMode('small')" class="btn-mass btn-mass-inactive flex-1">SMALL<br>(Moon)</button>
+                        <button id="m-medium" onclick="setMassMode('medium')" class="btn-mass btn-mass-active flex-1">MEDIUM<br>(Planet)</button>
+                    </div>
+                    <button id="m-large" onclick="setMassMode('large')" class="btn-mass btn-mass-inactive w-full py-3">MASSIVE (Star)</button>
+                </div>
+                <p class="text-[10px] text-slate-500 mt-4 leading-relaxed">
+                    <strong>Interaction:</strong> Click and drag on space to set initial velocity. Longer drag = Faster speed.
+                </p>
+            </div>
+
+            <div class="glass-panel p-5 pointer-events-auto">
+                <h2 class="text-indigo-400 font-bold mb-4 uppercase text-[10px] tracking-widest">Environment</h2>
+                <div class="space-y-6">
+                    <div>
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1 font-bold">
+                            <span>GRAVITY (G)</span>
+                            <span id="txt-g">1.0</span>
+                        </div>
+                        <input type="range" id="slider-g" min="0.1" max="5.0" step="0.1" value="1.0" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] text-slate-400 mb-1 font-bold">
+                            <span>TIME STEP (dt)</span>
+                            <span id="txt-dt">1.0</span>
+                        </div>
+                        <input type="range" id="slider-dt" min="0" max="3.0" step="0.1" value="1.0" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div class="flex items-center justify-between">
+                         <span class="text-[10px] text-slate-400 font-bold">SHOW TRAILS</span>
+                         <input type="checkbox" id="check-trails" checked class="w-4 h-4 rounded accent-indigo-500 bg-slate-800 border-slate-700">
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel p-4 mt-auto">
+                <div class="flex justify-between text-[10px] font-bold text-slate-500">
+                    <span>OBJECTS IN SYSTEM</span>
+                    <span id="obj-count" class="text-white">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Telemetry Tooltip -->
+        <div id="telemetry">
+            <div id="tel-name" class="font-bold text-white mb-1">Object</div>
+            <div id="tel-data" class="mono-font">...</div>
+        </div>
+
+        <canvas id="sim-canvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('sim-canvas');
+        const ctx = canvas.getContext('2d');
+        const tel = document.getElementById('telemetry');
+        
+        let width, height;
+        let bodies = [];
+        let gravitationalConstant = 1.0; // Renamed from G to avoid redeclaration errors
+        let timeScale = 1.0;
+        let showTrails = true;
+        let massMode = 'medium';
+
+        // Drag State
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let mousePos = { x: 0, y: 0 };
+
+        const massPresets = {
+            small: { m: 10, r: 4, color: '#94a3b8' },
+            medium: { m: 500, r: 8, color: '#3b82f6' },
+            large: { m: 50000, r: 20, color: '#fbbf24' }
+        };
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Body {
+            constructor(x, y, vx, vy, mass, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.m = mass;
+                this.r = radius;
+                this.color = color;
+                this.history = [];
+                this.isDead = false;
+            }
+
+            draw() {
+                if (showTrails && this.history.length > 2) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = this.color;
+                    ctx.globalAlpha = 0.2;
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                    for(let i=1; i<this.history.length; i++) {
+                        ctx.lineTo(this.history[i].x, this.history[i].y);
+                    }
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                
+                // Add glow to stars
+                if (this.m >= massPresets.large.m) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = this.color;
+                }
+                
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            update(bodies, dt) {
+                if (this.isDead) return;
+
+                // Physics: Sum of gravitational forces
+                bodies.forEach(other => {
+                    if (other === this || other.isDead) return;
+
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const distSq = dx*dx + dy*dy;
+                    const dist = Math.sqrt(distSq);
+
+                    // Check Collision
+                    if (dist < (this.r + other.r) * 0.8) {
+                        this.collide(other);
+                        return;
+                    }
+
+                    // F = G * m1 * m2 / r^2
+                    // a = F / m1 = G * m2 / r^2
+                    const force = (gravitationalConstant * other.m) / (distSq + 100); 
+                    const ax = force * (dx / dist);
+                    const ay = force * (dy / dist);
+
+                    this.vx += ax * dt;
+                    this.vy += ay * dt;
+                });
+
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+
+                // Track history
+                if (simTime % 5 === 0) {
+                    this.history.push({ x: this.x, y: this.y });
+                    if (this.history.length > 50) this.history.shift();
+                }
+            }
+
+            collide(other) {
+                // Merger logic: smaller gets absorbed
+                if (this.m >= other.m) {
+                    // Conserve momentum: m1v1 + m2v2 = (m1+m2)v_final
+                    this.vx = (this.m * this.vx + other.m * other.vx) / (this.m + other.m);
+                    this.vy = (this.m * this.vy + other.m * other.vy) / (this.m + other.m);
+                    this.m += other.m;
+                    this.r = Math.max(this.r, Math.sqrt(this.m / 10)); // radius increases slightly
+                    other.isDead = true;
+                }
+            }
+        }
+
+        let simTime = 0;
+        function animate() {
+            simTime++;
+            ctx.clearRect(0, 0, width, height);
+
+            const dt = parseFloat(document.getElementById('slider-dt').value);
+            gravitationalConstant = parseFloat(document.getElementById('slider-g').value);
+            showTrails = document.getElementById('check-trails').checked;
+
+            // Updates UI texts
+            document.getElementById('txt-g').innerText = gravitationalConstant.toFixed(1);
+            document.getElementById('txt-dt').innerText = dt.toFixed(1);
+            document.getElementById('obj-count').innerText = bodies.filter(b => !b.isDead).length;
+
+            // Drag Vector Visual
+            if (isDragging) {
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.moveTo(dragStart.x, dragStart.y);
+                ctx.lineTo(mousePos.x, mousePos.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw ghost body
+                const p = massPresets[massMode];
+                ctx.beginPath();
+                ctx.arc(dragStart.x, dragStart.y, p.r, 0, Math.PI*2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = 0.5;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // Physics Update
+            bodies.forEach(b => b.update(bodies, dt));
+            bodies = bodies.filter(b => !b.isDead);
+
+            // Draw
+            bodies.forEach(b => b.draw());
+
+            checkHover();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Interaction ---
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStart = { x: e.clientX, y: e.clientY };
+            mousePos = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mousePos = { x: e.clientX, y: e.clientY };
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+
+            // Velocity is calculated by the drag distance
+            const vx = (dragStart.x - e.clientX) * 0.05;
+            const vy = (dragStart.y - e.clientY) * 0.05;
+
+            const p = massPresets[massMode];
+            bodies.push(new Body(dragStart.x, dragStart.y, vx, vy, p.m, p.r, p.color));
+        });
+
+        function setMassMode(mode) {
+            massMode = mode;
+            ['small', 'medium', 'large'].forEach(m => {
+                const btn = document.getElementById(`m-${m}`);
+                btn.className = m === mode ? 'btn-mass btn-mass-active' : 'btn-mass btn-mass-inactive';
+                if (m === 'large' && m !== mode) btn.className += ' w-full py-3';
+                if (m === 'large' && m === mode) btn.className += ' w-full py-3';
+                else if (m !== 'large') btn.className += ' flex-1';
+            });
+        }
+
+        function checkHover() {
+            let found = false;
+            bodies.forEach(b => {
+                const dist = Math.hypot(b.x - mousePos.x, b.y - mousePos.y);
+                if (dist < b.r + 10) {
+                    found = true;
+                    tel.style.display = 'block';
+                    tel.style.left = (mousePos.x + 15) + 'px';
+                    tel.style.top = (mousePos.y + 15) + 'px';
+                    document.getElementById('tel-name').innerText = b.m >= massPresets.large.m ? "Star Core" : "Planetary Body";
+                    document.getElementById('tel-data').innerHTML = `
+                        Mass: ${b.m.toLocaleString()} kg<br>
+                        Vel: ${Math.hypot(b.vx, b.vy).toFixed(2)} m/s
+                    `;
+                }
+            });
+            if (!found) tel.style.display = 'none';
+        }
+
+        function resetSim() {
+            bodies = [];
+        }
+
+        // --- Start ---
+        animate();
+    </script>
+</body>
+</html>
