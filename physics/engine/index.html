@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Stroke Engine Simulation - EcrioniX Labs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background-color: #0f172a; color: #f8fafc; overflow: hidden; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 8rem; font-weight: 900;
+            color: rgba(255, 255, 255, 0.03);
+            pointer-events: none; user-select: none; z-index: 0;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+        }
+
+        /* Engine Components */
+        .cylinder-wall { fill: none; stroke: #475569; stroke-width: 4; }
+        .piston { fill: #94a3b8; stroke: #cbd5e1; stroke-width: 2; }
+        .crankshaft { fill: #334155; stroke: #475569; stroke-width: 2; }
+        .valve { stroke: #64748b; stroke-width: 4; stroke-linecap: round; transition: transform 0.1s; }
+        
+        /* Fluids/Combustion */
+        .intake-gas { fill: #3b82f6; opacity: 0; transition: opacity 0.2s; }
+        .exhaust-gas { fill: #64748b; opacity: 0; transition: opacity 0.2s; }
+        .combustion { fill: #fbbf24; opacity: 0; filter: blur(10px); }
+
+        /* LED Indicators */
+        .led { width: 10px; height: 10px; border-radius: 50%; background: #334155; transition: background 0.2s, box-shadow 0.2s; }
+        .led-active { background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+
+        input[type=range] { accent-color: #6366f1; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col relative">
+
+    <div class="watermark">EcrioniX Labs</div>
+
+    <!-- Header -->
+    <nav class="border-b border-slate-800 bg-slate-900/80 px-6 py-4 flex justify-between items-center z-20">
+        <div>
+            <h1 class="text-2xl font-bold text-indigo-400 tech-font">4-STROKE <span class="text-white">ENGINE</span></h1>
+            <p class="text-xs text-slate-400 uppercase tracking-widest font-bold">Otto Cycle Thermodynamic Simulation</p>
+        </div>
+        <div class="flex gap-4">
+            <button id="btn-audio" onclick="toggleAudio()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition border border-slate-700">🔊 AUDIO: ON</button>
+        </div>
+    </nav>
+
+    <div class="flex-grow flex p-6 gap-6 z-10 overflow-hidden">
+        
+        <!-- Left: Telemetry & Info -->
+        <div class="w-80 flex flex-col gap-4 overflow-y-auto pr-2">
+            
+            <!-- Telemetry -->
+            <div class="glass-panel p-6">
+                <h2 class="text-indigo-400 font-bold mb-4 uppercase text-[10px] tracking-widest">Live Telemetry</h2>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1 font-bold">
+                            <span>RPM</span>
+                            <span id="txt-rpm" class="text-white">0</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                            <div id="bar-rpm" class="h-full bg-indigo-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1 font-bold">
+                            <span>TEMPERATURE</span>
+                            <span id="txt-temp" class="text-white">85°C</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                            <div id="bar-temp" class="h-full bg-red-500" style="width: 45%"></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                        <div class="text-[10px] text-slate-500 uppercase mb-1">Cylinder Pressure</div>
+                        <div class="text-xl font-bold text-emerald-400 mono-font" id="txt-pressure">14.7 psi</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Stroke Description -->
+            <div class="glass-panel p-6 flex-grow">
+                <h2 class="text-indigo-400 font-bold mb-3 uppercase text-[10px] tracking-widest">Cycle Phase</h2>
+                <div id="stroke-badge" class="bg-indigo-600 text-white px-3 py-1 rounded text-xs font-bold inline-block mb-3">WAITING</div>
+                <h3 id="stroke-title" class="text-lg font-bold text-white mb-2">Engine Stopped</h3>
+                <p id="stroke-desc" class="text-xs text-slate-400 leading-relaxed">
+                    Adjust the throttle and start the ignition to begin the internal combustion cycle.
+                </p>
+            </div>
+
+            <!-- Logic Switches -->
+            <div class="glass-panel p-4 flex flex-col gap-2">
+                 <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-400">Spark Ignition</span>
+                    <div id="led-spark" class="led"></div>
+                 </div>
+                 <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-400">Intake Valve</span>
+                    <div id="led-intake" class="led"></div>
+                 </div>
+                 <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-400">Exhaust Valve</span>
+                    <div id="led-exhaust" class="led"></div>
+                 </div>
+            </div>
+        </div>
+
+        <!-- Center: Mechanical Visualizer -->
+        <div class="flex-grow glass-panel relative flex items-center justify-center overflow-hidden">
+            <svg id="engine-svg" width="500" height="600" viewBox="0 0 400 500" class="drop-shadow-2xl">
+                <!-- Cylinder Base -->
+                <path d="M120,50 L120,250 L280,250 L280,50" class="cylinder-wall" />
+                
+                <!-- Gases Layers -->
+                <rect id="rect-intake" x="122" y="52" width="156" height="0" class="intake-gas" />
+                <rect id="rect-exhaust" x="122" y="52" width="156" height="0" class="exhaust-gas" />
+                <circle id="circ-combustion" cx="200" cy="80" r="60" class="combustion" />
+
+                <!-- Valves -->
+                <!-- Intake (Left) -->
+                <line id="valve-in" x1="140" y1="50" x2="180" y2="50" class="valve" />
+                <path d="M160,50 L160,20" stroke="#475569" stroke-width="2" />
+                <!-- Exhaust (Right) -->
+                <line id="valve-out" x1="220" y1="50" x2="260" y2="50" class="valve" />
+                <path d="M240,50 L240,20" stroke="#475569" stroke-width="2" />
+
+                <!-- Spark Plug -->
+                <g transform="translate(200, 30)">
+                    <rect x="-5" y="0" width="10" height="20" fill="#334155" />
+                    <line x1="0" y1="20" x2="0" y2="25" stroke="#fbbf24" stroke-width="2" id="spark-bolt" opacity="0" />
+                </g>
+
+                <!-- Piston Assembly -->
+                <g id="piston-group">
+                    <!-- Piston Head -->
+                    <rect x="124" y="0" width="152" height="60" rx="4" class="piston" />
+                    <!-- Connecting Rod -->
+                    <line id="con-rod" x1="200" y1="30" x2="200" y2="200" stroke="#64748b" stroke-width="12" stroke-linecap="round" />
+                </g>
+
+                <!-- Crankshaft -->
+                <g transform="translate(200, 400)">
+                    <circle r="60" fill="none" stroke="#1e293b" stroke-width="4" stroke-dasharray="4,4" />
+                    <circle r="10" class="crankshaft" />
+                    <!-- Crank Pin -->
+                    <circle id="crank-pin" cx="0" cy="-60" r="15" class="crankshaft" />
+                </g>
+
+                <!-- Labels -->
+                <text x="110" y="30" fill="#64748b" font-size="10" text-anchor="end">INTAKE</text>
+                <text x="290" y="30" fill="#64748b" font-size="10" text-anchor="start">EXHAUST</text>
+            </svg>
+        </div>
+
+        <!-- Right: Control Panel -->
+        <div class="w-80 flex flex-col gap-6">
+            <div class="glass-panel p-6">
+                <h2 class="text-indigo-400 font-bold mb-6 uppercase text-[10px] tracking-widest">Master Controls</h2>
+                
+                <div class="space-y-8">
+                    <!-- Throttle -->
+                    <div>
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-slate-300">Throttle (RPM)</span>
+                            <span id="lbl-rpm" class="text-indigo-400 font-bold">800</span>
+                        </div>
+                        <input type="range" id="slider-rpm" min="400" max="4000" step="100" value="800" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <div class="space-y-3">
+                        <button id="btn-toggle" onclick="toggleEngine()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition transform active:scale-95">
+                            START ENGINE
+                        </button>
+                        <button onclick="stepStroke()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg border border-slate-700 transition">
+                            MANUAL STEP
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cycle Visual Checklist -->
+            <div class="glass-panel p-6">
+                <h2 class="text-slate-500 font-bold mb-4 uppercase text-[10px] tracking-widest">The Otto Cycle</h2>
+                <div class="space-y-3">
+                    <div id="check-1" class="flex items-center gap-3 opacity-30 transition-opacity">
+                        <div class="w-5 h-5 rounded bg-blue-500 flex items-center justify-center text-[10px] font-bold">1</div>
+                        <span class="text-xs text-white">Intake</span>
+                    </div>
+                    <div id="check-2" class="flex items-center gap-3 opacity-30 transition-opacity">
+                        <div class="w-5 h-5 rounded bg-orange-500 flex items-center justify-center text-[10px] font-bold">2</div>
+                        <span class="text-xs text-white">Compression</span>
+                    </div>
+                    <div id="check-3" class="flex items-center gap-3 opacity-30 transition-opacity">
+                        <div class="w-5 h-5 rounded bg-red-500 flex items-center justify-center text-[10px] font-bold">3</div>
+                        <span class="text-xs text-white">Power</span>
+                    </div>
+                    <div id="check-4" class="flex items-center gap-3 opacity-30 transition-opacity">
+                        <div class="w-5 h-5 rounded bg-gray-500 flex items-center justify-center text-[10px] font-bold">4</div>
+                        <span class="text-xs text-white">Exhaust</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- State ---
+        let isRunning = false;
+        let isAudioOn = true;
+        let rpm = 800;
+        let theta = 0; // Crankshaft angle in radians
+        
+        // --- Components ---
+        const pistonGrp = document.getElementById('piston-group');
+        const crankPin = document.getElementById('crank-pin');
+        const conRod = document.getElementById('con-rod');
+        const sparkBolt = document.getElementById('spark-bolt');
+        const vIn = document.getElementById('valve-in');
+        const vOut = document.getElementById('valve-out');
+        const rectIntake = document.getElementById('rect-intake');
+        const rectExhaust = document.getElementById('rect-exhaust');
+        const circCombust = document.getElementById('circ-combustion');
+
+        const badge = document.getElementById('stroke-badge');
+        const title = document.getElementById('stroke-title');
+        const desc = document.getElementById('stroke-desc');
+
+        // --- Audio Context ---
+        let audioCtx, engineNoise, noiseGain;
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            noiseGain = audioCtx.createGain();
+            noiseGain.gain.value = 0;
+            noiseGain.connect(audioCtx.destination);
+        }
+
+        function playPop() {
+            if (!isAudioOn || !audioCtx) return;
+            const now = audioCtx.currentTime;
+            
+            // Create a low thud for the combustion
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(100, now);
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+            
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            
+            osc.connect(gain);
+            gain.connect(noiseGain);
+            osc.start();
+            osc.stop(now + 0.2);
+        }
+
+        function toggleAudio() {
+            initAudio();
+            isAudioOn = !isAudioOn;
+            document.getElementById('btn-audio').innerText = isAudioOn ? "🔊 AUDIO: ON" : "🔇 AUDIO: OFF";
+            if (noiseGain) noiseGain.gain.value = isAudioOn ? 1 : 0;
+        }
+
+        // --- Engine Logic ---
+        const strokes = [
+            { name: "INTAKE", color: "bg-blue-500", title: "Intake Stroke", desc: "The piston moves down, creating a vacuum that pulls the air-fuel mixture into the cylinder via the open intake valve." },
+            { name: "COMPRESSION", color: "bg-orange-500", title: "Compression Stroke", desc: "Both valves are closed. The piston moves up, compressing the mixture to prepare for ignition." },
+            { name: "POWER", color: "bg-red-500", title: "Power Stroke", desc: "The spark plug ignites the compressed gas. The resulting explosion drives the piston down, providing mechanical work." },
+            { name: "EXHAUST", color: "bg-gray-500", title: "Exhaust Stroke", desc: "The exhaust valve opens as the piston moves up, pushing the spent gases out of the cylinder." }
+        ];
+
+        function toggleEngine() {
+            initAudio();
+            isRunning = !isRunning;
+            const btn = document.getElementById('btn-toggle');
+            if (isRunning) {
+                btn.innerText = "STOP ENGINE";
+                btn.classList.replace('bg-indigo-600', 'bg-red-600');
+                btn.classList.replace('hover:bg-indigo-500', 'hover:bg-red-500');
+            } else {
+                btn.innerText = "START ENGINE";
+                btn.classList.replace('bg-red-600', 'bg-indigo-600');
+                btn.classList.replace('hover:bg-red-500', 'hover:bg-indigo-500');
+            }
+        }
+
+        function stepStroke() {
+            if (isRunning) toggleEngine();
+            theta += Math.PI / 2; // Advance by half a stroke
+            if (theta >= Math.PI * 4) theta = 0;
+            render();
+        }
+
+        function render() {
+            // Normalizing theta to 0-720 degrees (2 full rotations for 4 strokes)
+            const deg = (theta * 180 / Math.PI) % 720;
+            const strokeIndex = Math.floor(deg / 180);
+            const currentStroke = strokes[strokeIndex];
+
+            // 1. Calculate Piston Vertical Position
+            // Crank radius is 60px. Top center y=50, Bottom center y=250.
+            const crankRadius = 60;
+            const pistonOffset = 180; // Distance to center of stroke
+            const py = pistonOffset + Math.cos(theta) * crankRadius;
+            
+            // Apply translation to Piston Group
+            pistonGrp.setAttribute('transform', `translate(0, ${py})`);
+
+            // 2. Crankshaft Visuals
+            const cx_pin = Math.sin(theta) * crankRadius;
+            const cy_pin = -Math.cos(theta) * crankRadius;
+            crankPin.setAttribute('cx', cx_pin);
+            crankPin.setAttribute('cy', cy_pin);
+
+            // 3. Connect Con-Rod to Crank Pin
+            // Global y of pin is 400 + cy_pin. Piston pin y is py + 30.
+            // conRod.setAttribute('x2', cx_pin + 200);
+            // conRod.setAttribute('y2', cy_pin + 400);
+            // Simplified: Rotate con-rod? Hard with line. Let's just track Y for now for a 'slide' effect.
+            // Correct geometry:
+            conRod.setAttribute('x2', cx_pin + 200);
+            conRod.setAttribute('y2', cy_pin + 400 - py);
+
+            // 4. Valve & Gas Logic
+            const inOpen = (strokeIndex === 0 && deg % 180 < 170);
+            const outOpen = (strokeIndex === 3 && deg % 180 < 170);
+            
+            vIn.setAttribute('transform', inOpen ? 'translate(0, 10)' : '');
+            vOut.setAttribute('transform', outOpen ? 'translate(0, 10)' : '');
+            
+            document.getElementById('led-intake').className = `led ${inOpen ? 'led-active' : ''}`;
+            document.getElementById('led-exhaust').className = `led ${outOpen ? 'led-active' : ''}`;
+
+            // Gas fills
+            rectIntake.style.opacity = (strokeIndex === 0) ? 0.4 : 0;
+            rectIntake.setAttribute('height', py + 10);
+            
+            rectExhaust.style.opacity = (strokeIndex === 3) ? 0.3 : 0;
+            rectExhaust.setAttribute('height', py + 10);
+
+            // Combustion Flash
+            const isPowerStart = (strokeIndex === 2 && deg % 180 < 30);
+            if (isPowerStart) {
+                circCombust.style.opacity = 1 - (deg % 180 / 30);
+                sparkBolt.style.opacity = 1;
+                document.getElementById('led-spark').classList.add('led-active');
+                if (Math.abs(deg % 180) < 5) playPop();
+            } else {
+                circCombust.style.opacity = 0;
+                sparkBolt.style.opacity = 0;
+                document.getElementById('led-spark').classList.remove('led-active');
+            }
+
+            // 5. Telemetry & HUD
+            badge.innerText = currentStroke.name;
+            badge.className = `px-3 py-1 rounded text-xs font-bold inline-block mb-3 ${currentStroke.color}`;
+            title.innerText = currentStroke.title;
+            desc.innerText = currentStroke.desc;
+
+            // Highlight cycle checklist
+            for(let i=0; i<4; i++) {
+                document.getElementById(`check-${i+1}`).style.opacity = (i === strokeIndex) ? 1 : 0.3;
+            }
+
+            // Gauges
+            const pVal = calculatePressure(strokeIndex, deg % 180);
+            document.getElementById('txt-pressure').innerText = pVal.toFixed(1) + " psi";
+            document.getElementById('txt-rpm').innerText = isRunning ? rpm : 0;
+            document.getElementById('bar-rpm').style.width = (rpm/4000*100) + "%";
+        }
+
+        function calculatePressure(idx, subDeg) {
+            if (idx === 0) return 14.0; // Intake vacuum
+            if (idx === 1) return 14.7 + (subDeg / 180) * 150; // Compression
+            if (idx === 2) return 600 - (subDeg / 180) * 500; // Power decay
+            return 20; // Exhaust
+        }
+
+        // --- Loop ---
+        function animate() {
+            if (isRunning) {
+                rpm = parseInt(document.getElementById('slider-rpm').value);
+                document.getElementById('lbl-rpm').innerText = rpm;
+                
+                // RPM to Angular velocity
+                // RPS = RPM / 60. Angle per frame (60fps) = (RPS * 2PI) / 60
+                const dTheta = (rpm / 60 * 2 * Math.PI) / 60;
+                theta += dTheta;
+                if (theta >= Math.PI * 4) theta -= Math.PI * 4;
+                
+                render();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        render();
+        animate();
+
+    </script>
+</body>
+</html>
