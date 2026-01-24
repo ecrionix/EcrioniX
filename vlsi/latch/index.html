@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Silicon Trap: Latches vs FF - EcrioniX Labs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- MathJax -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #020617;
+            --panel: rgba(15, 23, 42, 0.8);
+            --accent: #6366f1;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #f8fafc; scroll-behavior: smooth; }
+        .tech-font { font-family: 'Orbitron', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        .watermark {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 8rem; font-weight: 900; color: rgba(99, 102, 241, 0.02);
+            pointer-events: none; user-select: none; z-index: 0;
+        }
+
+        .glass-panel {
+            background: var(--panel); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px;
+        }
+
+        /* Lab Specifics */
+        .wave-canvas { background: #050811; border-radius: 12px; border: 1px solid #1e293b; width: 100%; height: 100%; image-rendering: pixelated; }
+        .wire { fill: none; stroke: #334155; stroke-width: 3; transition: stroke 0.1s; stroke-linecap: round; }
+        .wire-high { stroke: var(--success); filter: drop-shadow(0 0 5px var(--success)); }
+        .wire-glitch { stroke: var(--danger); filter: drop-shadow(0 0 8px var(--danger)); stroke-width: 5; }
+        .gate-body { fill: #1e293b; stroke: #475569; stroke-width: 2; transition: all 0.3s; }
+        .gate-active { stroke: #fbbf24; fill: #422006; filter: drop-shadow(0 0 10px #f59e0b); }
+
+        /* Typography */
+        .blog-content h1 { @apply text-4xl md:text-5xl font-black text-white mb-8 tracking-tighter border-b border-slate-800 pb-4 tech-font uppercase; }
+        .blog-content h2 { @apply text-2xl font-bold text-indigo-400 mt-12 mb-6 uppercase tracking-widest flex items-center gap-3; }
+        .blog-content h3 { @apply text-xl font-bold text-emerald-400 mt-8 mb-4; }
+        .blog-content p { @apply text-slate-300 mb-6 leading-relaxed text-base md:text-lg font-light; }
+        .blog-content ul { @apply list-disc list-outside space-y-3 text-slate-400 mb-8 ml-6; }
+        .blog-content strong { @apply text-white font-semibold; }
+        .blog-content code { @apply bg-slate-900 px-1.5 py-0.5 rounded text-indigo-300 font-mono text-sm border border-slate-800; }
+        
+        .callout { @apply bg-slate-900/80 border-l-4 border-indigo-500 p-6 my-8 rounded-r-lg shadow-xl; }
+        .warning-callout { @apply bg-red-500/5 border-l-4 border-red-500 p-6 my-8 rounded-r-lg; }
+
+        input[type=range] { accent-color: var(--accent); }
+    </style>
+</head>
+<body class="relative min-h-screen">
+
+    <div class="watermark">EcrioniX RTL</div>
+
+    <!-- Header Navigation -->
+    <nav class="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black tech-font text-xl shadow-lg">E</div>
+            <div>
+                <h1 class="text-lg font-bold text-white uppercase tracking-tight">EcrioniX <span class="text-indigo-400">Design Hub</span></h1>
+            </div>
+        </div>
+        <div class="flex gap-4">
+            <a href="#blog" class="text-xs font-bold text-slate-400 hover:text-white transition uppercase">Deep Dive</a>
+            <a href="#lab" class="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition uppercase border-l border-slate-700 pl-4">Interactive Lab</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="relative pt-20 pb-16 px-6 text-center overflow-hidden">
+        <div class="max-w-4xl mx-auto relative z-10">
+            <span class="px-4 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em] border border-indigo-500/20 mb-6 inline-block">Advanced Digital Logic</span>
+            <h1 class="text-5xl md:text-7xl font-black text-white mb-6 tech-font tracking-tighter leading-tight">THE SILICON <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400">TRAP</span></h1>
+            <p class="text-xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed">
+                Why latches are banned in standard RTL flows, how they break Static Timing Analysis, and the high-performance secrets of Time Borrowing.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 pb-32">
+
+        <!-- BLOG SECTION -->
+        <section id="blog" class="blog-content mb-32">
+            
+            <p>
+                In the highly regulated world of RTL (Register Transfer Level) design, one warning from the synthesis tool stands above all others as a harbinger of doom: <strong>"LATCH INFERRED."</strong> To a junior engineer, it looks like a simple hardware mapping. To a lead verification engineer, it is a catastrophic failure in coding discipline that could lead to non-deterministic silicon behavior.
+            </p>
+
+            <div class="callout">
+                <h3 class="text-white mt-0">The Core Definition</h3>
+                <p>The difference lies in the <strong>trigger</strong>. A Flip-Flop is edge-triggered, sampling data only at the nanosecond transition of a clock. A Latch is level-sensitive, remaining "transparent" for as long as the clock is held at a specific level.</p>
+            </div>
+
+            <h2>1. The Danger of Unintentional Inference</h2>
+            <p>
+                The primary reason latches are "dangerous" is that they are rarely invited into a design. In Hardware Description Languages like SystemVerilog, a latch is created whenever you write combinational logic but fail to specify an outcome for every possible input combination.
+            </p>
+            <div class="bg-slate-950 rounded-xl p-6 mb-6 border border-slate-800 font-mono text-sm overflow-x-auto">
+                <span class="text-slate-500">// BAD CODE: This infers a latch</span><br>
+                <span class="text-indigo-400">always_comb</span> <span class="text-white">begin</span><br>
+                &nbsp;&nbsp;<span class="text-purple-400">if</span> <span class="text-white">(enable) out = data;</span><br>
+                &nbsp;&nbsp;<span class="text-slate-500">// Missing 'else' branch!</span><br>
+                <span class="text-white">end</span>
+            </div>
+            <p>
+                Because the hardware must "remember" the previous state of <code>out</code> when <code>enable</code> is low, yet no clock edge was defined, the synthesis tool inserts a level-sensitive latch. In a complex chip with 100 million gates, an accidental latch can cause intermittent bugs that are impossible to replicate in functional simulation but fail in the physical world due to timing variations.
+            </p>
+
+            <h2>2. Glitch Propagation & Transparency</h2>
+            <p>
+                Unlike Flip-Flops, which act as barriers to logic noise, latches are transparent windows. While the clock is High, any "glitch" or momentary fluctuation in the combinational logic feeding the latch travels straight through to the output.
+            </p>
+            <p>
+                In an edge-triggered system, glitches usually settle long before the next clock edge. In a latch-based system, a glitch occurring during the transparency window can be sampled by the next stage, leading to corrupted data states. This makes <strong>timing closure</strong>—the process of ensuring every signal arrives on time—a mathematical nightmare.
+            </p>
+
+            <div class="warning-callout">
+                <h3 class="text-white mt-0">The STA Nightmare</h3>
+                <p>Static Timing Analysis (STA) tools struggle with latches because the "start time" of a path becomes fuzzy. Unlike a Flip-Flop, which has a definitive T-to-Q delay at the edge, a latch can start driving a path at any point during its transparent phase. This leads to <strong>Cycle Stealing</strong>, where errors in one part of the chip can cascade through three or four subsequent clock cycles.</p>
+            </div>
+
+            <h2>3. When Latches become Indispensable</h2>
+            <p>
+                If they are so dangerous, why does every modern processor from Intel, AMD, and Apple use them? The answer is <strong>High-Performance Optimization.</strong>
+            </p>
+
+            <h3>A. Clock Gating (ICG)</h3>
+            <p>
+                To save power, we shut down clocks to idle blocks. However, a simple AND gate with a clock can cause "runt pulses" (glitches) if the enable changes while the clock is high. The standard industry solution is the <strong>Integrated Clock Gating (ICG)</strong> cell, which uses a level-sensitive latch to synchronize the enable signal to the low-phase of the clock, ensuring the gated clock always starts and stops cleanly.
+            </p>
+
+            <h3>B. Time Borrowing</h3>
+            <p>
+                In a Flip-Flop design, if a logic path takes 10 picoseconds longer than the clock period, the design fails. With latches, we can <strong>borrow time</strong>. Since the latch is transparent for half the cycle, a slow signal can "leak" into the next cycle's time. As long as the next logic path is fast enough to "pay back" that time, the chip continues to function perfectly at frequencies that would otherwise be impossible.
+            </p>
+
+            <h2>4. Best Practices</h2>
+            <ul>
+                <li><strong>Use Specific Blocks:</strong> Always use <code>always_ff</code> and <code>always_comb</code>. These keywords tell the tool your intent; if you accidentally infer a latch in an <code>always_comb</code> block, the compiler will throw an error immediately.</li>
+                <li><strong>Explicit Intent:</strong> If you truly need a latch, use <code>always_latch</code>. This documents the design for future engineers.</li>
+                <li><strong>Closed Conditions:</strong> Always provide an <code>else</code> for every <code>if</code> and a <code>default</code> for every <code>case</code> statement.</li>
+            </ul>
+
+            <div class="h-20"></div>
+        </section>
+
+        <!-- LAB SECTION -->
+        <section id="lab" class="pt-12 border-t border-slate-800">
+            <div class="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
+                <div>
+                    <h2 class="text-3xl font-black tech-font text-white mb-2 uppercase tracking-tighter mt-0">Sequential Logic Lab</h2>
+                    <p class="text-slate-500 text-sm">Interactive visualization of Level-Sensitivity vs. Edge-Triggering</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="toggleAuto()" id="btn-auto" class="px-6 py-2 rounded-full border border-slate-700 bg-slate-800 text-[10px] font-black uppercase hover:bg-slate-700 transition">Auto Clock: OFF</button>
+                    <button onclick="resetLab()" class="px-6 py-2 rounded-full border border-red-900/30 bg-red-900/10 text-red-400 text-[10px] font-black uppercase hover:bg-red-900/20 transition">Reset</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 h-auto lg:h-[700px] overflow-hidden">
+                
+                <!-- Interaction Column -->
+                <div class="lg:col-span-4 flex flex-col gap-6">
+                    <!-- Controls -->
+                    <div class="glass-panel p-6">
+                        <h3 class="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-6">Signal Stimulus</h3>
+                        <div class="space-y-8">
+                            <div>
+                                <div class="flex justify-between text-xs mb-2">
+                                    <span class="text-slate-500 font-bold uppercase">Data Input (D)</span>
+                                    <span id="val-d" class="font-mono text-white">0</span>
+                                </div>
+                                <button onmousedown="setData(1)" onmouseup="setData(0)" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl shadow-lg shadow-indigo-600/20 transition transform active:scale-95 text-xs">HOLD FOR '1'</button>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-xs mb-2">
+                                    <span class="text-slate-500 font-bold uppercase">Clock (CLK)</span>
+                                    <span id="val-clk" class="font-mono text-red-500 font-bold">LOW</span>
+                                </div>
+                                <button onmousedown="pulseClock()" class="w-full py-3 bg-slate-800 border border-slate-700 text-white font-bold rounded-xl hover:bg-slate-700 transition active:scale-95 text-xs uppercase">Manual Pulse</button>
+                            </div>
+
+                            <div class="pt-6 border-t border-slate-800">
+                                <button onclick="injectGlitch()" class="w-full py-3 bg-red-600/10 border border-red-900/30 text-red-500 font-bold rounded-xl hover:bg-red-600 hover:text-white transition active:scale-95 text-[10px] uppercase tracking-widest">Inject Noise Glitch</button>
+                                <p class="text-[9px] text-slate-500 mt-2 text-center italic">Observe how the Latch propagates noise while CLK is High.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Logic Monitor -->
+                    <div class="glass-panel p-6 flex-grow flex flex-col">
+                        <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Observation Console</h3>
+                        <div id="log" class="flex-grow bg-black/40 rounded-xl p-4 font-mono text-[10px] text-slate-500 overflow-y-auto leading-relaxed h-48 lg:h-auto">
+                            <div class="text-emerald-500">> System Initialized.</div>
+                            <div class="text-slate-600">> Awaiting user input...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualization Column -->
+                <div class="lg:col-span-8 flex flex-col gap-6 overflow-hidden">
+                    
+                    <!-- Schematic -->
+                    <div class="glass-panel p-6 h-1/2 relative flex items-center justify-center overflow-hidden bg-slate-900/50">
+                        <div class="absolute top-3 left-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">RTL Component Trace</div>
+                        
+                        <svg width="100%" height="100%" viewBox="0 0 600 300" id="schematic">
+                            <!-- Inputs -->
+                            <text x="30" y="145" fill="#6366f1" font-weight="bold" font-size="14">D</text>
+                            <text x="30" y="275" fill="#ef4444" font-weight="bold" font-size="14">CLK</text>
+
+                            <!-- Wires -->
+                            <path id="w-d-main" d="M60,140 H120" class="wire" />
+                            <path id="w-d-up" d="M120,140 V70 H200" class="wire" />
+                            <path id="w-d-dn" d="M120,140 V210 H200" class="wire" />
+                            
+                            <path id="w-clk-main" d="M60,270 H150" class="wire" />
+                            <path id="w-clk-up" d="M150,270 V110 H200" class="wire" />
+                            <path id="w-clk-dn" d="M150,270 V250 H200" class="wire" />
+
+                            <!-- LATCH -->
+                            <g transform="translate(200, 40)">
+                                <rect id="box-latch" width="100" height="90" rx="8" class="gate-body" />
+                                <text x="50" y="22" text-anchor="middle" class="tech-font" fill="#94a3b8" font-size="10">D-LATCH</text>
+                                <text x="10" y="40" fill="#64748b" font-size="9">D</text>
+                                <text x="10" y="80" fill="#64748b" font-size="9">EN</text>
+                                <text x="80" y="40" fill="#64748b" font-size="9">Q</text>
+                                <text id="q-val-latch" x="50" y="60" text-anchor="middle" fill="white" font-weight="bold" font-size="24">0</text>
+                            </g>
+                            <line id="w-out-latch" x1="300" y1="85" x2="450" y2="85" class="wire" />
+                            <text x="460" y="90" fill="#818cf8" font-weight="bold" font-size="14">Q_LATCH</text>
+
+                            <!-- FLIP FLOP -->
+                            <g transform="translate(200, 180)">
+                                <rect id="box-ff" width="100" height="90" rx="8" class="gate-body" />
+                                <text x="50" y="22" text-anchor="middle" class="tech-font" fill="#94a3b8" font-size="10">D-FLIPFLOP</text>
+                                <text x="10" y="40" fill="#64748b" font-size="9">D</text>
+                                <text x="15" y="80" fill="#64748b" font-size="9">></text>
+                                <text x="80" y="40" fill="#64748b" font-size="9">Q</text>
+                                <text id="q-val-ff" x="50" y="60" text-anchor="middle" fill="white" font-weight="bold" font-size="24">0</text>
+                            </g>
+                            <line id="w-out-ff" x1="300" y1="225" x2="450" y2="225" class="wire" />
+                            <text x="460" y="230" fill="#4ade80" font-weight="bold" font-size="14">Q_FF</text>
+                        </svg>
+                    </div>
+
+                    <!-- Waveforms -->
+                    <div class="glass-panel p-4 flex-grow flex flex-col overflow-hidden">
+                        <div class="flex justify-between items-center mb-2 px-2">
+                            <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Master Logic Analyzer</span>
+                            <div class="flex gap-4 text-[8px] font-mono uppercase">
+                                 <span class="text-red-400">CLK</span>
+                                 <span class="text-blue-400">DATA</span>
+                                 <span class="text-indigo-400">LATCH</span>
+                                 <span class="text-green-400">FF</span>
+                            </div>
+                        </div>
+                        <div class="flex-grow relative overflow-hidden rounded-lg">
+                            <canvas id="waveCanvas" class="wave-canvas"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="border-t border-slate-800 bg-slate-950 py-12 text-center">
+        <p class="text-slate-600 text-xs font-black uppercase tracking-[0.4em] mb-2">&copy; 2026 EcrioniX Labs</p>
+        <p class="text-slate-500 text-[10px] font-light italic">Deep Dive Engineering Resources for VLSI Architects</p>
+    </footer>
+
+    <script>
+        // --- State ---
+        let data = 0;
+        let clk = 0;
+        let qLatch = 0;
+        let qFF = 0;
+        let isAuto = false;
+        let simTime = 0;
+        let history = [];
+        const MAX_HISTORY = 600;
+        let glitchActive = false;
+
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        const logBox = document.getElementById('log');
+
+        // --- Interaction ---
+        function setData(val) {
+            data = val;
+            document.getElementById('val-d').innerText = val;
+            updateLogic(false);
+        }
+
+        function pulseClock() {
+            if(isAuto) toggleAuto();
+            clk = 1;
+            updateLogic(true);
+            setTimeout(() => {
+                clk = 0;
+                updateLogic(false);
+            }, 300);
+        }
+
+        function toggleAuto() {
+            isAuto = !isAuto;
+            const btn = document.getElementById('btn-auto');
+            btn.innerText = isAuto ? "Auto Clock: ON" : "Auto Clock: OFF";
+            btn.classList.toggle('bg-indigo-600', isAuto);
+            btn.classList.toggle('text-white', isAuto);
+        }
+
+        function injectGlitch() {
+            if(glitchActive) return;
+            glitchActive = true;
+            const original = data;
+            
+            // Fast toggle
+            data = data ? 0 : 1;
+            updateLogic(false);
+            log(`! GLITCH INJECTED: D=${data}`, 'text-red-400');
+            
+            setTimeout(() => {
+                data = original;
+                updateLogic(false);
+                glitchActive = false;
+                log(`> Glitch Cleared: D=${data}`, 'text-slate-600');
+            }, 100);
+        }
+
+        function updateLogic(risingEdge) {
+            // Latch: Level sensitive
+            if (clk === 1) {
+                qLatch = data;
+                document.getElementById('box-latch').classList.add('gate-active');
+            } else {
+                document.getElementById('box-latch').classList.remove('gate-active');
+            }
+
+            // Flip-Flop: Edge sensitive
+            if (risingEdge) {
+                qFF = data;
+                const box = document.getElementById('box-ff');
+                box.classList.add('gate-active');
+                setTimeout(() => box.classList.remove('gate-active'), 200);
+                log(`[CLK] RISING EDGE: Captured D=${qFF}`, 'text-indigo-300');
+            }
+
+            // UI Refresh
+            document.getElementById('val-clk').innerText = clk ? "HIGH" : "LOW";
+            document.getElementById('val-clk').className = clk ? "font-mono text-green-400 font-bold" : "font-mono text-red-500 font-bold";
+            document.getElementById('q-val-latch').innerText = qLatch;
+            document.getElementById('q-val-ff').innerText = qFF;
+
+            // Wire Colors
+            const updateWire = (id, val, isGlitch=false) => {
+                const el = document.getElementById(id);
+                el.className.baseVal = isGlitch ? "wire wire-glitch" : (val ? "wire wire-high" : "wire");
+            };
+
+            updateWire('w-d-main', data, glitchActive);
+            updateWire('w-d-up', data, glitchActive);
+            updateWire('w-d-dn', data, glitchActive);
+            updateWire('w-clk-main', clk);
+            updateWire('w-clk-up', clk);
+            updateWire('w-clk-dn', clk);
+            updateWire('w-out-latch', qLatch);
+            updateWire('w-out-ff', qFF);
+        }
+
+        function log(msg, cls) {
+            const div = document.createElement('div');
+            div.className = cls;
+            div.innerText = msg;
+            logBox.prepend(div);
+            if(logBox.children.length > 20) logBox.lastChild.remove();
+        }
+
+        function resetLab() {
+            data = 0; clk = 0; qLatch = 0; qFF = 0;
+            history = [];
+            log("> System Reset.", 'text-emerald-500');
+            updateLogic(false);
+        }
+
+        // --- Core Loop ---
+        function step() {
+            simTime++;
+            
+            // Auto clock generation
+            if (isAuto && simTime % 40 === 0) {
+                clk = clk ? 0 : 1;
+                updateLogic(clk === 1);
+            }
+
+            // History record
+            history.push({ clk, data, qLatch, qFF, glitch: glitchActive });
+            if (history.length > MAX_HISTORY) history.shift();
+
+            drawWaves();
+            requestAnimationFrame(step);
+        }
+
+        function drawWaves() {
+            if(canvas.width !== canvas.offsetWidth) {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+            }
+            const w = canvas.width;
+            const h = canvas.height;
+            const stepW = w / MAX_HISTORY;
+            ctx.clearRect(0,0,w,h);
+
+            const lanes = [
+                { k: 'clk', y: 35, c: '#ef4444' },
+                { k: 'data', y: 75, c: '#3b82f6' },
+                { k: 'qLatch', y: 115, c: '#818cf8' },
+                { k: 'qFF', y: 155, c: '#4ade80' }
+            ];
+
+            lanes.forEach(lane => {
+                ctx.strokeStyle = lane.c;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                
+                history.forEach((pt, i) => {
+                    const val = pt[lane.k];
+                    const x = i * stepW;
+                    const y = val ? lane.y - 12 : lane.y + 12;
+
+                    // Color context for glitches
+                    if (lane.k === 'data' && pt.glitch) ctx.strokeStyle = '#ef4444';
+                    else ctx.strokeStyle = lane.c;
+
+                    if(i === 0) ctx.moveTo(x, y);
+                    else {
+                        // Vertical transition
+                        if (history[i-1][lane.k] !== val) {
+                            ctx.lineTo(x, val ? lane.y+12 : lane.y-12);
+                        }
+                        ctx.lineTo(x, y);
+                    }
+
+                    // Reset path for color changes mid-trace
+                    if (lane.k === 'data') {
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x, y);
+                    }
+                });
+                ctx.stroke();
+            });
+
+            // Grid lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+            lanes.forEach(l => {
+                ctx.beginPath(); ctx.moveTo(0, l.y); ctx.lineTo(w, l.y); ctx.stroke();
+            });
+        }
+
+        // --- Start ---
+        updateLogic(false);
+        requestAnimationFrame(step);
+
+    </script>
+</body>
+</html>
