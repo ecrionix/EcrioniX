@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIFO Depth Calculation – Burst Analysis & CDC Sizing | EcrioniX VLSI</title>
+<meta name="description" content="How to calculate FIFO depth for synchronous and asynchronous clock domain crossings — burst analysis, read/write rate formulas, power-of-2 sizing, and interactive simulation lab.">
+<meta property="og:title" content="FIFO Depth Calculation – Burst Analysis & CDC Sizing | EcrioniX VLSI">
+<meta property="og:description" content="Synchronous and async FIFO depth formulas, burst analysis, power-of-2 rounding, and interactive simulation to visualize overflow risk.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://ecrionix.org/vlsi/fifo_depth/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="FIFO Depth Calculation – Burst & CDC Sizing | EcrioniX VLSI">
+<meta name="twitter:description" content="FIFO depth formulas for sync and async domains, burst analysis, power-of-2 sizing, interactive overflow simulation.">
+<meta name="keywords" content="FIFO depth calculation, FIFO sizing, burst analysis, clock domain crossing, CDC FIFO, synchronous FIFO, asynchronous FIFO, RTL design, VLSI">
+<link rel="canonical" href="https://ecrionix.org/vlsi/fifo_depth/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"FIFO Depth Calculation – Burst Analysis and CDC Sizing","description":"How to calculate FIFO depth for synchronous and asynchronous clock domain crossings — burst analysis, read/write rate formulas, power-of-2 sizing, and interactive simulation.","url":"https://ecrionix.org/vlsi/fifo_depth/","dateModified":"2026-05-10","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},{"@type":"ListItem","position":3,"name":"FIFO Depth","item":"https://ecrionix.org/vlsi/fifo_depth/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the formula for FIFO depth in a CDC design?","acceptedAnswer":{"@type":"Answer","text":"For async FIFO between a fast write clock (Fwr) and slow read clock (Frd) with burst size B: Depth = ceil(B × (1 − Frd/Fwr)). This equals the number of words written during the burst that the slower reader cannot drain in the same time window."}},{"@type":"Question","name":"Why must FIFO depth always be a power of 2?","acceptedAnswer":{"@type":"Answer","text":"FIFO pointers use modular arithmetic. A power-of-2 depth lets the modulo operation reduce to a simple bit-mask (ptr & (DEPTH-1)), avoiding division. More critically, Gray code pointer generation for CDC requires a power-of-2 count to guarantee that incrementing the binary counter produces a valid single-bit-change Gray code sequence."}},{"@type":"Question","name":"What is the worst-case burst scenario for FIFO sizing?","acceptedAnswer":{"@type":"Answer","text":"Worst case is when the writer sends B words back-to-back at full rate (no gaps), while the reader begins reading only at the end of the burst (maximum latency). The required depth equals all words written minus all words the reader could have drained during the burst period."}},{"@type":"Question","name":"How does the extra MSB bit work in an async FIFO pointer?","acceptedAnswer":{"@type":"Answer","text":"A FIFO of depth 2^N uses N+1 bit pointers. The lower N bits address the memory. The extra MSB wraps at 2×DEPTH instead of DEPTH, so when all N+1 bits match the FIFO is empty, and when all N bits match but MSBs differ the FIFO is full — distinguishing the two boundary conditions without ambiguity."}}]}]}
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Outfit',sans-serif;background:#020617;color:#f8fafc;min-height:100vh;overflow-x:hidden}
+
+/* NAV */
+.navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.06);height:64px;display:flex;align-items:center;padding:0 1.5rem;gap:2rem}
+.nav-brand{font-family:'Orbitron',sans-serif;font-weight:700;font-size:1.1rem;color:#f8fafc;text-decoration:none;margin-right:auto}
+.nav-brand span{color:#fbbf24}
+.nav-links{display:flex;gap:1.5rem;list-style:none}
+.nav-links a{color:#94a3b8;text-decoration:none;font-size:.85rem;font-weight:600;transition:color .2s}
+.nav-links a:hover{color:#fbbf24}
+.nav-hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px}
+.nav-hamburger span{display:block;width:22px;height:2px;background:#94a3b8;transition:.3s}
+.mobile-menu{display:none;position:fixed;top:64px;left:0;right:0;background:rgba(2,6,23,.97);border-bottom:1px solid rgba(255,255,255,.06);padding:1.5rem;z-index:99;flex-direction:column;gap:1rem}
+.mobile-menu a{color:#94a3b8;text-decoration:none;font-size:.95rem;font-weight:600;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.mobile-menu a:hover{color:#fbbf24}
+.mobile-menu.open{display:flex}
+@media(max-width:768px){.nav-links{display:none}.nav-hamburger{display:flex}}
+
+/* PARTICLES */
+#particles{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* HERO */
+.hero{position:relative;z-index:1;text-align:center;padding:5rem 1.5rem 3.5rem}
+.hero-tag{display:inline-block;padding:.35rem 1rem;border-radius:999px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:#fbbf24;font-size:.7rem;font-weight:700;letter-spacing:.25em;text-transform:uppercase;margin-bottom:1.5rem}
+.hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(2rem,6vw,3.8rem);font-weight:700;line-height:1.1;margin-bottom:1.25rem}
+.hero h1 span{color:#fbbf24}
+.hero-sub{color:#94a3b8;font-size:1.05rem;font-weight:300;max-width:640px;margin:0 auto;line-height:1.7}
+
+/* LAYOUT */
+.page-wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 1.5rem 5rem;display:grid;grid-template-columns:1fr 260px;gap:3rem;align-items:start}
+@media(max-width:900px){.page-wrap{grid-template-columns:1fr}}
+
+/* ARTICLE */
+.article h2{font-family:'Orbitron',sans-serif;font-size:1.05rem;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.12em;margin:3rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid rgba(251,191,36,.15)}
+.article h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.75rem 0 .6rem}
+.article p{color:#94a3b8;line-height:1.8;margin-bottom:1.1rem;font-size:.97rem;font-weight:300}
+.article strong{color:#f8fafc;font-weight:600}
+.article ul{list-style:none;padding:0;margin:0 0 1.25rem}
+.article ul li{color:#94a3b8;padding:.45rem 0 .45rem 1.4rem;position:relative;font-size:.95rem;font-weight:300;line-height:1.7}
+.article ul li::before{content:'▸';position:absolute;left:0;color:#fbbf24;font-size:.8rem}
+
+/* CODE */
+.code-block{background:#0a0f1e;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1.25rem 1.5rem;margin:1.25rem 0;overflow-x:auto}
+.code-block pre{font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.75;color:#e2e8f0;white-space:pre}
+.code-block .c{color:#475569}
+.code-block .k{color:#fbbf24}
+.code-block .t{color:#34d399}
+.code-block .n{color:#93c5fd}
+
+/* CALLOUT */
+.callout{background:rgba(251,191,36,.05);border-left:3px solid #fbbf24;border-radius:0 10px 10px 0;padding:1.25rem 1.5rem;margin:1.5rem 0}
+.callout p{margin:0;color:#cbd5e1}
+.callout strong{color:#fbbf24}
+.danger-callout{background:rgba(239,68,68,.06);border-left:3px solid #ef4444;border-radius:0 10px 10px 0;padding:1.25rem 1.5rem;margin:1.5rem 0}
+.danger-callout p{margin:0;color:#cbd5e1}
+.danger-callout strong{color:#f87171}
+
+/* TABLES */
+.tbl-wrap{overflow-x:auto;margin:1.25rem 0}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{background:rgba(251,191,36,.08);color:#fbbf24;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.7rem 1rem;text-align:left;border-bottom:1px solid rgba(251,191,36,.15)}
+td{padding:.65rem 1rem;border-bottom:1px solid rgba(255,255,255,.05);color:#94a3b8;vertical-align:top}
+td strong{color:#e2e8f0}
+tr:last-child td{border-bottom:none}
+
+/* CARDS */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem;margin:1.25rem 0}
+.card{background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:1.25rem}
+.card h4{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#fbbf24;margin-bottom:.5rem}
+.card p{font-size:.82rem;color:#64748b;line-height:1.6;margin:0}
+
+/* STEPS */
+.step-list{counter-reset:step;list-style:none;padding:0;margin:1rem 0}
+.step-list li{counter-increment:step;padding:.6rem .75rem .6rem 2.5rem;position:relative;font-size:.9rem;color:#94a3b8;border-left:2px solid rgba(251,191,36,.15);margin-bottom:.5rem}
+.step-list li::before{content:counter(step);position:absolute;left:-.7rem;top:50%;transform:translateY(-50%);width:1.35rem;height:1.35rem;background:#fbbf24;color:#020617;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900}
+
+/* FAQ */
+.faq-item{border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+.faq-q{width:100%;background:rgba(15,23,42,.5);border:none;color:#e2e8f0;padding:1rem 1.25rem;text-align:left;font-family:'Outfit',sans-serif;font-size:.92rem;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.faq-q:hover{background:rgba(15,23,42,.9)}
+.faq-q .faq-icon{color:#fbbf24;font-size:1.1rem;flex-shrink:0;transition:transform .3s}
+.faq-item.open .faq-icon{transform:rotate(45deg)}
+.faq-a{display:none;padding:1rem 1.25rem;color:#64748b;font-size:.88rem;line-height:1.75;border-top:1px solid rgba(255,255,255,.05)}
+.faq-item.open .faq-a{display:block}
+
+/* SIDEBAR */
+.sidebar{position:sticky;top:80px}
+.sidebar-card{background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:1.25rem;margin-bottom:1.25rem}
+.sidebar-card h3{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.15em;color:#fbbf24;margin-bottom:1rem}
+.sidebar-nav{list-style:none;padding:0;margin:0}
+.sidebar-nav li{margin-bottom:.2rem}
+.sidebar-nav a{display:block;padding:.45rem .75rem;border-radius:7px;color:#64748b;text-decoration:none;font-size:.82rem;font-weight:500;transition:all .2s}
+.sidebar-nav a:hover{background:rgba(251,191,36,.08);color:#fbbf24}
+.sidebar-nav a.active{background:rgba(251,191,36,.1);color:#fbbf24;border-left:2px solid #fbbf24;padding-left:.875rem}
+
+/* LAB */
+.lab-section{margin-top:3rem;padding-top:2rem;border-top:1px solid rgba(255,255,255,.07)}
+.lab-title{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.12em;margin-bottom:.35rem}
+.lab-sub{color:#64748b;font-size:.82rem;margin-bottom:1.5rem}
+.lab-panel{background:#050c1a;border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:1.5rem;margin-bottom:1rem}
+.lab-row{display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start}
+.lab-col{flex:1;min-width:220px}
+.lab-col h4{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#64748b;margin-bottom:.75rem}
+.slider-row{margin-bottom:1rem}
+.slider-row label{display:flex;justify-content:space-between;font-size:.8rem;color:#94a3b8;margin-bottom:.35rem}
+.slider-row label span{font-family:'JetBrains Mono',monospace;font-weight:700;color:#fbbf24}
+input[type=range]{width:100%;accent-color:#fbbf24;height:4px;cursor:pointer}
+.btn-trigger{padding:.65rem 1.5rem;border-radius:8px;border:1px solid rgba(74,222,128,.3);background:rgba(74,222,128,.08);color:#4ade80;font-family:'Outfit',sans-serif;font-size:.82rem;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;transition:all .2s;width:100%;margin-top:.75rem}
+.btn-trigger:hover{background:#4ade80;color:#020617;border-color:#4ade80}
+.btn-trigger:disabled{opacity:.4;cursor:default}
+.stat-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:.75rem 1rem;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
+.stat-box span:first-child{font-size:.78rem;color:#64748b}
+.stat-box span:last-child{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.9rem;color:#e2e8f0}
+.risk-box{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:.75rem 1rem;color:#f87171;font-size:.8rem;font-weight:700;text-align:center;display:none}
+.overflow-box{background:rgba(239,68,68,.15);border:1px solid #ef4444;border-radius:8px;padding:.75rem 1rem;color:#fff;font-size:.85rem;font-weight:700;text-align:center;display:none;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.fifo-grid-wrap{background:#0a0f1e;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1rem}
+.fifo-grid{display:grid;gap:3px;margin:0 auto}
+.fifo-cell{height:18px;border-radius:3px;background:#1e293b;border:1px solid #334155;transition:background .15s,border-color .15s}
+.fifo-cell.active{background:#3b82f6;border-color:#60a5fa;box-shadow:0 0 4px #3b82f6}
+.fifo-cell.overflow{background:#ef4444;border-color:#f87171;box-shadow:0 0 8px #ef4444;animation:pulse .4s}
+.fill-bar-wrap{margin-top:.75rem;display:flex;align-items:center;gap:.75rem}
+.fill-bar-bg{flex:1;height:8px;background:#0f172a;border-radius:4px;overflow:hidden}
+.fill-bar{height:100%;border-radius:4px;background:#3b82f6;transition:width .2s,background .2s}
+.fill-bar.warn{background:#f59e0b}
+.fill-bar.full{background:#ef4444}
+.fill-label{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#64748b;white-space:nowrap;min-width:50px;text-align:right}
+canvas#waveCanvas{width:100%;height:120px;display:block;background:#050c1a;border-radius:8px;border:1px solid rgba(255,255,255,.06)}
+
+/* FOOTER */
+footer{position:relative;z-index:1;border-top:1px solid rgba(255,255,255,.06);background:rgba(2,6,23,.9);padding:2.5rem 1.5rem;text-align:center}
+footer a{color:#64748b;text-decoration:none;font-size:.82rem;transition:color .2s;margin:0 .75rem}
+footer a:hover{color:#fbbf24}
+footer p{color:#374151;font-size:.75rem;margin-top:.75rem}
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+
+<nav class="navbar">
+  <a class="nav-brand" href="/">Ecrioni<span>X</span></a>
+  <ul class="nav-links">
+    <li><a href="/vlsi/">VLSI</a></li>
+    <li><a href="/sta/">STA</a></li>
+    <li><a href="/contact/">Contact</a></li>
+  </ul>
+  <div class="nav-hamburger" onclick="document.getElementById('mmenu').classList.toggle('open')">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+<div class="mobile-menu" id="mmenu">
+  <a href="/vlsi/">VLSI</a>
+  <a href="/sta/">STA</a>
+  <a href="/contact/">Contact</a>
+</div>
+
+<div class="hero">
+  <div class="hero-tag">FIFO Design</div>
+  <h1>FIFO Depth<br><span>Calculation</span></h1>
+  <p class="hero-sub">How to size a FIFO correctly — burst analysis, synchronous vs. asynchronous formulas, and why a depth that looks sufficient can still cause overflow under worst-case traffic.</p>
+</div>
+
+<div class="page-wrap">
+<article class="article">
+
+  <h2>1. Why FIFO Depth Matters</h2>
+  <p>A FIFO (First-In First-Out) buffer decouples a producer from a consumer that operate at different rates, or in different clock domains. The single most critical parameter at design time is its <strong>depth</strong> — the number of words the buffer can hold simultaneously.</p>
+  <p>Undersize the FIFO and you get <strong>overflow</strong>: the writer tries to push a word into a full buffer and data is silently dropped. Oversize it and you waste silicon area and power for unused memory. Both outcomes are expensive after tape-out, so depth must be calculated analytically before RTL is frozen.</p>
+
+  <div class="callout">
+    <p><strong>The core insight:</strong> a FIFO only needs to hold the words that accumulate during the worst-case period when the writer is faster than the reader. Once the burst ends, the reader drains the excess and the fill level returns to zero. The peak fill level during that drain window is the required depth.</p>
+  </div>
+
+  <h2>2. Synchronous FIFO — Same Clock Domain</h2>
+  <p>When both the writer and reader share the same clock but the reader cannot accept data every cycle (due to backpressure, protocol overhead, or stall cycles), the depth depends on the duty-cycle mismatch during a burst.</p>
+
+  <h3>Scenario: Writer writes every cycle, reader reads every N cycles</h3>
+  <p>If the writer pushes one word per clock for a burst of <strong>B</strong> words, and the reader can only accept a word every <strong>N</strong> clocks (read rate = 1/N), the fill level grows by (1 − 1/N) words per clock during the burst.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Parameter</th><th>Symbol</th><th>Example</th></tr>
+      <tr><td>Burst length (words)</td><td><strong>B</strong></td><td>32</td></tr>
+      <tr><td>Write clock (MHz)</td><td><strong>Fwr</strong></td><td>100 MHz</td></tr>
+      <tr><td>Read clock (MHz)</td><td><strong>Frd</strong></td><td>40 MHz</td></tr>
+      <tr><td>Words written in burst time</td><td>B</td><td>32</td></tr>
+      <tr><td>Words read in same burst time</td><td>B × (Frd / Fwr)</td><td>32 × 0.4 = 12.8</td></tr>
+      <tr><td><strong>Required depth</strong></td><td>ceil(B × (1 − Frd/Fwr))</td><td>ceil(32 × 0.6) = <strong>20</strong></td></tr>
+    </table>
+  </div>
+
+  <div class="code-block"><pre><span class="c">// Synchronous FIFO depth formula</span>
+<span class="c">// Depth = ceil( B × (1 − Frd / Fwr) )</span>
+<span class="c">// where B = burst size, Fwr = write freq, Frd = read freq</span>
+
+<span class="c">// Example: B=32, Fwr=100, Frd=40</span>
+<span class="n">depth_required</span> = ceil(32 × (1 − 40/100))
+               = ceil(32 × 0.6)
+               = ceil(19.2)
+               = <span class="t">20</span>  <span class="c">// round up to next power-of-2 → 32</span></pre></div>
+
+  <h2>3. Asynchronous FIFO — Clock Domain Crossing</h2>
+  <p>Async FIFOs cross between two completely unrelated clocks. The same burst-analysis approach applies, but now the write and read time bases are physically different. The calculation asks: <em>"during the time it takes to write B words at Fwr, how many words can be read at Frd?"</em></p>
+
+  <ul>
+    <li><strong>Burst write time:</strong> T_burst = B / Fwr (seconds)</li>
+    <li><strong>Words read in that time:</strong> R = T_burst × Frd = B × (Frd / Fwr)</li>
+    <li><strong>Peak accumulation:</strong> B − R = B × (1 − Frd / Fwr)</li>
+  </ul>
+
+  <p>The formula is algebraically identical to the synchronous case, but the physical interpretation differs: Fwr and Frd are now asynchronous frequencies that may be completely unrelated (e.g., 83.33 MHz and 27 MHz on a display interface).</p>
+
+  <div class="danger-callout">
+    <p><strong>CDC margin:</strong> Add 2–4 extra words to account for the 2-FF synchronizer latency. The Gray code pointer synchronized into the other domain is always slightly stale — the reader may see the write pointer as 2 clock cycles old, effectively seeing the FIFO as 2 entries more full than it is. Most designs add ceil(Fwr / Frd) + 2 as a safety margin.</p>
+  </div>
+
+  <h2>4. Worst-Case Burst Analysis</h2>
+  <p>The formula above assumes the writer starts immediately and the reader starts reading from cycle 0. Real protocols often have gaps between bursts and acknowledgment latencies. The <strong>worst case</strong> for FIFO depth is:</p>
+
+  <ol class="step-list">
+    <li>Writer sends maximum burst B back-to-back (no gaps, full throughput)</li>
+    <li>Reader is blocked for maximum stall cycles before it begins reading</li>
+    <li>Both extremes occur simultaneously (simultaneous worst-case assumption)</li>
+  </ol>
+
+  <p>In AXI and APB interfaces, the writer can burst at full clock rate while the reader stalls for a <em>HREADY</em> or <em>PREADY</em> de-assertion. Always design to the combined worst case, not the average case.</p>
+
+  <div class="callout">
+    <p><strong>Practical rule:</strong> Calculate the formula depth, add 2 words for CDC margin, then round up to the next power of 2. Add one more power-of-2 step if the interface protocol has unpredictable stall insertion. A depth that is 2× oversized costs only a few percent more area on a modern process but eliminates a class of hard-to-reproduce overflow bugs.</p>
+  </div>
+
+  <h2>5. Power-of-2 Requirement</h2>
+  <p>FIFO depth must be a power of 2 whenever Gray code pointers are used for CDC. This is not an optional convention — it is a correctness requirement.</p>
+
+  <h3>Why Gray code needs power-of-2 depth</h3>
+  <p>A Gray code sequence only changes one bit per count. For a standard binary counter of width N, the Gray sequence cycling through 0 → 2^N − 1 → 0 has exactly one bit change at every transition, including the wrap from (2^N − 1) back to 0.</p>
+  <p>If the depth is not a power of 2 — say 12 — the pointer counter would need to reset at count 12 instead of 16. That non-power-of-2 modulo operation breaks the single-bit-change property at the wrap boundary, causing multi-bit transitions that invalidate the 2-FF synchronizer.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Calculated Depth</th><th>Round to</th><th>Pointer Width (N+1)</th><th>Address Bits (N)</th></tr>
+      <tr><td>1–2</td><td><strong>2</strong></td><td>2</td><td>1</td></tr>
+      <tr><td>3–4</td><td><strong>4</strong></td><td>3</td><td>2</td></tr>
+      <tr><td>5–8</td><td><strong>8</strong></td><td>4</td><td>3</td></tr>
+      <tr><td>9–16</td><td><strong>16</strong></td><td>5</td><td>4</td></tr>
+      <tr><td>17–32</td><td><strong>32</strong></td><td>6</td><td>5</td></tr>
+      <tr><td>33–64</td><td><strong>64</strong></td><td>7</td><td>6</td></tr>
+    </table>
+  </div>
+
+  <h2>6. Full and Empty Flag Generation</h2>
+  <p>Getting the full and empty flags wrong is the most common FIFO bug. The N+1 bit pointer scheme (one extra MSB beyond the address width) eliminates the ambiguity:</p>
+
+  <ul>
+    <li><strong>Empty:</strong> All N+1 bits of the read pointer equal all N+1 bits of the synchronized write pointer → they are at the same absolute position</li>
+    <li><strong>Full:</strong> The lower N bits (address bits) are equal, but the MSBs differ → the write pointer has lapped the read pointer exactly once</li>
+  </ul>
+
+  <div class="code-block"><pre><span class="c">// Full/empty using N+1 bit Gray code pointers</span>
+<span class="c">// wptr_gray: write pointer in Gray code (N+1 bits)</span>
+<span class="c">// rptr_gray: read pointer in Gray code (N+1 bits)</span>
+<span class="c">// wptr_sync: write ptr synchronized into read domain</span>
+<span class="c">// rptr_sync: read ptr synchronized into write domain</span>
+
+<span class="k">assign</span> <span class="n">empty</span> = (rptr_gray == wptr_sync);
+
+<span class="c">// Full: MSBs differ, lower bits match (one full lap)</span>
+<span class="k">assign</span> <span class="n">full</span>  = (wptr_gray[N]   != rptr_sync[N])
+            &amp; (wptr_gray[N-1] != rptr_sync[N-1])
+            &amp; (wptr_gray[N-2:0] == rptr_sync[N-2:0]);</pre></div>
+
+  <h2>7. Parameterized RTL Implementation</h2>
+  <div class="code-block"><pre><span class="k">module</span> <span class="t">async_fifo_depth_calc</span> #(
+  <span class="k">parameter</span> <span class="n">DATA_W</span> = 8,
+  <span class="k">parameter</span> <span class="n">DEPTH</span>  = 16   <span class="c">// must be power of 2</span>
+) (
+  <span class="k">input</span>  <span class="k">logic</span>              wr_clk, wr_rst_n, wr_en,
+  <span class="k">input</span>  <span class="k">logic</span> [DATA_W-1:0] wr_data,
+  <span class="k">input</span>  <span class="k">logic</span>              rd_clk, rd_rst_n, rd_en,
+  <span class="k">output</span> <span class="k">logic</span> [DATA_W-1:0] rd_data,
+  <span class="k">output</span> <span class="k">logic</span>              full, empty
+);
+  <span class="k">localparam</span> <span class="n">AW</span> = $clog2(DEPTH);       <span class="c">// address bits</span>
+  <span class="k">localparam</span> <span class="n">PW</span> = AW + 1;              <span class="c">// pointer width (N+1)</span>
+
+  <span class="k">logic</span> [DATA_W-1:0] mem [0:DEPTH-1];
+  <span class="k">logic</span> [PW-1:0] wbin, wgray, rbin, rgray;
+  <span class="k">logic</span> [PW-1:0] wgray_s1, wgray_sync;  <span class="c">// write ptr synced to rd_clk</span>
+  <span class="k">logic</span> [PW-1:0] rgray_s1, rgray_sync;  <span class="c">// read ptr synced to wr_clk</span>
+
+  <span class="c">// Write domain</span>
+  <span class="k">always_ff</span> @(<span class="k">posedge</span> wr_clk <span class="k">or negedge</span> wr_rst_n)
+    <span class="k">if</span> (!wr_rst_n) wbin &lt;= '0;
+    <span class="k">else if</span> (wr_en &amp; !full) begin
+      mem[wbin[AW-1:0]] &lt;= wr_data;
+      wbin &lt;= wbin + 1'b1;
+    <span class="k">end</span>
+  <span class="k">assign</span> wgray = wbin ^ (wbin >> 1);
+
+  <span class="c">// Read domain</span>
+  <span class="k">always_ff</span> @(<span class="k">posedge</span> rd_clk <span class="k">or negedge</span> rd_rst_n)
+    <span class="k">if</span> (!rd_rst_n) rbin &lt;= '0;
+    <span class="k">else if</span> (rd_en &amp; !empty)
+      rbin &lt;= rbin + 1'b1;
+  <span class="k">assign</span> rgray   = rbin ^ (rbin >> 1);
+  <span class="k">assign</span> rd_data = mem[rbin[AW-1:0]];
+
+  <span class="c">// 2-FF synchronizers</span>
+  <span class="k">always_ff</span> @(<span class="k">posedge</span> rd_clk <span class="k">or negedge</span> rd_rst_n)
+    <span class="k">if</span> (!rd_rst_n) {wgray_s1, wgray_sync} &lt;= '0;
+    <span class="k">else</span>          {wgray_s1, wgray_sync} &lt;= {wgray, wgray_s1};
+
+  <span class="k">always_ff</span> @(<span class="k">posedge</span> wr_clk <span class="k">or negedge</span> wr_rst_n)
+    <span class="k">if</span> (!wr_rst_n) {rgray_s1, rgray_sync} &lt;= '0;
+    <span class="k">else</span>          {rgray_s1, rgray_sync} &lt;= {rgray, rgray_s1};
+
+  <span class="c">// Full/empty flags</span>
+  <span class="k">assign</span> empty = (rgray == wgray_sync);
+  <span class="k">assign</span> full  = (wgray == {~rgray_sync[PW-1:PW-2], rgray_sync[PW-3:0]});
+
+<span class="k">endmodule</span></pre></div>
+
+  <h2>8. Worked Examples</h2>
+  <h3>Example A: AXI crossbar, 200 → 100 MHz</h3>
+  <p>A 200 MHz AXI master bursts 64 beats into a 100 MHz slave domain. Read rate is half the write rate, so the accumulation is 64 × (1 − 100/200) = 32 words. Round up to next power-of-2: <strong>depth = 32</strong>. Add CDC margin: 32 + 2 = 34 → round up to <strong>64</strong>.</p>
+
+  <h3>Example B: PCIe TLP to DDR, 250 → 200 MHz</h3>
+  <p>Write: 250 MHz, Read: 200 MHz, Burst: 512 beats (max TLP). Accumulation = 512 × (1 − 200/250) = 512 × 0.2 = 102.4 → ceil = 103. Round to power-of-2: <strong>128</strong>. With CDC margin: 128 + 3 = 131 → <strong>256</strong>. TLP FIFOs are commonly 256–512 deep for this reason.</p>
+
+  <h3>Example C: UART receiver, 16× oversampling</h3>
+  <p>A UART at 115200 baud with 16× oversampling clock (1.8432 MHz) writes one byte every ~160 clocks. If the CPU reads via polling with up to 1 ms latency at 48 MHz: bytes arriving in 1 ms = 115200/1000 ≈ 12 bytes. FIFO depth: <strong>16</strong> (includes margin). Classic embedded UART FIFOs are 16 bytes for this reason.</p>
+
+  <!-- LAB -->
+  <div class="lab-section">
+    <div class="lab-title">Interactive Simulation Lab</div>
+    <div class="lab-sub">Set write/read frequencies and burst size — trigger a burst and watch the fill level to verify whether your configured depth prevents overflow.</div>
+
+    <div class="lab-panel">
+      <div class="lab-row">
+        <div class="lab-col">
+          <h4>Traffic Parameters</h4>
+          <div class="slider-row">
+            <label>Write Freq (Fwr) <span id="lv-fwr">100 MHz</span></label>
+            <input type="range" id="sl-fwr" min="10" max="200" step="10" value="100">
+          </div>
+          <div class="slider-row">
+            <label>Read Freq (Frd) <span id="lv-frd">40 MHz</span></label>
+            <input type="range" id="sl-frd" min="10" max="200" step="10" value="40">
+          </div>
+          <div class="slider-row">
+            <label>Burst Size (B) <span id="lv-burst">20</span></label>
+            <input type="range" id="sl-burst" min="4" max="64" step="1" value="20">
+          </div>
+          <div class="slider-row">
+            <label>FIFO Depth <span id="lv-depth">16</span></label>
+            <input type="range" id="sl-depth" min="4" max="64" step="4" value="16">
+          </div>
+          <button class="btn-trigger" id="btn-burst" onclick="startBurst()">Trigger Burst</button>
+        </div>
+        <div class="lab-col">
+          <h4>Theoretical Analysis</h4>
+          <div class="stat-box"><span>Formula</span><span id="sv-formula">—</span></div>
+          <div class="stat-box"><span>Min Depth</span><span id="sv-min">—</span></div>
+          <div class="stat-box"><span>Next Power-of-2</span><span id="sv-pow2">—</span></div>
+          <div class="risk-box" id="risk-box">RISK: Depth too small — overflow likely</div>
+          <div class="overflow-box" id="overflow-box">DATA LOST — OVERFLOW DETECTED</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:.75rem">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#64748b;margin-bottom:.5rem">Buffer Grid (<span id="lbl-fill">0</span> / <span id="lbl-depth">16</span>)</div>
+      <div class="fifo-grid-wrap">
+        <div id="fifo-grid" class="fifo-grid"></div>
+        <div class="fill-bar-wrap">
+          <div class="fill-bar-bg"><div class="fill-bar" id="fill-bar" style="width:0%"></div></div>
+          <div class="fill-label" id="fill-pct">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#64748b;margin-bottom:.5rem">Fill Level vs Time</div>
+      <canvas id="waveCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <h2>Frequently Asked Questions</h2>
+
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this.parentElement)">What is the formula for FIFO depth in a CDC design?<span class="faq-icon">+</span></button>
+    <div class="faq-a">For an async FIFO between write clock Fwr and read clock Frd with burst size B: <strong>Depth = ceil(B × (1 − Frd/Fwr))</strong>. This is the number of words that accumulate during the burst because the reader is slower. Add 2–4 extra words for the CDC synchronizer pipeline delay, then round up to the next power of 2.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this.parentElement)">Why must FIFO depth be a power of 2?<span class="faq-icon">+</span></button>
+    <div class="faq-a">Two reasons. First, power-of-2 depth lets pointer arithmetic use a simple bitwise AND mask instead of division. Second, and more critically, Gray code pointer generation for CDC only produces a valid single-bit-change sequence when the counter wraps at a power-of-2 boundary. Non-power-of-2 sizes break Gray code integrity and allow multi-bit transitions that defeat the 2-FF synchronizer.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this.parentElement)">What is the N+1 bit pointer trick?<span class="faq-icon">+</span></button>
+    <div class="faq-a">A FIFO of depth 2^N uses N+1 bit pointers — one extra MSB beyond the memory address width. Both empty and full conditions have all lower N bits equal, but in the empty case all N+1 bits match, while in the full case the two MSBs differ (the write pointer has lapped the read pointer). The extra bit distinguishes the two states unambiguously without any subtraction or fill counter.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this.parentElement)">What happens if a FIFO overflows?<span class="faq-icon">+</span></button>
+    <div class="faq-a">Behavior depends on the design. Most RTL implementations simply assert a <strong>full</strong> flag and block further writes — the word is silently dropped. Some designs assert an overflow sticky bit that must be explicitly cleared. Either way, downstream logic sees a gap in the data stream. In protocol-facing FIFOs (AXI, PCIe) a single dropped word corrupts the entire transaction.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this.parentElement)">Can the read clock be faster than the write clock?<span class="faq-icon">+</span></button>
+    <div class="faq-a">Yes. When Frd &gt; Fwr, the depth formula gives a negative or zero result because the reader always drains faster than the writer fills. In this case the minimum depth is 1 (or 2 for registered output). The FIFO never overflows, though it will frequently underflow (be empty) between bursts. The depth sizing problem only matters when Frd &lt; Fwr during a burst.</div>
+  </div>
+
+</article>
+
+<aside class="sidebar">
+  <div class="sidebar-card">
+    <h3>On This Page</h3>
+    <ul class="sidebar-nav">
+      <li><a href="#" class="active">Why Depth Matters</a></li>
+      <li><a href="#">Sync FIFO Formula</a></li>
+      <li><a href="#">Async CDC Formula</a></li>
+      <li><a href="#">Worst-Case Burst</a></li>
+      <li><a href="#">Power-of-2 Rule</a></li>
+      <li><a href="#">Full/Empty Flags</a></li>
+      <li><a href="#">RTL Implementation</a></li>
+      <li><a href="#">Worked Examples</a></li>
+      <li><a href="#">Simulation Lab</a></li>
+    </ul>
+  </div>
+  <div class="sidebar-card">
+    <h3>Related Topics</h3>
+    <ul class="sidebar-nav">
+      <li><a href="/vlsi/async_fifo/">Async FIFO Design</a></li>
+      <li><a href="/vlsi/cdc/">Clock Domain Crossing</a></li>
+      <li><a href="/vlsi/bingray/">Binary ↔ Gray Code</a></li>
+      <li><a href="/vlsi/clk_mux/">Glitch-Free Clock Mux</a></li>
+      <li><a href="/vlsi/rst_sync/">Reset Synchronizer</a></li>
+    </ul>
+  </div>
+</aside>
+</div>
+
+<footer>
+  <a href="/vlsi/">VLSI</a>
+  <a href="/sta/">STA</a>
+  <a href="/about/">About</a>
+  <a href="/contact/">Contact</a>
+  <p>&copy; 2026 EcrioniX. All rights reserved.</p>
+</footer>
+
+<script>
+/* Particles */
+(function(){
+  const cv=document.getElementById('particles');
+  const cx=cv.getContext('2d');
+  let W,H,pts=[];
+  function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;pts=[];for(let i=0;i<60;i++)pts.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,r:Math.random()*1.5+.5})}
+  function draw(){cx.clearRect(0,0,W,H);pts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;cx.beginPath();cx.arc(p.x,p.y,p.r,0,Math.PI*2);cx.fillStyle='rgba(251,191,36,.18)';cx.fill()});requestAnimationFrame(draw)}
+  window.addEventListener('resize',resize);resize();draw();
+})();
+
+/* FAQ */
+function toggleFaq(el){el.classList.toggle('open');}
+
+/* Lab */
+let fWr=100,fRd=40,burst=20,depth=16;
+let fill=0,pktWritten=0,isBursting=false,overflowOccurred=false;
+let wAcc=0,rAcc=0,history=[],MAX_H=150;
+
+const slFwr=document.getElementById('sl-fwr');
+const slFrd=document.getElementById('sl-frd');
+const slBurst=document.getElementById('sl-burst');
+const slDepth=document.getElementById('sl-depth');
+
+function nextPow2(n){let p=1;while(p<n)p<<=1;return p;}
+
+function updateParams(){
+  fWr=+slFwr.value; fRd=+slFrd.value; burst=+slBurst.value; depth=+slDepth.value;
+  document.getElementById('lv-fwr').textContent=fWr+' MHz';
+  document.getElementById('lv-frd').textContent=fRd+' MHz';
+  document.getElementById('lv-burst').textContent=burst;
+  document.getElementById('lv-depth').textContent=depth;
+  document.getElementById('lbl-depth').textContent=depth;
+  const minD = fRd>=fWr ? 1 : Math.ceil(burst*(1-fRd/fWr));
+  document.getElementById('sv-formula').textContent=burst+' × (1−'+fRd+'/'+fWr+')';
+  document.getElementById('sv-min').textContent=minD;
+  document.getElementById('sv-pow2').textContent=nextPow2(minD);
+  const rb=document.getElementById('risk-box');
+  if(minD>depth) rb.style.display='block'; else rb.style.display='none';
+  initGrid();
+}
+
+function initGrid(){
+  const g=document.getElementById('fifo-grid');
+  g.innerHTML='';
+  const cols=Math.min(depth,16);
+  g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
+  for(let i=0;i<depth;i++){const d=document.createElement('div');d.className='fifo-cell';d.id='fc-'+i;g.appendChild(d);}
+  fill=0;pktWritten=0;wAcc=0;rAcc=0;overflowOccurred=false;
+  document.getElementById('overflow-box').style.display='none';
+  document.getElementById('lbl-fill').textContent='0';
+  updateBar();
+}
+
+function updateBar(){
+  const pct=depth>0?(fill/depth*100):0;
+  const bar=document.getElementById('fill-bar');
+  bar.style.width=pct+'%';
+  bar.className='fill-bar'+(pct>=100?' full':pct>75?' warn':'');
+  document.getElementById('fill-pct').textContent=Math.round(pct)+'%';
+}
+
+function startBurst(){
+  if(isBursting)return;
+  isBursting=true;pktWritten=0;overflowOccurred=false;
+  document.getElementById('overflow-box').style.display='none';
+}
+
+function simStep(){
+  let wrote=false,read=false,ovf=false;
+  wAcc+=fWr/60;
+  if(wAcc>=1){
+    const n=Math.floor(wAcc);wAcc-=n;
+    for(let i=0;i<n;i++){
+      if(isBursting&&pktWritten<burst){
+        if(fill<depth){fill++;wrote=true;}
+        else{ovf=true;overflowOccurred=true;}
+        pktWritten++;
+      }
+    }
+    if(pktWritten>=burst)isBursting=false;
+  }
+  rAcc+=fRd/60;
+  if(rAcc>=1){
+    const n=Math.floor(rAcc);rAcc-=n;
+    for(let i=0;i<n;i++){if(fill>0){fill--;read=true;}}
+  }
+  // Update grid
+  document.getElementById('lbl-fill').textContent=fill;
+  updateBar();
+  for(let i=0;i<depth;i++){
+    const c=document.getElementById('fc-'+i);
+    if(!c)continue;
+    c.className='fifo-cell'+(i<fill?' active':'')+(ovf&&i===depth-1?' overflow':'');
+  }
+  if(overflowOccurred)document.getElementById('overflow-box').style.display='block';
+  history.push(fill);if(history.length>MAX_H)history.shift();
+  drawWave();
+  requestAnimationFrame(simStep);
+}
+
+function drawWave(){
+  const cv=document.getElementById('waveCanvas');
+  const ctx=cv.getContext('2d');
+  if(cv.width!==cv.offsetWidth){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight||120;}
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  if(history.length<2)return;
+  const step=W/MAX_H;
+  // Danger line
+  const minD=Math.ceil(burst*(1-fRd/fWr));
+  const dangerY=H-(minD/depth)*H;
+  ctx.strokeStyle='rgba(251,191,36,.3)';ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(0,dangerY);ctx.lineTo(W,dangerY);ctx.stroke();ctx.setLineDash([]);
+  // Fill curve
+  ctx.beginPath();
+  ctx.strokeStyle=overflowOccurred?'#ef4444':'#3b82f6';
+  ctx.lineWidth=2;
+  for(let i=0;i<history.length;i++){
+    const x=i*step,y=H-(history[i]/depth)*H;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.lineTo(history.length*step,H);ctx.lineTo(0,H);
+  ctx.fillStyle=overflowOccurred?'rgba(239,68,68,.12)':'rgba(59,130,246,.08)';ctx.fill();
+}
+
+slFwr.addEventListener('input',updateParams);
+slFrd.addEventListener('input',updateParams);
+slBurst.addEventListener('input',updateParams);
+slDepth.addEventListener('input',updateParams);
+
+updateParams();
+requestAnimationFrame(simStep);
+</script>
+</body>
+</html>
