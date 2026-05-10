@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clock Domain Crossing (CDC) – Synchronizers, MTBF & Async FIFO | EcrioniX</title>
+  <meta name="description" content="Master Clock Domain Crossing (CDC) in RTL design. Learn 2-FF and 3-FF synchronizers, MTBF calculation, pulse synchronizers, handshake protocols, async FIFO with Gray code pointers, and common CDC bugs for ASIC and FPGA design.">
+  <meta name="keywords" content="clock domain crossing, CDC, synchronizer, MTBF, 2FF synchronizer, metastability, async FIFO, Gray code, handshake protocol, CDC Verilog, RTL design, ASIC, FPGA, EcrioniX">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/cdc/">
+  <meta property="og:title" content="Clock Domain Crossing (CDC) – Synchronizers, MTBF & Async FIFO | EcrioniX">
+  <meta property="og:description" content="Master CDC in RTL design — 2-FF synchronizers, MTBF, pulse sync, handshake, async FIFO, Gray code pointers, and CDC bugs.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/cdc/">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Clock Domain Crossing (CDC) – Synchronizers, MTBF & Async FIFO","description":"Master CDC in RTL design. Learn 2-FF synchronizers, MTBF calculation, pulse sync, handshake protocols, async FIFO with Gray code pointers, and common CDC bugs.","url":"https://ecrionix.org/rtl_design/cdc/","dateModified":"2026-05-10","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},{"@type":"ListItem","position":3,"name":"CDC","item":"https://ecrionix.org/rtl_design/cdc/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is clock domain crossing (CDC)?","acceptedAnswer":{"@type":"Answer","text":"CDC occurs when a signal passes from logic clocked by one domain to logic clocked by a different asynchronous clock. Without proper synchronization the receiving flip-flop can go metastable, producing an unpredictable output that corrupts chip state."}},{"@type":"Question","name":"Why does a 2-FF synchronizer work?","acceptedAnswer":{"@type":"Answer","text":"The first FF may go metastable, but it is given one full destination clock period to resolve before the second FF samples it. The probability of remaining metastable after a full clock period is negligibly small for well-designed synchronizers."}},{"@type":"Question","name":"What is MTBF in synchronizer design?","acceptedAnswer":{"@type":"Answer","text":"MTBF (Mean Time Between Failures) quantifies how long a synchronizer is expected to operate before a metastability failure propagates. Adding more sync stages multiplies MTBF exponentially — going from 2 to 3 FF stages can increase MTBF from years to billions of years."}},{"@type":"Question","name":"When should I use an async FIFO instead of a 2-FF synchronizer?","acceptedAnswer":{"@type":"Answer","text":"Use a 2-FF synchronizer for single-bit control signals. Use an async FIFO for multi-bit data buses. You cannot safely use a 2-FF synchronizer on multi-bit data because different bits may capture in different destination clock cycles, producing an invalid intermediate value."}}]}]}
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+      --border:rgba(148,163,184,0.1);--border-hover:rgba(56,189,248,0.4);
+      --sky:#38bdf8;--sky-light:#7dd3fc;--sky-dim:rgba(56,189,248,0.12);
+      --amber:#fbbf24;--indigo:#6366f1;--indigo-light:#818cf8;
+      --rose:#fb7185;--green:#4ade80;
+      --text:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+    /* Navbar */
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+    .mobile-menu a:last-child{border-bottom:none}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    /* Breadcrumb */
+    .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim)}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+    .breadcrumb a:hover{color:var(--sky-light)}
+    .breadcrumb span{color:var(--muted)}
+
+    /* Hero */
+    .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+    .hero-tag{display:inline-block;background:var(--sky-dim);border:1px solid rgba(56,189,248,0.3);color:var(--sky);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--sky),var(--sky-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+    .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+    .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--border);padding:.4rem .9rem;border-radius:100px}
+    .meta-pill svg{width:14px;height:14px;color:var(--sky);flex-shrink:0}
+
+    /* Content */
+    .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 5rem}
+    .section{margin-bottom:4rem}
+    .section-label{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--sky);margin-bottom:.4rem}
+    .section-title{font-size:clamp(1.3rem,2.5vw,1.75rem);font-weight:700;color:#fff;margin-bottom:.75rem}
+    .section-body{font-size:.95rem;color:var(--muted);line-height:1.8;margin-bottom:1rem}
+
+    /* Cards */
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-top:1.25rem}
+    .info-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+    .info-card:hover{border-color:var(--border-hover)}
+    .info-card h4{font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .info-card p{font-size:.85rem;color:var(--muted);line-height:1.65}
+    .info-card .tag{display:inline-block;font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--sky);margin-bottom:.5rem}
+
+    /* Code */
+    .code-block{background:#0a0f1e;border:1px solid rgba(56,189,248,0.2);border-radius:12px;overflow:hidden;margin:1.25rem 0}
+    .code-header{background:rgba(56,189,248,0.07);border-bottom:1px solid rgba(56,189,248,0.15);padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between}
+    .code-label{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--sky);font-weight:600;letter-spacing:.06em}
+    .code-dots{display:flex;gap:.4rem}
+    .code-dots span{width:10px;height:10px;border-radius:50%}
+    .code-dots .r{background:#ff5f57}.code-dots .y{background:#febc2e}.code-dots .g{background:#28c840}
+    pre,code{font-family:'JetBrains Mono',monospace;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+    .code-block pre{padding:1.25rem 1rem;overflow-x:auto;font-size:.82rem;line-height:1.75;color:#e2e8f0;white-space:pre}
+    .kw{color:#38bdf8}.cm{color:#64748b;font-style:italic}.mod{color:#67e8f9}
+    .sig{color:#c084fc}.num{color:#fbbf24}.str{color:#86efac}
+
+    /* Callout */
+    .callout{background:rgba(56,189,248,0.06);border-left:3px solid var(--sky);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0}
+    .callout strong{color:var(--sky)}
+    .callout p{font-size:.88rem;color:var(--muted);margin:0}
+    .callout-warn{border-left-color:var(--amber);background:rgba(251,191,36,0.06)}
+    .callout-warn strong{color:var(--amber)}
+    .callout-danger{border-left-color:var(--rose);background:rgba(251,113,133,0.06)}
+    .callout-danger strong{color:var(--rose)}
+
+    /* Table */
+    .table-wrap{overflow-x:auto;margin:1.25rem 0}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th{background:rgba(56,189,248,0.1);color:var(--sky);font-weight:600;padding:.75rem 1rem;text-align:left;border-bottom:1px solid rgba(56,189,248,0.2)}
+    td{padding:.7rem 1rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+    tr:hover td{background:rgba(15,23,42,0.4)}
+
+    /* Lab */
+    .lab-section{background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:20px;padding:2rem;margin-bottom:4rem}
+    .lab-title{font-family:'Orbitron',sans-serif;font-size:1rem;color:#fff;margin-bottom:.35rem}
+    .lab-sub{font-size:.85rem;color:var(--muted);margin-bottom:1.75rem}
+
+    /* Controls */
+    .controls{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.25rem;margin-bottom:1.75rem}
+    .ctrl{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1rem 1.1rem}
+    .ctrl-label{font-size:.75rem;color:var(--sky);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center}
+    .ctrl-val{color:#fff;font-family:'JetBrains Mono',monospace;font-size:.85rem}
+    input[type=range]{width:100%;accent-color:var(--sky);cursor:pointer;height:4px;margin-top:.35rem}
+
+    /* Waveform canvas */
+    .wave-wrap{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1rem;margin-bottom:1.25rem;overflow-x:auto}
+    #waveCanvas{display:block;min-width:600px}
+
+    /* MTBF panel */
+    .mtbf-panel{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-top:1rem}
+    @media(max-width:600px){.mtbf-panel{grid-template-columns:1fr}}
+    .mtbf-card{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1.1rem}
+    .mtbf-title{font-size:.75rem;color:var(--sky);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.75rem}
+    .mtbf-value{font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:700;color:#fff;margin-bottom:.3rem}
+    .mtbf-sub{font-size:.78rem;color:var(--muted)}
+    .risk-bar{height:8px;border-radius:4px;background:rgba(56,189,248,0.1);margin:.75rem 0;overflow:hidden}
+    .risk-fill{height:100%;border-radius:4px;transition:width .5s,background .5s}
+    .risk-label{font-size:.78rem;font-weight:600}
+    .formula-box{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1.1rem;margin-top:1.25rem}
+    .formula-title{font-size:.75rem;color:var(--sky);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.65rem}
+    .formula{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--sky-light);line-height:1.9}
+    .formula span{color:var(--muted)}
+
+    /* Divider / Footer */
+    .divider{height:1px;background:var(--border);max-width:1200px;margin:0 auto 4rem}
+    .footer{background:var(--bg-2);border-top:1px solid var(--border);padding:2.5rem 1.25rem;text-align:center}
+    .footer-logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .footer-logo span{color:var(--indigo)}
+    .footer p{font-size:.82rem;color:var(--dim);margin-bottom:1.25rem}
+    .footer-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:1.5rem;margin-bottom:1.5rem}
+    .footer-nav a{font-size:.82rem;color:var(--dim);text-decoration:none;transition:color .2s}
+    .footer-nav a:hover{color:var(--indigo-light)}
+    .footer-copy{font-size:.78rem;color:var(--dim);border-top:1px solid var(--border);padding-top:1.25rem}
+    .scroll-top{position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(56,189,248,0.75);border:none;color:#020617;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .2s;z-index:50}
+    .scroll-top.visible{display:flex}
+    .scroll-top:hover{background:var(--sky);transform:scale(1.1)}
+    @media(max-width:768px){.content{padding:0 1rem 4rem}.hero{padding:2rem 1rem 1.5rem}}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/" class="active">RTL Design</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/rtl_design/">RTL Design</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <span>Clock Domain Crossing</span>
+</div>
+
+<div class="hero">
+  <div class="hero-tag">Topic 05 — RTL Design</div>
+  <h1>Clock Domain<br><span>Crossing (CDC)</span></h1>
+  <p>Safely transferring signals across asynchronous clock boundaries is one of the most critical — and most dangerous — challenges in RTL design. A single unsynchronized signal can cause silent, intermittent failures that only appear in silicon at full speed, impossible to catch in simulation. Understanding CDC physics, synchronizer design, and MTBF analysis is essential for every VLSI engineer.</p>
+  <div class="hero-meta">
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>2-FF / 3-FF Synchronizer</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>MTBF Analysis</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z"/></svg>Async FIFO</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Gray Code Pointers</div>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ── Section 1: The CDC Problem ── -->
+  <div class="section">
+    <div class="section-label">The Problem</div>
+    <h2 class="section-title">Why CDC Is Dangerous</h2>
+    <p class="section-body">Modern SoCs have dozens of clock domains — a CPU core at 2 GHz, a USB PHY at 480 MHz, an audio DAC at 22.579 MHz, a DDR controller at 1066 MHz. Whenever data flows from one domain to another, it crosses an asynchronous boundary.</p>
+    <p class="section-body">The danger: if a flip-flop's setup or hold time is violated — which is statistically inevitable when two unrelated clocks interact — the output can become <strong>metastable</strong>: neither a clean 0 nor a clean 1, but an indeterminate voltage that can propagate through logic and cause unpredictable failures. CDC bugs are especially treacherous because they pass RTL simulation (which uses zero-delay clocks) and only manifest at speed in real silicon.</p>
+
+    <div class="card-grid">
+      <div class="info-card">
+        <div class="tag">Root Cause</div>
+        <h4>Setup/Hold Violation</h4>
+        <p>When the source domain asserts data too close to a destination clock edge — within the setup or hold window — the destination FF cannot resolve to a stable value. The window is typically 50–200 ps wide, making violations statistically certain over billions of clock cycles.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag">Symptom</div>
+        <h4>Intermittent Silicon Failures</h4>
+        <p>CDC bugs cause random, rate-dependent failures. A chip may pass qualification at 25°C but fail at 85°C (slower resolution). Or pass at nominal voltage but fail at min VDD. These failures can take months to diagnose in post-silicon debug.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag">Why Sim Misses It</div>
+        <h4>RTL Simulation Is Zero-Delay</h4>
+        <p>Standard RTL simulators assume clocks are ideal and propagation is instantaneous. They never model metastability or resolution time. A signal that crosses domains appears to work perfectly in simulation but fails at speed in silicon.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 2: Metastability Physics ── -->
+  <div class="section">
+    <div class="section-label">Physics</div>
+    <h2 class="section-title">Metastability — What Actually Happens</h2>
+    <p class="section-body">A flip-flop is a bistable circuit — it has two stable states (0 and 1) separated by an unstable equilibrium point. When the input changes within the setup/hold window, the FF is forced toward this unstable equilibrium and gets stuck there — neither resolving to 0 nor 1.</p>
+    <p class="section-body">The probability of remaining metastable decays exponentially with time. The key parameter is <strong>τ (tau)</strong> — the metastability resolution time constant of the flip-flop, which depends on the semiconductor process and is typically 20–50 ps for modern CMOS. The longer the FF has to resolve before the next stage samples it, the safer the design.</p>
+
+    <div class="callout">
+      <strong>Key Insight:</strong>
+      <p>You cannot eliminate metastability — you can only reduce its probability to an acceptable level by giving the FF sufficient resolution time. The 2-FF synchronizer gives one full destination clock period for resolution, reducing failure probability to near zero.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-label">MTBF Formula — Full Derivation</span><div class="code-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div></div>
+      <pre><span class="cm">// Probability of metastability NOT resolving in time T_res:</span>
+<span class="cm">// P_fail = T_w × f_data × exp(-T_res / τ)</span>
+<span class="cm">//</span>
+<span class="cm">// MTBF = 1 / (f_dest × P_fail)</span>
+<span class="cm">//      = exp(T_res / τ) / (f_dest × f_data × T_w)</span>
+<span class="cm">//</span>
+<span class="cm">// Where:</span>
+<span class="cm">//   T_res = T_clk_dest - T_setup_FF2 - T_cq_FF1   (resolution time)</span>
+<span class="cm">//   τ     = metastability time constant (~30 ps, process dependent)</span>
+<span class="cm">//   T_w   = metastability window (~100 ps = T_setup + T_hold)</span>
+<span class="cm">//   f_dest = destination clock frequency (Hz)</span>
+<span class="cm">//   f_data = data toggle rate at source (Hz)</span>
+<span class="cm">//</span>
+<span class="cm">// For N-stage synchronizer:</span>
+<span class="cm">//   MTBF_N = exp(N × T_clk_dest / τ) / (f_dest × f_data × T_w)</span>
+<span class="cm">//</span>
+<span class="cm">// Example: 500 MHz dst clk, 100 MHz data, τ=30ps, T_w=100ps, 2 stages</span>
+<span class="cm">//   T_res per stage = 2ns - 0.05ns - 0.1ns = 1.85ns</span>
+<span class="cm">//   MTBF = exp(2 × 1.85e-9 / 30e-12) / (500e6 × 100e6 × 100e-12)</span>
+<span class="cm">//        = exp(123.3) / 5000 ≈ 10^51 seconds ≈ 10^44 years ✓</span></pre>
+    </div>
+  </div>
+
+  <!-- ── Section 3: 2-FF Synchronizer ── -->
+  <div class="section">
+    <div class="section-label">Core Technique</div>
+    <h2 class="section-title">The 2-FF Synchronizer</h2>
+    <p class="section-body">The 2-FF synchronizer is the fundamental CDC building block for single-bit signals. Two flip-flops are connected in series, both clocked by the destination domain clock. The first FF samples the async input and may go metastable. The second FF samples after one full destination clock period — enough time for the first FF to almost certainly resolve.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-label">Verilog — 2-FF Synchronizer</span><div class="code-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div></div>
+      <pre><span class="kw">module</span> <span class="mod">sync_2ff</span> #(
+  <span class="kw">parameter</span> <span class="sig">STAGES</span> = <span class="num">2</span>,   <span class="cm">// number of sync stages (2 or 3)</span>
+  <span class="kw">parameter</span> <span class="sig">RESET_VAL</span> = <span class="num">1'b0</span>
+) (
+  <span class="kw">input</span>  <span class="kw">wire</span> <span class="sig">clk_dst</span>,    <span class="cm">// destination domain clock</span>
+  <span class="kw">input</span>  <span class="kw">wire</span> <span class="sig">rst_n_dst</span>, <span class="cm">// destination domain async reset</span>
+  <span class="kw">input</span>  <span class="kw">wire</span> <span class="sig">data_src</span>,  <span class="cm">// async input from source domain</span>
+  <span class="kw">output</span> <span class="kw">wire</span> <span class="sig">data_dst</span>   <span class="cm">// synchronized output in dst domain</span>
+);
+  <span class="cm">// Shift register — each stage is one FF in dst domain</span>
+  <span class="kw">reg</span> [<span class="sig">STAGES</span>-<span class="num">1</span>:<span class="num">0</span>] sync_chain;
+
+  <span class="cm">// (* ASYNC_REG = "TRUE" *) — tells tools this is a sync chain</span>
+  <span class="cm">// Prevents optimization/retiming across these registers!</span>
+  (* ASYNC_REG = "TRUE" *)
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk_dst</span> <span class="kw">or</span> <span class="kw">negedge</span> <span class="sig">rst_n_dst</span>) <span class="kw">begin</span>
+    <span class="kw">if</span> (!<span class="sig">rst_n_dst</span>)
+      sync_chain &lt;= {<span class="sig">STAGES</span>{<span class="sig">RESET_VAL</span>}};
+    <span class="kw">else</span>
+      sync_chain &lt;= {sync_chain[<span class="sig">STAGES</span>-<span class="num">2</span>:<span class="num">0</span>], <span class="sig">data_src</span>};
+  <span class="kw">end</span>
+
+  <span class="kw">assign</span> <span class="sig">data_dst</span> = sync_chain[<span class="sig">STAGES</span>-<span class="num">1</span>];
+
+<span class="kw">endmodule</span></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>Critical: ASYNC_REG Attribute</strong>
+      <p>Always mark synchronizer flip-flops with <code>(* ASYNC_REG = "TRUE" *)</code> in Vivado or equivalent attributes in your tool. This prevents synthesis from optimizing, merging, or retiming across the synchronizer chain — which would destroy its metastability protection properties.</p>
+    </div>
+  </div>
+
+  <!-- ── Section 4: When 3-FF ── -->
+  <div class="section">
+    <div class="section-label">Deeper Safety</div>
+    <h2 class="section-title">3-FF Synchronizer — When to Use It</h2>
+    <p class="section-body">A 3-FF synchronizer adds a third stage, giving the first FF two full destination clock periods to resolve instead of one. This increases MTBF exponentially — typically from millions of years to astronomical numbers.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Condition</th><th>Use 2-FF</th><th>Use 3-FF</th></tr></thead>
+        <tbody>
+          <tr><td>Destination clock &ge; Source clock</td><td>✅ Standard choice</td><td>Overkill</td></tr>
+          <tr><td>Destination clock &lt; Source clock (fast-to-slow)</td><td>Marginal — pulse may be missed</td><td>✅ Preferred for safety</td></tr>
+          <tr><td>High-reliability (medical, automotive, aerospace)</td><td>May not meet MTBF spec</td><td>✅ Required</td></tr>
+          <tr><td>Very high destination clock (&gt;1 GHz)</td><td>Short T_res, lower MTBF</td><td>✅ Use 3-FF or more</td></tr>
+          <tr><td>Low-cost FPGA with poor τ</td><td>Marginal</td><td>✅ Safer choice</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Section 5: Multi-bit CDC ── -->
+  <div class="section">
+    <div class="section-label">Multi-Bit Signals</div>
+    <h2 class="section-title">Why You Cannot 2-FF a Bus</h2>
+    <p class="section-body">A common beginner mistake: applying a 2-FF synchronizer to a multi-bit data bus. This is <strong>incorrect and dangerous</strong>. Each bit of the bus has its own independent first FF that may go metastable. Different bits can resolve in different destination clock cycles — producing an intermediate value that was never a valid state in the source domain.</p>
+
+    <div class="callout callout-danger">
+      <strong>Never Do This:</strong>
+      <p>Passing an 8-bit counter directly through a 2-FF synchronizer. If bits 3 and 4 resolve on different cycles, you might see the bus value jump from 0x07 to 0x18 — a value the counter never held. This corrupts state silently.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Signal Type</th><th>CDC Technique</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Single-bit control (enable, valid)</td><td>2-FF / 3-FF synchronizer</td><td>Only one bit — no coherency issue</td></tr>
+          <tr><td>Multi-bit data bus</td><td>Async FIFO</td><td>Guarantees coherent multi-bit capture</td></tr>
+          <tr><td>Multi-bit pointer/counter</td><td>Gray code + 2-FF sync</td><td>Gray code changes only 1 bit at a time</td></tr>
+          <tr><td>Slow-changing config register</td><td>Qualified synchronizer or handshake</td><td>Data stable for multiple cycles</td></tr>
+          <tr><td>Pulse (short signal)</td><td>Pulse synchronizer</td><td>2-FF may miss fast pulses</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Section 6: Gray Code ── -->
+  <div class="section">
+    <div class="section-label">Gray Code CDC</div>
+    <h2 class="section-title">Gray Code for Multi-Bit Pointers</h2>
+    <p class="section-body">Gray code is a number system where consecutive values differ by exactly one bit. This makes it safe to synchronize a multi-bit counter across clock domains — even if the synchronizer captures the pointer mid-transition, only one bit is changing, so the captured value is always either the old count or the new count — never an invalid intermediate.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-label">Verilog — Binary to Gray Code Conversion</span><div class="code-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div></div>
+      <pre><span class="cm">// Convert binary counter to Gray code before crossing domain</span>
+<span class="kw">module</span> <span class="mod">bin2gray</span> #(<span class="kw">parameter</span> <span class="sig">W</span> = <span class="num">4</span>) (
+  <span class="kw">input</span>  [<span class="sig">W</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">bin</span>,
+  <span class="kw">output</span> [<span class="sig">W</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">gray</span>
+);
+  <span class="kw">assign</span> <span class="sig">gray</span> = <span class="sig">bin</span> ^ (<span class="sig">bin</span> >> <span class="num">1</span>);   <span class="cm">// G[i] = B[i] XOR B[i+1]</span>
+<span class="kw">endmodule</span>
+
+<span class="cm">// Convert Gray code back to binary (in destination domain)</span>
+<span class="kw">module</span> <span class="mod">gray2bin</span> #(<span class="kw">parameter</span> <span class="sig">W</span> = <span class="num">4</span>) (
+  <span class="kw">input</span>  [<span class="sig">W</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">gray</span>,
+  <span class="kw">output</span> [<span class="sig">W</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">bin</span>
+);
+  <span class="kw">genvar</span> i;
+  <span class="kw">generate</span>
+    <span class="kw">for</span> (i = 0; i &lt; <span class="sig">W</span>; i = i + <span class="num">1</span>) <span class="kw">begin</span>
+      <span class="kw">assign</span> <span class="sig">bin</span>[i] = ^<span class="sig">gray</span>[<span class="sig">W</span>-<span class="num">1</span>:i];   <span class="cm">// XOR reduction</span>
+    <span class="kw">end</span>
+  <span class="kw">endgenerate</span>
+<span class="kw">endmodule</span></pre>
+    </div>
+  </div>
+
+  <!-- ── Section 7: Handshake ── -->
+  <div class="section">
+    <div class="section-label">Handshake Protocol</div>
+    <h2 class="section-title">Request-Acknowledge Handshake</h2>
+    <p class="section-body">When data changes infrequently and latency is acceptable, a req/ack handshake provides a fully safe multi-bit CDC mechanism. The source asserts req (synchronized to destination), destination processes data and asserts ack (synchronized back to source). No data can change until the full handshake completes.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-label">Verilog — Req/Ack Handshake CDC</span><div class="code-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div></div>
+      <pre><span class="cm">// Source domain: assert req, hold data stable until ack received</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk_src</span> <span class="kw">or</span> <span class="kw">negedge</span> <span class="sig">rst_src_n</span>) <span class="kw">begin</span>
+  <span class="kw">if</span> (!<span class="sig">rst_src_n</span>) <span class="kw">begin</span>
+    req_src &lt;= <span class="num">1'b0</span>; data_reg &lt;= <span class="num">'0</span>;
+  <span class="kw">end else if</span> (send &amp;&amp; !req_src &amp;&amp; !ack_sync) <span class="kw">begin</span>
+    data_reg &lt;= data_in;   <span class="cm">// capture data</span>
+    req_src  &lt;= <span class="num">1'b1</span>;      <span class="cm">// assert request</span>
+  <span class="kw">end else if</span> (ack_sync) <span class="kw">begin</span>
+    req_src  &lt;= <span class="num">1'b0</span>;      <span class="cm">// deassert after ack seen</span>
+  <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// Destination domain: sync req, capture data, assert ack</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk_dst</span> <span class="kw">or</span> <span class="kw">negedge</span> <span class="sig">rst_dst_n</span>) <span class="kw">begin</span>
+  <span class="kw">if</span> (!<span class="sig">rst_dst_n</span>) <span class="kw">begin</span>
+    ack_dst &lt;= <span class="num">1'b0</span>; data_out &lt;= <span class="num">'0</span>;
+  <span class="kw">end else if</span> (req_sync &amp;&amp; !ack_dst) <span class="kw">begin</span>
+    data_out &lt;= data_reg;  <span class="cm">// data stable — safe to capture</span>
+    ack_dst  &lt;= <span class="num">1'b1</span>;      <span class="cm">// acknowledge</span>
+  <span class="kw">end else if</span> (!req_sync) <span class="kw">begin</span>
+    ack_dst  &lt;= <span class="num">1'b0</span>;      <span class="cm">// deassert ack after req gone</span>
+  <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// Sync req into dst domain, sync ack back into src domain</span>
+sync_2ff req_sync_inst (.clk_dst(clk_dst), .data_src(req_src), .data_dst(req_sync));
+sync_2ff ack_sync_inst (.clk_dst(clk_src), .data_src(ack_dst), .data_dst(ack_sync));</pre>
+    </div>
+  </div>
+
+  <!-- ── Section 8: Common CDC Bugs ── -->
+  <div class="section">
+    <div class="section-label">Pitfalls</div>
+    <h2 class="section-title">Common CDC Bugs That Escape Simulation</h2>
+    <div class="card-grid">
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Multi-bit Bus Through 2-FF</h4>
+        <p>Applying a single 2-FF synchronizer across all bits of a data bus. Each bit's first FF resolves independently — bits can land in different destination cycles, creating invalid intermediate values.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Fan-Out from Sync Output</h4>
+        <p>Using the output of a synchronizer to drive combinational logic before registering. The long combinational path adds delay, reducing T_res for any downstream FF that captures the result.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Missing Reconvergence</h4>
+        <p>Two related signals (e.g., data and valid) synchronized separately. They may arrive at the destination in different clock cycles — valid asserts before data is stable or vice versa.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Fast-to-Slow Pulse Loss</h4>
+        <p>A pulse shorter than one destination clock period may not be captured at all by a 2-FF synchronizer. Fast-to-slow crossing requires pulse stretching or a dedicated pulse synchronizer circuit.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Optimized-Away Synchronizer</h4>
+        <p>Synthesis tools may optimize or retime registers it doesn't know are synchronizers. Without ASYNC_REG or equivalent constraints, the two FFs may be merged into one, or logic inserted between them.</p>
+      </div>
+      <div class="info-card">
+        <div class="tag" style="color:var(--rose)">Bug</div>
+        <h4>Reset Synchronizer Missing</h4>
+        <p>Applying a global asynchronous reset directly to flip-flops in multiple clock domains. Different domains come out of reset at different clock edges, causing state machines to start in inconsistent states.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Interactive Lab ── -->
+  <div class="lab-section">
+    <div class="section-label" style="margin-bottom:.4rem">Interactive Lab</div>
+    <div class="lab-title">CDC Synchronizer Explorer</div>
+    <div class="lab-sub">Adjust synchronizer stages, source &amp; destination clocks, and data toggle rate. See the live waveform and MTBF analysis update in real time.</div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <div class="ctrl">
+        <div class="ctrl-label">Sync FF Stages <span class="ctrl-val" id="stagesVal">2</span></div>
+        <input type="range" id="stagesSlider" min="1" max="4" value="2" step="1">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label">Source Clock <span class="ctrl-val" id="srcVal">200 MHz</span></div>
+        <input type="range" id="srcSlider" min="50" max="1000" value="200" step="50">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label">Dest Clock <span class="ctrl-val" id="dstVal">500 MHz</span></div>
+        <input type="range" id="dstSlider" min="50" max="1000" value="500" step="50">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label">Data Toggle Rate <span class="ctrl-val" id="dataVal">50 MHz</span></div>
+        <input type="range" id="dataSlider" min="1" max="500" value="50" step="1">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label">τ (Tau) Process <span class="ctrl-val" id="tauVal">30 ps</span></div>
+        <input type="range" id="tauSlider" min="10" max="100" value="30" step="5">
+      </div>
+    </div>
+
+    <!-- Waveform -->
+    <div class="wave-wrap">
+      <canvas id="waveCanvas" height="260"></canvas>
+    </div>
+
+    <!-- MTBF results -->
+    <div class="mtbf-panel">
+      <div class="mtbf-card">
+        <div class="mtbf-title">MTBF</div>
+        <div class="mtbf-value" id="mtbfValue">—</div>
+        <div class="mtbf-sub" id="mtbfSub">Mean Time Between Failures</div>
+        <div class="risk-bar"><div class="risk-fill" id="riskFill"></div></div>
+        <div class="risk-label" id="riskLabel"></div>
+      </div>
+      <div class="mtbf-card">
+        <div class="mtbf-title">Timing Parameters</div>
+        <div style="font-size:.82rem;color:var(--muted);line-height:2;font-family:'JetBrains Mono',monospace">
+          <div>T_clk_dst &nbsp;= <span id="pTclk" style="color:var(--sky-light)">—</span></div>
+          <div>T_res/stage = <span id="pTres" style="color:var(--sky-light)">—</span></div>
+          <div>Total T_res = <span id="pTtotal" style="color:var(--sky-light)">—</span></div>
+          <div>Stages &nbsp;&nbsp;&nbsp;&nbsp;= <span id="pStages" style="color:var(--sky-light)">—</span></div>
+          <div>τ (tau) &nbsp;&nbsp;&nbsp;= <span id="pTau" style="color:var(--sky-light)">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula-title">MTBF Formula</div>
+      <div class="formula">
+        MTBF = exp(N × T_res / τ) / (f_dst × f_data × T_w)<br>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= exp(<span id="fExp">—</span>) / (<span id="fDenom">—</span>)</span><br>
+        <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span id="fResult" style="color:#fff;font-weight:700">—</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FAQ ── -->
+  <div class="section">
+    <div class="section-label">FAQ</div>
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <div class="card-grid">
+      <div class="info-card">
+        <h4>Can I use false path constraints instead of a synchronizer?</h4>
+        <p>Setting a false path on a CDC crossing tells STA to ignore timing — it does NOT fix metastability. False paths are only valid if the signal is truly static during operation (e.g., a config bit loaded once at power-up). Dynamic CDC crossings always need a synchronizer.</p>
+      </div>
+      <div class="info-card">
+        <h4>How do CDC verification tools work?</h4>
+        <p>Tools like Questa CDC, SpyGlass CDC, and JasperGold CDC analyze the netlist for paths that cross clock domains without synchronizers, check for reconvergence issues, and verify that synchronizers are coded correctly (2-FF chain, ASYNC_REG attributes, no logic between stages).</p>
+      </div>
+      <div class="info-card">
+        <h4>What is the difference between a pulse synchronizer and a 2-FF sync?</h4>
+        <p>A 2-FF sync may miss a pulse shorter than one destination clock period. A pulse synchronizer converts the pulse into a level toggle using an SR latch or toggle FF in the source domain, then synchronizes the level — ensuring even short pulses are reliably captured.</p>
+      </div>
+      <div class="info-card">
+        <h4>Does MTBF depend on temperature and voltage?</h4>
+        <p>Yes. Higher temperature slows transistors, increasing τ and reducing resolution speed. Lower VDD also degrades τ. MTBF calculations should be performed at worst-case (max temp, min VDD) with the slowest-corner τ value from the process characterization data.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div class="divider"></div>
+
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <p>A structured learning platform for VLSI design, RTL development, and semiconductor engineering.</p>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+  </nav>
+  <div class="footer-copy">&copy; <span id="year"></span> EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+</button>
+
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+const ham = document.getElementById('hamburger'), menu = document.getElementById('mobileMenu');
+ham.addEventListener('click', () => menu.classList.toggle('open'));
+const st = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => st.classList.toggle('visible', window.scrollY > 400));
+st.addEventListener('click', () => window.scrollTo({top:0,behavior:'smooth'}));
+
+// ── Particle background ──────────────────────────────────
+(function(){
+  const canvas = document.getElementById('bg-canvas'), ctx = canvas.getContext('2d');
+  let W, H, pts;
+  function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  function init(){ resize(); pts = Array.from({length:40},()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.4+.5})); }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){
+      const dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<120){ctx.strokeStyle=`rgba(56,189,248,${.07*(1-d/120)})`;ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.stroke();}
+    }
+    pts.forEach(p=>{
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(56,189,248,0.35)';ctx.fill();
+      p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+    });
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize',resize); init(); draw();
+})();
+
+// ── CDC Lab ──────────────────────────────────────────────
+const sliders = {
+  stages: document.getElementById('stagesSlider'),
+  src:    document.getElementById('srcSlider'),
+  dst:    document.getElementById('dstSlider'),
+  data:   document.getElementById('dataSlider'),
+  tau:    document.getElementById('tauSlider')
+};
+const labels = {
+  stages: document.getElementById('stagesVal'),
+  src:    document.getElementById('srcVal'),
+  dst:    document.getElementById('dstVal'),
+  data:   document.getElementById('dataVal'),
+  tau:    document.getElementById('tauVal')
+};
+
+function getParams(){
+  return {
+    stages: parseInt(sliders.stages.value),
+    fSrc:   parseInt(sliders.src.value),   // MHz
+    fDst:   parseInt(sliders.dst.value),   // MHz
+    fData:  parseInt(sliders.data.value),  // MHz
+    tau:    parseInt(sliders.tau.value)    // ps
+  };
+}
+
+function updateLabels(p){
+  labels.stages.textContent = p.stages;
+  labels.src.textContent    = p.fSrc + ' MHz';
+  labels.dst.textContent    = p.fDst + ' MHz';
+  labels.data.textContent   = p.fData + ' MHz';
+  labels.tau.textContent    = p.tau + ' ps';
+}
+
+// ── MTBF Calculation ──
+function calcMTBF(p){
+  const T_clk_dst = 1000 / p.fDst;           // ns
+  const T_setup   = 0.05;                     // ns (50 ps)
+  const T_cq      = 0.10;                     // ns (100 ps)
+  const T_w       = 0.10;                     // ns metastability window (100 ps)
+  const tauNs     = p.tau / 1000;             // ps → ns
+  const T_res1    = Math.max(0.001, T_clk_dst - T_setup - T_cq); // per stage
+  const T_total   = T_res1 * p.stages;
+  const exponent  = T_total / tauNs;
+  const denom     = (p.fDst * 1e6) * (p.fData * 1e6) * (T_w * 1e-9);
+  const mtbf_sec  = Math.exp(Math.min(exponent, 700)) / denom;
+  return { mtbf_sec, T_clk_dst, T_res1, T_total, tauNs, exponent, denom };
+}
+
+function formatMTBF(sec){
+  if (!isFinite(sec) || sec > 1e50) return { str: '> 10⁴⁴ years', sub: 'Effectively infinite — excellent' };
+  const yr = sec / (365.25 * 24 * 3600);
+  if (yr > 1e9)  return { str: yr.toExponential(1) + ' yr', sub: 'Billions of years — very safe' };
+  if (yr > 1e6)  return { str: yr.toExponential(1) + ' yr', sub: 'Millions of years — safe' };
+  if (yr > 1000) return { str: Math.round(yr/1000) + 'k years', sub: 'Thousands of years — good' };
+  if (yr > 1)    return { str: yr.toFixed(1) + ' years', sub: 'Years — marginal for production' };
+  const days = yr * 365;
+  if (days > 1)  return { str: days.toFixed(1) + ' days', sub: 'Days — DANGEROUS, add more stages' };
+  return { str: (sec/3600).toFixed(2) + ' hours', sub: 'Hours — CRITICAL FAILURE RISK' };
+}
+
+function updateMTBF(p){
+  const m = calcMTBF(p);
+  const fmt = formatMTBF(m.mtbf_sec);
+
+  document.getElementById('mtbfValue').textContent = fmt.str;
+  document.getElementById('mtbfSub').textContent   = fmt.sub;
+  document.getElementById('pTclk').textContent     = m.T_clk_dst.toFixed(3) + ' ns';
+  document.getElementById('pTres').textContent     = m.T_res1.toFixed(3) + ' ns';
+  document.getElementById('pTtotal').textContent   = m.T_total.toFixed(3) + ' ns';
+  document.getElementById('pStages').textContent   = p.stages;
+  document.getElementById('pTau').textContent      = p.tau + ' ps';
+  document.getElementById('fExp').textContent      = m.exponent.toFixed(1);
+  document.getElementById('fDenom').textContent    = m.denom.toExponential(2);
+  document.getElementById('fResult').textContent   = fmt.str;
+
+  // Risk bar
+  const logMtbf = Math.log10(Math.max(1, m.mtbf_sec));
+  const maxLog  = 50; // 10^50 sec
+  const pct     = Math.min(100, (logMtbf / maxLog) * 100);
+  const fill    = document.getElementById('riskFill');
+  const lbl     = document.getElementById('riskLabel');
+  fill.style.width = pct + '%';
+  if (pct > 70)      { fill.style.background = '#4ade80'; lbl.style.color = '#4ade80'; lbl.textContent = '✅ Safe'; }
+  else if (pct > 40) { fill.style.background = '#fbbf24'; lbl.style.color = '#fbbf24'; lbl.textContent = '⚠️ Marginal'; }
+  else               { fill.style.background = '#fb7185'; lbl.style.color = '#fb7185'; lbl.textContent = '❌ Dangerous — Add More Stages'; }
+}
+
+// ── Waveform Drawing ──────────────────────────────────
+const waveCanvas = document.getElementById('waveCanvas');
+const wctx = waveCanvas.getContext('2d');
+
+const WAVE_COLORS = {
+  src_clk: '#38bdf8',
+  dst_clk: '#a78bfa',
+  data:    '#fbbf24',
+  ff:      ['#4ade80','#fb7185','#67e8f9','#fda4af'],
+  meta:    'rgba(251,113,133,0.35)',
+  grid:    'rgba(148,163,184,0.08)',
+  label:   '#64748b'
+};
+
+function drawWaveform(p){
+  const W = waveCanvas.parentElement.clientWidth - 32;
+  waveCanvas.width = Math.max(600, W);
+  const cW = waveCanvas.width;
+  const cH = 260;
+  const LBL = 90;      // left label width
+  const rows = 3 + p.stages;
+  const rowH = Math.floor((cH - 20) / rows);
+  const drawW = cW - LBL - 10;
+
+  wctx.clearRect(0, 0, cW, cH);
+  wctx.font = '11px JetBrains Mono, monospace';
+
+  // Time window: show enough cycles to see the interaction
+  const T_src = 1000 / p.fSrc;  // ns
+  const T_dst = 1000 / p.fDst;  // ns
+  const T_data= 1000 / p.fData; // ns
+  const totalNs = Math.max(T_src, T_dst) * 12;
+  const nsPerPx = totalNs / drawW;
+
+  function xOf(ns){ return LBL + ns / nsPerPx; }
+  function drawClk(yBase, period, color, label){
+    wctx.strokeStyle = color; wctx.lineWidth = 1.5;
+    wctx.fillStyle = WAVE_COLORS.label;
+    wctx.fillText(label, 4, yBase + rowH * .5 + 4);
+    let t = 0, high = false;
+    wctx.beginPath();
+    wctx.moveTo(LBL, yBase + rowH * 0.8);
+    while(t < totalNs){
+      const x = xOf(t);
+      if(high){ wctx.lineTo(x, yBase+rowH*0.2); wctx.lineTo(x+period/2/nsPerPx, yBase+rowH*0.2); }
+      else    { wctx.lineTo(x, yBase+rowH*0.8); wctx.lineTo(x+period/2/nsPerPx, yBase+rowH*0.8); }
+      high = !high; t += period/2;
+    }
+    wctx.stroke();
+  }
+
+  function drawData(yBase, transitions, color, label){
+    wctx.fillStyle = WAVE_COLORS.label;
+    wctx.fillText(label, 4, yBase + rowH*.5 + 4);
+    wctx.strokeStyle = color; wctx.lineWidth = 1.5;
+    wctx.beginPath();
+    let val = 0, t = 0;
+    wctx.moveTo(LBL, yBase + (val ? rowH*0.2 : rowH*0.8));
+    transitions.forEach(tr => {
+      const x = xOf(tr);
+      wctx.lineTo(x, yBase + (val ? rowH*0.2 : rowH*0.8));
+      wctx.lineTo(x, yBase + (val ? rowH*0.8 : rowH*0.2));
+      val = 1 - val;
+    });
+    wctx.lineTo(xOf(totalNs), yBase + (val ? rowH*0.2 : rowH*0.8));
+    wctx.stroke();
+  }
+
+  // Draw grid lines
+  wctx.strokeStyle = WAVE_COLORS.grid; wctx.lineWidth = 1;
+  for(let t = 0; t < totalNs; t += T_dst){
+    wctx.beginPath(); wctx.moveTo(xOf(t), 0); wctx.lineTo(xOf(t), cH); wctx.stroke();
+  }
+
+  // Src clk
+  drawClk(5, T_src, WAVE_COLORS.src_clk, 'SRC_CLK');
+  // Dst clk
+  drawClk(5 + rowH, T_dst, WAVE_COLORS.dst_clk, 'DST_CLK');
+
+  // Data transitions at source clock edges
+  const dataTransitions = [];
+  let nextDataFlip = T_data;
+  while(nextDataFlip < totalNs){ dataTransitions.push(nextDataFlip); nextDataFlip += T_data; }
+  drawData(5 + rowH*2, dataTransitions, WAVE_COLORS.data, 'DATA_SRC');
+
+  // Highlight metastability risk zones (near dst clk edges where data just changed)
+  const dstEdges = [];
+  for(let t = T_dst; t < totalNs; t += T_dst) dstEdges.push(t);
+
+  dstEdges.forEach(edge => {
+    const metaWin = 0.15; // ns window around edge
+    const nearData = dataTransitions.some(tr => Math.abs(tr - edge) < metaWin);
+    if(nearData){
+      wctx.fillStyle = WAVE_COLORS.meta;
+      wctx.fillRect(xOf(edge-metaWin), 5+rowH*2, xOf(edge+metaWin)-xOf(edge-metaWin), rowH);
+    }
+  });
+
+  // Sync FF outputs — each delayed by 1 dst clock period per stage
+  for(let s = 0; s < p.stages; s++){
+    const yBase = 5 + rowH * (3 + s);
+    const delay = (s + 1) * T_dst;
+    const shifted = dataTransitions
+      .map(tr => {
+        // snap to next dst clk edge after transition + 1 stage delay
+        let snapped = Math.ceil((tr + delay) / T_dst) * T_dst;
+        return snapped;
+      })
+      .filter(t => t < totalNs);
+    drawData(yBase, shifted, WAVE_COLORS.ff[s], `FF${s+1}_Q`);
+
+    // Mark metastability on FF1 near hazard zones
+    if(s === 0){
+      dstEdges.forEach(edge => {
+        const metaWin = 0.15;
+        const nearData = dataTransitions.some(tr => Math.abs(tr - edge) < metaWin);
+        if(nearData){
+          wctx.fillStyle = 'rgba(251,113,133,0.25)';
+          wctx.fillRect(xOf(edge), yBase, xOf(edge + T_dst*0.6) - xOf(edge), rowH);
+          wctx.fillStyle = '#fb7185';
+          wctx.font = '9px sans-serif';
+          wctx.fillText('?', xOf(edge + T_dst*0.25), yBase + rowH*0.6);
+          wctx.font = '11px JetBrains Mono, monospace';
+        }
+      });
+    }
+  }
+
+  // Cycle marker legend
+  wctx.fillStyle = WAVE_COLORS.label;
+  wctx.fillText('▲ dst clk edges  ⚠ metastability risk zone', LBL, cH - 4);
+}
+
+function update(){
+  const p = getParams();
+  updateLabels(p);
+  updateMTBF(p);
+  drawWaveform(p);
+}
+
+Object.values(sliders).forEach(s => s.addEventListener('input', update));
+window.addEventListener('resize', () => drawWaveform(getParams()));
+update();
+</script>
+</body>
+</html>
