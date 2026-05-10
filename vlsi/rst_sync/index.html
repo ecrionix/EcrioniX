@@ -1,427 +1,573 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789"
-     crossorigin="anonymous"></script>
-  <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-XXZS8C1FLY');
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Synchronization in VLSI – ARSR, Power-On Reset & Multi-Domain Reset | EcrioniX</title>
+  <meta name="description" content="Learn reset synchronization in VLSI: async-assert synchronous-de-assert (ARSR) pattern, Verilog RTL, multi-domain reset distribution, power-on reset, and interactive waveform simulator.">
+  <meta property="og:title" content="Reset Synchronization in VLSI – ARSR Pattern | EcrioniX">
+  <meta property="og:description" content="ARSR reset pattern, RTL implementation, multi-domain reset, power-on reset, and interactive waveform simulator for VLSI designers.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/vlsi/rst_sync/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Reset Synchronization – ARSR Pattern | EcrioniX VLSI">
+  <meta name="twitter:description" content="ARSR reset pattern, RTL implementation, multi-domain reset, and interactive waveform simulator.">
+  <link rel="canonical" href="https://ecrionix.org/vlsi/rst_sync/">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle","headline":"Reset Synchronization in VLSI – ARSR, Power-On Reset & Multi-Domain","description":"Learn reset synchronization in VLSI: async-assert synchronous-de-assert (ARSR) pattern, Verilog RTL, multi-domain reset distribution, power-on reset, and interactive waveform simulator.","url":"https://ecrionix.org/vlsi/rst_sync/","dateModified":"2026-05-10","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},{"@type":"ListItem","position":3,"name":"Reset Synchronization","item":"https://ecrionix.org/vlsi/rst_sync/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the ARSR reset pattern?","acceptedAnswer":{"@type":"Answer","text":"ARSR (Async-assert Sync-de-assert) asserts reset immediately without waiting for a clock edge — so the chip enters reset instantly. De-assertion is synchronized to the clock by passing the de-assert signal through two flip-flops that are themselves asynchronously reset. This ensures all flip-flops exit reset on the same clock edge."}},
+      {"@type":"Question","name":"Why not use a purely synchronous reset?","acceptedAnswer":{"@type":"Answer","text":"A synchronous reset requires the clock to be running during reset, which may not be guaranteed at power-on (the PLL may not have locked). If the clock is absent or glitching, synchronous reset never asserts, leaving the design in an unknown state. ARSR solves this by asserting asynchronously even if no clock is present."}},
+      {"@type":"Question","name":"Why not use a purely asynchronous reset?","acceptedAnswer":{"@type":"Answer","text":"A purely asynchronous reset (both assert and de-assert) can cause different flip-flops to exit reset on different clock cycles if the de-assertion edge is close to a clock edge. Some FFs capture the de-assertion before the edge, others after — this creates a brief period of random FSM states, which can cause immediate functional failures."}},
+      {"@type":"Question","name":"How do you handle reset in multiple clock domains?","acceptedAnswer":{"@type":"Answer","text":"Each clock domain needs its own reset synchronizer — the raw reset signal passes through a 2-FF synchronizer clocked by each domain's clock. This ensures each domain exits reset synchronously with respect to its own clock. The domain that exits reset last sets the global ready signal. Never share an un-synchronized reset across domains."}}
+    ]}
+  ]}
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #020617; --bg-2: #0f172a; --bg-3: #1e293b;
+      --border: rgba(148,163,184,0.1); --border-2: rgba(148,163,184,0.06);
+      --amber: #fbbf24; --amb-l: #fcd34d;
+      --text: #f8fafc; --muted: #94a3b8; --dim: #64748b;
+      --green: #34d399; --sky: #38bdf8; --violet: #a78bfa; --rose: #fb7185;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.7; }
+    #bgCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
 
-  gtag('config', 'G-XXZS8C1FLY');
-</script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Synchronizer Interactive Lab – EcrioniX VLSI</title>
-    <meta name="description" content="Interactive reset synchronizer simulation — understand asynchronous assertion and synchronous de-assertion (ARSR) in CMOS VLSI design.">
-    <meta property="og:title" content="Reset Synchronizer Interactive Lab | EcrioniX VLSI">
-    <meta property="og:description" content="Interactive reset synchronizer simulation - asynchronous assertion and synchronous de-assertion (ARSR) in CMOS VLSI design.">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="https://ecrionix.org/vlsi/rst_sync/">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Reset Synchronizer Interactive Lab | EcrioniX VLSI">
-    <meta name="twitter:description" content="Interactive reset synchronizer simulation - asynchronous assertion and synchronous de-assertion (ARSR) in CMOS VLSI design.">
-    <meta name="keywords" content="reset synchronizer, ARSR, async reset, synchronous release, VLSI, RTL design, metastability, flip-flop">
-    <link rel="canonical" href="https://ecrionix.org/vlsi/rst_sync/">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <script type="application/ld+json">
-{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Reset Synchronizer – Async Assert Synchronous De-assert in VLSI","description":"Interactive reset synchronizer simulation — understand asynchronous assertion and synchronous de-assertion (ARSR) in CMOS VLSI design.","url":"https://ecrionix.org/vlsi/rst_sync/","dateModified":"2026-05-10","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},{"@type":"ListItem","position":3,"name":"Reset Synchronizer","item":"https://ecrionix.org/vlsi/rst_sync/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a reset synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A reset synchronizer ensures reset de-assertion is synchronized to the clock domain, preventing flip-flops from exiting reset at different clock edges using flip-flops asynchronously forced to reset and synchronously released."}},{"@type":"Question","name":"What is async assert synchronous de-assert (ARSR)?","acceptedAnswer":{"@type":"Answer","text":"Reset asserts immediately when the signal goes active (no clock needed). De-assertion is synchronized to the clock edge so all flip-flops exit reset together on the same cycle."}},{"@type":"Question","name":"What problems does an unsynchronized reset cause?","acceptedAnswer":{"@type":"Answer","text":"An unsynchronized reset release causes different flip-flops to exit reset on different clock cycles, leading to unpredictable initial FSM states and immediate functional failures after power-up."}}]}]}
-</script>
-<style>
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
-        .tech-font { font-family: 'Orbitron', sans-serif; }
-        .code-font { font-family: 'JetBrains Mono', monospace; }
-        
-        /* Watermark */
-        .watermark {
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%) rotate(-30deg);
-            font-size: 8rem; font-weight: 900;
-            color: rgba(99, 102, 241, 0.03);
-            pointer-events: none; user-select: none; z-index: 0;
-        }
+    .navbar { position: sticky; top: 0; z-index: 100; background: rgba(2,6,23,0.92); backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); }
+    .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .nav-logo { font-family: 'Orbitron', sans-serif; font-size: 1.25rem; font-weight: 700; color: #fff; text-decoration: none; letter-spacing: .05em; white-space: nowrap; }
+    .nav-logo span { color: var(--amber); }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; align-items: center; }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: .85rem; font-weight: 500; transition: color .2s; white-space: nowrap; }
+    .nav-links a:hover { color: #fff; }
+    .hamburger { display: none; background: none; border: 1px solid var(--border); color: var(--muted); padding: .4rem .6rem; border-radius: 8px; cursor: pointer; font-size: 1.1rem; }
+    .mobile-menu { display: none; flex-direction: column; gap: .25rem; background: var(--bg-2); border-bottom: 1px solid var(--border); padding: .75rem 1.5rem; }
+    .mobile-menu a { color: var(--muted); text-decoration: none; font-size: .9rem; padding: .4rem 0; border-bottom: 1px solid var(--border-2); }
+    .mobile-menu.open { display: flex; }
+    @media(max-width:768px){ .nav-links{display:none;} .hamburger{display:block;} }
 
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.4);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(148, 163, 184, 0.1);
-        }
+    .page-wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; display: grid; grid-template-columns: 1fr 260px; gap: 2.5rem; align-items: start; }
+    @media(max-width:900px){ .page-wrap { grid-template-columns: 1fr; } .sidebar { display: none; } }
+    .breadcrumb { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: .75rem 1.5rem 0; display: flex; gap: .5rem; font-size: .78rem; color: var(--dim); flex-wrap: wrap; }
+    .breadcrumb a { color: var(--dim); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--amb-l); }
 
-        /* Component Styling */
-        .ff-box { fill: #1e293b; stroke: #94a3b8; stroke-width: 2; transition: all 0.3s; }
-        .ff-active { stroke: #ef4444; fill: #450a0a; }
-        .comp-text { font-family: 'Orbitron', sans-serif; fill: #cbd5e1; font-size: 10px; }
-        
-        /* Signal Wires */
-        .wire { fill: none; stroke: #475569; stroke-width: 3; transition: stroke 0.1s; }
-        .wire-active { stroke: #ef4444; filter: drop-shadow(0 0 3px #ef4444); }
-        .wire-low { stroke: #1e293b; opacity: 0.5; }
-        .wire-stable { stroke: #4ade80; filter: drop-shadow(0 0 3px #4ade80); }
-        .wire-clk { stroke: #facc15; }
+    .page-tag { display: inline-block; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25); color: var(--amb-l); font-size: .7rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; padding: .25rem .8rem; border-radius: 100px; margin-bottom: 1rem; }
+    .article h1 { font-size: clamp(1.8rem,4vw,2.6rem); font-weight: 700; color: #fff; line-height: 1.2; margin-bottom: .75rem; }
+    .article h1 span { color: var(--amber); }
+    .article .lead { font-size: 1.05rem; color: var(--muted); max-width: 680px; margin-bottom: 2.5rem; line-height: 1.75; }
+    .article h2 { font-size: 1.2rem; font-weight: 700; color: #fff; margin: 2.5rem 0 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .6rem; }
+    .article h2 .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .article h3 { font-size: 1rem; font-weight: 600; color: var(--amb-l); margin: 1.75rem 0 .6rem; }
+    .article p { color: var(--muted); font-size: .93rem; line-height: 1.8; margin-bottom: 1rem; }
+    .article strong { color: #fff; font-weight: 600; }
 
-        /* Waveform Canvas */
-        .wave-canvas {
-            background-color: #111827;
-            border-left: 2px solid #374151;
-            background-image: 
-                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
+    .code-block { background: #020617; border: 1px solid rgba(148,163,184,0.12); border-radius: 12px; padding: 1.25rem 1.5rem; margin: 1rem 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: .8rem; line-height: 1.8; font-variant-ligatures: none; }
+    .kw { color: #c084fc; } .cm { color: #475569; font-style: italic; } .str { color: #86efac; }
+    .num { color: #fbbf24; } .op { color: #94a3b8; } .fn { color: #38bdf8; } .reg { color: #fcd34d; }
 
-        /* Toggle Switches */
-        .switch-btn {
-            @apply px-6 py-4 rounded-xl font-bold transition-all border-b-4 active:border-b-0 active:translate-y-1;
-        }
-        .btn-rst-on { @apply bg-red-600 border-red-800 text-white shadow-lg shadow-red-900/40; }
-        .btn-rst-off { @apply bg-slate-700 border-slate-900 text-slate-400; }
-    </style>
+    .code-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    @media(max-width:640px){ .code-pair { grid-template-columns: 1fr; } }
+    .code-pair-label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: .4rem; }
+
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 1rem; margin: 1.25rem 0; }
+    .card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .card .card-label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: .5rem; }
+    .card p { font-size: .85rem; color: var(--muted); margin: 0; }
+
+    .callout { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 12px; padding: 1.25rem 1.5rem; margin: 1.25rem 0; }
+    .callout.info { background: rgba(56,189,248,0.05); border-color: rgba(56,189,248,0.2); }
+    .callout.rose { background: rgba(251,113,133,0.05); border-color: rgba(251,113,133,0.2); }
+    .callout p { margin: 0; font-size: .87rem; }
+
+    .tbl-wrap { overflow-x: auto; margin: 1.25rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    thead th { background: var(--bg-3); color: var(--amber); font-weight: 600; padding: .6rem 1rem; text-align: left; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    tbody td { padding: .6rem 1rem; color: var(--muted); border-bottom: 1px solid var(--border-2); vertical-align: top; }
+    tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Simulator */
+    .sim-section { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; margin: 2rem 0; }
+    .sim-section h2 { border: none; margin: 0 0 .5rem; padding: 0; }
+    .sim-grid { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+    @media(max-width:640px){ .sim-grid { grid-template-columns: 1fr; } }
+    .sim-ctrl { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column; gap: .75rem; }
+    .sim-ctrl h3 { font-size: .75rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); margin-bottom: .25rem; }
+    .sim-btn { display: block; width: 100%; padding: .65rem; border-radius: 8px; border: none; font-family: 'Outfit', sans-serif; font-size: .83rem; font-weight: 700; cursor: pointer; transition: all .15s; text-align: center; }
+    .btn-red { background: rgba(251,113,133,0.15); border: 1px solid rgba(251,113,133,0.3); color: var(--rose); }
+    .btn-red:hover { background: rgba(251,113,133,0.25); }
+    .btn-red.active { background: rgba(251,113,133,0.3); border-color: var(--rose); }
+    .btn-violet { background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25); color: var(--violet); }
+    .btn-violet:hover { background: rgba(167,139,250,0.2); }
+    .btn-amber { background: var(--amber); color: #000; }
+    .btn-amber:hover { background: var(--amb-l); }
+    .status-badge { text-align: center; padding: .4rem .8rem; border-radius: 6px; font-size: .78rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .status-safe { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); color: var(--green); }
+    .status-risk { background: rgba(251,113,133,0.15); border: 1px solid var(--rose); color: var(--rose); }
+    .wave-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: relative; }
+    .wave-labels { position: absolute; left: .5rem; top: 0; height: 100%; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
+    .wave-label { font-size: .65rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    #waveCanvas { display: block; width: 100%; height: 200px; }
+
+    /* FAQ */
+    .faq-item { border: 1px solid var(--border); border-radius: 12px; margin-bottom: .75rem; overflow: hidden; }
+    .faq-q { width: 100%; background: var(--bg-2); border: none; padding: 1rem 1.25rem; text-align: left; color: #fff; font-family: 'Outfit', sans-serif; font-size: .92rem; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .faq-q .icon { color: var(--amber); font-size: 1.1rem; flex-shrink: 0; transition: transform .2s; }
+    .faq-q.open .icon { transform: rotate(45deg); }
+    .faq-a { display: none; padding: 1rem 1.25rem; font-size: .88rem; color: var(--muted); line-height: 1.75; background: var(--bg); }
+    .faq-a.open { display: block; }
+
+    .sidebar { position: sticky; top: 84px; }
+    .sidebar-card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .sidebar-card h3 { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: .9rem; }
+    .sidebar-card a { display: block; font-size: .83rem; color: var(--muted); text-decoration: none; padding: .3rem 0; border-bottom: 1px solid var(--border-2); transition: color .15s; }
+    .sidebar-card a:last-child { border: none; }
+    .sidebar-card a:hover { color: var(--amb-l); }
+    .sidebar-card a.active { color: var(--amber); font-weight: 600; }
+
+    .footer { background: var(--bg-2); border-top: 1px solid var(--border); padding: 2rem 1.5rem; text-align: center; position: relative; z-index: 1; }
+    .footer-logo { font-family: 'Orbitron', sans-serif; font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: .4rem; }
+    .footer-logo span { color: var(--amber); }
+    .footer-nav { display: flex; justify-content: center; flex-wrap: wrap; gap: 1.25rem; margin: .75rem 0 1rem; }
+    .footer-nav a { font-size: .8rem; color: var(--dim); text-decoration: none; transition: color .2s; }
+    .footer-nav a:hover { color: var(--amb-l); }
+    .footer-copy { font-size: .75rem; color: var(--dim); border-top: 1px solid var(--border); padding-top: 1rem; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    .article { animation: fadeUp .5s ease both; }
+  </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen flex flex-col relative overflow-x-hidden">
+<body>
+<canvas id="bgCanvas"></canvas>
 
-    <nav style="position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(148,163,184,0.1);padding:0 1.5rem;height:64px;display:flex;align-items:center;justify-content:space-between;margin:-1rem -2rem 0;">
-      <a href="/" style="font-family:'Orbitron',sans-serif;color:#f8fafc;font-weight:700;text-decoration:none;font-size:1.125rem;">Ecrioni<span style="color:#6366f1;">X</span></a>
-      <div style="text-align:center;">
-        <div style="font-size:0.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Release Status</div>
-        <div id="release-status" class="text-green-400 font-mono font-bold">SAFE</div>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/">RTL Design</a></li>
+      <li><a href="/about/">About</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <button class="hamburger" onclick="document.getElementById('mobileMenu').classList.toggle('open')">&#9776;</button>
+  </div>
+</nav>
+<div class="mobile-menu" id="mobileMenu">
+  <a href="/">Home</a>
+  <a href="/vlsi/">VLSI</a>
+  <a href="/digital-electronics/">Digital Electronics</a>
+  <a href="/sta/">STA</a>
+  <a href="/rtl_design/">RTL Design</a>
+  <a href="/about/">About</a>
+  <a href="/contact/">Contact</a>
+</div>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a> &rsaquo; <a href="/vlsi/">VLSI</a> &rsaquo; <span>Reset Synchronization</span>
+</div>
+
+<div class="page-wrap">
+  <article class="article">
+    <div class="page-tag">VLSI · Reset Design</div>
+    <h1>Reset <span>Synchronization</span></h1>
+    <p class="lead">Reset is the most safety-critical signal in a synchronous design — yet it is often the most poorly designed. A reset that de-asserts at the wrong moment puts the entire design into a random, unpredictable state. The ARSR pattern solves this with one elegant principle: assert fast, release slow and synchronized.</p>
+
+    <!-- 1. The Problem -->
+    <h2><span class="dot" style="background:#fbbf24;"></span>1. The Reset-Release Problem</h2>
+    <p>Reset ensures every flip-flop in the design starts from a known state. The assertion of reset is straightforward — when the reset signal goes active, all FFs immediately capture their reset state. The danger is in the <strong>release</strong>.</p>
+    <div class="code-pair">
+      <div>
+        <div class="code-pair-label" style="color:var(--rose);">&#10005; Purely Async Reset — dangerous release</div>
+        <div class="code-block">
+<span class="cm">// Both assert AND de-assert asynchronous</span>
+<span class="kw">always_ff</span> @(<span class="kw">posedge</span> clk <span class="kw">or negedge</span> rst_n)
+  <span class="kw">if</span> (!rst_n) q <span class="op">&lt;=</span> <span class="num">1'b0</span>;
+  <span class="kw">else</span>         q <span class="op">&lt;=</span> d;
+
+<span class="cm">// Problem: if rst_n goes 1 near a clk edge,</span>
+<span class="cm">// different FFs exit reset on different cycles</span>
+        </div>
       </div>
-      <a href="/vlsi/" style="color:#94a3b8;text-decoration:none;font-size:0.875rem;font-weight:600;">← VLSI Topics</a>
-    </nav>
+      <div>
+        <div class="code-pair-label" style="color:var(--green);">&#10003; ARSR — async assert, sync de-assert</div>
+        <div class="code-block">
+<span class="cm">// rst_sync is driven by the synchronizer below</span>
+<span class="kw">always_ff</span> @(<span class="kw">posedge</span> clk <span class="kw">or negedge</span> rst_sync_n)
+  <span class="kw">if</span> (!rst_sync_n) q <span class="op">&lt;=</span> <span class="num">1'b0</span>;
+  <span class="kw">else</span>              q <span class="op">&lt;=</span> d;
 
-    <div class="max-w-[1400px] mx-auto w-full flex-grow relative z-10">
-        
-        <!-- Header -->
-        <div class="border-b border-gray-700 pb-4 mb-8 pt-4">
-            <h1 class="text-3xl font-bold text-white tech-font tracking-wide">RESET <span class="text-indigo-500">SYNCHRONIZER</span></h1>
-            <p class="text-gray-400 text-sm">Asynchronous Assertion, Synchronous De-assertion (ARSR)</p>
+<span class="cm">// All FFs now exit reset on same clock edge</span>
         </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            <!-- LEFT: Controls & Theory -->
-            <div class="lg:col-span-4 space-y-6">
-                
-                <!-- Main Control Card -->
-                <div class="glass-panel rounded-2xl p-6 shadow-2xl">
-                    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-6">Interaction Bench</h2>
-                    
-                    <div class="space-y-6">
-                        <!-- Reset Toggle -->
-                        <div>
-                            <div class="flex justify-between text-xs mb-2">
-                                <span class="text-slate-300 font-bold tracking-tight">ASYNC RESET INPUT</span>
-                                <span id="val-async" class="font-mono text-red-400">0</span>
-                            </div>
-                            <button id="btn-rst" onmousedown="toggleReset()" class="switch-btn btn-rst-off w-full">
-                                ASSERT ASYNC RESET
-                            </button>
-                        </div>
-
-                        <!-- Manual Clock -->
-                        <div>
-                            <div class="flex justify-between text-xs mb-2">
-                                <span class="text-slate-300 font-bold">SYSTEM CLOCK</span>
-                                <span id="val-clk" class="font-mono text-yellow-400">0</span>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <button onmousedown="pulseClock()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl border-b-4 border-indigo-800 active:border-b-0 active:translate-y-1 transition-all">PULSE</button>
-                                <button id="btn-auto" onclick="toggleAuto()" class="bg-slate-800 text-slate-400 font-bold py-3 rounded-xl border-b-4 border-slate-950 active:border-b-0 active:translate-y-1 transition-all">AUTO</button>
-                            </div>
-                        </div>
-
-                        <!-- Lab State Reset -->
-                        <div class="pt-4 border-t border-slate-700">
-                             <button onclick="resetLabState()" class="w-full py-3 bg-red-900/20 hover:bg-red-900/30 text-red-400 font-bold rounded-xl border border-red-800/50 transition-all active:scale-95 flex items-center justify-center">
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                                RESET LAB STATE
-                             </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Theory Card -->
-                <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-                    <h3 class="text-xs font-bold text-indigo-400 mb-3 uppercase tracking-wider">The "Reset-Release" Problem</h3>
-                    <div class="text-xs text-slate-400 space-y-3 leading-relaxed">
-                        <p>
-                            If an asynchronous reset is released (goes 1&rarr;0) exactly at the rising edge of the clock, some Flip-Flops in the chip might see the reset, while others don't.
-                        </p>
-                        <p>
-                            The <strong class="text-white">Reset Synchronizer</strong> ensures that while the reset is applied immediately, its removal is delayed and aligned to the clock edge.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- RIGHT: Schematic & Waveforms -->
-            <div class="lg:col-span-8 space-y-6">
-                
-                <!-- Schematic -->
-                <div class="glass-panel rounded-2xl p-1 relative overflow-hidden h-72">
-                    <div class="absolute top-3 left-4 text-[10px] font-bold text-slate-600 tracking-widest">INTERNAL RTL ARCHITECTURE</div>
-                    
-                    <div class="w-full h-full flex items-center justify-center">
-                        <svg id="schematic" width="100%" height="100%" viewBox="0 0 600 200">
-                            <!-- Input Wire -->
-                            <text x="30" y="55" class="comp-text" font-size="12">VCC (1)</text>
-                            <line id="w-vcc" x1="60" y1="50" x2="120" y2="50" class="wire wire-stable" />
-
-                            <!-- FF 1 -->
-                            <g transform="translate(120, 30)">
-                                <rect id="ff1-body" width="60" height="80" rx="4" class="ff-box" />
-                                <text x="30" y="45" text-anchor="middle" class="comp-text">FF_1</text>
-                                <path d="M0,60 L10,70 L0,80" fill="none" stroke="#94a3b8" />
-                            </g>
-
-                            <!-- Wire 1-2 -->
-                            <line id="w-q1" x1="180" y1="50" x2="250" y2="50" class="wire" />
-
-                            <!-- FF 2 -->
-                            <g transform="translate(250, 30)">
-                                <rect id="ff2-body" width="60" height="80" rx="4" class="ff-box" />
-                                <text x="30" y="45" text-anchor="middle" class="comp-text">FF_2</text>
-                                <path d="M0,60 L10,70 L0,80" fill="none" stroke="#94a3b8" />
-                            </g>
-
-                            <!-- Output Wire -->
-                            <line id="w-out" x1="310" y1="50" x2="400" y2="50" class="wire" />
-                            <text x="410" y="55" class="comp-text" font-size="12" fill="#fff">RST_SYNC_OUT</text>
-
-                            <!-- Async Reset Line -->
-                            <text x="235" y="165" class="comp-text" fill="#ef4444">ASYNC_RST_IN</text>
-                            <path id="w-async" d="M150,150 V110 M280,150 V110 M150,150 H450" class="wire" stroke="#ef4444" />
-                            
-                            <!-- Clock Line -->
-                            <text x="30" y="145" class="comp-text" fill="#facc15">CLK</text>
-                            <path id="w-clk" d="M60,140 H280 M120,140 V100 M250,140 V100" class="wire wire-clk" />
-                        </svg>
-                    </div>
-                </div>
-
-                <!-- Waveforms -->
-                <div class="bg-gray-900 rounded-2xl border border-slate-800 overflow-hidden">
-                    <div class="bg-slate-800 px-4 py-2 flex justify-between items-center border-b border-slate-700">
-                        <span class="text-xs font-bold text-slate-300 uppercase tracking-widest">Waveform Analyzer</span>
-                        <div class="flex gap-4 text-[10px] font-mono">
-                            <span class="text-yellow-400">CLK</span>
-                            <span class="text-red-400">ASYNC_RST_IN</span>
-                            <span class="text-green-400">RST_SYNC_OUT</span>
-                        </div>
-                    </div>
-                    <div class="p-2 relative min-h-[220px]">
-                        <canvas id="waveCanvas" height="220" width="800" class="wave-canvas w-full"></canvas>
-                        
-                        <!-- Fixed Signal Labels -->
-                        <div class="absolute left-2 top-0 h-full pointer-events-none text-[10px] font-mono font-bold">
-                            <div class="absolute text-yellow-500" style="top: 30px">CLK</div>
-                            <div class="absolute text-red-400" style="top: 80px">ASYNC_RST_IN</div>
-                            <div class="absolute text-indigo-300" style="top: 130px">SYNC_STAGE_1</div>
-                            <div class="absolute text-green-400" style="top: 180px">RST_SYNC_OUT</div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+      </div>
+    </div>
+    <div class="callout rose">
+      <p>If a purely asynchronous reset de-asserts within the setup/hold window of a clock edge, some flip-flops in the chip see the de-assertion before the edge and others after — they exit reset on <em>different</em> clock cycles, creating a brief window of random FSM state.</p>
     </div>
 
-    <script>
-        // --- State ---
-        let asyncRstIn = 0;
-        let clk = 0;
-        let ff1 = 0;
-        let ff2 = 0;
-        
-        let isAuto = false;
-        let simTime = 0;
-        let lastRstChange = -999;
-        
-        const history = [];
-        const MAX_HISTORY = 400;
-        const VIOLATION_WINDOW = 12; // Frames
+    <!-- 2. ARSR Pattern -->
+    <h2><span class="dot" style="background:#34d399;"></span>2. The ARSR Reset Synchronizer</h2>
+    <p>The <strong>Async-Assert Synchronous-De-assert (ARSR)</strong> pattern uses two flip-flops whose asynchronous reset inputs are tied to the raw reset signal. The D inputs are tied to logic 1 (VCC). This creates a 2-stage shift register that shifts in '1's on clock edges when reset is de-asserted.</p>
+    <div class="code-block">
+<span class="cm">// Standard 2-FF reset synchronizer — industry-standard pattern</span>
+<span class="kw">module</span> <span class="fn">rst_sync</span> (
+  <span class="kw">input</span>  <span class="kw">logic</span> clk,
+  <span class="kw">input</span>  <span class="kw">logic</span> async_rst_n,   <span class="cm">// raw async reset (active-low)</span>
+  <span class="kw">output</span> <span class="kw">logic</span> sync_rst_n     <span class="cm">// synchronized reset (active-low)</span>
+);
+  <span class="kw">logic</span> [1:0] sync_chain;
 
-        // DOM
-        const canvas = document.getElementById('waveCanvas');
-        const ctx = canvas.getContext('2d');
-        const btnRst = document.getElementById('btn-rst');
-        const relStatus = document.getElementById('release-status');
-        
-        const wAsync = document.getElementById('w-async');
-        const wQ1 = document.getElementById('w-q1');
-        const wOut = document.getElementById('w-out');
-        const body1 = document.getElementById('ff1-body');
-        const body2 = document.getElementById('ff2-body');
+  <span class="kw">always_ff</span> @(<span class="kw">posedge</span> clk <span class="kw">or negedge</span> async_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!async_rst_n)
+      sync_chain <span class="op">&lt;=</span> <span class="num">2'b00</span>;    <span class="cm">// async assert: both FFs reset immediately</span>
+    <span class="kw">else</span>
+      sync_chain <span class="op">&lt;=</span> {sync_chain[0], <span class="num">1'b1</span>}; <span class="cm">// shift 1's in on clk</span>
+  <span class="kw">end</span>
 
-        // --- Core Logic ---
+  <span class="kw">assign</span> sync_rst_n <span class="op">=</span> sync_chain[1];  <span class="cm">// two cycles after de-assert</span>
+<span class="kw">endmodule</span>
+    </div>
 
-        function toggleReset() {
-            asyncRstIn = asyncRstIn ? 0 : 1;
-            lastRstChange = simTime;
-            
-            // Async logic: Assertion is immediate
-            if (asyncRstIn === 1) {
-                ff1 = 1;
-                ff2 = 1;
-            }
+    <h3>How It Works Step by Step</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Event</th><th>FF1 (Q1)</th><th>FF2 (Q2 = sync_rst_n)</th><th>What Happens</th></tr></thead>
+        <tbody>
+          <tr><td>async_rst_n = 0 (assert)</td><td>0</td><td>0</td><td>Both FFs reset immediately, no clock needed. Reset propagates to all downstream FFs via sync_rst_n.</td></tr>
+          <tr><td>async_rst_n = 1 (de-assert)</td><td>0</td><td>0</td><td>Nothing yet — waiting for clock edge.</td></tr>
+          <tr><td>First posedge clk after de-assert</td><td>1</td><td>0</td><td>FF1 captures '1'. sync_rst_n still 0. All design FFs still in reset.</td></tr>
+          <tr><td>Second posedge clk</td><td>1</td><td>1</td><td>FF2 captures '1'. sync_rst_n goes to 1. All design FFs exit reset simultaneously.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <p><strong>Key insight:</strong> The two-cycle delay gives the de-assertion signal time to propagate through one FF before reaching the output. If FF1's de-assertion causes metastability, FF2 has a full clock period to resolve it before sync_rst_n is sampled by the design's flip-flops.</p>
+    </div>
 
-            updateUI();
-        }
+    <!-- 3. Comparison -->
+    <h2><span class="dot" style="background:#38bdf8;"></span>3. Reset Strategy Comparison</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Strategy</th><th>Assert</th><th>De-assert</th><th>Works if clock absent?</th><th>Metastability-safe?</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Purely Sync</strong></td><td>On next clock edge</td><td>On next clock edge</td><td>No — never asserts</td><td>Yes</td></tr>
+          <tr><td><strong>Purely Async</strong></td><td>Immediately</td><td>Immediately</td><td>Yes</td><td>No — de-assert unsafe</td></tr>
+          <tr><td><strong>ARSR (2-FF sync)</strong></td><td>Immediately</td><td>Synchronized (2 cycles)</td><td>Yes (assert), Yes (clock needed for release)</td><td>Yes</td></tr>
+          <tr><td><strong>ARSR (3-FF sync)</strong></td><td>Immediately</td><td>Synchronized (3 cycles)</td><td>Yes</td><td>Higher MTBF than 2-FF</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-        function resetLabState() {
-            asyncRstIn = 0;
-            clk = 0;
-            ff1 = 0;
-            ff2 = 0;
-            simTime = 0;
-            lastRstChange = -999;
-            history.length = 0; // Clear array
-            
-            relStatus.innerText = "SAFE";
-            relStatus.className = "text-green-400 font-mono font-bold";
-            
-            updateUI();
-            // Clear canvas immediately
-            ctx.clearRect(0,0,canvas.width, canvas.height);
-        }
+    <!-- 4. Multi-Domain -->
+    <h2><span class="dot" style="background:#a78bfa;"></span>4. Multi-Clock-Domain Reset Distribution</h2>
+    <p>A real SoC has many clock domains — each needs its own reset synchronizer. Sharing a single un-synchronized reset across multiple domains is a common and dangerous mistake.</p>
+    <div class="code-block">
+<span class="cm">// Each clock domain gets its own rst_sync instance</span>
+<span class="kw">module</span> <span class="fn">top</span> (
+  <span class="kw">input</span> <span class="kw">logic</span> raw_rst_n,
+  <span class="kw">input</span> <span class="kw">logic</span> clk_cpu, clk_dsp, clk_usb
+);
+  <span class="kw">logic</span> rst_cpu_n, rst_dsp_n, rst_usb_n;
 
-        function toggleAuto() {
-            isAuto = !isAuto;
-            document.getElementById('btn-auto').classList.toggle('bg-indigo-900/40', isAuto);
-            document.getElementById('btn-auto').classList.toggle('text-indigo-400', isAuto);
-        }
+  <span class="cm">// Separate synchronizer per domain — critical!</span>
+  <span class="fn">rst_sync</span> u_rst_cpu (.clk(clk_cpu), .async_rst_n(raw_rst_n), .sync_rst_n(rst_cpu_n));
+  <span class="fn">rst_sync</span> u_rst_dsp (.clk(clk_dsp), .async_rst_n(raw_rst_n), .sync_rst_n(rst_dsp_n));
+  <span class="fn">rst_sync</span> u_rst_usb (.clk(clk_usb), .async_rst_n(raw_rst_n), .sync_rst_n(rst_usb_n));
 
-        function pulseClock() {
-            if (clk === 0) {
-                clk = 1;
-                handleClockEdge();
-            } else {
-                clk = 0;
-            }
-            updateUI();
-        }
+  <span class="cm">// Each subsystem uses its domain-local reset</span>
+  <span class="fn">cpu_core</span> u_cpu (.clk(clk_cpu), .rst_n(rst_cpu_n), ...);
+  <span class="fn">dsp_core</span> u_dsp (.clk(clk_dsp), .rst_n(rst_dsp_n), ...);
+  <span class="fn">usb_phy</span>  u_usb (.clk(clk_usb), .rst_n(rst_usb_n), ...);
+<span class="kw">endmodule</span>
+    </div>
+    <div class="callout info">
+      <p><strong>Reset domain crossing (RDC):</strong> When signals flow between two domains that exit reset at different absolute times, handshaking logic must account for the ordering. The domain that de-asserts reset last sets the "system ready" signal. Tools like Mentor Questa RDC verify reset domain crossing correctness.</p>
+    </div>
 
-        function handleClockEdge() {
-            // RELEASE Check
-            const delta = simTime - lastRstChange;
-            if (asyncRstIn === 0 && delta < VIOLATION_WINDOW) {
-                triggerViolation();
-            }
+    <!-- 5. Power-on Reset -->
+    <h2><span class="dot" style="background:#fb7185;"></span>5. Power-On Reset (POR)</h2>
+    <p>Power-on reset generates the initial reset pulse when VDD first ramps up. The POR circuit must keep the chip in reset until:</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-label" style="color:var(--amber);">VDD Stable</div>
+        <p>Supply must exceed a minimum threshold (e.g., 0.9×VDD_nom) before digital logic behaves correctly. POR monitors the supply ramp.</p>
+      </div>
+      <div class="card">
+        <div class="card-label" style="color:var(--sky);">PLL Locked</div>
+        <p>The system clock must be stable before reset releases. A PLL-locked signal gates the reset de-assertion in most SoC designs.</p>
+      </div>
+      <div class="card">
+        <div class="card-label" style="color:var(--green);">Brown-out</div>
+        <p>If VDD drops below a threshold during operation (brown-out), the POR circuit re-asserts reset to prevent data corruption.</p>
+      </div>
+    </div>
 
-            // Sync De-assertion: If reset is 0, shift in '0'
-            if (asyncRstIn === 0) {
-                ff2 = ff1;
-                ff1 = 0;
-            }
-        }
+    <!-- Interactive Simulator -->
+    <div class="sim-section">
+      <h2 style="border:none;margin:0 0 .5rem;padding:0;"><span class="dot" style="background:#fbbf24;vertical-align:middle;display:inline-block;margin-right:.6rem;"></span>Interactive: ARSR Reset Simulator</h2>
+      <p style="font-size:.87rem;color:var(--dim);">Assert and release the async reset, pulse the clock, and watch the 2-FF synchronizer shift reset de-assertion through to the output.</p>
+      <div class="sim-grid">
+        <div class="sim-ctrl">
+          <h3>Controls</h3>
+          <button class="sim-btn btn-red" id="btnRst" onclick="toggleReset()">Assert Reset</button>
+          <button class="sim-btn btn-violet" onclick="pulseClock()">Clock Pulse &#9654;</button>
+          <button class="sim-btn" style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);color:var(--sky);" id="btnAuto" onclick="toggleAuto()">Auto Clock</button>
+          <button class="sim-btn btn-amber" onclick="resetLab()">Reset Lab</button>
+          <div style="margin-top:.5rem;font-size:.75rem;color:var(--dim);">Release Status:</div>
+          <div class="status-badge status-safe" id="statusBadge">SAFE</div>
+          <div style="margin-top:.75rem;font-size:.75rem;color:var(--dim);line-height:1.7;">
+            Assert reset, then release it close to a clock edge to see METASTABLE RISK trigger.
+          </div>
+        </div>
+        <div class="wave-wrap">
+          <div class="wave-labels">
+            <span class="wave-label" style="color:#fbbf24;">CLK</span>
+            <span class="wave-label" style="color:#fb7185;">RST_IN</span>
+            <span class="wave-label" style="color:#a78bfa;">FF1 (Q1)</span>
+            <span class="wave-label" style="color:#34d399;">SYNC_OUT</span>
+          </div>
+          <canvas id="waveCanvas"></canvas>
+        </div>
+      </div>
+    </div>
 
-        function triggerViolation() {
-            relStatus.innerText = "METASTABLE RISK";
-            relStatus.className = "text-red-500 font-mono font-bold animate-pulse";
-            setTimeout(() => {
-                if(relStatus.innerText === "METASTABLE RISK") {
-                    relStatus.innerText = "SAFE";
-                    relStatus.className = "text-green-400 font-mono font-bold";
-                }
-            }, 2500);
-        }
+    <!-- FAQ -->
+    <h2><span class="dot" style="background:#38bdf8;"></span>FAQ</h2>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">What is the ARSR reset pattern?<span class="icon">+</span></button>
+      <div class="faq-a">ARSR (Async-assert Sync-de-assert) asserts reset immediately without waiting for a clock edge — so the chip enters reset instantly even if the clock is absent. De-assertion is synchronized to the clock by passing the de-assert signal through two flip-flops that are themselves asynchronously reset. This ensures all downstream flip-flops exit reset on exactly the same clock edge.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Why not use a purely synchronous reset?<span class="icon">+</span></button>
+      <div class="faq-a">A synchronous reset requires the clock to be running during reset assertion — which may not be guaranteed at power-on if the PLL hasn't locked yet. If the clock is absent or glitching, a synchronous reset never asserts, leaving the design in an unknown state. ARSR solves this by asserting asynchronously even without a clock.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Why not use a purely asynchronous reset?<span class="icon">+</span></button>
+      <div class="faq-a">A purely asynchronous reset (both assert and de-assert asynchronous) can cause different flip-flops to exit reset on different clock cycles if the de-assertion edge falls near a clock edge. Some FFs see the de-assertion before the edge and others after — this creates a brief period of random FSM states, which causes immediate functional failures.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">How do you handle reset in multiple clock domains?<span class="icon">+</span></button>
+      <div class="faq-a">Each clock domain needs its own reset synchronizer — the raw reset signal passes through a 2-FF synchronizer clocked by each domain's clock. This ensures each domain exits reset synchronously with respect to its own clock. The domain that exits reset last sets the global ready signal. Never share an un-synchronized reset across multiple clock domains.</div>
+    </div>
+  </article>
 
-        function updateUI() {
-            document.getElementById('val-async').innerText = asyncRstIn;
-            document.getElementById('val-clk').innerText = clk;
-            
-            btnRst.className = asyncRstIn ? "switch-btn btn-rst-on w-full" : "switch-btn btn-rst-off w-full";
-            btnRst.innerText = asyncRstIn ? "RELEASE RESET" : "ASSERT ASYNC RESET";
+  <aside class="sidebar">
+    <div class="sidebar-card">
+      <h3>VLSI Topics</h3>
+      <a href="/vlsi/rtl_design/">RTL Design Fundamentals</a>
+      <a href="/vlsi/cdc/">Clock Domain Crossing</a>
+      <a href="/vlsi/low_power_rtl/">Low Power RTL</a>
+      <a href="/vlsi/dft/">Design for Testability</a>
+      <a href="/vlsi/physical/">Physical Design Flow</a>
+      <a href="/vlsi/rst_sync/" class="active">Reset Synchronization</a>
+      <a href="/vlsi/cmos/">CMOS Logic Design</a>
+      <a href="/vlsi/clk_gater/">Clock Gating Cells</a>
+      <a href="/vlsi/latch/">Latch-Based Design</a>
+      <a href="/vlsi/bingray/">Binary &amp; Gray Code</a>
+      <a href="/vlsi/dflop/">D Flip-Flop Design</a>
+      <a href="/vlsi/clk_mux/">Clock Multiplexing</a>
+      <a href="/vlsi/async_fifo/">Asynchronous FIFO</a>
+    </div>
+    <div class="sidebar-card">
+      <h3>Related Topics</h3>
+      <a href="/vlsi/cdc/">Clock Domain Crossing</a>
+      <a href="/sta/">Static Timing Analysis</a>
+      <a href="/vlsi/">All VLSI Topics</a>
+    </div>
+    <div class="sidebar-card" style="background:rgba(251,191,36,0.05);border-color:rgba(251,191,36,0.2);">
+      <h3 style="color:var(--amber);">ARSR Rule</h3>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.9;">
+        Assert: immediately<br>
+        De-assert: wait 2 clocks<br>
+        Each domain → own synchronizer<br>
+        Never share raw reset
+      </p>
+    </div>
+  </aside>
+</div>
 
-            wAsync.setAttribute('class', "wire " + (asyncRstIn ? "wire-active" : "wire-low"));
-            wQ1.setAttribute('class', "wire " + (ff1 ? "wire-active" : "wire-low"));
-            wOut.setAttribute('class', "wire " + (ff2 ? "wire-active" : "wire-low"));
-            
-            body1.setAttribute('class', "ff-box " + (ff1 ? "ff-active" : ""));
-            body2.setAttribute('class', "ff-box " + (ff2 ? "ff-active" : ""));
-        }
-
-        function step() {
-            simTime++;
-
-            if (isAuto) {
-                if (simTime % 40 === 0) {
-                    clk = !clk;
-                    if (clk === 1) handleClockEdge();
-                    updateUI();
-                }
-            }
-
-            history.push({ 
-                clk: clk, 
-                asyncRstIn: asyncRstIn, 
-                ff1: ff1, 
-                ff2: ff2 
-            });
-            
-            if (history.length > MAX_HISTORY) history.shift();
-
-            drawWaveforms();
-            requestAnimationFrame(step);
-        }
-
-        function drawWaveforms() {
-            if(canvas.width !== canvas.offsetWidth) canvas.width = canvas.offsetWidth;
-            const w = canvas.width;
-            const h = canvas.height;
-            const stepWidth = w / MAX_HISTORY;
-
-            ctx.clearRect(0,0,w,h);
-
-            const lanes = [
-                { id: 'clk', y: 35, c: '#facc15' },
-                { id: 'asyncRstIn', y: 85, c: '#f87171' },
-                { id: 'ff1', y: 135, c: '#818cf8' },
-                { id: 'ff2', y: 185, c: '#4ade80' }
-            ];
-
-            lanes.forEach(lane => {
-                ctx.strokeStyle = lane.c;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                
-                for(let i=0; i<history.length; i++) {
-                    const val = history[i][lane.id];
-                    const x = i * stepWidth;
-                    const y = val ? lane.y - 15 : lane.y + 15;
-
-                    if(i===0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        if (history[i-1][lane.id] !== val) {
-                            ctx.lineTo(x, val ? lane.y + 15 : lane.y - 15);
-                        }
-                        ctx.lineTo(x, y);
-                    }
-                }
-                ctx.stroke();
-
-                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(0, lane.y);
-                ctx.lineTo(w, lane.y);
-                ctx.stroke();
-            });
-        }
-
-        updateUI();
-        requestAnimationFrame(step);
-
-    </script>
-
-    <footer style="border-top:1px solid rgba(148,163,184,0.1);padding:1.5rem;text-align:center;margin-top:2rem;">
-        <p style="color:#475569;font-size:0.75rem;margin-bottom:0.5rem;">© 2026 EcrioniX · All rights reserved.</p>
-        <a href="/vlsi/" style="color:#94a3b8;font-size:0.75rem;text-decoration:none;">← Back to VLSI Topics</a>
-      <p style="margin-top:0.75rem;font-size:0.78rem;"><a href="/about/" style="color:#64748b;text-decoration:none;margin-right:1rem;">About</a><a href="/contact/" style="color:#64748b;text-decoration:none;margin-right:1rem;">Contact</a><a href="/legal/privacy.html" style="color:#64748b;text-decoration:none;">Privacy Policy</a></p>
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/about/">About</a>
+    <a href="/contact/">Contact</a>
+    <a href="/legal/privacy.html">Privacy Policy</a>
+    <a href="/legal/terms.html">Terms</a>
+  </nav>
+  <div class="footer-copy">&copy; <span id="yr"></span> EcrioniX. All rights reserved.</div>
 </footer>
+
+<script>
+  // Particle background
+  (function(){
+    const canvas = document.getElementById('bgCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, particles;
+    const N = 55, CONN = 130, COL = '251,191,36';
+    function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    function mk(){ return { x:Math.random()*W, y:Math.random()*H, vx:(Math.random()-.5)*.35, vy:(Math.random()-.5)*.35 }; }
+    function init(){ resize(); particles = Array.from({length:N},mk); }
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      for(let i=0;i<N;i++){
+        const p=particles[i];
+        p.x+=p.vx; p.y+=p.vy;
+        if(p.x<0||p.x>W) p.vx*=-1;
+        if(p.y<0||p.y>H) p.vy*=-1;
+        ctx.beginPath(); ctx.arc(p.x,p.y,1.5,0,Math.PI*2);
+        ctx.fillStyle=`rgba(${COL},0.35)`; ctx.fill();
+        for(let j=i+1;j<N;j++){
+          const q=particles[j];
+          const d=Math.hypot(p.x-q.x,p.y-q.y);
+          if(d<CONN){ ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+            ctx.strokeStyle=`rgba(${COL},${0.12*(1-d/CONN)})`; ctx.lineWidth=.6; ctx.stroke(); }
+        }
+      }
+      requestAnimationFrame(draw);
+    }
+    window.addEventListener('resize',resize);
+    init(); draw();
+  })();
+
+  // ARSR Simulator
+  (function(){
+    let asyncRst = 0, clk = 0, ff1 = 0, ff2 = 0;
+    let simTime = 0, lastRstChange = -999, isAuto = false;
+    const history = [], MAX_H = 300, VIO_WIN = 15;
+
+    const wCanvas = document.getElementById('waveCanvas');
+    const wCtx = wCanvas.getContext('2d');
+
+    function resize() {
+      wCanvas.width = wCanvas.parentElement.clientWidth;
+      wCanvas.height = 200;
+    }
+
+    function updateBadge(risk) {
+      const el = document.getElementById('statusBadge');
+      if (risk) {
+        el.textContent = 'METASTABLE RISK';
+        el.className = 'status-badge status-risk';
+        setTimeout(() => { if(el.textContent==='METASTABLE RISK'){ el.textContent='SAFE'; el.className='status-badge status-safe'; } }, 2500);
+      } else {
+        el.textContent = 'SAFE';
+        el.className = 'status-badge status-safe';
+      }
+    }
+
+    function handleClk() {
+      const delta = simTime - lastRstChange;
+      if (asyncRst === 0 && delta < VIO_WIN) updateBadge(true);
+      if (asyncRst === 0) { ff2 = ff1; ff1 = 0; }
+    }
+
+    window.toggleReset = function() {
+      asyncRst ^= 1;
+      lastRstChange = simTime;
+      if (asyncRst) { ff1 = 1; ff2 = 1; }
+      const btn = document.getElementById('btnRst');
+      btn.textContent = asyncRst ? 'Release Reset' : 'Assert Reset';
+      btn.style.background = asyncRst ? 'rgba(251,113,133,0.3)' : 'rgba(251,113,133,0.15)';
+    };
+
+    window.pulseClock = function() {
+      if (!clk) { clk = 1; handleClk(); }
+      else clk = 0;
+    };
+
+    window.toggleAuto = function() {
+      isAuto ^= 1;
+      const btn = document.getElementById('btnAuto');
+      btn.style.background = isAuto ? 'rgba(56,189,248,0.25)' : 'rgba(56,189,248,0.1)';
+    };
+
+    window.resetLab = function() {
+      asyncRst = clk = ff1 = ff2 = 0;
+      simTime = 0; lastRstChange = -999; isAuto = false;
+      history.length = 0;
+      document.getElementById('btnRst').textContent = 'Assert Reset';
+      document.getElementById('btnRst').style.background = 'rgba(251,113,133,0.15)';
+      document.getElementById('btnAuto').style.background = 'rgba(56,189,248,0.1)';
+      updateBadge(false);
+    };
+
+    function drawWaves() {
+      resize();
+      const w = wCanvas.width, h = wCanvas.height;
+      wCtx.clearRect(0,0,w,h);
+      const sw = w / MAX_H;
+      const lanes = [
+        { key:'clk',   y:40,  col:'#fbbf24' },
+        { key:'rst',   y:90,  col:'#fb7185' },
+        { key:'ff1',   y:140, col:'#a78bfa' },
+        { key:'ff2',   y:190, col:'#34d399' },
+      ];
+      lanes.forEach(ln => {
+        wCtx.strokeStyle = ln.col;
+        wCtx.lineWidth = 2;
+        wCtx.beginPath();
+        for (let i=0; i<history.length; i++) {
+          const v = history[i][ln.key];
+          const x = i * sw;
+          const y = v ? ln.y - 18 : ln.y + 5;
+          if (i===0) wCtx.moveTo(x,y);
+          else {
+            const pv = history[i-1][ln.key];
+            if (pv !== v) wCtx.lineTo(x, pv ? ln.y - 18 : ln.y + 5);
+            wCtx.lineTo(x, y);
+          }
+        }
+        wCtx.stroke();
+        wCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+        wCtx.lineWidth = 1;
+        wCtx.beginPath(); wCtx.moveTo(0,ln.y); wCtx.lineTo(w,ln.y); wCtx.stroke();
+      });
+    }
+
+    function tick() {
+      simTime++;
+      if (isAuto && simTime % 40 === 0) {
+        clk ^= 1;
+        if (clk) handleClk();
+      }
+      history.push({ clk, rst: asyncRst, ff1, ff2 });
+      if (history.length > MAX_H) history.shift();
+      drawWaves();
+      requestAnimationFrame(tick);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(tick);
+  })();
+
+  function toggleFaq(btn) {
+    btn.classList.toggle('open');
+    btn.nextElementSibling.classList.toggle('open');
+  }
+
+  document.getElementById('yr').textContent = new Date().getFullYear();
+</script>
 </body>
 </html>
