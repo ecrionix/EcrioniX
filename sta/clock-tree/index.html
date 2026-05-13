@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clock Tree Synthesis & Skew – STA Deep Dive | EcrioniX</title>
+  <meta name="description" content="Master Clock Tree Synthesis and clock skew in VLSI design. Covers H-tree topology, insertion delay, useful skew, CTS goals, clock gating, and how skew impacts setup and hold timing margins.">
+  <meta name="keywords" content="clock tree synthesis, CTS, clock skew, insertion delay, H-tree, useful skew, clock gating, setup hold, VLSI timing, static timing analysis, EcrioniX">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/sta/clock-tree/">
+  <meta property="og:title" content="Clock Tree Synthesis & Skew – STA Deep Dive | EcrioniX">
+  <meta property="og:description" content="Clock Tree Synthesis explained — H-tree topology, clock skew, insertion delay, useful skew, CTS flow, and interactive skew impact lab.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/sta/clock-tree/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Clock Tree Synthesis & Skew – STA Deep Dive | EcrioniX">
+  <meta name="twitter:description" content="Clock Tree Synthesis explained — H-tree topology, clock skew, insertion delay, useful skew, CTS flow, and interactive skew impact lab.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Clock Tree Synthesis and Clock Skew – STA Deep Dive","description":"Master Clock Tree Synthesis and clock skew in VLSI design. Covers H-tree topology, insertion delay, useful skew, CTS goals, clock gating cells, and how skew impacts setup and hold timing margins.","url":"https://ecrionix.org/sta/clock-tree/","dateModified":"2026-05-11","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"STA","item":"https://ecrionix.org/sta/"},{"@type":"ListItem","position":3,"name":"Clock Tree Synthesis & Skew","item":"https://ecrionix.org/sta/clock-tree/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is clock tree synthesis (CTS)?","acceptedAnswer":{"@type":"Answer","text":"Clock Tree Synthesis (CTS) is the process of distributing a single clock source to every flip-flop in a chip through a tree of buffers and inverters. The goal is to minimize clock skew (arrival time differences between flip-flops) and control clock insertion delay, slew rate, and power consumption."}},{"@type":"Question","name":"What is clock skew?","acceptedAnswer":{"@type":"Answer","text":"Clock skew is the difference in clock arrival time between two flip-flops connected by a timing path. It is caused by unequal buffer delays in the clock tree due to different routing lengths and cell placement. Positive skew (capture clock arrives later) helps setup but hurts hold. Negative skew hurts setup but helps hold."}},{"@type":"Question","name":"What is useful skew?","acceptedAnswer":{"@type":"Answer","text":"Useful skew is the intentional introduction of clock skew to improve timing margins. By making the capture clock arrive later (positive skew) on a critical setup-violating path, the effective clock period for that path is increased. This is done carefully because positive skew on setup tightens hold — hold must be fixed with buffers afterward."}},{"@type":"Question","name":"What is clock insertion delay?","acceptedAnswer":{"@type":"Answer","text":"Clock insertion delay (also called clock latency) is the time it takes for the clock signal to propagate from the clock source through the clock tree to a flip-flop's clock pin. It has two components: source latency (from PLL to the clock port) and network latency (from clock port through the buffer tree to the FF). STA accounts for both launch and capture latencies in timing checks."}},{"@type":"Question","name":"What is an H-tree clock topology?","acceptedAnswer":{"@type":"Answer","text":"An H-tree is a symmetric clock distribution structure where the clock is routed through wires that branch in an H-shape, ensuring equal wire length from the clock source to every leaf. This geometric symmetry minimizes clock skew before buffers are added. H-trees are used in high-performance designs like CPUs and GPUs where ultra-low skew is required."}},{"@type":"Question","name":"How does CTS affect setup and hold timing?","acceptedAnswer":{"@type":"Answer","text":"CTS affects both setup and hold margins through clock skew. Setup slack = T_period + T_skew - T_cq - T_comb - T_su. Positive skew improves setup slack. Hold slack = T_cq + T_comb_min - T_h - T_skew. The same positive skew that helps setup tightens hold. CTS engineers must balance skew targets so both setup and hold pass simultaneously across all corners."}}]}]}
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+      --border:rgba(148,163,184,0.1);--border-hover:rgba(45,212,191,0.4);
+      --teal:#2dd4bf;--teal-light:#5eead4;--teal-dim:rgba(45,212,191,0.12);
+      --amber:#fbbf24;--indigo:#6366f1;--indigo-light:#818cf8;
+      --rose:#fb7185;--green:#4ade80;--sky:#38bdf8;--violet:#a78bfa;
+      --text:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+    .mobile-menu a:last-child{border-bottom:none}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim)}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+    .breadcrumb a:hover{color:var(--teal-light)}
+    .breadcrumb span{color:var(--muted)}
+
+    .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+    .hero-tag{display:inline-block;background:var(--teal-dim);border:1px solid rgba(45,212,191,0.3);color:var(--teal);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--teal),#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+    .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+    .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--border);padding:.4rem .9rem;border-radius:100px}
+    .meta-pill svg{width:14px;height:14px;color:var(--teal);flex-shrink:0}
+
+    .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 5rem}
+    .section{margin-bottom:4rem}
+    .section-label{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-bottom:.4rem}
+    .section-title{font-size:clamp(1.3rem,2.5vw,1.7rem);font-weight:700;color:#fff;margin-bottom:.75rem}
+    .section-body{color:var(--muted);line-height:1.8;margin-bottom:1rem}
+    .section-body strong{color:var(--text)}
+
+    pre{background:rgba(15,23,42,0.8);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.25rem 0;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+    pre code{font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#e2e8f0;white-space:pre;display:block;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+
+    .formula{background:var(--teal-dim);border:1px solid rgba(45,212,191,0.25);border-left:3px solid var(--teal);border-radius:0 12px 12px 0;padding:1.25rem 1.5rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.9rem;color:var(--teal-light);line-height:1.9}
+    .formula span{color:var(--text);font-weight:600}
+
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem;margin:1.5rem 0}
+    .info-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+    .info-card:hover{border-color:var(--border-hover)}
+    .info-card h4{font-size:.95rem;font-weight:600;color:var(--teal-light);margin-bottom:.6rem}
+    .info-card p{font-size:.88rem;color:var(--muted);line-height:1.7}
+
+    .highlight-box{background:var(--teal-dim);border:1px solid rgba(45,212,191,0.25);border-left:3px solid var(--teal);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .highlight-box strong{color:var(--teal-light)}
+    .warn-box{background:rgba(251,113,133,0.06);border:1px solid rgba(251,113,133,0.2);border-left:3px solid var(--rose);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .warn-box strong{color:var(--rose)}
+    .amber-box{background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .amber-box strong{color:var(--amber)}
+    .green-box{background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-left:3px solid var(--green);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .green-box strong{color:var(--green)}
+
+    .data-table{width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:.88rem}
+    .data-table th{background:rgba(45,212,191,0.1);color:var(--teal-light);font-weight:600;padding:.8rem 1rem;text-align:left;border-bottom:2px solid rgba(45,212,191,0.3)}
+    .data-table td{padding:.75rem 1rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+    .data-table tr:hover td{background:rgba(45,212,191,0.03)}
+    .data-table code{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--teal-light)}
+    .badge{display:inline-block;font-size:.65rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .5rem;border-radius:4px}
+    .badge-good{background:rgba(74,222,128,0.15);color:#4ade80}
+    .badge-bad{background:rgba(251,113,133,0.15);color:#fb7185}
+    .badge-neutral{background:rgba(45,212,191,0.15);color:#2dd4bf}
+
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:1.5rem 0}
+    @media(max-width:640px){.two-col{grid-template-columns:1fr}}
+
+    .three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin:1.5rem 0}
+    @media(max-width:700px){.three-col{grid-template-columns:1fr}}
+
+    .lab-section{background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:2rem;margin:3rem 0}
+    .lab-title{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:var(--teal);letter-spacing:.08em;text-transform:uppercase;margin-bottom:.25rem}
+    .lab-sub{font-size:.88rem;color:var(--dim);margin-bottom:1.5rem}
+    .lab-canvas-wrap{background:rgba(2,6,23,0.8);border:1px solid var(--border);border-radius:12px;margin:1rem 0;overflow:hidden}
+    .slider-row{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.25rem}
+    @media(max-width:560px){.slider-row{grid-template-columns:1fr}}
+    .slider-group label{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);margin-bottom:.4rem}
+    .slider-group label span{font-family:'JetBrains Mono',monospace;color:var(--teal-light);font-size:.78rem}
+    input[type=range]{width:100%;height:4px;background:rgba(45,212,191,0.2);border-radius:4px;outline:none;appearance:none;cursor:pointer}
+    input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;background:var(--teal);border-radius:50%;cursor:pointer;border:2px solid var(--bg)}
+    .slack-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:1.25rem}
+    @media(max-width:560px){.slack-row{grid-template-columns:1fr 1fr}}
+    .slack-card{background:rgba(15,23,42,0.8);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.1rem}
+    .slack-label{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.3rem}
+    .slack-val{font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--teal)}
+    .slack-val.fail{color:var(--rose)}
+    .status-pill{display:inline-flex;align-items:center;gap:.5rem;font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.35rem 1rem;border-radius:100px;margin-top:.5rem}
+    .status-pass{background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);color:#4ade80}
+    .status-fail{background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.3);color:#fb7185}
+
+    .faq-list{display:flex;flex-direction:column;gap:.75rem;margin-top:1.5rem}
+    .faq-item{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .faq-q{width:100%;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.25rem;background:none;border:none;color:var(--text);font-size:.95rem;font-weight:600;text-align:left;cursor:pointer;font-family:'Outfit',sans-serif;transition:color .2s}
+    .faq-q:hover{color:var(--teal-light)}
+    .faq-icon{width:20px;height:20px;border-radius:50%;background:var(--teal-dim);border:1px solid rgba(45,212,191,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .3s;font-size:.75rem;color:var(--teal)}
+    .faq-item.open .faq-icon{transform:rotate(45deg)}
+    .faq-a{display:none;padding:0 1.25rem 1.1rem;color:var(--muted);font-size:.9rem;line-height:1.8}
+    .faq-item.open .faq-a{display:block}
+
+    .topic-nav{display:flex;gap:1rem;flex-wrap:wrap;margin:3rem 0 0}
+    .tnav-btn{display:flex;align-items:center;gap:.5rem;padding:.65rem 1.2rem;border-radius:10px;border:1px solid var(--border);color:var(--muted);text-decoration:none;font-size:.85rem;transition:all .2s}
+    .tnav-btn:hover{border-color:var(--border-hover);color:var(--teal-light)}
+    .tnav-btn.next{background:var(--teal-dim);border-color:rgba(45,212,191,0.3);color:var(--teal-light)}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrion<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/digital-electronics/">Digital</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/rtl_design/">RTL</a></li>
+      <li><a href="/sta/" class="active">STA</a></li>
+    </ul>
+    <button class="hamburger" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu">
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/sta/">STA</a>
+  </div>
+</nav>
+
+<nav class="breadcrumb">
+  <a href="/">Home</a><span>/</span>
+  <a href="/sta/">STA</a><span>/</span>
+  <span style="color:var(--teal-light)">Clock Tree Synthesis &amp; Skew</span>
+</nav>
+
+<header class="hero">
+  <div class="hero-tag">STA — Clock Distribution</div>
+  <h1>Clock Tree Synthesis<br><span>&amp; Clock Skew</span></h1>
+  <p>A chip with a billion transistors shares one clock source. Getting that signal to every flip-flop with controlled timing is Clock Tree Synthesis — one of the most critical steps in physical design. Skew, insertion delay, useful skew, and CTS topology choices directly determine whether your design meets setup and hold timing at every corner.</p>
+  <div class="hero-meta">
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      35 min read
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Physical Design / STA
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+      Interactive Lab
+    </div>
+  </div>
+</header>
+
+<main class="content">
+
+  <!-- 1. Why CTS -->
+  <section class="section">
+    <div class="section-label">Section 01</div>
+    <h2 class="section-title">Why the Clock Needs a Tree</h2>
+    <p class="section-body">In RTL simulation, a clock signal arrives simultaneously at every flip-flop. In silicon, it does not. A single wire from the PLL output to a million flip-flops would have an enormous <strong>fanout</strong> — the driving cell would need to charge the combined input capacitance of every FF simultaneously. That drive current would be enormous, the wire resistance would cause huge RC delay, and the signal would arrive wildly late and with a degraded slew rate.</p>
+    <p class="section-body">Clock Tree Synthesis solves this by inserting a <strong>balanced tree of buffers and inverters</strong> between the clock source and the flip-flops. Each buffer drives only a small number of downstream loads, the tree branches progressively, and the total delay from source to every leaf is made as equal as possible.</p>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>What CTS controls</h4>
+        <p>Insertion delay (total latency from source to FF clock pin), clock skew (arrival time difference between FFs), slew rate (transition time at each leaf), and fanout per buffer stage. All four are specified as CTS constraints before the tool runs.</p>
+      </div>
+      <div class="info-card">
+        <h4>What CTS cannot fix</h4>
+        <p>Floorplan problems that force clock wires to travel long distances, extremely high clock fanout from ungated always-on clocks, and fundamental setup violations caused by too-long combinational paths — these must be resolved before CTS.</p>
+      </div>
+    </div>
+
+    <div class="highlight-box"><strong>Key insight:</strong> CTS is run after placement and before routing in the physical design flow. At this point cell positions are fixed, so the tool knows exactly how far each FF is from the clock source and can size buffer stages to equalize arrival times.</div>
+  </section>
+
+  <!-- 2. Clock Tree Topologies -->
+  <section class="section">
+    <div class="section-label">Section 02</div>
+    <h2 class="section-title">Clock Tree Topologies</h2>
+    <p class="section-body">Different designs use different physical structures for the clock tree, each with trade-offs in skew, power, and routability.</p>
+
+    <div class="three-col">
+      <div class="info-card">
+        <h4>H-Tree</h4>
+        <p>Routes the clock through wires shaped like nested letter H. Each branch has the same wire length from the center, giving inherent geometric symmetry. Minimizes skew before any buffers are inserted. Used in high-performance regularchip blocks like SRAM, CPU cores, and FPGAs.</p>
+      </div>
+      <div class="info-card">
+        <h4>Balanced Binary Tree</h4>
+        <p>A standard buffer tree where each node drives exactly two children. CTS tools equalize delay by sizing buffers and adjusting wire lengths. Most common in ASIC design — tools like Innovus and ICC2 build this automatically from the placed netlist.</p>
+      </div>
+      <div class="info-card">
+        <h4>Mesh (Grid)</h4>
+        <p>A global metal grid is driven from multiple points, creating a low-impedance distributed clock network. Extremely low skew (near zero) because every point on the mesh is connected. Very high power due to large capacitance. Used in ultra-high-performance designs like server CPUs (Intel, AMD).</p>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Topology</th><th>Skew</th><th>Power</th><th>Routability</th><th>Typical use</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>H-Tree</strong></td>
+          <td><span class="badge badge-good">Very Low</span></td>
+          <td><span class="badge badge-good">Low</span></td>
+          <td>Requires regular layout</td>
+          <td>Memory, FPGA fabric, custom blocks</td>
+        </tr>
+        <tr>
+          <td><strong>Balanced Binary</strong></td>
+          <td><span class="badge badge-neutral">Low</span></td>
+          <td><span class="badge badge-neutral">Medium</span></td>
+          <td>Handles irregular floorplan</td>
+          <td>Standard ASIC, SoC design</td>
+        </tr>
+        <tr>
+          <td><strong>Mesh</strong></td>
+          <td><span class="badge badge-good">Near Zero</span></td>
+          <td><span class="badge badge-bad">Very High</span></td>
+          <td>Needs dedicated metal layers</td>
+          <td>High-performance server CPUs</td>
+        </tr>
+        <tr>
+          <td><strong>Hybrid</strong></td>
+          <td><span class="badge badge-good">Low</span></td>
+          <td><span class="badge badge-neutral">Medium</span></td>
+          <td>Moderate</td>
+          <td>Mixed-block SoCs with multiple clocks</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 3. Clock Skew -->
+  <section class="section">
+    <div class="section-label">Section 03</div>
+    <h2 class="section-title">Clock Skew — Definition and Types</h2>
+    <p class="section-body"><strong>Clock skew</strong> is the difference in clock arrival time between the launch flip-flop and the capture flip-flop on a timing path. It arises from differences in buffer delays, wire lengths, and RC parasitics through the clock tree branches connecting source to each leaf.</p>
+
+    <div class="formula">
+      <div><span>Skew</span> = T_clk_capture &minus; T_clk_launch</div>
+      <div style="margin-top:.5rem"><span>Positive skew:</span> capture clock arrives LATER than launch clock</div>
+      <div style="margin-top:.25rem"><span>Negative skew:</span> capture clock arrives EARLIER than launch clock</div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <p class="section-body" style="font-weight:600;color:var(--text)">Local Skew</p>
+        <p class="section-body">The skew between two flip-flops that are directly connected by a timing path (launch FF → capture FF). This is what STA tools analyze per-path. Local skew directly appears in setup and hold equations. Modern CTS targets local skew &lt; 50–100 ps at 7nm.</p>
+      </div>
+      <div>
+        <p class="section-body" style="font-weight:600;color:var(--text)">Global Skew</p>
+        <p class="section-body">The maximum skew across the entire clock domain — the difference between the latest and earliest clock arrival among all flip-flops. A useful health metric for the clock tree but not directly used in per-path STA. Global skew is always larger than local skew.</p>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Skew direction</th><th>Effect on Setup slack</th><th>Effect on Hold slack</th><th>Intuition</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Positive (+)</strong><br><small>Capture clock later</small></td>
+          <td><span class="badge badge-good">Improves</span></td>
+          <td><span class="badge badge-bad">Tightens</span></td>
+          <td>Data has more time to arrive before capture clock edge</td>
+        </tr>
+        <tr>
+          <td><strong>Negative (−)</strong><br><small>Capture clock earlier</small></td>
+          <td><span class="badge badge-bad">Tightens</span></td>
+          <td><span class="badge badge-good">Improves</span></td>
+          <td>Capture edge moves left — data must arrive sooner</td>
+        </tr>
+        <tr>
+          <td><strong>Zero</strong></td>
+          <td><span class="badge badge-neutral">Neutral</span></td>
+          <td><span class="badge badge-neutral">Neutral</span></td>
+          <td>Ideal CTS target — balanced tree</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="warn-box"><strong>The skew trade-off:</strong> Any skew that helps setup simultaneously hurts hold by the same amount. You cannot improve both simultaneously through skew alone. Hold violations introduced by positive (useful) skew must be fixed by inserting delay buffers on the data path.</div>
+  </section>
+
+  <!-- 4. Insertion Delay (Latency) -->
+  <section class="section">
+    <div class="section-label">Section 04</div>
+    <h2 class="section-title">Clock Insertion Delay (Clock Latency)</h2>
+    <p class="section-body"><strong>Clock insertion delay</strong> is the total propagation time from the clock source to a flip-flop's clock pin, measured through the PLL, clock network, and buffer tree. It has two components that STA treats separately.</p>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>Source Latency</h4>
+        <p>The delay from the PLL or oscillator output to the clock definition point in the design (usually the top-level clock port). This includes off-chip PCB traces, package inductance, and on-chip wiring from the pad to the first clock buffer. Specified in SDC using <code>set_clock_latency -source</code>.</p>
+      </div>
+      <div class="info-card">
+        <h4>Network Latency</h4>
+        <p>The delay from the clock definition port through all clock buffers and inverters in the clock tree to the flip-flop's clock pin. This is what CTS physically builds. After CTS, the tool annotates actual network latency from extraction. Before CTS, an ideal clock model is used with zero or estimated latency.</p>
+      </div>
+    </div>
+
+    <div class="formula">
+      <div><span>Total Clock Latency</span> = Source Latency + Network Latency</div>
+      <div style="margin-top:.5rem"><span>Setup check (simplified):</span></div>
+      <div style="margin-top:.25rem">&nbsp;&nbsp;T_launch_clk + T_cq + T_comb + T_su &le; T_capture_clk + T_period</div>
+      <div style="margin-top:.25rem">&nbsp;&nbsp;where T_launch_clk and T_capture_clk include full clock latency to each FF</div>
+    </div>
+
+    <div class="highlight-box"><strong>Why latency matters for sign-off:</strong> Before CTS, SDC uses <code>set_clock_latency</code> estimates. After CTS, the actual annotated latency is used. If estimated and actual latencies differ significantly, timing that passed pre-CTS may fail post-CTS. Always re-run STA with propagated clocks after CTS.</div>
+
+    <pre><code># SDC: specify clock latency before CTS
+set_clock_latency -source 0.5 [get_clocks CLK]   ;# source: PLL to port
+set_clock_latency 1.2 [get_clocks CLK]            ;# network: estimated tree delay
+
+# After CTS: use propagated clocks (actual network delay from extraction)
+set_propagated_clocks [all_clocks]</code></pre>
+  </section>
+
+  <!-- 5. CTS Goals and Flow -->
+  <section class="section">
+    <div class="section-label">Section 05</div>
+    <h2 class="section-title">CTS Goals, Constraints, and Flow</h2>
+    <p class="section-body">Before running CTS, the designer specifies a set of targets that the tool must meet. These are set as CTS constraints in the tool's configuration or in the SDC.</p>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Constraint</th><th>Typical target</th><th>What happens if violated</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Max clock skew</strong></td>
+          <td>50–150 ps (7nm–28nm)</td>
+          <td>Setup/hold timing margin is reduced; failing paths may appear</td>
+        </tr>
+        <tr>
+          <td><strong>Max insertion delay</strong></td>
+          <td>500 ps – 2 ns</td>
+          <td>Data path timing uses higher latency in STA, may cause setup failures</td>
+        </tr>
+        <tr>
+          <td><strong>Max slew (transition time)</strong></td>
+          <td>100–300 ps</td>
+          <td>Slow slew increases noise susceptibility and clock-to-Q delay</td>
+        </tr>
+        <tr>
+          <td><strong>Max fanout per buffer</strong></td>
+          <td>8–20 FFs</td>
+          <td>Too high fanout degrades slew; too low wastes buffer area and power</td>
+        </tr>
+        <tr>
+          <td><strong>Max capacitance per node</strong></td>
+          <td>Per-cell library limit</td>
+          <td>Excessive load slows the buffer, degrading slew and delay</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="section-body">The CTS flow runs in these steps:</p>
+
+    <pre><code>1. Clock tree specification
+   └── Define: clock roots, exceptions (don't-touch cells, clock gating),
+               skew targets, slew targets, buffer/inverter cell list
+
+2. Virtual tree construction
+   └── Tool builds a virtual balanced tree ignoring physical layout
+
+3. Physical tree construction
+   └── Cells are placed, wires are routed (in-CTS routing)
+   └── Buffer sizes are chosen to match delays across branches
+
+4. Clock tree optimization (CTO)
+   └── Iterative fixing of skew hotspots, slew violations,
+       max-fanout violations
+
+5. Post-CTS timing analysis
+   └── STA with propagated clocks (actual annotated delays)
+   └── Fix remaining setup/hold violations from skew imbalance
+
+6. Incremental CTS for ECO
+   └── Fix specific skew issues without re-running full CTS</code></pre>
+  </section>
+
+  <!-- 6. Clock Gating in CTS -->
+  <section class="section">
+    <div class="section-label">Section 06</div>
+    <h2 class="section-title">Clock Gating Cells in the Clock Tree</h2>
+    <p class="section-body">Clock gating is the most effective technique for reducing dynamic power in VLSI chips — by stopping the clock to idle registers, switching activity drops to near zero for those flip-flops. However, inserting clock gates into the clock tree has direct implications for CTS and timing.</p>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>Integrated Clock Gating (ICG) Cell</h4>
+        <p>An ICG cell is a latch-based AND gate designed specifically for clock gating. The latch samples the enable signal on the clock's low phase, and the AND gate combines the latched enable with the clock. The latch eliminates glitches that a plain AND gate would produce when the enable changes while the clock is high.</p>
+      </div>
+      <div class="info-card">
+        <h4>ICG placement in the tree</h4>
+        <p>ICG cells are treated as part of the clock tree. CTS must balance clock arrival time through ICG cells just as it balances through regular buffers. An ICG cell adds its own insertion delay (typically 50–150 ps), which must be accounted for in setup and hold analysis for all flip-flops downstream of the gate.</p>
+      </div>
+    </div>
+
+    <pre><code>// RTL clock gating — synthesized into ICG cell
+always_ff @(posedge clk) begin
+  if (en) data_reg <= data_in;   // synthesis tool infers ICG
+end
+
+// Or explicit ICG instantiation in RTL
+ICGX1 u_icg (.CLK(clk), .EN(enable), .SE(scan_en), .GCLK(gated_clk));
+
+// Downstream FFs use gated_clk — they stop switching when enable = 0</code></pre>
+
+    <div class="amber-box"><strong>CTS exception for ICG:</strong> Clock gates must be marked as <code>clock_gating_check</code> in SDC or as special cells in the CTS spec. If not, the tool may balance through them incorrectly, causing unexpected skew on downstream flip-flop clusters.</div>
+
+    <p class="section-body">During scan test mode, the <strong>SE (Scan Enable)</strong> pin of the ICG forces the gate open so the scan clock can propagate to all FFs — critical for structural DFT test coverage.</p>
+  </section>
+
+  <!-- 7. Useful Skew -->
+  <section class="section">
+    <div class="section-label">Section 07</div>
+    <h2 class="section-title">Useful Skew — Intentional Timing Slack</h2>
+    <p class="section-body"><strong>Useful skew</strong> is the deliberate introduction of unequal clock arrival times to improve timing margins on specific critical paths. Instead of targeting zero skew everywhere, the CTS tool or timing engineer intentionally delays the capture clock on a setup-critical path — effectively giving data more time to travel through the combinational logic.</p>
+
+    <div class="formula">
+      <div><span>Setup slack</span> = T_period + <span>T_skew</span> &minus; T_cq &minus; T_comb &minus; T_su</div>
+      <div style="margin-top:.5rem">Adding positive T_skew directly adds to setup slack</div>
+      <div style="margin-top:.75rem"><span>Hold slack</span> = T_cq + T_comb_min &minus; T_h &minus; <span>T_skew</span></div>
+      <div style="margin-top:.5rem">The same positive T_skew subtracts from hold slack</div>
+    </div>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>When to use useful skew</h4>
+        <p>When a timing path has negative setup slack that cannot be fixed by gate sizing or logic restructuring — typically late in the design cycle when netlist changes are risky. Also used at the block level to trade slack from paths with positive margin to paths that are failing.</p>
+      </div>
+      <div class="info-card">
+        <h4>Useful skew risks</h4>
+        <p>Every ps of positive skew added for setup removes 1 ps from hold margin for the same path pair. Aggressive useful skew can cause hold violations in the FF/FF path, requiring hold buffer insertion — which increases area, power, and routing congestion.</p>
+      </div>
+    </div>
+
+    <div class="green-box"><strong>Useful skew in tools:</strong> PrimeTime and Tempus support useful skew optimization via <code>set_clock_skew</code> or through CTS-aware timing optimization (CCOPT in Innovus). The tool automatically balances setup gain against hold risk, inserting hold buffers as needed.</div>
+  </section>
+
+  <!-- 8. CTS and STA interaction -->
+  <section class="section">
+    <div class="section-label">Section 08</div>
+    <h2 class="section-title">How Skew Appears in STA Reports</h2>
+    <p class="section-body">After CTS, every timing path report from tools like PrimeTime includes the clock arrival times for both the launch and capture flip-flops. The skew is visible as the difference between these two numbers.</p>
+
+    <pre><code>  Timing Path Report — Setup Check
+  ─────────────────────────────────────────────────────────
+  Path:  FF_A/Q  →  [comb logic]  →  FF_B/D
+
+  Data path:
+    FF_A clock-to-Q               0.18 ns
+    Combinational delay           0.62 ns
+    FF_B setup time               0.05 ns
+    ──────────────────────────────────────
+    Data required arrival         0.85 ns
+
+  Clock path:
+    Clock source (PLL out)        0.00 ns
+    Buffer BUF1                   0.15 ns
+    Buffer BUF2 (launch, FF_A)    0.38 ns   ← launch latency
+    Buffer BUF3 (capture, FF_B)   0.46 ns   ← capture latency
+
+    Clock period                  1.00 ns
+    Capture edge                  1.46 ns   (1.00 + 0.46)
+
+    Skew = 0.46 − 0.38 = +0.08 ns (positive — helps setup)
+
+  Setup slack = 1.46 − 0.85 = +0.61 ns  ✓ PASS</code></pre>
+
+    <div class="highlight-box"><strong>Reading skew from STA:</strong> Launch clock latency is subtracted; capture clock latency is added to the required time. A positive skew (capture &gt; launch latency) adds to the window available for data, improving setup slack. Always check the hold path after seeing positive skew — it costs the same amount on hold.</div>
+  </section>
+
+  <!-- 9. Common CTS Problems -->
+  <section class="section">
+    <div class="section-label">Section 09</div>
+    <h2 class="section-title">Common CTS Problems and Fixes</h2>
+
+    <table class="data-table">
+      <thead>
+        <tr><th>Problem</th><th>Root cause</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>High local skew on critical path</strong></td>
+          <td>Unequal buffer stages or wire length to launch vs capture FF</td>
+          <td>Add/resize buffers on the shorter branch to equalize delay; use useful skew carefully</td>
+        </tr>
+        <tr>
+          <td><strong>Clock slew violation</strong></td>
+          <td>Too much capacitance on a clock node (high fanout or long wire)</td>
+          <td>Insert additional buffer stage to reduce per-buffer load; upsize buffer drive strength</td>
+        </tr>
+        <tr>
+          <td><strong>Hold violations post-CTS</strong></td>
+          <td>Positive skew from CTS or useful skew tightened hold margin below zero</td>
+          <td>Insert delay buffers (filler buffers) on the data path of the violating paths</td>
+        </tr>
+        <tr>
+          <td><strong>Clock tree power too high</strong></td>
+          <td>Overly deep buffer tree or insufficient clock gating</td>
+          <td>Add clock gating (ICG) on idle register banks; target minimum insertion delay in CTS spec</td>
+        </tr>
+        <tr>
+          <td><strong>Skew mismatch between corners</strong></td>
+          <td>Different RC extraction or cell delay at SS vs FF corner</td>
+          <td>Run CTS with worst-case extraction; use AOCV/POCV derating on clock tree cells</td>
+        </tr>
+        <tr>
+          <td><strong>Post-route skew degradation</strong></td>
+          <td>Clock wires re-routed during detailed routing, changing RC</td>
+          <td>Use clock net shielding and NDR (Non-Default Rules) for clock wires; re-run CTO post-route</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Interactive Lab -->
+  <div class="lab-section">
+    <div class="lab-title">Interactive Lab — Clock Skew Impact Simulator</div>
+    <div class="lab-sub">Adjust clock skew and data path delay. See in real time how skew shifts setup and hold slack, and where violations occur.</div>
+
+    <div class="lab-canvas-wrap">
+      <canvas id="skew-canvas" width="800" height="240" style="width:100%;display:block"></canvas>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-group">
+        <label>Clock Skew (ps) <span id="lbl-skew">0 ps</span></label>
+        <input type="range" id="sl-skew" min="-200" max="200" value="0" oninput="updateSkewLab()">
+      </div>
+      <div class="slider-group">
+        <label>Combinational Delay (ps) <span id="lbl-comb">400 ps</span></label>
+        <input type="range" id="sl-comb" min="100" max="700" value="400" oninput="updateSkewLab()">
+      </div>
+    </div>
+
+    <div class="slack-row">
+      <div class="slack-card">
+        <div class="slack-label">Setup Slack</div>
+        <div class="slack-val" id="skew-setup">+100 ps</div>
+      </div>
+      <div class="slack-card">
+        <div class="slack-label">Hold Slack</div>
+        <div class="slack-val" id="skew-hold">+30 ps</div>
+      </div>
+      <div class="slack-card">
+        <div class="slack-label">Status</div>
+        <div id="skew-status" class="status-pill status-pass">&#10003; PASS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <section class="section">
+    <div class="section-label">Section 10</div>
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is the difference between clock skew and clock jitter?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">Clock skew is a <em>spatial</em> effect — the fixed difference in clock arrival time between two physical flip-flops caused by unequal clock tree delays. It is deterministic and reproducible for a given design. Clock jitter is a <em>temporal</em> effect — the cycle-to-cycle variation in the clock period caused by PLL noise, supply noise, and thermal variation. Jitter changes every clock cycle and is modeled statistically. STA accounts for both: skew appears in the path timing equations, jitter is subtracted from the available clock period as an uncertainty budget.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          Why does positive skew help setup but hurt hold?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">Setup checks that data arrives before the capture clock edge. If the capture clock is delayed (positive skew), the deadline moves later — data has more time, so setup slack increases. Hold checks that data does not change too soon after the capture clock edge. The same delayed capture clock edge means the hold window starts later, and the data path (which launches from the fixed launch FF) may already be changing when the window opens — reducing hold slack. Both are governed by the same skew term appearing with opposite signs in the setup and hold equations.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is an H-tree and why does it minimize skew?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">An H-tree is a clock routing structure where the clock travels from a center point through wires forming a letter H, then each endpoint fans out through another H, recursively. At every level, both left and right branches are identical wire lengths. This geometric symmetry means the RC delay from the center to every leaf point is identical — before any buffers are inserted. H-trees are used in memory arrays and custom datapath blocks where the regular grid layout makes them practical. In irregular ASIC floorplans, H-trees are not practical because the floorplan does not have the geometric regularity needed.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is the difference between pre-CTS and post-CTS timing?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">Pre-CTS timing uses an ideal clock model: zero insertion delay, zero skew, and no clock tree. This is how all RTL synthesis and early physical implementation timing is analyzed. Post-CTS timing uses propagated clocks: actual cell delays and wire RC from extraction are annotated onto the clock tree, so real insertion delay and real skew appear in every path's timing. A design that meets timing pre-CTS may fail post-CTS if clock latency is higher than the estimated SDC value, or if skew is larger than assumed. Post-CTS signoff timing is the authoritative result.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          How does scan test affect the clock tree?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">During scan test mode, the Scan Enable (SE) signal forces all ICG (clock gating) cells open, allowing the test clock to reach every flip-flop regardless of the functional enable signals. CTS must ensure the scan clock also meets slew and fanout requirements through the ICG cells. At-speed test (ATPG) requires the scan shift clock to propagate with the same timing as the functional clock — so the clock tree must work correctly in both functional and scan modes. CTS constraints usually include a scan_mode scenario to verify this.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What are NDR rules in clock routing?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">Non-Default Rules (NDR) are special routing rules applied to clock nets to make them more robust than data nets. Typical NDR rules for clocks use double-width wires (reducing resistance) and double-spacing between clock wires and neighboring wires (reducing capacitive coupling noise). Clock nets may also use shielding — grounded wires on both sides of the clock wire — to prevent switching noise from data nets from coupling into the clock signal and causing jitter or glitches. NDR rules increase clock wire area but are essential for clock integrity at advanced nodes.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="topic-nav">
+    <a href="/sta/" class="tnav-btn">&#8592; STA Hub</a>
+    <a href="/sta/setup-hold/" class="tnav-btn next">Setup &amp; Hold Time &#8594;</a>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  const c=document.getElementById('bg-canvas');
+  const ctx=c.getContext('2d');
+  let W,H,pts=[];
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  const N=70;
+  for(let i=0;i<N;i++)pts.push({x:Math.random()*1600%window.innerWidth,y:Math.random()*1200%window.innerHeight,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3});
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<N;i++){
+      const p=pts[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+      ctx.beginPath();ctx.arc(p.x,p.y,1.5,0,2*Math.PI);
+      ctx.fillStyle='rgba(45,212,191,0.35)';ctx.fill();
+      for(let j=i+1;j<N;j++){
+        const q=pts[j],d=Math.hypot(p.x-q.x,p.y-q.y);
+        if(d<110){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+          ctx.strokeStyle=`rgba(45,212,191,${.12*(1-d/110)})`;ctx.lineWidth=.5;ctx.stroke();}
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+function toggleFaq(btn){
+  const item=btn.parentElement;
+  const wasOpen=item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(i=>i.classList.remove('open'));
+  if(!wasOpen)item.classList.add('open');
+}
+
+// Constants (ps)
+const T_PERIOD = 500;
+const T_CQ     = 50;
+const T_SU     = 40;
+const T_HOLD   = 25;
+const T_COMB_MIN_RATIO = 0.25; // min path = 25% of comb delay
+
+function updateSkewLab() {
+  const skew = parseInt(document.getElementById('sl-skew').value);
+  const comb = parseInt(document.getElementById('sl-comb').value);
+
+  document.getElementById('lbl-skew').textContent = (skew >= 0 ? '+' : '') + skew + ' ps';
+  document.getElementById('lbl-comb').textContent = comb + ' ps';
+
+  const combMin = Math.round(comb * T_COMB_MIN_RATIO);
+
+  // Setup slack = T_period + skew - T_cq - comb - T_su
+  const setupSlack = T_PERIOD + skew - T_CQ - comb - T_SU;
+  // Hold slack = T_cq + combMin - T_hold - skew
+  const holdSlack  = T_CQ + combMin - T_HOLD - skew;
+
+  const ssEl = document.getElementById('skew-setup');
+  const hsEl = document.getElementById('skew-hold');
+  const stEl = document.getElementById('skew-status');
+
+  ssEl.textContent = (setupSlack >= 0 ? '+' : '') + setupSlack + ' ps';
+  ssEl.className = 'slack-val' + (setupSlack < 0 ? ' fail' : '');
+
+  hsEl.textContent = (holdSlack >= 0 ? '+' : '') + holdSlack + ' ps';
+  hsEl.className = 'slack-val' + (holdSlack < 0 ? ' fail' : '');
+
+  if (setupSlack < 0 || holdSlack < 0) {
+    stEl.className = 'status-pill status-fail';
+    stEl.innerHTML = '&#10007; VIOLATION';
+  } else {
+    stEl.className = 'status-pill status-pass';
+    stEl.innerHTML = '&#10003; PASS';
+  }
+
+  drawSkewCanvas(skew, comb, setupSlack, holdSlack);
+}
+
+function drawSkewCanvas(skew, comb, setupSlack, holdSlack) {
+  const canvas = document.getElementById('skew-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width / (window.devicePixelRatio || 1);
+  const H = canvas.height / (window.devicePixelRatio || 1);
+
+  ctx.save();
+  ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, W, H);
+
+  const margin = 60;
+  const drawW = W - margin * 2;
+  const midY = H / 2;
+
+  // --- Draw clock source box ---
+  const srcX = margin;
+  const srcY = midY - 20;
+  ctx.fillStyle = 'rgba(45,212,191,0.15)';
+  ctx.strokeStyle = 'rgba(45,212,191,0.5)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, srcX - 30, srcY, 60, 40, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#5eead4';
+  ctx.font = '10px Orbitron, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('CLK', srcX, midY + 5);
+
+  // Branch point
+  const branchX = margin + drawW * 0.22;
+
+  // --- Launch branch (upper) ---
+  const launchY = midY - 55;
+  const launchFFX = margin + drawW * 0.42;
+
+  // Wire from src to branch
+  ctx.strokeStyle = 'rgba(45,212,191,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(srcX + 30, midY); ctx.lineTo(branchX, midY); ctx.stroke();
+
+  // Wire up to launch level
+  ctx.beginPath(); ctx.moveTo(branchX, midY); ctx.lineTo(branchX, launchY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(branchX, launchY); ctx.lineTo(launchFFX - 30, launchY); ctx.stroke();
+
+  // Buffer on launch path
+  drawBuffer(ctx, (branchX + launchFFX - 30) / 2, launchY, '#2dd4bf');
+
+  // Launch FF box
+  const launchColor = '#2dd4bf';
+  ctx.fillStyle = 'rgba(45,212,191,0.12)';
+  ctx.strokeStyle = launchColor;
+  roundRect(ctx, launchFFX - 30, launchY - 20, 60, 40, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = launchColor;
+  ctx.font = '9px Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('FF_A', launchFFX, launchY - 4);
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('T_lat=0', launchFFX, launchY + 10);
+
+  // --- Capture branch (lower) ---
+  const captureY = midY + 55;
+  const captureFFX = margin + drawW * 0.42;
+
+  // Skew offset: positive skew = capture clock delayed = extra buffer on capture branch
+  const skewColor = skew > 0 ? '#fbbf24' : skew < 0 ? '#fb7185' : '#64748b';
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+  ctx.beginPath(); ctx.moveTo(branchX, midY); ctx.lineTo(branchX, captureY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(branchX, captureY); ctx.lineTo(captureFFX - 30, captureY); ctx.stroke();
+
+  // Buffer on capture path
+  drawBuffer(ctx, (branchX + captureFFX - 30) / 2, captureY, skewColor);
+
+  // Skew label on capture wire
+  if (skew !== 0) {
+    ctx.fillStyle = skewColor;
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText((skew > 0 ? '+' : '') + skew + 'ps skew', (branchX + captureFFX - 30) / 2, captureY - 10);
+  }
+
+  // Capture FF box
+  const captureColor = '#94a3b8';
+  ctx.fillStyle = 'rgba(148,163,184,0.08)';
+  ctx.strokeStyle = captureColor;
+  roundRect(ctx, captureFFX - 30, captureY - 20, 60, 40, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = captureColor;
+  ctx.font = '9px Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('FF_B', captureFFX, captureY - 4);
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('T_lat=' + (skew > 0 ? '+' : '') + skew, captureFFX, captureY + 10);
+
+  // --- Data path arrow ---
+  const dataStartX = launchFFX + 30;
+  const dataEndX   = W - margin - 30;
+  const dataY      = launchY;
+
+  ctx.strokeStyle = setupSlack < 0 ? 'rgba(251,113,133,0.7)' : 'rgba(45,212,191,0.5)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  ctx.moveTo(dataStartX, dataY);
+  ctx.lineTo(dataEndX, dataY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Arrow head
+  ctx.fillStyle = setupSlack < 0 ? '#fb7185' : '#2dd4bf';
+  ctx.beginPath();
+  ctx.moveTo(dataEndX + 6, dataY);
+  ctx.lineTo(dataEndX - 4, dataY - 5);
+  ctx.lineTo(dataEndX - 4, dataY + 5);
+  ctx.fill();
+
+  ctx.fillStyle = setupSlack < 0 ? '#fb7185' : '#5eead4';
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('comb=' + comb + 'ps', (dataStartX + dataEndX) / 2, dataY - 8);
+
+  // Capture FF_B (right side — where data arrives)
+  const capRightX = dataEndX + 30;
+  ctx.fillStyle = holdSlack < 0 ? 'rgba(251,113,133,0.1)' : 'rgba(148,163,184,0.08)';
+  ctx.strokeStyle = holdSlack < 0 ? '#fb7185' : '#94a3b8';
+  roundRect(ctx, capRightX - 30, captureY - 20, 60, 40, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = holdSlack < 0 ? '#fb7185' : '#94a3b8';
+  ctx.font = '9px Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('FF_B', capRightX, captureY - 4);
+
+  // Data wire connecting to capture FF
+  ctx.strokeStyle = setupSlack < 0 ? 'rgba(251,113,133,0.4)' : 'rgba(45,212,191,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(dataEndX + 6, dataY);
+  ctx.lineTo(capRightX - 30, captureY - 20 + 20);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Clock wire to right capture FF
+  ctx.strokeStyle = 'rgba(148,163,184,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(captureFFX + 30, captureY);
+  ctx.lineTo(capRightX - 30, captureY);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawBuffer(ctx, x, y, color) {
+  ctx.fillStyle = color + '22';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y - 8);
+  ctx.lineTo(x + 10, y);
+  ctx.lineTo(x - 10, y + 8);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function initCanvas() {
+  const canvas = document.getElementById('skew-canvas');
+  const wrap = canvas.parentElement;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = wrap.clientWidth * ratio;
+  canvas.height = 240 * ratio;
+  canvas.style.width = wrap.clientWidth + 'px';
+  canvas.style.height = '240px';
+  updateSkewLab();
+}
+
+window.addEventListener('load', initCanvas);
+window.addEventListener('resize', initCanvas);
+</script>
+
+<footer style="background:#0f172a;border-top:1px solid rgba(148,163,184,0.1);padding:1.5rem 1.25rem;text-align:center;">
+  <p style="font-size:0.82rem;color:#64748b;margin-bottom:0.75rem;">
+    <a href="/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">Home</a>
+    <a href="/about/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">About</a>
+    <a href="/contact/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">Contact</a>
+    <a href="/legal/privacy.html" style="color:#64748b;text-decoration:none;">Privacy Policy</a>
+  </p>
+  <p style="font-size:0.78rem;color:#475569;">&copy; <span id="ecrionix-year"></span> EcrioniX. All rights reserved.</p>
+</footer>
+<script>document.getElementById('ecrionix-year').textContent = new Date().getFullYear();</script>
+<script src="/cookie-consent.js"></script>
+</body>
+</html>
