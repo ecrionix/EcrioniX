@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDC Constraints & Timing Exceptions – STA Deep Dive | EcrioniX</title>
+  <meta name="description" content="Master Synopsys Design Constraints (SDC) for Static Timing Analysis. Covers create_clock, set_input_delay, set_output_delay, false paths, multicycle paths, case analysis, and an interactive SDC constraint builder.">
+  <meta name="keywords" content="SDC constraints, synopsys design constraints, create_clock, set_input_delay, false path, multicycle path, timing exceptions, STA, static timing analysis, VLSI, EcrioniX">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/sta/sdc/">
+  <meta property="og:title" content="SDC Constraints & Timing Exceptions – STA Deep Dive | EcrioniX">
+  <meta property="og:description" content="Complete guide to SDC constraints — create_clock, I/O delays, false paths, multicycle paths, case analysis, and interactive SDC builder.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/sta/sdc/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="SDC Constraints & Timing Exceptions – STA Deep Dive | EcrioniX">
+  <meta name="twitter:description" content="Complete guide to SDC constraints — create_clock, I/O delays, false paths, multicycle paths, case analysis, and interactive SDC builder.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"SDC Constraints and Timing Exceptions – STA Deep Dive","description":"Master Synopsys Design Constraints (SDC) for Static Timing Analysis. Covers create_clock, set_input_delay, set_output_delay, false paths, multicycle paths, case analysis, and interactive SDC constraint builder.","url":"https://ecrionix.org/sta/sdc/","dateModified":"2026-05-13","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"STA","item":"https://ecrionix.org/sta/"},{"@type":"ListItem","position":3,"name":"SDC Constraints","item":"https://ecrionix.org/sta/sdc/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is an SDC file?","acceptedAnswer":{"@type":"Answer","text":"An SDC (Synopsys Design Constraints) file is a Tcl-based file that tells STA and synthesis tools about the timing environment of your design — clock definitions, I/O delays, timing exceptions, and operating conditions. Without an SDC file, the tool has no knowledge of your clock frequency, external timing requirements, or which paths are safe to skip, and cannot perform meaningful timing analysis."}},{"@type":"Question","name":"What is the difference between false path and multicycle path?","acceptedAnswer":{"@type":"Answer","text":"A false path is a timing path that can never be activated in real operation — the logic combination that sensitizes it is structurally impossible. STA skips it entirely. A multicycle path is a real, functional path where data intentionally takes more than one clock cycle to travel from launch to capture, because the design protocol guarantees the capture FF does not sample until N cycles later. Both are timing exceptions but for different reasons."}},{"@type":"Question","name":"What does set_input_delay do?","acceptedAnswer":{"@type":"Answer","text":"set_input_delay tells the STA tool how much of the clock period is already consumed by the external logic driving a primary input port before the signal reaches your chip's input pin. The tool subtracts this from the available timing budget for the input-to-register path inside your design. Without it, STA assumes input signals arrive at time zero — giving your internal logic the full clock period, which is usually optimistic."}},{"@type":"Question","name":"What is case analysis in STA?","acceptedAnswer":{"@type":"Answer","text":"Case analysis (set_case_analysis) forces a net or port to a constant logic value for the purpose of timing analysis. It is used to model operating modes — for example, forcing the scan_en signal to 0 for functional analysis or forcing a mode-select mux input to analyze only one functional path. It prevents STA from analyzing paths through a mux input that is always constant in the real use case."}},{"@type":"Question","name":"What is create_generated_clock?","acceptedAnswer":{"@type":"Answer","text":"create_generated_clock defines a clock that is derived from an existing master clock through a clock divider, multiplier, or mux inside the design. It tells the STA tool the relationship between the generated clock and its source so it can correctly analyze CDC paths between the two clock domains and apply the right timing checks at the generated clock's flip-flops."}}]}]}
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+      --border:rgba(148,163,184,0.1);--border-hover:rgba(45,212,191,0.4);
+      --teal:#2dd4bf;--teal-light:#5eead4;--teal-dim:rgba(45,212,191,0.12);
+      --amber:#fbbf24;--indigo:#6366f1;--indigo-light:#818cf8;
+      --rose:#fb7185;--green:#4ade80;--sky:#38bdf8;--violet:#a78bfa;
+      --text:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+    .mobile-menu a:last-child{border-bottom:none}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim)}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+    .breadcrumb a:hover{color:var(--teal-light)}
+    .breadcrumb span{color:var(--muted)}
+
+    .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+    .hero-tag{display:inline-block;background:var(--teal-dim);border:1px solid rgba(45,212,191,0.3);color:var(--teal);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--teal),#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+    .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+    .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--border);padding:.4rem .9rem;border-radius:100px}
+    .meta-pill svg{width:14px;height:14px;color:var(--teal);flex-shrink:0}
+
+    .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 5rem}
+    .section{margin-bottom:4rem}
+    .section-label{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-bottom:.4rem}
+    .section-title{font-size:clamp(1.3rem,2.5vw,1.7rem);font-weight:700;color:#fff;margin-bottom:.75rem}
+    .section-body{color:var(--muted);line-height:1.8;margin-bottom:1rem}
+    .section-body strong{color:var(--text)}
+
+    pre{background:rgba(15,23,42,0.8);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;overflow-x:auto;margin:1.25rem 0}
+    pre code{font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#e2e8f0;white-space:pre;display:block}
+
+    .formula{background:var(--teal-dim);border:1px solid rgba(45,212,191,0.25);border-left:3px solid var(--teal);border-radius:0 12px 12px 0;padding:1.25rem 1.5rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.9rem;color:var(--teal-light);line-height:1.9}
+    .formula span{color:var(--text);font-weight:600}
+
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem;margin:1.5rem 0}
+    .info-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+    .info-card:hover{border-color:var(--border-hover)}
+    .info-card h4{font-size:.95rem;font-weight:600;color:var(--teal-light);margin-bottom:.6rem}
+    .info-card p{font-size:.88rem;color:var(--muted);line-height:1.7}
+
+    .highlight-box{background:var(--teal-dim);border:1px solid rgba(45,212,191,0.25);border-left:3px solid var(--teal);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .highlight-box strong{color:var(--teal-light)}
+    .warn-box{background:rgba(251,113,133,0.06);border:1px solid rgba(251,113,133,0.2);border-left:3px solid var(--rose);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .warn-box strong{color:var(--rose)}
+    .amber-box{background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .amber-box strong{color:var(--amber)}
+    .green-box{background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-left:3px solid var(--green);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted)}
+    .green-box strong{color:var(--green)}
+
+    .data-table{width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:.88rem}
+    .data-table th{background:rgba(45,212,191,0.1);color:var(--teal-light);font-weight:600;padding:.8rem 1rem;text-align:left;border-bottom:2px solid rgba(45,212,191,0.3)}
+    .data-table td{padding:.75rem 1rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+    .data-table tr:hover td{background:rgba(45,212,191,0.03)}
+    .data-table code{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--teal-light)}
+    .badge{display:inline-block;font-size:.65rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .5rem;border-radius:4px}
+    .badge-skip{background:rgba(251,113,133,0.15);color:#fb7185}
+    .badge-relax{background:rgba(251,191,36,0.15);color:#fbbf24}
+    .badge-req{background:rgba(45,212,191,0.15);color:#2dd4bf}
+    .badge-mode{background:rgba(99,102,241,0.15);color:#818cf8}
+
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:1.5rem 0}
+    @media(max-width:640px){.two-col{grid-template-columns:1fr}}
+
+    /* SDC command reference cards */
+    .cmd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.25rem;margin:1.5rem 0}
+    .cmd-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.4rem;transition:border-color .3s}
+    .cmd-card:hover{border-color:var(--border-hover)}
+    .cmd-name{font-family:'JetBrains Mono',monospace;font-size:.88rem;font-weight:600;color:var(--teal-light);margin-bottom:.5rem}
+    .cmd-desc{font-size:.85rem;color:var(--muted);line-height:1.7;margin-bottom:.75rem}
+    .cmd-syntax{background:rgba(2,6,23,0.7);border:1px solid rgba(45,212,191,0.15);border-radius:8px;padding:.6rem .9rem;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#94a3b8;white-space:pre}
+
+    /* Lab */
+    .lab-section{background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:2rem;margin:3rem 0}
+    .lab-title{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:var(--teal);letter-spacing:.08em;text-transform:uppercase;margin-bottom:.25rem}
+    .lab-sub{font-size:.88rem;color:var(--dim);margin-bottom:1.5rem}
+    .sdc-builder{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+    @media(max-width:640px){.sdc-builder{grid-template-columns:1fr}}
+    .builder-panel{background:rgba(2,6,23,0.6);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+    .builder-label{font-size:.75rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:1rem}
+    .form-row{margin-bottom:1rem}
+    .form-row label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:.35rem}
+    .form-row input,.form-row select{width:100%;background:rgba(15,23,42,0.8);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--text);font-family:'Outfit',sans-serif;font-size:.85rem;outline:none;transition:border-color .2s}
+    .form-row input:focus,.form-row select:focus{border-color:rgba(45,212,191,0.4)}
+    .form-row select option{background:#0f172a}
+    .output-panel{background:rgba(2,6,23,0.8);border:1px solid rgba(45,212,191,0.2);border-radius:12px;padding:1.25rem;font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#94a3b8;line-height:1.8;white-space:pre-wrap;min-height:200px}
+    .output-label{font-size:.75rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-bottom:.75rem}
+    .kw{color:#5eead4}
+    .val{color:#fbbf24}
+    .cmt{color:#475569}
+
+    /* FAQ */
+    .faq-list{display:flex;flex-direction:column;gap:.75rem;margin-top:1.5rem}
+    .faq-item{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .faq-q{width:100%;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.25rem;background:none;border:none;color:var(--text);font-size:.95rem;font-weight:600;text-align:left;cursor:pointer;font-family:'Outfit',sans-serif;transition:color .2s}
+    .faq-q:hover{color:var(--teal-light)}
+    .faq-icon{width:20px;height:20px;border-radius:50%;background:var(--teal-dim);border:1px solid rgba(45,212,191,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .3s;font-size:.75rem;color:var(--teal)}
+    .faq-item.open .faq-icon{transform:rotate(45deg)}
+    .faq-a{display:none;padding:0 1.25rem 1.1rem;color:var(--muted);font-size:.9rem;line-height:1.8}
+    .faq-item.open .faq-a{display:block}
+
+    .topic-nav{display:flex;gap:1rem;flex-wrap:wrap;margin:3rem 0 0}
+    .tnav-btn{display:flex;align-items:center;gap:.5rem;padding:.65rem 1.2rem;border-radius:10px;border:1px solid var(--border);color:var(--muted);text-decoration:none;font-size:.85rem;transition:all .2s}
+    .tnav-btn:hover{border-color:var(--border-hover);color:var(--teal-light)}
+    .tnav-btn.next{background:var(--teal-dim);border-color:rgba(45,212,191,0.3);color:var(--teal-light)}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrion<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/digital-electronics/">Digital</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/rtl_design/">RTL</a></li>
+      <li><a href="/sta/" class="active">STA</a></li>
+    </ul>
+    <button class="hamburger" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu">
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/sta/">STA</a>
+  </div>
+</nav>
+
+<nav class="breadcrumb">
+  <a href="/">Home</a><span>/</span>
+  <a href="/sta/">STA</a><span>/</span>
+  <span style="color:var(--teal-light)">SDC Constraints</span>
+</nav>
+
+<header class="hero">
+  <div class="hero-tag">STA — Constraints</div>
+  <h1>SDC Constraints &amp;<br><span>Timing Exceptions</span></h1>
+  <p>An STA tool is only as good as the constraints you give it. Synopsys Design Constraints (SDC) is the industry-standard language for describing your design's timing environment — clock definitions, I/O delays, timing exceptions, and operating conditions. Without correct SDC, timing signoff is meaningless.</p>
+  <div class="hero-meta">
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      35 min read
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Tcl / SDC
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+      Interactive Builder
+    </div>
+  </div>
+</header>
+
+<main class="content">
+
+  <!-- 1. What is SDC -->
+  <section class="section">
+    <div class="section-label">Section 01</div>
+    <h2 class="section-title">What is SDC and Why It Matters</h2>
+    <p class="section-body">SDC stands for <strong>Synopsys Design Constraints</strong>. It is a Tcl-based constraint format originally developed by Synopsys and now supported universally across synthesis (Design Compiler, Genus), STA (PrimeTime, Tempus), and physical design (Innovus, ICC2) tools. An SDC file tells the tool three essential things:</p>
+
+    <div class="card-grid">
+      <div class="info-card">
+        <h4>1. Clocking</h4>
+        <p>Clock names, frequencies, waveform shapes, source latency, and relationships between clocks (synchronous, asynchronous, derived). Without this, the tool cannot perform any timing check.</p>
+      </div>
+      <div class="info-card">
+        <h4>2. I/O Timing</h4>
+        <p>How much of the clock period is consumed externally before signals arrive at input ports, and how much must be reserved for external logic after output ports. This closes the timing loop at chip boundaries.</p>
+      </div>
+      <div class="info-card">
+        <h4>3. Timing Exceptions</h4>
+        <p>Paths that should not be analyzed with default single-cycle constraints — false paths that are structurally impossible, multicycle paths where data takes N cycles by design, and case analysis to model specific operating modes.</p>
+      </div>
+    </div>
+
+    <div class="warn-box"><strong>Wrong SDC = wrong signoff.</strong> Overly tight constraints cause unnecessary design effort to fix phantom violations. Overly loose constraints mask real timing problems that escape to silicon. Getting SDC right is as important as fixing the violations it reveals.</div>
+  </section>
+
+  <!-- 2. Clock Definition -->
+  <section class="section">
+    <div class="section-label">Section 02</div>
+    <h2 class="section-title">Clock Definition — create_clock</h2>
+    <p class="section-body"><code>create_clock</code> is the most fundamental SDC command. It defines a clock object — its period, waveform, and the port or pin it originates from. Every sequential timing check in the design traces back to a clock defined here.</p>
+
+    <pre><code># Basic clock: 500 MHz (2 ns period), 50% duty cycle
+create_clock -name CLK -period 2.0 -waveform {0 1.0} [get_ports clk]
+
+# 250 MHz clock with 40% duty cycle (high from 0 to 0.8 ns)
+create_clock -name CLK_SLOW -period 4.0 -waveform {0 1.6} [get_ports clk_slow]
+
+# Clock defined on an internal pin (e.g., after a clock mux)
+create_clock -name CLK_INT -period 2.0 [get_pins u_clk_mux/Y]
+
+# Ideal clock (no uncertainty modeled — pre-CTS default)
+create_clock -name SYS_CLK -period 1.0 [get_ports sys_clk]
+set_clock_uncertainty 0.05 [get_clocks SYS_CLK]  ;# 50 ps jitter budget</code></pre>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>-period</h4>
+        <p>Clock period in nanoseconds. This defines the available timing budget for every register-to-register path in the clock domain. <strong>1 / period = frequency</strong>. A 2 ns period means 500 MHz.</p>
+      </div>
+      <div class="info-card">
+        <h4>-waveform {rise fall}</h4>
+        <p>The rising and falling edge times within one period. Default for 50% duty cycle is <code>{0 half-period}</code>. For non-50% duty cycles, specify explicitly. The tool uses both edges for both-edge-triggered and half-cycle path analysis.</p>
+      </div>
+    </div>
+
+    <p class="section-body">For clocks derived internally — from a PLL, clock divider, or clock mux — use <code>create_generated_clock</code>:</p>
+
+    <pre><code># Clock divided by 2 inside the design
+create_generated_clock -name CLK_DIV2 \
+  -source [get_ports clk] \
+  -divide_by 2 \
+  [get_pins u_div/clk_out]
+
+# Clock multiplied by PLL (2 GHz from 100 MHz reference)
+create_generated_clock -name PLL_OUT \
+  -source [get_ports ref_clk] \
+  -multiply_by 20 \
+  [get_pins u_pll/clk_out]
+
+# Gated clock — same frequency, different enable
+create_generated_clock -name GCLK \
+  -source [get_clocks CLK] \
+  -divide_by 1 \
+  [get_pins u_icg/GCLK]</code></pre>
+
+    <div class="highlight-box"><strong>Why generated clocks matter:</strong> If you do not define a generated clock on a divided/muxed output, the STA tool loses track of the clock relationship and cannot correctly analyze CDC paths or apply the right period to downstream registers.</div>
+  </section>
+
+  <!-- 3. Clock Uncertainty -->
+  <section class="section">
+    <div class="section-label">Section 03</div>
+    <h2 class="section-title">Clock Uncertainty, Latency, and Transition</h2>
+    <p class="section-body">Beyond defining the clock period, STA needs to know how much variation exists in clock arrival and what the clock signal quality looks like at each flip-flop.</p>
+
+    <pre><code># Clock uncertainty: accounts for jitter, PLL noise, margin
+# Applied as a pessimistic deduction from setup slack
+set_clock_uncertainty -setup 0.05 [get_clocks CLK]   ;# 50 ps setup uncertainty
+set_clock_uncertainty -hold  0.02 [get_clocks CLK]   ;# 20 ps hold uncertainty
+
+# Between two clocks (inter-clock uncertainty for CDC paths)
+set_clock_uncertainty -from [get_clocks CLK_A] \
+                      -to   [get_clocks CLK_B] 0.08
+
+# Clock transition (slew) at the clock source pin
+set_clock_transition 0.05 [get_clocks CLK]            ;# 50 ps transition time
+
+# Source latency: PLL to clock port (off-chip delay)
+set_clock_latency -source 0.3 [get_clocks CLK]
+
+# Network latency: estimated clock tree delay (pre-CTS only)
+set_clock_latency 0.8 [get_clocks CLK]</code></pre>
+
+    <table class="data-table">
+      <thead><tr><th>Command</th><th>What it models</th><th>Affects</th></tr></thead>
+      <tbody>
+        <tr><td><code>set_clock_uncertainty</code></td><td>Jitter + skew margin</td><td><span class="badge badge-skip">Setup &amp; Hold</span></td></tr>
+        <tr><td><code>set_clock_transition</code></td><td>Clock slew at source</td><td><span class="badge badge-req">All paths</span></td></tr>
+        <tr><td><code>set_clock_latency -source</code></td><td>Off-chip PLL/PCB delay</td><td><span class="badge badge-req">All paths</span></td></tr>
+        <tr><td><code>set_clock_latency</code></td><td>On-chip tree estimate (pre-CTS)</td><td><span class="badge badge-req">All paths</span></td></tr>
+        <tr><td><code>set_propagated_clocks</code></td><td>Use actual annotated delays (post-CTS)</td><td><span class="badge badge-req">All paths</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. I/O Constraints -->
+  <section class="section">
+    <div class="section-label">Section 04</div>
+    <h2 class="section-title">I/O Timing — Input and Output Delays</h2>
+    <p class="section-body">A chip does not exist in isolation. Input signals arrive from external devices and output signals must meet the setup time of downstream chips. <code>set_input_delay</code> and <code>set_output_delay</code> model this external timing environment.</p>
+
+    <div class="formula">
+      <div><span>Input path budget</span> = T_period &minus; T_input_delay &minus; T_su_internal</div>
+      <div style="margin-top:.5rem"><span>Output path budget</span> = T_period &minus; T_output_delay &minus; T_cq &minus; T_comb</div>
+    </div>
+
+    <pre><code># Input delay: external logic consumes 0.4 ns before reaching our input port
+# Remaining budget for internal input-to-FF path = period - 0.4 ns
+set_input_delay -max 0.4 -clock CLK [get_ports data_in]
+set_input_delay -min 0.1 -clock CLK [get_ports data_in]   ;# for hold check
+
+# Output delay: downstream chip needs data 0.3 ns before its clock edge
+set_output_delay -max 0.3 -clock CLK [get_ports data_out]
+set_output_delay -min -0.05 -clock CLK [get_ports data_out]  ;# for hold
+
+# Multiple ports at once
+set_input_delay -max 0.5 -clock CLK [get_ports {a b c ctrl}]
+
+# Input referenced to a different clock (common for dual-clock interfaces)
+set_input_delay -max 0.6 -clock CLK_B [get_ports ext_data]</code></pre>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>-max vs -min</h4>
+        <p><code>-max</code> is used for setup analysis (worst-case late arrival). <code>-min</code> is used for hold analysis (best-case early arrival). Always specify both for complete timing closure. If only <code>-max</code> is given, hold analysis uses the same value — which may be over-optimistic.</p>
+      </div>
+      <div class="info-card">
+        <h4>The 40/60 rule of thumb</h4>
+        <p>When external timing is unknown, a common starting point is: input delay = 40% of clock period, output delay = 40% of clock period. This leaves 60% of the period for internal combinational logic. Adjust based on actual board-level timing once the external components are specified.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. False Paths -->
+  <section class="section">
+    <div class="section-label">Section 05</div>
+    <h2 class="section-title">False Paths — set_false_path</h2>
+    <p class="section-body">A <strong>false path</strong> is a timing path that physically exists in the netlist but can never be activated during functional operation. STA excludes it from timing analysis entirely. Applying false paths correctly avoids wasting design effort on violations that are structurally impossible.</p>
+
+    <div class="two-col">
+      <div class="info-card">
+        <h4>When to use false paths</h4>
+        <p>Asynchronous reset/set paths (reset deactivates long before normal operation begins), paths between asynchronous clock domains where the CDC handshake guarantees no timing relationship, configuration register paths written only during reset, and test mode paths never active during functional operation.</p>
+      </div>
+      <div class="info-card">
+        <h4>When NOT to use false paths</h4>
+        <p>Paths that are difficult to time but functionally real — that is a constraint problem, not a false path. Using <code>set_false_path</code> to silence real violations is a common and dangerous mistake that allows silicon to ship with unanalyzed timing paths.</p>
+      </div>
+    </div>
+
+    <pre><code># Async reset path — reset deasserts long before functional operation
+set_false_path -from [get_ports rst_n]
+
+# Between two asynchronous clock domains (no timing relationship)
+set_false_path -from [get_clocks CLK_A] -to [get_clocks CLK_B]
+
+# Test mode mux path — only active during scan, not functional
+set_false_path -through [get_pins u_test_mux/S]
+
+# Specific point-to-point false path
+set_false_path -from [get_cells u_cfg_reg/Q] \
+               -to   [get_cells u_core/D]
+
+# False path on output port driven by static logic
+set_false_path -to [get_ports status_out]</code></pre>
+
+    <div class="warn-box"><strong>Document every false path.</strong> A false path with no comment explaining <em>why</em> it is false is a maintenance hazard. If the design changes and the path becomes functionally active, the SDC will silently mask a real violation. Always comment: <code># reason: async reset, only deasserts during power-up</code></div>
+  </section>
+
+  <!-- 6. Multicycle Paths -->
+  <section class="section">
+    <div class="section-label">Section 06</div>
+    <h2 class="section-title">Multicycle Paths — set_multicycle_path</h2>
+    <p class="section-body">A <strong>multicycle path</strong> is a real, functional timing path where the design protocol guarantees that data takes N clock cycles to travel from launch to capture — intentionally. The capture flip-flop is not sampled on the very next clock edge after launch, so the default single-cycle constraint is unnecessarily tight.</p>
+
+    <p class="section-body">Common examples: wide multipliers that take 2 cycles to compute, DSP pipelines with known latency, memory read paths where data is valid 2 cycles after address is applied.</p>
+
+    <div class="formula">
+      <div><span>Default setup check:</span> data must arrive within 1 × T_period</div>
+      <div style="margin-top:.5rem"><span>2-cycle multicycle setup:</span> data must arrive within 2 × T_period</div>
+      <div style="margin-top:.75rem"><span>Hold check shifts too:</span> must add -hold adjustment to keep hold correct</div>
+    </div>
+
+    <pre><code># 2-cycle multicycle path — setup relaxed by 1 extra cycle
+set_multicycle_path -setup 2 \
+  -from [get_cells u_mult/A_reg] \
+  -to   [get_cells u_mult/result_reg]
+
+# IMPORTANT: hold must be adjusted too, or hold check becomes too tight
+# -hold N means hold check uses (N-1) cycles before the setup edge
+set_multicycle_path -hold 1 \
+  -from [get_cells u_mult/A_reg] \
+  -to   [get_cells u_mult/result_reg]
+
+# 3-cycle path (e.g., memory read with 2-cycle read latency)
+set_multicycle_path -setup 3 -from [get_cells u_mem] -to [get_cells u_dsp]
+set_multicycle_path -hold  2 -from [get_cells u_mem] -to [get_cells u_dsp]
+
+# Multicycle on a specific clock-domain crossing with known relationship
+set_multicycle_path -setup 2 \
+  -from [get_clocks CLK_FAST] \
+  -to   [get_clocks CLK_SLOW]</code></pre>
+
+    <div class="amber-box"><strong>The hold adjustment rule:</strong> When you set <code>-setup N</code>, always also set <code>-hold (N-1)</code>. If you omit the hold adjustment, the STA tool moves the capture edge forward by N cycles for setup but keeps the hold check at cycle 0 — creating an over-pessimistic hold check that fires incorrectly. The pair must always be specified together.</div>
+
+    <table class="data-table">
+      <thead><tr><th>Cycles (N)</th><th>-setup value</th><th>-hold value</th><th>Setup window</th></tr></thead>
+      <tbody>
+        <tr><td>1 (default)</td><td>1</td><td>0</td><td>1 × T_period</td></tr>
+        <tr><td>2</td><td>2</td><td>1</td><td>2 × T_period</td></tr>
+        <tr><td>3</td><td>3</td><td>2</td><td>3 × T_period</td></tr>
+        <tr><td>N</td><td>N</td><td>N−1</td><td>N × T_period</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 7. Case Analysis -->
+  <section class="section">
+    <div class="section-label">Section 07</div>
+    <h2 class="section-title">Case Analysis and Operating Modes</h2>
+    <p class="section-body"><code>set_case_analysis</code> forces a specific logic value (0 or 1) onto a net or port for the purpose of timing analysis, without changing the design netlist. The tool propagates this constant through combinational logic and prunes timing paths that become unreachable — exactly as if that signal were tied to that constant in the actual silicon for a given mode.</p>
+
+    <pre><code># Functional mode: scan_en = 0, so scan paths are pruned
+set_case_analysis 0 [get_ports scan_en]
+
+# Test mode: scan_en = 1, so functional paths through scan muxes are pruned
+set_case_analysis 1 [get_ports scan_en]
+
+# Mode select: analyze only mode 0 paths (mux selects input A)
+set_case_analysis 0 [get_ports mode_sel]
+
+# Force a clock mux selection (CLK_A selected, CLK_B path not analyzed)
+set_case_analysis 1 [get_pins u_clkmux/sel]
+
+# Multiple scenarios — typically managed through tool scenario/mode framework
+# Scenario 1: functional mode
+set_case_analysis 0 [get_ports scan_en]
+set_case_analysis 0 [get_ports test_mode]
+
+# Scenario 2: scan shift mode
+set_case_analysis 1 [get_ports scan_en]
+set_case_analysis 1 [get_ports test_mode]</code></pre>
+
+    <div class="highlight-box"><strong>Multi-mode STA:</strong> Modern STA flows run multiple scenarios simultaneously — functional setup, functional hold, scan setup, scan hold, at-speed test, low-power mode. Each scenario has its own set of case analysis values, operating conditions, and exceptions. Tools like PrimeTime MSISTA and Tempus can run all scenarios in parallel.</div>
+  </section>
+
+  <!-- 8. Operating Conditions -->
+  <section class="section">
+    <div class="section-label">Section 08</div>
+    <h2 class="section-title">Operating Conditions and Load Constraints</h2>
+    <p class="section-body">STA must know what process corner and environmental conditions to use when looking up cell delays from the library. <code>set_operating_conditions</code> selects the PVT corner. Additional constraints model the physical environment at I/O ports.</p>
+
+    <pre><code># Set operating conditions (PVT corner from library)
+set_operating_conditions -max WORST  ;# SS corner for setup analysis
+set_operating_conditions -min BEST   ;# FF corner for hold analysis
+
+# Drive strength at input ports (models external driver strength)
+# 0.0 = ideal (no external resistance); realistic: match external driver
+set_drive 0 [get_ports clk]                          ;# ideal clock driver
+set_driving_cell -cell BUF4 [get_ports data_in]      ;# external BUF4 drives input
+
+# Output load: external capacitance at output port (pF)
+set_load 0.1 [get_ports data_out]       ;# 0.1 pF external load
+
+# Wire load model (for pre-layout parasitic estimation)
+set_wire_load_model -name WireLoadModel [get_nets *]
+
+# Max fanout constraint (synthesis + STA)
+set_max_fanout 20 [current_design]
+
+# Max transition (slew) constraint
+set_max_transition 0.15 [current_design]   ;# 150 ps max slew everywhere</code></pre>
+  </section>
+
+  <!-- 9. Complete SDC example -->
+  <section class="section">
+    <div class="section-label">Section 09</div>
+    <h2 class="section-title">Complete SDC Template — Real Design</h2>
+    <p class="section-body">A production SDC file for a typical SoC block looks like this — combining all the commands above into a structured, commented file:</p>
+
+    <pre><code>############################################################
+# Design: uart_top  |  Tool: PrimeTime  |  Corner: SS/FF
+############################################################
+
+## ─── CLOCKS ─────────────────────────────────────────────
+create_clock -name SYS_CLK -period 2.0 -waveform {0 1.0} \
+  [get_ports sys_clk]
+
+create_clock -name UART_CLK -period 8.68 -waveform {0 4.34} \
+  [get_ports uart_clk]   ;# 115200 baud × 16 oversampling
+
+create_generated_clock -name CLK_DIV -source SYS_CLK \
+  -divide_by 4 [get_pins u_clkdiv/clk_out]
+
+## ─── CLOCK QUALITY ───────────────────────────────────────
+set_clock_uncertainty -setup 0.05 [get_clocks SYS_CLK]
+set_clock_uncertainty -hold  0.02 [get_clocks SYS_CLK]
+set_clock_latency -source 0.25 [get_clocks SYS_CLK]
+set_clock_transition 0.04 [get_clocks SYS_CLK]
+
+## ─── ASYNC CLOCK DOMAINS ─────────────────────────────────
+set_clock_groups -asynchronous \
+  -group {SYS_CLK CLK_DIV} \
+  -group {UART_CLK}
+
+## ─── I/O CONSTRAINTS ─────────────────────────────────────
+set_input_delay  -max 0.6 -clock SYS_CLK [get_ports {data_in[*] ctrl}]
+set_input_delay  -min 0.1 -clock SYS_CLK [get_ports {data_in[*] ctrl}]
+set_output_delay -max 0.4 -clock SYS_CLK [get_ports {data_out[*]}]
+set_output_delay -min 0.0 -clock SYS_CLK [get_ports {data_out[*]}]
+
+## ─── RESETS (async — deassert before any functional operation) ──
+set_false_path -from [get_ports rst_n]
+
+## ─── MULTICYCLE PATHS ────────────────────────────────────
+# 16-bit multiplier takes 2 cycles
+set_multicycle_path -setup 2 -from [get_cells u_mult/*] \
+                              -to   [get_cells u_accum/*]
+set_multicycle_path -hold  1 -from [get_cells u_mult/*] \
+                              -to   [get_cells u_accum/*]
+
+## ─── OPERATING CONDITIONS ────────────────────────────────
+set_operating_conditions -max WORST -min BEST
+set_load 0.05 [all_outputs]
+set_driving_cell -cell BUF4 [all_inputs]
+
+## ─── CASE ANALYSIS ───────────────────────────────────────
+set_case_analysis 0 [get_ports scan_en]   ;# functional mode</code></pre>
+  </section>
+
+  <!-- Interactive Lab -->
+  <div class="lab-section">
+    <div class="lab-title">Interactive Lab — SDC Constraint Builder</div>
+    <div class="lab-sub">Fill in your design parameters and generate a starter SDC snippet instantly.</div>
+
+    <div class="sdc-builder">
+      <div class="builder-panel">
+        <div class="builder-label">Clock Settings</div>
+        <div class="form-row">
+          <label>Clock name</label>
+          <input type="text" id="clk-name" value="SYS_CLK" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Frequency (MHz)</label>
+          <input type="number" id="clk-freq" value="500" min="1" max="5000" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Duty cycle (%)</label>
+          <input type="number" id="clk-duty" value="50" min="10" max="90" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Setup uncertainty (ps)</label>
+          <input type="number" id="clk-unc-s" value="50" min="0" max="500" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Hold uncertainty (ps)</label>
+          <input type="number" id="clk-unc-h" value="20" min="0" max="500" oninput="buildSDC()">
+        </div>
+        <div class="builder-label" style="margin-top:1.25rem">I/O &amp; Exceptions</div>
+        <div class="form-row">
+          <label>Input delay — max (% of period)</label>
+          <input type="number" id="inp-delay" value="40" min="5" max="80" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Output delay — max (% of period)</label>
+          <input type="number" id="out-delay" value="40" min="5" max="80" oninput="buildSDC()">
+        </div>
+        <div class="form-row">
+          <label>Timing exception type</label>
+          <select id="exc-type" onchange="buildSDC()">
+            <option value="none">None</option>
+            <option value="false">False path (async reset)</option>
+            <option value="mcp2">Multicycle path (2 cycles)</option>
+            <option value="mcp3">Multicycle path (3 cycles)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="output-label">Generated SDC</div>
+        <div class="output-panel" id="sdc-output">Click any field to generate SDC...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <section class="section">
+    <div class="section-label">Section 10</div>
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What happens if I don't write an SDC file?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">Without an SDC file, the STA tool has no knowledge of your clock frequency, I/O timing requirements, or timing exceptions. It will either report all paths as unconstrained (no violations found — falsely green), or use default assumptions that have no relationship to your actual design requirements. Synthesis tools without SDC will optimize for area rather than timing, often producing slow designs. A missing or wrong SDC is one of the most common reasons chips fail first silicon.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is the difference between set_false_path and set_multicycle_path?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">A false path is a path that is <em>never functionally active</em> — the design protocol or structural topology makes it impossible for the path to propagate data in normal operation. STA skips it entirely. A multicycle path is <em>functionally real</em> — data does propagate, but the protocol guarantees the capture FF samples it N cycles later. STA still checks it, just with a relaxed N-cycle budget. Misusing false paths to silence real multicycle violations is a sign-off error that can cause silicon failures.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          Why must I pair -setup and -hold in set_multicycle_path?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">When you set <code>-setup N</code>, the tool moves the setup capture edge N cycles forward, giving the data more time. But by default, the hold check is still performed at cycle 0 (one cycle before the setup edge). If you set <code>-setup 2</code> without <code>-hold 1</code>, the hold check remains extremely pessimistic — it checks that data does not change before cycle 0, which is trivially violated on almost any realistic path. The <code>-hold (N-1)</code> moves the hold check to the cycle immediately before the actual capture edge, which is the correct reference point.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is set_clock_groups -asynchronous?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a"><code>set_clock_groups -asynchronous</code> tells the tool that the specified clock groups have no timing relationship — they are from independent oscillators or PLLs with no guaranteed phase relationship. The tool will not analyze inter-group paths with a timing check. This is different from <code>set_false_path -from CLK_A -to CLK_B</code> — clock groups applies symmetrically in both directions and is the recommended approach for asynchronous CDC boundaries. The CDC handshake logic itself must be verified separately using CDC analysis tools.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          How do I constrain a clock mux in SDC?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a">A clock mux passes one of several input clocks to its output based on a select signal. You need to: (1) define all input clocks with <code>create_clock</code>, (2) define a generated clock on the mux output with <code>create_generated_clock</code> referencing the appropriate source, and (3) use <code>set_case_analysis</code> to fix the select input for each analysis scenario. You may also use <code>set_clock_groups -physically_exclusive</code> between the clocks driving the mux inputs, since only one can be active at a time — this prevents false inter-clock paths through the mux from being analyzed.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          What is the difference between -max and -min in set_input_delay?
+          <div class="faq-icon">+</div>
+        </button>
+        <div class="faq-a"><code>-max</code> specifies the latest the input signal can arrive (worst-case late) — used for setup analysis. The tool assumes the data consumes this much of the clock period externally, leaving less budget for internal combinational logic. <code>-min</code> specifies the earliest the input can arrive (best-case early) — used for hold analysis. If the external data arrives very early (small min delay), it might change before the internal FF's hold window closes. Always specify both for complete timing closure. A common mistake is specifying only -max and assuming hold is automatically correct.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="topic-nav">
+    <a href="/sta/clock-tree/" class="tnav-btn">&#8592; Clock Tree &amp; Skew</a>
+    <a href="/sta/setup-hold/" class="tnav-btn next">Setup &amp; Hold Time &#8594;</a>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  const c=document.getElementById('bg-canvas');
+  const ctx=c.getContext('2d');
+  let W,H,pts=[];
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  const N=70;
+  for(let i=0;i<N;i++)pts.push({x:Math.random()*1600%window.innerWidth,y:Math.random()*1200%window.innerHeight,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3});
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<N;i++){
+      const p=pts[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+      ctx.beginPath();ctx.arc(p.x,p.y,1.5,0,2*Math.PI);
+      ctx.fillStyle='rgba(45,212,191,0.35)';ctx.fill();
+      for(let j=i+1;j<N;j++){
+        const q=pts[j],d=Math.hypot(p.x-q.x,p.y-q.y);
+        if(d<110){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+          ctx.strokeStyle=`rgba(45,212,191,${.12*(1-d/110)})`;ctx.lineWidth=.5;ctx.stroke();}
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+function toggleFaq(btn){
+  const item=btn.parentElement;
+  const wasOpen=item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(i=>i.classList.remove('open'));
+  if(!wasOpen)item.classList.add('open');
+}
+
+function buildSDC() {
+  const name   = document.getElementById('clk-name').value.trim() || 'SYS_CLK';
+  const freq   = parseFloat(document.getElementById('clk-freq').value) || 500;
+  const duty   = parseFloat(document.getElementById('clk-duty').value) || 50;
+  const uncS   = parseFloat(document.getElementById('clk-unc-s').value) || 50;
+  const uncH   = parseFloat(document.getElementById('clk-unc-h').value) || 20;
+  const inPct  = parseFloat(document.getElementById('inp-delay').value) || 40;
+  const outPct = parseFloat(document.getElementById('out-delay').value) || 40;
+  const exc    = document.getElementById('exc-type').value;
+
+  const period   = (1000 / freq).toFixed(3);  // ns
+  const halfHigh = ((duty / 100) * period).toFixed(3);
+  const uncSns   = (uncS / 1000).toFixed(3);
+  const uncHns   = (uncH / 1000).toFixed(3);
+  const inDelay  = ((inPct / 100) * period).toFixed(3);
+  const inMin    = ((inPct / 100) * period * 0.25).toFixed(3);
+  const outDelay = ((outPct / 100) * period).toFixed(3);
+
+  let lines = [];
+  lines.push(`# ── CLOCK ─────────────────────────────────────`);
+  lines.push(`create_clock -name ${name} \\`);
+  lines.push(`  -period ${period} -waveform {0 ${halfHigh}} \\`);
+  lines.push(`  [get_ports clk]`);
+  lines.push(``);
+  lines.push(`set_clock_uncertainty -setup ${uncSns} [get_clocks ${name}]`);
+  lines.push(`set_clock_uncertainty -hold  ${uncHns} [get_clocks ${name}]`);
+  lines.push(``);
+  lines.push(`# ── I/O DELAYS ────────────────────────────────`);
+  lines.push(`set_input_delay  -max ${inDelay} -clock ${name} [all_inputs]`);
+  lines.push(`set_input_delay  -min ${inMin}  -clock ${name} [all_inputs]`);
+  lines.push(`set_output_delay -max ${outDelay} -clock ${name} [all_outputs]`);
+  lines.push(`set_output_delay -min 0.000      -clock ${name} [all_outputs]`);
+
+  if (exc === 'false') {
+    lines.push(``);
+    lines.push(`# ── EXCEPTIONS ────────────────────────────────`);
+    lines.push(`# Async reset — deasserts before functional operation`);
+    lines.push(`set_false_path -from [get_ports rst_n]`);
+  } else if (exc === 'mcp2') {
+    lines.push(``);
+    lines.push(`# ── EXCEPTIONS ────────────────────────────────`);
+    lines.push(`# 2-cycle multicycle path`);
+    lines.push(`set_multicycle_path -setup 2 \\`);
+    lines.push(`  -from [get_cells u_src/*] -to [get_cells u_dst/*]`);
+    lines.push(`set_multicycle_path -hold  1 \\`);
+    lines.push(`  -from [get_cells u_src/*] -to [get_cells u_dst/*]`);
+  } else if (exc === 'mcp3') {
+    lines.push(``);
+    lines.push(`# ── EXCEPTIONS ────────────────────────────────`);
+    lines.push(`# 3-cycle multicycle path`);
+    lines.push(`set_multicycle_path -setup 3 \\`);
+    lines.push(`  -from [get_cells u_src/*] -to [get_cells u_dst/*]`);
+    lines.push(`set_multicycle_path -hold  2 \\`);
+    lines.push(`  -from [get_cells u_src/*] -to [get_cells u_dst/*]`);
+  }
+
+  lines.push(``);
+  lines.push(`# ── OPERATING CONDITIONS ──────────────────────`);
+  lines.push(`set_operating_conditions -max WORST -min BEST`);
+  lines.push(`set_load 0.05 [all_outputs]`);
+  lines.push(`set_driving_cell -cell BUF4 [all_inputs]`);
+
+  // Render with syntax highlighting
+  const html = lines.map(l => {
+    if (l.startsWith('#')) return `<span style="color:#475569">${escHtml(l)}</span>`;
+    return escHtml(l)
+      .replace(/(create_clock|set_clock_uncertainty|set_clock_latency|set_input_delay|set_output_delay|set_false_path|set_multicycle_path|set_operating_conditions|set_load|set_driving_cell|set_case_analysis|set_propagated_clocks)/g,
+        '<span style="color:#5eead4">$1</span>')
+      .replace(/(-name|-period|-waveform|-setup|-hold|-from|-to|-max|-min|-source|-divide_by|-multiply_by|-cell|-through|-asynchronous)/g,
+        '<span style="color:#818cf8">$1</span>')
+      .replace(/(\[get_\w+[^\]]*\]|\[all_\w+\])/g,
+        '<span style="color:#fbbf24">$1</span>')
+      .replace(/(\b\d+\.?\d*\b)/g,
+        '<span style="color:#fb7185">$1</span>');
+  }).join('\n');
+
+  document.getElementById('sdc-output').innerHTML = html;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+window.addEventListener('load', buildSDC);
+</script>
+
+<footer style="background:#0f172a;border-top:1px solid rgba(148,163,184,0.1);padding:1.5rem 1.25rem;text-align:center;">
+  <p style="font-size:0.82rem;color:#64748b;margin-bottom:0.75rem;">
+    <a href="/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">Home</a>
+    <a href="/about/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">About</a>
+    <a href="/contact/" style="color:#64748b;text-decoration:none;margin-right:1.25rem;">Contact</a>
+    <a href="/legal/privacy.html" style="color:#64748b;text-decoration:none;">Privacy Policy</a>
+  </p>
+  <p style="font-size:0.78rem;color:#475569;">&copy; <span id="ecrionix-year"></span> EcrioniX. All rights reserved.</p>
+</footer>
+<script>document.getElementById('ecrionix-year').textContent = new Date().getFullYear();</script>
+<script src="/cookie-consent.js"></script>
+</body>
+</html>
