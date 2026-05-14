@@ -45,8 +45,21 @@
     .run-btn:hover:not(:disabled){background:#7dd3fc}
     .run-btn:active:not(:disabled){transform:scale(.97)}
     .run-btn:disabled{opacity:.45;cursor:not-allowed}
+    .synth-btn{padding:.35rem 1rem;border-radius:8px;border:1px solid rgba(45,212,191,0.35);background:rgba(45,212,191,0.08);color:var(--teal);font-weight:700;font-size:.85rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:.45rem}
+    .synth-btn:hover:not(:disabled){background:rgba(45,212,191,0.15);border-color:var(--teal)}
+    .synth-btn:disabled{opacity:.45;cursor:not-allowed}
     .spinner{width:12px;height:12px;border:2px solid rgba(2,6,23,0.3);border-top-color:#020617;border-radius:50%;animation:spin .6s linear infinite;display:none}
+    .spinner.teal{border-color:rgba(45,212,191,0.2);border-top-color:var(--teal)}
     @keyframes spin{to{transform:rotate(360deg)}}
+    /* Synthesis output */
+    #synth-out{flex:1;font-family:var(--mono);font-size:.76rem;line-height:1.7;padding:.85rem 1rem;background:var(--bg3);white-space:pre-wrap;overflow:auto;color:#c0cae0}
+    .sy-hdr{color:var(--sky);font-weight:700}
+    .sy-mod{color:#7dd3fc}
+    .sy-num{color:var(--amber)}
+    .sy-cell{color:var(--teal)}
+    .sy-ok{color:var(--green)}
+    .sy-warn{color:var(--amber)}
+    .sy-err{color:var(--rose)}
 
     /* WORKSPACE */
     .workspace{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 28px}
@@ -167,6 +180,11 @@
   <button class="ex-btn" onclick="load('fsm',this)">FSM</button>
   <div class="spacer"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>
+  <button class="synth-btn" id="synth-btn" onclick="synthCode()">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    <span>Synth</span>
+    <div class="spinner teal" id="synth-spin"></div>
+  </button>
   <button class="run-btn" id="run-btn" onclick="runCode()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
     <span>Run</span>
@@ -197,11 +215,17 @@
     <div class="out-tabs">
       <div class="out-tab active" id="tab-console" onclick="switchTab('console',this)">Console</div>
       <div class="out-tab" id="tab-waveform" onclick="switchTab('waveform',this)">Waveform</div>
+      <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
     </div>
 
     <!-- CONSOLE -->
     <div class="out-panel active" id="panel-console">
       <div id="console"><span class="dim">// Output appears here after clicking Run...</span></div>
+    </div>
+
+    <!-- SYNTHESIS -->
+    <div class="out-panel" id="panel-synth">
+      <div id="synth-out"><span class="dim">// Click Synth to run Yosys synthesis...</span></div>
     </div>
 
     <!-- WAVEFORM -->
@@ -606,6 +630,62 @@ async function runCode(){
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Synthesis ──────────────────────────────────────────
+const SYNTH_API = 'https://ecrionix-ecrionix-verilog.hf.space/synthesize';
+
+function fmtSynth(text){
+  return text.split('\n').map(line=>{
+    const e=esc(line);
+    if(/^\s*===/.test(line))          return `<span class="sy-hdr">${e}</span>`;
+    if(/^Error/i.test(line.trim()))   return `<span class="sy-err">${e}</span>`;
+    if(/^Warn/i.test(line.trim()))    return `<span class="sy-warn">${e}</span>`;
+    if(/Successfully/i.test(line))    return `<span class="sy-ok">${e}</span>`;
+    if(/Number of/.test(line)){
+      return e.replace(/(\d+)(?=\s*$)/, n=>`<span class="sy-num">${n}</span>`)
+              .replace(/(Number of [^:]+)/, m=>`<span style="color:#94a3b8">${m}</span>`);
+    }
+    // cell line: "   $_DFF_PP0_    4"
+    if(/^\s+\$?\w+\s+\d+\s*$/.test(line)){
+      return e.replace(/(\d+)\s*$/, n=>`<span class="sy-num">${n}</span>`)
+              .replace(/(\$?\w+)(?=\s+\d)/, m=>`<span class="sy-cell">${m}</span>`);
+    }
+    return e;
+  }).join('\n');
+}
+
+async function synthCode(){
+  files[activeFile].code = ed.value;
+  const code = files.map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+  const btn=document.getElementById('synth-btn');
+  const sp=document.getElementById('synth-spin');
+  btn.disabled=true; sp.style.display='block';
+  setStatus('run','Synthesizing...');
+  const out=document.getElementById('synth-out');
+  out.innerHTML='<span class="info">Running Yosys synthesis...</span>\n';
+  switchTab('synth', document.getElementById('tab-synth'));
+  const t0=Date.now();
+  try{
+    const res=await fetch(SYNTH_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('status-time').textContent=ms;
+    if(d.success){
+      out.innerHTML=`<span class="sy-ok">── Synthesis complete (${ms}) ────────────────\n</span>`+fmtSynth(d.stdout);
+      setStatus('ok',`Synthesis done — ${ms}`);
+    } else {
+      out.innerHTML=`<span class="sy-err">── Synthesis failed ───────────────────────\n</span>`
+        +fmtSynth(d.stdout)
+        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      setStatus('err','Synthesis failed');
+    }
+  }catch(e){
+    out.innerHTML=`<span class="sy-err">── Error ───────────────────────────────\n${esc(e.message)}</span>`;
+    setStatus('err','Failed');
+  }finally{btn.disabled=false;sp.style.display='none';}
+}
 
 // ════════════════════════════════════════════════════════
 //  VCD PARSER
