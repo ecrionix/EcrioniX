@@ -51,6 +51,21 @@
     .spinner{width:12px;height:12px;border:2px solid rgba(2,6,23,0.3);border-top-color:#020617;border-radius:50%;animation:spin .6s linear infinite;display:none}
     .spinner.teal{border-color:rgba(45,212,191,0.2);border-top-color:var(--teal)}
     @keyframes spin{to{transform:rotate(360deg)}}
+    /* Netlist viewer */
+    #panel-netlist{flex-direction:column;overflow:hidden}
+    .netlist-tb{background:#0a1020;border-bottom:1px solid var(--border);padding:.3rem .7rem;display:flex;align-items:center;gap:.4rem;flex-shrink:0}
+    .netlist-wrap{flex:1;overflow:hidden;position:relative;background:#060c1a;cursor:grab}
+    .netlist-wrap.grabbing{cursor:grabbing}
+    .netlist-wrap.empty{display:flex;align-items:center;justify-content:center;color:#3d5166;font-size:.83rem;flex-direction:column;gap:.6rem}
+    #netlist-svg-wrap{position:absolute;top:0;left:0;transform-origin:0 0}
+    #netlist-svg-wrap svg{display:block;max-width:none}
+    /* dark-theme the Yosys SVG */
+    #netlist-svg-wrap svg{background:#0a0e1a!important}
+    #netlist-svg-wrap svg text{fill:#94a3b8!important}
+    #netlist-svg-wrap svg polygon,#netlist-svg-wrap svg ellipse{fill:#0f1a2e!important;stroke:#38bdf8!important}
+    #netlist-svg-wrap svg path,#netlist-svg-wrap svg line{stroke:#2dd4bf!important}
+    #netlist-svg-wrap svg .edge path{stroke:#4a6080!important}
+
     /* Synthesis output */
     #synth-out{flex:1;font-family:var(--mono);font-size:.76rem;line-height:1.7;padding:.85rem 1rem;background:var(--bg3);white-space:pre-wrap;overflow:auto;color:#c0cae0}
     .sy-hdr{color:var(--sky);font-weight:700}
@@ -180,6 +195,10 @@
   <button class="ex-btn" onclick="load('fsm',this)">FSM</button>
   <div class="spacer"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>
+  <button class="synth-btn" id="netlist-btn" onclick="netlistCode()" style="border-color:rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);color:#a78bfa">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><rect x="16" y="16" width="5" height="5"/><path d="M8 5.5h8M5.5 8v8M18.5 8v8M8 18.5h8"/></svg>
+    <span>Netlist</span>
+  </button>
   <button class="synth-btn" id="synth-btn" onclick="synthCode()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
     <span>Synth</span>
@@ -216,11 +235,28 @@
       <div class="out-tab active" id="tab-console" onclick="switchTab('console',this)">Console</div>
       <div class="out-tab" id="tab-waveform" onclick="switchTab('waveform',this)">Waveform</div>
       <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
+      <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
     </div>
 
     <!-- CONSOLE -->
     <div class="out-panel active" id="panel-console">
       <div id="console"><span class="dim">// Output appears here after clicking Run...</span></div>
+    </div>
+
+    <!-- NETLIST -->
+    <div class="out-panel" id="panel-netlist">
+      <div class="netlist-tb">
+        <button class="wz-btn" onclick="nlZoomIn()">＋</button>
+        <button class="wz-btn" onclick="nlFit()">Fit</button>
+        <button class="wz-btn" onclick="nlZoomOut()">－</button>
+        <div class="wz-sep"></div>
+        <span style="font-size:.7rem;color:#3d5166;font-family:var(--mono)">Scroll to zoom · Drag to pan</span>
+      </div>
+      <div class="netlist-wrap empty" id="netlist-wrap">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.4" opacity=".3"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M21 21l-4-4M10 6.5h4M6.5 10v4M17.5 10v4"/></svg>
+        <span>Click <b style="color:#2dd4bf">Synth</b> first, then view gate-level netlist here</span>
+      </div>
+      <div id="netlist-svg-wrap" style="display:none"></div>
     </div>
 
     <!-- SYNTHESIS -->
@@ -652,6 +688,95 @@ async function runCode(){
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Netlist ────────────────────────────────────────────
+const NETLIST_API = 'https://ecrionix-ecrionix-verilog.hf.space/netlist';
+let nl = { scale:1, tx:0, ty:0, dragging:false, sx:0, sy:0 };
+
+function nlApply(){
+  document.getElementById('netlist-svg-wrap').style.transform =
+    `translate(${nl.tx}px,${nl.ty}px) scale(${nl.scale})`;
+}
+
+function nlFit(){
+  const wrap = document.getElementById('netlist-wrap');
+  const svgEl = document.querySelector('#netlist-svg-wrap svg');
+  if(!svgEl) return;
+  const ww=wrap.clientWidth, wh=wrap.clientHeight;
+  const sw=svgEl.viewBox?.baseVal?.width || svgEl.clientWidth || 800;
+  const sh=svgEl.viewBox?.baseVal?.height || svgEl.clientHeight || 600;
+  nl.scale = Math.min(ww/sw, wh/sh) * 0.92;
+  nl.tx = (ww - sw*nl.scale)/2;
+  nl.ty = (wh - sh*nl.scale)/2;
+  nlApply();
+}
+function nlZoomIn(){ nl.scale=Math.min(nl.scale*1.4,10); nlApply(); }
+function nlZoomOut(){ nl.scale=Math.max(nl.scale/1.4,0.05); nlApply(); }
+
+function initNetlistPan(){
+  const wrap = document.getElementById('netlist-wrap');
+  wrap.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const factor = e.deltaY<0 ? 1.2 : 0.83;
+    const rect = wrap.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    nl.tx = mx - (mx-nl.tx)*factor;
+    nl.ty = my - (my-nl.ty)*factor;
+    nl.scale *= factor;
+    nlApply();
+  },{passive:false});
+  wrap.addEventListener('mousedown', e=>{
+    nl.dragging=true; nl.sx=e.clientX-nl.tx; nl.sy=e.clientY-nl.ty;
+    wrap.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e=>{
+    if(!nl.dragging) return;
+    nl.tx=e.clientX-nl.sx; nl.ty=e.clientY-nl.sy; nlApply();
+  });
+  window.addEventListener('mouseup', ()=>{
+    nl.dragging=false;
+    document.getElementById('netlist-wrap').classList.remove('grabbing');
+  });
+}
+initNetlistPan();
+
+async function netlistCode(){
+  files[activeFile].code = ed.value;
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+
+  // run synthesis first if not done, then fetch netlist
+  setStatus('run','Generating netlist...');
+  switchTab('netlist', document.getElementById('tab-netlist'));
+  const wrap = document.getElementById('netlist-wrap');
+  wrap.classList.add('empty');
+  wrap.innerHTML='<span style="color:#94a3b8;font-size:.82rem">Generating gate-level diagram...</span>';
+  document.getElementById('netlist-svg-wrap').style.display='none';
+
+  try{
+    const res=await fetch(NETLIST_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    if(d.success && d.svg){
+      const svgWrap=document.getElementById('netlist-svg-wrap');
+      svgWrap.innerHTML=d.svg;
+      svgWrap.style.display='block';
+      wrap.classList.remove('empty');
+      wrap.innerHTML=''; // clear empty msg, move svgWrap inside
+      wrap.appendChild(svgWrap);
+      nl.scale=1; nl.tx=0; nl.ty=0;
+      setTimeout(nlFit,50);
+      setStatus('ok','Netlist ready');
+    } else {
+      wrap.innerHTML=`<span style="color:var(--rose);font-size:.78rem;padding:1rem">${esc(d.stderr||'Failed to generate netlist')}</span>`;
+      setStatus('err','Netlist failed');
+    }
+  }catch(e){
+    wrap.innerHTML=`<span style="color:var(--rose);font-size:.78rem;padding:1rem">${esc(e.message)}</span>`;
+    setStatus('err','Failed');
+  }
+}
 
 // ── Synthesis ──────────────────────────────────────────
 const SYNTH_API = 'https://ecrionix-ecrionix-verilog.hf.space/synthesize';
