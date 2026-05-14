@@ -60,10 +60,23 @@
     .editor-pane{border-right:1px solid var(--border)}
 
     /* EDITOR */
-    .editor-body{flex:1;min-height:0;position:relative;display:flex;overflow:hidden}
+    .editor-body{flex:1;min-height:0;display:flex;overflow:hidden}
     .line-nums{width:40px;flex-shrink:0;background:rgba(15,23,42,0.5);border-right:1px solid var(--border);padding:.75rem 0;font-family:var(--mono);font-size:.78rem;line-height:1.65;color:#3d5166;text-align:right;padding-right:.45rem;overflow:hidden;user-select:none;font-variant-ligatures:none}
-    #editor{flex:1;background:transparent;border:none;outline:none;resize:none;font-family:var(--mono);font-size:.8rem;line-height:1.65;color:#c8d3e8;padding:.75rem .85rem;tab-size:2;overflow:auto;caret-color:var(--sky);font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
-    #editor::selection{background:rgba(56,189,248,0.2)}
+    .editor-wrap{flex:1;position:relative;min-height:0;overflow:hidden}
+    #hl-layer{position:absolute;inset:0;font-family:var(--mono);font-size:.8rem;line-height:1.65;padding:.75rem .85rem;tab-size:2;white-space:pre;word-break:normal;overflow:auto;pointer-events:none;user-select:none;color:#c8d3e8;background:transparent;margin:0;border:0;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0;scrollbar-width:none}
+    #hl-layer::-webkit-scrollbar{display:none}
+    #editor{position:absolute;inset:0;background:transparent;border:none;outline:none;resize:none;font-family:var(--mono);font-size:.8rem;line-height:1.65;color:transparent;caret-color:var(--sky);padding:.75rem .85rem;tab-size:2;overflow:auto;z-index:1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+    #editor::selection{background:rgba(56,189,248,0.25)}
+    /* Syntax highlight colours */
+    .hl-mod {color:#38bdf8}
+    .hl-type{color:#fbbf24}
+    .hl-ctrl{color:#a78bfa}
+    .hl-edge{color:#2dd4bf}
+    .hl-num {color:#fb923c}
+    .hl-str {color:#86efac}
+    .hl-cmt {color:#4a5f72;font-style:italic}
+    .hl-sys {color:#7dd3fc}
+    .hl-pre {color:#f472b6}
 
     /* OUTPUT TABS */
     .out-tabs{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;flex-shrink:0}
@@ -160,7 +173,10 @@
     </div>
     <div class="editor-body">
       <div class="line-nums" id="lnums"></div>
-      <textarea id="editor" spellcheck="false" autocorrect="off" autocomplete="off"></textarea>
+      <div class="editor-wrap">
+        <pre id="hl-layer" aria-hidden="true"></pre>
+        <textarea id="editor" spellcheck="false" autocorrect="off" autocomplete="off"></textarea>
+      </div>
     </div>
   </div>
 
@@ -344,6 +360,90 @@ module tb;
 endmodule`
 };
 
+// ════════════════════════════════════════════════════════
+//  SYNTAX HIGHLIGHTER
+// ════════════════════════════════════════════════════════
+const KW_MOD  = new Set(['module','endmodule','macromodule','primitive','endprimitive','task','endtask','function','endfunction','generate','endgenerate']);
+const KW_TYPE = new Set(['input','output','inout','wire','reg','logic','integer','real','time','realtime','parameter','localparam','defparam','signed','unsigned','supply0','supply1','tri','triand','trior','tri0','tri1','wor','wand','bit','byte','int','shortint','longint','string','genvar','event']);
+const KW_CTRL = new Set(['always','always_ff','always_comb','always_latch','initial','begin','end','if','else','case','casex','casez','endcase','for','foreach','while','forever','repeat','do','fork','join','join_any','join_none','disable','assign','deassign','force','release','wait','return','break','continue','unique','priority']);
+const KW_EDGE = new Set(['posedge','negedge','or','and','not','nand','nor','xor','xnor','buf','bufif0','bufif1','notif0','notif1','pullup','pulldown']);
+
+function hlEsc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function kwSpan(w){
+  if(KW_MOD.has(w))  return `<span class="hl-mod">${w}</span>`;
+  if(KW_TYPE.has(w)) return `<span class="hl-type">${w}</span>`;
+  if(KW_CTRL.has(w)) return `<span class="hl-ctrl">${w}</span>`;
+  if(KW_EDGE.has(w)) return `<span class="hl-edge">${w}</span>`;
+  return null;
+}
+
+function hlLine(line){
+  let out='', i=0;
+  while(i<line.length){
+    const ch=line[i];
+
+    // // line comment — rest of line
+    if(ch==='/' && line[i+1]==='/'){
+      out+=`<span class="hl-cmt">${hlEsc(line.slice(i))}</span>`;
+      break;
+    }
+
+    // string literal
+    if(ch==='"'){
+      let j=i+1;
+      while(j<line.length && line[j]!=='"'){if(line[j]==='\\')j++;j++;}
+      out+=`<span class="hl-str">${hlEsc(line.slice(i,j+1))}</span>`;
+      i=j+1; continue;
+    }
+
+    // system task / function  $identifier
+    if(ch==='$'){
+      let j=i+1;
+      while(j<line.length && /\w/.test(line[j]))j++;
+      out+=`<span class="hl-sys">${hlEsc(line.slice(i,j))}</span>`;
+      i=j; continue;
+    }
+
+    // compiler directive `identifier
+    if(ch==='`'){
+      let j=i+1;
+      while(j<line.length && /\w/.test(line[j]))j++;
+      out+=`<span class="hl-pre">${hlEsc(line.slice(i,j))}</span>`;
+      i=j; continue;
+    }
+
+    // Verilog number: 4'b1010  8'hFF  32'd0  plain digits
+    if(/[0-9]/.test(ch)){
+      const m=line.slice(i).match(/^(\d+'[bBoOhHdD][0-9a-fA-FxXzZ_]+|\d[\d_]*)/);
+      if(m){out+=`<span class="hl-num">${hlEsc(m[0])}</span>`;i+=m[0].length;continue;}
+    }
+
+    // identifier or keyword
+    if(/[a-zA-Z_]/.test(ch)){
+      let j=i;
+      while(j<line.length && /[\w$]/.test(line[j]))j++;
+      const word=line.slice(i,j);
+      const sp=kwSpan(word);
+      out+=sp||hlEsc(word);
+      i=j; continue;
+    }
+
+    out+=hlEsc(ch);
+    i++;
+  }
+  return out;
+}
+
+function highlight(code){
+  return code.split('\n').map(hlLine).join('\n');
+}
+
+function updateHighlight(){
+  const layer=document.getElementById('hl-layer');
+  layer.innerHTML=highlight(ed.value)+'\n';
+}
+
 // ── Editor ──────────────────────────────────────────────────
 const ed = document.getElementById('editor');
 const ln = document.getElementById('lnums');
@@ -352,8 +452,12 @@ function updateLines(){
   const n = ed.value.split('\n').length;
   ln.innerHTML = Array.from({length:n},(_,i)=>i+1).join('<br>');
 }
-ed.addEventListener('input', updateLines);
-ed.addEventListener('scroll', ()=>{ ln.scrollTop = ed.scrollTop; });
+ed.addEventListener('input', ()=>{ updateLines(); updateHighlight(); });
+ed.addEventListener('scroll', ()=>{
+  ln.scrollTop = ed.scrollTop;
+  const hl=document.getElementById('hl-layer');
+  hl.scrollTop=ed.scrollTop; hl.scrollLeft=ed.scrollLeft;
+});
 ed.addEventListener('keydown', e=>{
   if(e.key==='Tab'){
     e.preventDefault();
@@ -367,7 +471,7 @@ ed.addEventListener('keydown', e=>{
 
 function load(name, btn){
   ed.value = EXAMPLES[name];
-  updateLines();
+  updateLines(); updateHighlight();
   document.querySelectorAll('.ex-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
   setStatus('idle','Ready');
@@ -375,7 +479,7 @@ function load(name, btn){
 }
 
 function clearAll(){
-  ed.value=''; updateLines();
+  ed.value=''; updateLines(); updateHighlight();
   document.getElementById('console').innerHTML='<span class="dim">// Output will appear here...</span>';
   document.querySelectorAll('.ex-btn').forEach(b=>b.classList.remove('active'));
   resetWave(); setStatus('idle','Ready');
