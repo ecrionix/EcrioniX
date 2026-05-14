@@ -279,13 +279,15 @@
 const API = 'https://ecrionix-ecrionix-verilog.hf.space/run';
 
 const EXAMPLES = {
-  counter:`module counter4(input clk, rst, output reg [3:0] count);
+  counter:[
+    {name:'design.v', code:
+`module counter4(input clk, rst, output reg [3:0] count);
   always @(posedge clk or posedge rst)
     if (rst) count <= 0;
     else     count <= count + 1;
-endmodule
-
-module tb;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
   reg clk=0, rst=1; wire [3:0] count;
   counter4 uut(.clk(clk),.rst(rst),.count(count));
   always #5 clk = ~clk;
@@ -297,16 +299,19 @@ module tb;
     $finish;
   end
   always @(posedge clk)
-    $display("t=%0t | count = %0d (%04b)", $time, count, count);
-endmodule`,
+    $display("t=%0t | count=%0d (%04b)", $time, count, count);
+endmodule`}
+  ],
 
-  dff:`module dff(input clk, rst, d, output reg q);
+  dff:[
+    {name:'design.v', code:
+`module dff(input clk, rst, d, output reg q);
   always @(posedge clk or posedge rst)
     if (rst) q <= 0;
     else     q <= d;
-endmodule
-
-module tb;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
   reg clk=0, rst=1, d=0; wire q;
   dff uut(.clk(clk),.rst(rst),.d(d),.q(q));
   always #5 clk = ~clk;
@@ -314,17 +319,20 @@ module tb;
     $dumpfile("dump.vcd"); $dumpvars(0, tb);
     #12 rst=0; #10 d=1; #10 d=0;
     #10 d=1; #10 d=1; #10 d=0;
-    #20 $display("D FF simulation done"); $finish;
+    #20 $display("D FF done"); $finish;
   end
   always @(posedge clk)
     $display("t=%0t | d=%b q=%b", $time, d, q);
-endmodule`,
+endmodule`}
+  ],
 
-  adder:`module full_adder(input a, b, cin, output sum, cout);
+  adder:[
+    {name:'design.v', code:
+`module full_adder(input a, b, cin, output sum, cout);
   assign {cout, sum} = a + b + cin;
-endmodule
-
-module tb;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
   reg a,b,cin; wire sum,cout;
   full_adder uut(.a(a),.b(b),.cin(cin),.sum(sum),.cout(cout));
   integer i;
@@ -338,13 +346,20 @@ module tb;
     end
     $finish;
   end
-endmodule`,
+endmodule`}
+  ],
 
-  and:`module and_tb;
-  reg a,b; wire y;
+  and:[
+    {name:'design.v', code:
+`module and_gate(input a, b, output y);
   assign y = a & b;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
+  reg a,b; wire y;
+  and_gate uut(.a(a),.b(b),.y(y));
   initial begin
-    $dumpfile("dump.vcd"); $dumpvars;
+    $dumpfile("dump.vcd"); $dumpvars(0, tb);
     $display("a b | y");
     a=0;b=0;#10;$display("%b %b | %b",a,b,y);
     a=0;b=1;#10;$display("%b %b | %b",a,b,y);
@@ -352,13 +367,16 @@ endmodule`,
     a=1;b=1;#10;$display("%b %b | %b",a,b,y);
     $finish;
   end
-endmodule`,
+endmodule`}
+  ],
 
-  mux:`module mux4to1(input [3:0] d, input [1:0] sel, output y);
+  mux:[
+    {name:'design.v', code:
+`module mux4to1(input [3:0] d, input [1:0] sel, output y);
   assign y = d[sel];
-endmodule
-
-module tb;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
   reg [3:0] d; reg [1:0] sel; wire y;
   mux4to1 uut(.d(d),.sel(sel),.y(y));
   initial begin
@@ -371,9 +389,12 @@ module tb;
     sel=3;#5;$display("sel=%b y=%b",sel,y);
     $finish;
   end
-endmodule`,
+endmodule`}
+  ],
 
-  fsm:`module fsm(input clk,rst,in, output reg out);
+  fsm:[
+    {name:'design.v', code:
+`module fsm(input clk, rst, in, output reg out);
   reg state;
   always @(posedge clk or posedge rst)
     if(rst) begin state<=0; out<=0; end
@@ -381,9 +402,9 @@ endmodule`,
       0: begin state<=in; out<=in; end
       1: begin state<=in; out<=in; end
     endcase
-endmodule
-
-module tb;
+endmodule`},
+    {name:'tb.v', code:
+`module tb;
   reg clk=0,rst=1,in=0; wire out;
   fsm uut(.clk(clk),.rst(rst),.in(in),.out(out));
   always #5 clk=~clk;
@@ -395,7 +416,8 @@ module tb;
   end
   always @(posedge clk)
     $display("t=%0t | in=%b out=%b",$time,in,out);
-endmodule`
+endmodule`}
+  ]
 };
 
 // ════════════════════════════════════════════════════════
@@ -551,7 +573,7 @@ ed.addEventListener('keydown', e=>{
 });
 
 function load(name, btn){
-  files = [{ name:'design.v', code:EXAMPLES[name] }];
+  files = EXAMPLES[name].map(f=>({name:f.name, code:f.code}));
   activeFile = 0;
   ed.value = files[0].code;
   updateLines(); updateHighlight(); renderFileTabs();
@@ -656,7 +678,9 @@ function fmtSynth(text){
 
 async function synthCode(){
   files[activeFile].code = ed.value;
-  const code = files.map(f=>f.code).join('\n\n').trim();
+  // Only synthesize design files — skip tb.v / testbench files
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
   const btn=document.getElementById('synth-btn');
   const sp=document.getElementById('synth-spin');
