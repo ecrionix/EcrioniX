@@ -206,6 +206,7 @@
   <button class="ex-btn" onclick="load('and',this)">AND Gate</button>
   <button class="ex-btn" onclick="load('mux',this)">4:1 MUX</button>
   <button class="ex-btn" onclick="load('fsm',this)">FSM</button>
+  <button class="ex-btn" onclick="load('spi',this)">SPI Master</button>
   <div class="spacer"></div>
   <button class="share-btn" id="share-btn" onclick="shareCode()">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51L8.59 10.49"/></svg>
@@ -489,6 +490,139 @@ endmodule`},
   end
   always @(posedge clk)
     $display("t=%0t | in=%b out=%b",$time,in,out);
+endmodule`}
+  ],
+
+  spi:[
+    {name:'spi_master.v', code:
+`// SPI Master — Mode 0 (CPOL=0, CPHA=0), MSB first
+// SCLK = clk / (2 x CLK_DIV)  |  minimum CLK_DIV = 2
+module spi_master #(
+  parameter DATA_WIDTH = 8,
+  parameter CLK_DIV    = 4
+)(
+  input  wire                  clk,
+  input  wire                  rst_n,
+  input  wire                  start,
+  input  wire [DATA_WIDTH-1:0] tx_data,
+  output reg  [DATA_WIDTH-1:0] rx_data,
+  output reg                   busy,
+  output reg                   done,
+  output reg                   sclk,
+  output wire                  mosi,
+  input  wire                  miso,
+  output reg                   cs_n
+);
+  localparam IDLE   = 2'd0;
+  localparam XFER   = 2'd1;
+  localparam FINISH = 2'd2;
+
+  reg [DATA_WIDTH-1:0]         tx_sr, rx_sr;
+  reg [$clog2(DATA_WIDTH)-1:0] bit_idx;
+  reg [$clog2(CLK_DIV)-1:0]   div_cnt;
+  reg [1:0]                    state;
+
+  assign mosi = tx_sr[DATA_WIDTH-1];
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state   <= IDLE; busy <= 0; done <= 0;
+      cs_n    <= 1;    sclk <= 0;
+      tx_sr   <= 0;    rx_sr <= 0; rx_data <= 0;
+      bit_idx <= 0;    div_cnt <= 0;
+    end else begin
+      done <= 0;
+      case (state)
+        IDLE: begin
+          if (start && !busy) begin
+            tx_sr   <= tx_data;
+            bit_idx <= DATA_WIDTH - 1;
+            div_cnt <= 0;
+            cs_n    <= 0;
+            busy    <= 1;
+            state   <= XFER;
+          end
+        end
+        XFER: begin
+          if (div_cnt == CLK_DIV - 1) begin
+            div_cnt <= 0;
+            sclk    <= ~sclk;
+            if (!sclk) begin             // rising edge: sample MISO
+              rx_sr <= {rx_sr[DATA_WIDTH-2:0], miso};
+            end else begin               // falling edge: advance MOSI
+              if (bit_idx == 0)
+                state <= FINISH;
+              else begin
+                tx_sr   <= {tx_sr[DATA_WIDTH-2:0], 1'b0};
+                bit_idx <= bit_idx - 1;
+              end
+            end
+          end else
+            div_cnt <= div_cnt + 1;
+        end
+        FINISH: begin
+          cs_n    <= 1;
+          sclk    <= 0;
+          rx_data <= rx_sr;
+          busy    <= 0;
+          done    <= 1;
+          state   <= IDLE;
+        end
+      endcase
+    end
+  end
+endmodule`},
+    {name:'spi_tb.v', code:
+`\`timescale 1ns/1ps
+module spi_master_tb;
+  localparam DW  = 8;
+  localparam DIV = 2;   // SCLK = 100MHz / 4 = 25MHz
+
+  reg        clk, rst_n, start;
+  reg  [7:0] tx_data;
+  wire [7:0] rx_data;
+  wire       busy, done;
+  wire       sclk, mosi, cs_n;
+  wire       miso;
+
+  assign miso = mosi;   // loopback: slave echoes master
+
+  spi_master #(.DATA_WIDTH(DW), .CLK_DIV(DIV)) uut (
+    .clk(clk), .rst_n(rst_n), .start(start),
+    .tx_data(tx_data), .rx_data(rx_data),
+    .busy(busy), .done(done),
+    .sclk(sclk), .mosi(mosi), .miso(miso), .cs_n(cs_n)
+  );
+
+  initial clk = 0;
+  always #5 clk = ~clk;       // 100 MHz
+
+  task send;
+    input [7:0] data;
+    begin
+      @(posedge clk); #1;
+      tx_data = data; start = 1;
+      @(posedge clk); #1; start = 0;
+      @(posedge done); #1;
+      $display("TX=0x%02h  RX=0x%02h  %s",
+               data, rx_data, (rx_data===data)?"PASS":"FAIL");
+    end
+  endtask
+
+  initial begin
+    $dumpfile("spi.vcd"); $dumpvars(0, spi_master_tb);
+    rst_n = 0; start = 0; tx_data = 0;
+    #25 rst_n = 1;
+
+    send(8'hA5);  #20;
+    send(8'h3C);  #20;
+    send(8'hFF);  #20;
+    send(8'h00);  #20;
+    send(8'h69);  #20;
+
+    $display("--- Simulation complete ---");
+    $finish;
+  end
 endmodule`}
   ]
 };
@@ -1259,8 +1393,18 @@ window.addEventListener('resize',()=>{ if(W.names.length) fitZoom(); });
 
 // ── Init ────────────────────────────────────────────────
 (function loadFromURL(){
+  const params = new URLSearchParams(location.search);
+  // ?ex=spi  (or any named example)
+  const ex = params.get('ex');
+  if(ex && EXAMPLES[ex]){
+    load(ex, null);
+    renderFileTabs();
+    setStatus('idle','Ready  ·  Ctrl+Enter to run');
+    return;
+  }
+  // ?c=<base64 JSON>  (share link)
   try{
-    const c=new URLSearchParams(location.search).get('c');
+    const c=params.get('c');
     if(!c) return;
     const data=JSON.parse(decodeURIComponent(escape(atob(c))));
     if(Array.isArray(data)&&data.length){
