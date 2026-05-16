@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789"
+    crossorigin="anonymous"></script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-XXZS8C1FLY');
+  </script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Latch Inference in Verilog — RTL Coding Guidelines | EcrioniX</title>
+  <meta name="description" content="Master latch inference in Verilog and SystemVerilog RTL. Learn exactly when synthesis infers a latch, how to detect it, how to fix it with default assignments, and the RTL coding guidelines that prevent latches, multi-driver bugs, and sim/synth mismatches.">
+  <meta name="keywords" content="latch inference verilog, RTL coding guidelines, latch vs flip-flop, incomplete if-else verilog, always @* latch, synthesis latch, verilog best practices, RTL design rules">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/latch-inference/">
+
+  <meta property="og:title" content="Latch Inference in Verilog — RTL Coding Guidelines | EcrioniX">
+  <meta property="og:description" content="When synthesis infers a latch, how to detect it, how to fix it, and the RTL coding rules that prevent latches, multi-driver bugs, and sim/synth mismatches.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/latch-inference/">
+  <meta property="og:image" content="https://ecrionix.org/assets/og-latch-inference.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Latch Inference — RTL Coding Guidelines | EcrioniX">
+  <meta name="twitter:image" content="https://ecrionix.org/assets/og-latch-inference.png">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle",
+     "headline":"Latch Inference in Verilog — RTL Coding Guidelines",
+     "description":"Master latch inference: when synthesis infers a latch, how to detect and fix it, and the RTL coding guidelines that prevent latches, multi-driver bugs, and sim/synth mismatches.",
+     "url":"https://ecrionix.org/rtl_design/latch-inference/",
+     "datePublished":"2026-05-16","dateModified":"2026-05-16",
+     "author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},
+      {"@type":"ListItem","position":3,"name":"Latch Inference &amp; RTL Coding Guidelines","item":"https://ecrionix.org/rtl_design/latch-inference/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What causes latch inference in Verilog?",
+       "acceptedAnswer":{"@type":"Answer","text":"A latch is inferred when a combinational always @(*) block does not assign an output variable in every possible code path. The synthesizer must infer a storage element (latch) to hold the previous value when the unassigned path is taken. Common causes: missing else in if-else, missing default in case statement, or not assigning all outputs in every branch."}},
+      {"@type":"Question","name":"How do I prevent latch inference?",
+       "acceptedAnswer":{"@type":"Answer","text":"The universal fix is a default assignment at the top of the always @(*) block: assign every output to its safe default value before the if/case logic. This ensures every output is assigned in every code path, so no latch is needed. Also add a 'default' branch to every case statement."}},
+      {"@type":"Question","name":"What is the difference between a latch and a flip-flop?",
+       "acceptedAnswer":{"@type":"Answer","text":"A latch is level-sensitive: its output follows its input whenever the enable signal is high (transparent window). A flip-flop is edge-triggered: its output only changes on a clock edge. Latches cannot be fully timed by STA tools and cause hold violations; flip-flops are the standard register element in synchronous RTL design."}},
+      {"@type":"Question","name":"Are latches always bad in RTL design?",
+       "acceptedAnswer":{"@type":"Answer","text":"Intentional latches are used in specific low-power or high-performance designs (e.g., clock-gating cells use a latch). But unintentional latches — inferred by the synthesizer from incomplete combinational always blocks — are always bugs. They are hard to time, cause DFT issues, and produce sim/synth mismatches. Use always_latch in SystemVerilog when you intend a latch so the intent is explicit."}},
+      {"@type":"Question","name":"What is a multi-driver bug in RTL?",
+       "acceptedAnswer":{"@type":"Answer","text":"A multi-driver occurs when two or more always blocks both assign the same net or variable. In simulation, the result is X (unknown) or non-deterministic. In synthesis, it produces a short circuit. Each net must have exactly one driver in RTL — use only one always block per output variable."}},
+      {"@type":"Question","name":"What RTL coding guidelines prevent the most synthesis bugs?",
+       "acceptedAnswer":{"@type":"Answer","text":"The key rules: (1) Always assign all outputs at the top of combinational blocks. (2) Never mix blocking and non-blocking in the same block. (3) One always block per output — no multi-drivers. (4) Use @(*) not manual sensitivity lists. (5) Complete every if/case with else/default. (6) Use full_case and parallel_case pragmas with caution. (7) Prefer always_comb and always_ff in SystemVerilog."}}
+    ]}
+  ]}
+  </script>
+
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#020617; --bg-2:#0f172a; --bg-card:rgba(15,23,42,0.7);
+    --border:rgba(148,163,184,0.1); --bh:rgba(251,113,133,0.4);
+    --coral:#fb7185; --coral-d:rgba(251,113,133,0.12);
+    --indigo:#6366f1; --indigo-l:#818cf8;
+    --text:#f8fafc; --muted:#94a3b8; --dim:#64748b;
+  }
+  html { scroll-behavior:smooth; }
+  body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; line-height:1.7; }
+  #bg-canvas { position:fixed; inset:0; z-index:-1; pointer-events:none; }
+
+  .navbar { position:sticky; top:0; z-index:100; background:rgba(2,6,23,0.85); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
+  .nav-inner { max-width:1200px; margin:0 auto; padding:0 1.25rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+  .nav-logo { font-family:'Orbitron',sans-serif; font-size:1.3rem; font-weight:700; color:#fff; text-decoration:none; letter-spacing:.05em; }
+  .nav-logo span { color:var(--indigo); }
+  .nav-links { display:flex; gap:2rem; list-style:none; }
+  .nav-links a { color:var(--muted); text-decoration:none; font-size:.88rem; font-weight:500; transition:color .2s; }
+  .nav-links a:hover,.nav-links a.active { color:#fff; }
+  .hamburger { display:none; flex-direction:column; gap:5px; cursor:pointer; background:none; border:none; padding:4px; }
+  .hamburger span { display:block; width:24px; height:2px; background:var(--text); border-radius:2px; }
+  .mobile-menu { display:none; flex-direction:column; background:var(--bg-2); border-top:1px solid var(--border); padding:1rem 1.25rem; gap:.25rem; }
+  .mobile-menu.open { display:flex; }
+  .mobile-menu a { color:var(--muted); text-decoration:none; font-size:.95rem; padding:.65rem 0; border-bottom:1px solid var(--border); transition:color .2s; }
+  .mobile-menu a:last-child { border-bottom:none; }
+  .mobile-menu a:hover { color:#fff; }
+  @media(max-width:768px){ .nav-links{display:none;} .hamburger{display:flex;} }
+
+  .breadcrumb { max-width:1200px; margin:0 auto; padding:1rem 1.25rem 0; display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--dim); flex-wrap:wrap; }
+  .breadcrumb a { color:var(--dim); text-decoration:none; transition:color .2s; }
+  .breadcrumb a:hover { color:var(--indigo-l); }
+
+  .hero { max-width:1200px; margin:0 auto; padding:3rem 1.25rem 2rem; }
+  .hero-tag { display:inline-block; background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.3); color:var(--coral); font-size:.75rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; padding:.3rem .9rem; border-radius:100px; margin-bottom:1.25rem; }
+  .hero h1 { font-size:clamp(1.8rem,4vw,2.8rem); font-weight:700; line-height:1.2; color:#fff; margin-bottom:1rem; }
+  .hero h1 span { background:linear-gradient(135deg,var(--coral),#f97316); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero p { font-size:1rem; color:var(--muted); max-width:720px; margin-bottom:2rem; }
+
+  .hero-meta { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:2rem; }
+  .meta-pill { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color:var(--muted); background:rgba(15,23,42,0.6); border:1px solid var(--border); padding:.4rem .9rem; border-radius:100px; }
+  .meta-pill svg { width:14px; height:14px; color:var(--coral); flex-shrink:0; }
+
+  .rules-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem; margin-bottom:3rem; }
+  .rule-card { background:var(--coral-d); border:1px solid rgba(251,113,133,0.25); border-radius:14px; padding:1.25rem 1.5rem; display:flex; align-items:flex-start; gap:1rem; }
+  .rule-num { font-family:'Orbitron',sans-serif; font-size:.7rem; font-weight:700; color:var(--coral); background:rgba(251,113,133,0.15); border:1px solid rgba(251,113,133,0.3); width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rule-card h4 { font-size:.9rem; font-weight:700; color:#fff; margin-bottom:.3rem; }
+  .rule-card p { font-size:.82rem; color:var(--muted); line-height:1.6; }
+
+  .section { max-width:1200px; margin:0 auto; padding:0 1.25rem 4rem; }
+  .section-label { font-size:.75rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--coral); margin-bottom:.5rem; }
+  .section-title { font-size:clamp(1.4rem,3vw,1.9rem); font-weight:700; color:#fff; margin-bottom:.5rem; }
+  .section-body { font-size:.93rem; color:var(--muted); max-width:760px; line-height:1.8; margin-bottom:1.5rem; }
+
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:2rem; }
+  @media(max-width:768px){ .two-col{grid-template-columns:1fr;} }
+
+  .code-block { background:#0d1117; border:1px solid rgba(148,163,184,0.12); border-radius:12px; overflow:hidden; margin-bottom:1.5rem; position:relative; }
+  .code-dots { display:flex; gap:.45rem; padding:.75rem 1rem .5rem; }
+  .code-dots span { width:11px; height:11px; border-radius:50%; }
+  .cd-r{background:#ff5f57;} .cd-y{background:#ffbd2e;} .cd-g{background:#28c840;}
+  .code-label { position:absolute; top:.72rem; right:1rem; font-size:.7rem; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
+  .cl-good{color:#84cc16;} .cl-bad{color:#f87171;} .cl-coral{color:#fb7185;}
+  pre { padding:1rem 1.25rem 1.25rem; font-size:.82rem; line-height:1.75; overflow-x:auto; font-family:'Courier New',monospace; color:#e2e8f0; }
+  .kw{color:#60a5fa;font-weight:600;} .cm{color:#475569;font-style:italic;} .str{color:#4ade80;} .num{color:#fbbf24;} .sig{color:#c084fc;} .op{color:#f8fafc;}
+  .copy-btn { position:absolute; bottom:.75rem; right:.75rem; background:rgba(251,113,133,0.15); border:1px solid rgba(251,113,133,0.3); color:var(--coral); font-size:.72rem; font-weight:600; padding:.3rem .75rem; border-radius:6px; cursor:pointer; transition:background .2s; }
+  .copy-btn:hover { background:rgba(251,113,133,0.25); }
+
+  .code-pair { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:2rem; }
+  @media(max-width:768px){ .code-pair{grid-template-columns:1fr;} }
+  .cph { font-size:.8rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:.5rem 1rem; border-radius:8px 8px 0 0; }
+  .cph-bad  { background:rgba(248,113,113,0.1); color:#f87171; border:1px solid rgba(248,113,113,0.2); border-bottom:none; }
+  .cph-good { background:rgba(132,204,22,0.08); color:#84cc16; border:1px solid rgba(132,204,22,0.2); border-bottom:none; }
+
+  .svg-wrap { background:rgba(2,6,23,0.6); border:1px solid var(--border); border-radius:16px; padding:1.5rem; margin-bottom:2rem; overflow-x:auto; }
+  .svg-wrap svg { display:block; margin:0 auto; }
+
+  .info-box { border-radius:12px; padding:1.25rem 1.5rem; margin-bottom:1.5rem; display:flex; gap:1rem; align-items:flex-start; }
+  .ib-warn { background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.2); }
+  .ib-tip  { background:rgba(132,204,22,0.06); border:1px solid rgba(132,204,22,0.2); }
+  .ib-danger { background:rgba(248,113,113,0.06); border:1px solid rgba(248,113,113,0.2); }
+  .ib-icon { font-size:1.2rem; flex-shrink:0; margin-top:.1rem; }
+  .info-box h4 { font-size:.88rem; font-weight:700; color:#fff; margin-bottom:.3rem; }
+  .info-box p  { font-size:.83rem; color:var(--muted); line-height:1.65; }
+
+  /* Guidelines numbered list */
+  .guideline-list { display:flex; flex-direction:column; gap:1rem; margin-bottom:2rem; }
+  .guideline { display:flex; gap:1.25rem; align-items:flex-start; padding:1.25rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; }
+  .g-num { font-family:'Orbitron',sans-serif; font-size:.72rem; font-weight:700; color:var(--coral); background:var(--coral-d); border:1px solid rgba(251,113,133,0.3); min-width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .guideline h4 { font-size:.92rem; font-weight:700; color:#fff; margin-bottom:.3rem; }
+  .guideline p  { font-size:.84rem; color:var(--muted); line-height:1.65; }
+  .g-tag { display:inline-block; font-size:.68rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; padding:.15rem .55rem; border-radius:100px; margin-bottom:.4rem; }
+  .gt-avoid { background:rgba(248,113,113,0.1); color:#f87171; border:1px solid rgba(248,113,113,0.2); }
+  .gt-do    { background:rgba(132,204,22,0.1); color:#84cc16; border:1px solid rgba(132,204,22,0.2); }
+
+  .tbl-wrap { overflow-x:auto; margin-bottom:2rem; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  th { background:rgba(251,113,133,0.08); color:var(--coral); font-weight:600; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; padding:.85rem 1.1rem; text-align:left; border-bottom:1px solid rgba(251,113,133,0.2); }
+  td { padding:.8rem 1.1rem; border-bottom:1px solid var(--border); color:var(--muted); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(251,113,133,0.03); }
+  td:first-child { color:#fff; font-weight:500; }
+  .td-good{color:#84cc16!important;font-weight:600!important;} .td-bad{color:#f87171!important;font-weight:600!important;}
+
+  .faq-list { display:flex; flex-direction:column; gap:.75rem; margin-bottom:2rem; }
+  .faq-item { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .faq-q { display:flex; justify-content:space-between; align-items:center; padding:1.1rem 1.25rem; cursor:pointer; gap:1rem; }
+  .faq-q span { font-size:.92rem; font-weight:600; color:#fff; }
+  .faq-q svg { width:18px; height:18px; color:var(--coral); flex-shrink:0; transition:transform .3s; }
+  .faq-item.open .faq-q svg { transform:rotate(45deg); }
+  .faq-a { display:none; padding:0 1.25rem 1.1rem; font-size:.86rem; color:var(--muted); line-height:1.75; }
+  .faq-item.open .faq-a { display:block; }
+
+  .footer { background:var(--bg-2); border-top:1px solid var(--border); padding:2.5rem 1.25rem; text-align:center; }
+  .footer-logo { font-family:'Orbitron',sans-serif; font-size:1.1rem; font-weight:700; color:#fff; margin-bottom:.5rem; }
+  .footer-logo span { color:var(--indigo); }
+  .footer p { font-size:.82rem; color:var(--dim); margin-bottom:1.25rem; }
+  .footer-nav { display:flex; justify-content:center; flex-wrap:wrap; gap:1.5rem; margin-bottom:1.5rem; }
+  .footer-nav a { font-size:.82rem; color:var(--dim); text-decoration:none; transition:color .2s; }
+  .footer-nav a:hover { color:var(--indigo-l); }
+  .footer-copy { font-size:.78rem; color:var(--dim); border-top:1px solid var(--border); padding-top:1.25rem; }
+
+  .scroll-top { position:fixed; bottom:1.5rem; right:1.5rem; width:40px; height:40px; border-radius:50%; background:rgba(251,113,133,0.75); border:none; color:#020617; cursor:pointer; display:none; align-items:center; justify-content:center; transition:background .2s,transform .2s; z-index:50; }
+  .scroll-top.visible { display:flex; }
+  .scroll-top:hover { background:var(--coral); transform:scale(1.1); }
+  .divider { height:1px; background:var(--border); max-width:1200px; margin:0 auto; }
+  @media(max-width:480px){ .hero{padding:2rem 1rem 1.5rem;} }
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/" class="active">RTL Design</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/rtl_design/">RTL Design</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <span>Latch Inference &amp; RTL Coding Guidelines</span>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-tag">RTL Design — Synthesis Pitfalls</div>
+  <h1>Latch Inference &amp;<br><span>RTL Coding Guidelines</span></h1>
+  <p>
+    An unintentional latch is one of the most dangerous bugs in RTL design — it silently passes simulation but breaks timing analysis and can fail in silicon. This guide shows exactly when and why synthesis infers a latch, how to detect it, how to eliminate it, and the complete set of RTL coding guidelines every ASIC designer must follow.
+  </p>
+  <div class="hero-meta">
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z"/></svg>
+      Latch vs Flip-Flop
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      RTL Best Practices
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+      Verilog &amp; SystemVerilog
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+      Synthesis-Ready
+    </div>
+  </div>
+
+  <div class="rules-grid">
+    <div class="rule-card">
+      <div class="rule-num">1</div>
+      <div><h4>Default-Assign Every Output First</h4>
+        <p>At the top of every <code style="color:var(--coral)">always @(*)</code> block, assign every output to its safe default value before any if/case logic. This guarantees full coverage with zero latches.</p></div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-num">2</div>
+      <div><h4>Every case Needs a default Branch</h4>
+        <p>Even if the synthesizer never reaches it, always add a <code style="color:var(--coral)">default: out = '0;</code> branch to every case statement to prevent latch inference on uncovered encodings.</p></div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-num">3</div>
+      <div><h4>One Driver Per Signal</h4>
+        <p>Each reg/wire must be driven by exactly one always block or assign statement. Two drivers produce X in simulation and a short circuit in synthesis — both are silent killers.</p></div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-num">4</div>
+      <div><h4>Never Mix = and &lt;= in One Block</h4>
+        <p>Use blocking <code style="color:var(--coral)">=</code> only in combinational blocks; non-blocking <code style="color:var(--coral)">&lt;=</code> only in sequential blocks. Mixing them in one always block causes sim/synth mismatches that are nearly impossible to debug.</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- SECTION 1: What is a latch -->
+<div class="section" style="padding-top:3rem;">
+  <div class="section-label">The Problem</div>
+  <h2 class="section-title">What Is a Latch and Why Is It Dangerous?</h2>
+  <p class="section-body">A latch is a level-sensitive storage element: its output is transparent (follows input) when the enable is active, and holds its value when the enable is inactive. Unlike a flip-flop, it has no clock — it changes output whenever the enable and data change, creating a window that STA tools cannot fully time.</p>
+
+  <!-- Latch vs FF SVG -->
+  <div class="svg-wrap">
+    <svg width="760" height="300" viewBox="0 0 760 300" fill="none" xmlns="http://www.w3.org/2000/svg" style="max-width:100%">
+      <defs>
+        <marker id="arrL" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+        </marker>
+        <marker id="arrR" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#f87171"/>
+        </marker>
+        <marker id="arrG" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#4ade80"/>
+        </marker>
+      </defs>
+
+      <!-- Latch side -->
+      <rect x="10" y="10" width="350" height="280" rx="12" fill="rgba(248,113,113,0.04)" stroke="rgba(248,113,113,0.2)" stroke-width="1"/>
+      <text x="185" y="35" fill="#f87171" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="1" font-family="Outfit,sans-serif">⚠ LATCH (Level-Sensitive)</text>
+
+      <!-- Latch symbol -->
+      <rect x="130" y="90" width="100" height="70" rx="8" fill="rgba(15,23,42,0.9)" stroke="rgba(248,113,113,0.5)" stroke-width="2"/>
+      <text x="180" y="120" fill="#f87171" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">LATCH</text>
+      <text x="155" y="138" fill="#94a3b8" font-size="9" font-family="Courier New,monospace">D</text>
+      <text x="205" y="138" fill="#94a3b8" font-size="9" font-family="Courier New,monospace">Q</text>
+      <text x="155" y="155" fill="#94a3b8" font-size="9" font-family="Courier New,monospace">EN</text>
+
+      <!-- D and EN inputs -->
+      <line x1="60" y1="120" x2="130" y2="120" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrL)"/>
+      <text x="30" y="124" fill="#94a3b8" font-size="10" font-family="Courier New,monospace">D</text>
+      <line x1="60" y1="148" x2="130" y2="148" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrL)"/>
+      <text x="22" y="152" fill="#94a3b8" font-size="10" font-family="Courier New,monospace">EN</text>
+      <!-- Q output -->
+      <line x1="230" y1="125" x2="320" y2="125" stroke="#f87171" stroke-width="1.5" marker-end="url(#arrR)"/>
+      <text x="328" y="129" fill="#f87171" font-size="10" font-family="Courier New,monospace">Q</text>
+
+      <!-- Timing -->
+      <text x="185" y="200" fill="#f87171" font-size="10" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Transparent when EN=1</text>
+      <text x="185" y="218" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Q changes any time D or EN changes</text>
+      <text x="185" y="236" fill="#f87171" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">⚠ STA cannot fully time this path</text>
+      <text x="185" y="254" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Glitch on EN → glitch on Q</text>
+      <text x="185" y="272" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Hard to scan-test in DFT</text>
+
+      <!-- FF side -->
+      <rect x="390" y="10" width="360" height="280" rx="12" fill="rgba(74,222,128,0.04)" stroke="rgba(74,222,128,0.2)" stroke-width="1"/>
+      <text x="570" y="35" fill="#4ade80" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="1" font-family="Outfit,sans-serif">✓ FLIP-FLOP (Edge-Triggered)</text>
+
+      <!-- FF symbol -->
+      <rect x="505" y="90" width="110" height="80" rx="8" fill="rgba(15,23,42,0.9)" stroke="rgba(74,222,128,0.5)" stroke-width="2"/>
+      <text x="560" y="120" fill="#4ade80" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">D FF</text>
+      <text x="522" y="138" fill="#94a3b8" font-size="9" font-family="Courier New,monospace">D</text>
+      <text x="600" y="138" fill="#94a3b8" font-size="9" font-family="Courier New,monospace">Q</text>
+      <!-- Clock triangle -->
+      <polyline points="505,160 515,153 505,146" stroke="#a78bfa" stroke-width="1.5" fill="none"/>
+      <text x="522" y="158" fill="#a78bfa" font-size="9" font-family="Courier New,monospace">CLK▲</text>
+
+      <!-- Inputs -->
+      <line x1="430" y1="120" x2="505" y2="120" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrL)"/>
+      <text x="405" y="124" fill="#94a3b8" font-size="10" font-family="Courier New,monospace">D</text>
+      <line x1="430" y1="152" x2="505" y2="152" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arrL)"/>
+      <text x="398" y="156" fill="#a78bfa" font-size="10" font-family="Courier New,monospace">CLK</text>
+      <!-- Q -->
+      <line x1="615" y1="130" x2="700" y2="130" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrG)"/>
+      <text x="708" y="134" fill="#4ade80" font-size="10" font-family="Courier New,monospace">Q</text>
+
+      <!-- Good notes -->
+      <text x="570" y="200" fill="#4ade80" font-size="10" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Updates only on rising clock edge</text>
+      <text x="570" y="218" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Q stable between edges — easy to time</text>
+      <text x="570" y="236" fill="#4ade80" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">✓ STA fully analyzes setup &amp; hold paths</text>
+      <text x="570" y="254" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Glitch on D before edge is ignored</text>
+      <text x="570" y="272" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Scan-chain compatible</text>
+    </svg>
+  </div>
+
+  <div class="info-box ib-danger">
+    <div class="ib-icon">🚫</div>
+    <div>
+      <h4>The Silent Killer: Simulation Passes, Silicon Fails</h4>
+      <p>An unintentionally inferred latch will often pass RTL simulation because the test vectors happen to trigger the output on the intended path. But in silicon, the latch enable glitches due to combinational hazards, or the transparent window causes hold violations that STA missed. Most ASIC projects require zero unintentional latches — enforced by lint tools like Spyglass or Mentor's HDL Designer.</p>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 2: How latches are inferred -->
+<div class="section" style="padding-top:0">
+  <div class="section-label">Root Causes</div>
+  <h2 class="section-title">The Three Ways Synthesis Infers a Latch</h2>
+  <p class="section-body">Every latch inference comes down to one root cause: the synthesizer cannot find a combinational assignment for an output in every possible code path, so it inserts a storage element to hold the previous value.</p>
+
+  <!-- Case 1: Missing else -->
+  <div class="code-pair">
+    <div>
+      <div class="cph cph-bad">❌ Case 1: if without else</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb1bad"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  <span class="kw">if</span> (load)
+    data_out = data_in;
+  <span class="cm">// No else: when load=0,</span>
+  <span class="cm">// data_out must HOLD → LATCH</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb1bad',this)">Copy</button>
+      </div>
+    </div>
+    <div>
+      <div class="cph cph-good">✅ Fix: default first, then if</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb1good"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  data_out = <span class="num">8'h00</span>; <span class="cm">// default</span>
+  <span class="kw">if</span> (load)
+    data_out = data_in;
+  <span class="cm">// load=0 → data_out = 8'h00</span>
+  <span class="cm">// No latch. Pure combinational.</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb1good',this)">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case 2: Incomplete case -->
+  <div class="code-pair">
+    <div>
+      <div class="cph cph-bad">❌ Case 2: case without default</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb2bad"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  <span class="kw">case</span> (state)
+    IDLE:  out = <span class="num">2'b00</span>;
+    READ:  out = <span class="num">2'b01</span>;
+    WRITE: out = <span class="num">2'b10</span>;
+    <span class="cm">// DONE state → out holds → LATCH</span>
+  <span class="kw">endcase</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb2bad',this)">Copy</button>
+      </div>
+    </div>
+    <div>
+      <div class="cph cph-good">✅ Fix: default assignment + default branch</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb2good"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  out = <span class="num">2'b00</span>; <span class="cm">// default — prevents latch</span>
+  <span class="kw">case</span> (state)
+    IDLE:  out = <span class="num">2'b00</span>;
+    READ:  out = <span class="num">2'b01</span>;
+    WRITE: out = <span class="num">2'b10</span>;
+    <span class="kw">default</span>: out = <span class="num">2'b00</span>; <span class="cm">// covers DONE</span>
+  <span class="kw">endcase</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb2good',this)">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case 3: Partial outputs in some branches -->
+  <div class="code-pair">
+    <div>
+      <div class="cph cph-bad">❌ Case 3: Only some branches assign all outputs</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb3bad"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  <span class="kw">if</span> (sel) <span class="kw">begin</span>
+    y = a;
+    z = b;       <span class="cm">// z assigned here</span>
+  <span class="kw">end else begin</span>
+    y = c;
+    <span class="cm">// z NOT assigned when sel=0 → LATCH on z!</span>
+  <span class="kw">end</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb3bad',this)">Copy</button>
+      </div>
+    </div>
+    <div>
+      <div class="cph cph-good">✅ Fix: assign ALL outputs in ALL branches</div>
+      <div class="code-block" style="border-radius:0 0 12px 12px;border-top:none">
+        <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+        <pre id="cb3good"><span class="kw">always</span> @(*) <span class="kw">begin</span>
+  y = <span class="num">1'b0</span>; z = <span class="num">1'b0</span>; <span class="cm">// defaults</span>
+  <span class="kw">if</span> (sel) <span class="kw">begin</span>
+    y = a;
+    z = b;
+  <span class="kw">end else begin</span>
+    y = c;
+    z = <span class="num">1'b0</span>; <span class="cm">// explicit, or rely on default</span>
+  <span class="kw">end</span>
+<span class="kw">end</span></pre>
+        <button class="copy-btn" onclick="copyCode('cb3good',this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 3: RTL Coding Guidelines -->
+<div class="section" style="padding-top:0">
+  <div class="section-label">RTL Coding Guidelines</div>
+  <h2 class="section-title">10 Rules Every RTL Designer Must Follow</h2>
+  <p class="section-body">These guidelines prevent the majority of synthesis bugs, sim/synth mismatches, and DFT issues encountered in production ASIC flows. Follow all of them on every RTL block.</p>
+
+  <div class="guideline-list">
+
+    <div class="guideline">
+      <div class="g-num">01</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Default-assign all outputs at the top of every combinational always block</h4>
+        <p>The first statement(s) inside <code style="color:var(--coral)">always @(*)</code> should assign every output to its safe inactive value. This guarantees zero latches regardless of how complex the if/case logic becomes, and makes code easier to review.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">02</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Use @(*) — never manual sensitivity lists</h4>
+        <p>Manual sensitivity lists (<code style="color:var(--coral)">always @(a or b or sel)</code>) become stale when signals are added. A missed signal means the simulator does not re-evaluate the block when that input changes — a silent sim/synth divergence. Always use <code style="color:var(--coral)">@(*)</code> or <code style="color:var(--coral)">always_comb</code>.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">03</div>
+      <div>
+        <span class="g-tag gt-avoid">AVOID</span>
+        <h4>Never mix blocking (=) and non-blocking (&lt;=) in one always block</h4>
+        <p>Blocking assignments in a clocked block cause ordering-dependent behavior in simulation that synthesis ignores. Non-blocking assignments in a combinational block cause zero-delay feedback loops. Keep the rule absolute: <code style="color:var(--coral)">=</code> in combinational, <code style="color:var(--coral)">&lt;=</code> in sequential — never mixed.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">04</div>
+      <div>
+        <span class="g-tag gt-avoid">AVOID</span>
+        <h4>One always block per output signal — no multi-drivers</h4>
+        <p>Each <code style="color:var(--coral)">reg</code> must be driven by exactly one always block. Two always blocks both driving the same variable produce X in simulation (last-executed wins non-deterministically) and are a synthesis error. Use a single always block with internal mux logic if multiple conditions must update the same signal.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">05</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Add a default branch to every case statement</h4>
+        <p>Even if the full encoding is theoretically covered by named cases, always add <code style="color:var(--coral)">default: out = '0;</code>. This documents intent, prevents lint warnings, covers X-propagation in simulation, and prevents latches on any encoding the tool considers "reachable."</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">06</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Always include a synchronous reset in clocked always blocks</h4>
+        <p>A flip-flop without reset comes up in an unknown state after power-on. Always include a reset condition in every sequential always block. Prefer synchronous reset (<code style="color:var(--coral)">if (!rst_n) q &lt;= '0;</code>) for ASIC flows; use asynchronous reset only when the design specifically requires it.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">07</div>
+      <div>
+        <span class="g-tag gt-avoid">AVOID</span>
+        <h4>Do not infer combinational feedback loops</h4>
+        <p>If a signal feeds itself through combinational logic (<code style="color:var(--coral)">assign a = a & b;</code>), the simulator will oscillate or produce X, and synthesis may produce a ring oscillator or error. Every combinational path must have a registered cut point (flip-flop) to break feedback.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">08</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Use full-width arithmetic — avoid implicit truncation</h4>
+        <p>Verilog expressions evaluate at the width of the widest operand, but assignments truncate. Always explicitly size intermediate wires: <code style="color:var(--coral)">wire [8:0] sum = {1'b0, a} + {1'b0, b};</code> to capture carry. Implicit truncation discards the MSB silently.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">09</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Prefer always_comb and always_ff in SystemVerilog</h4>
+        <p><code style="color:var(--coral)">always_comb</code> causes a compile error if a latch would be inferred. <code style="color:var(--coral)">always_ff</code> restricts the block to flip-flop inference and catches incorrect usage. These typed always blocks make synthesis intent explicit and eliminate entire categories of bugs at compile time rather than silicon time.</p>
+      </div>
+    </div>
+
+    <div class="guideline">
+      <div class="g-num">10</div>
+      <div>
+        <span class="g-tag gt-do">DO</span>
+        <h4>Run RTL lint before synthesis — fix all warnings</h4>
+        <p>Tools like Spyglass, Mentor Questa Lint, or Synopsys Leda catch latch inference, multi-drivers, incomplete sensitivity lists, and sim/synth mismatches before a single gate is mapped. Treat lint warnings as errors. A design that lint-clean synthesizes predictably.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SECTION 4: Intentional latches -->
+<div class="section" style="padding-top:0">
+  <div class="section-label">Intentional Latches</div>
+  <h2 class="section-title">When a Latch Is Actually Correct</h2>
+  <p class="section-body">Latches are not universally wrong — they appear intentionally in clock-gating cells and specific low-power design patterns. The key is that the intent must be explicit.</p>
+
+  <div class="code-block">
+    <div class="code-dots"><span class="cd-r"></span><span class="cd-y"></span><span class="cd-g"></span></div>
+    <span class="code-label cl-coral">Intentional Latch Patterns</span>
+    <pre id="cb-intentional"><span class="cm">// ── Integrated Clock Gating (ICG) latch ─────────────────</span>
+<span class="cm">// Standard cell in ASIC libs — latch holds the enable.</span>
+<span class="cm">// ICG cell is instantiated, not inferred, in production RTL.</span>
+<span class="kw">module</span> <span class="sig">icg_cell</span> (
+  <span class="kw">input</span>  clk, enable, test_en,
+  <span class="kw">output</span> gated_clk
+);
+  <span class="kw">reg</span> en_latch;
+  <span class="cm">// Latch: transparent on LOW phase of clk</span>
+  <span class="kw">always</span> @(*) <span class="kw">begin</span>
+    <span class="kw">if</span> (!clk) en_latch = enable | test_en;
+  <span class="kw">end</span>
+  <span class="kw">assign</span> gated_clk = clk &amp; en_latch;
+<span class="kw">endmodule</span>
+
+<span class="cm">// ── SystemVerilog: always_latch (explicit intent) ────────</span>
+<span class="cm">// Use always_latch when a latch is truly intended.</span>
+<span class="cm">// Compiler will error if your block infers a FF instead.</span>
+<span class="kw">always_latch</span> <span class="kw">begin</span>
+  <span class="kw">if</span> (en) q_latch &lt;= d; <span class="cm">// transparent when en=1</span>
+<span class="kw">end</span>
+
+<span class="cm">// For all other RTL: use always_comb (errors on latch inference)</span>
+<span class="kw">always_comb</span> <span class="kw">begin</span>
+  out = <span class="num">'0</span>;           <span class="cm">// default</span>
+  <span class="kw">if</span> (sel) out = a;   <span class="cm">// no latch — default covers sel=0</span>
+<span class="kw">end</span></pre>
+    <button class="copy-btn" onclick="copyCode('cb-intentional',this)">Copy</button>
+  </div>
+</div>
+
+<!-- SECTION 5: Quick reference table -->
+<div class="section" style="padding-top:0">
+  <div class="section-label">Quick Reference</div>
+  <h2 class="section-title">RTL Coding Guidelines Summary</h2>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Rule</th><th>Combinational Block</th><th>Sequential Block</th><th>Consequence if Broken</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Assignment type</td>
+          <td class="td-good">Blocking <code>=</code></td>
+          <td class="td-good">Non-blocking <code>&lt;=</code></td>
+          <td>Sim/synth mismatch, race condition</td>
+        </tr>
+        <tr>
+          <td>Sensitivity list</td>
+          <td class="td-good">@(*) or always_comb</td>
+          <td>@(posedge clk [or negedge rst_n])</td>
+          <td>Sim divergence from missed signals</td>
+        </tr>
+        <tr>
+          <td>All outputs assigned</td>
+          <td class="td-good">Yes — default first</td>
+          <td>N/A (holds value by FF nature)</td>
+          <td>Latch inferred → timing failure</td>
+        </tr>
+        <tr>
+          <td>case completeness</td>
+          <td class="td-good">default branch required</td>
+          <td class="td-good">default branch required</td>
+          <td>Latch on outputs not in all branches</td>
+        </tr>
+        <tr>
+          <td>Reset</td>
+          <td>N/A</td>
+          <td class="td-good">Always include reset</td>
+          <td>Unknown state after power-on</td>
+        </tr>
+        <tr>
+          <td>Drivers per signal</td>
+          <td class="td-good">Exactly one</td>
+          <td class="td-good">Exactly one</td>
+          <td>X in sim / short circuit in silicon</td>
+        </tr>
+        <tr>
+          <td>SV preferred form</td>
+          <td class="td-good">always_comb</td>
+          <td class="td-good">always_ff</td>
+          <td>Missing compile-time latch check</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- SECTION 6: FAQ -->
+<div class="section" style="padding-top:0">
+  <div class="section-label">FAQ</div>
+  <h2 class="section-title">Frequently Asked Questions</h2>
+
+  <div class="faq-list">
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>What causes latch inference in Verilog?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a">A latch is inferred when a combinational <code>always @(*)</code> block does not assign an output variable in every possible code path. The synthesizer must insert a storage element to hold the previous value when the unassigned path is taken. The three patterns that cause this: (1) an <code>if</code> without an <code>else</code>, (2) a <code>case</code> without a <code>default</code> branch, (3) an output that is only assigned in some branches of an if/case but not all. The fix for all three is the same: add a default assignment at the top of the block that covers every output.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>What is the difference between a latch and a flip-flop?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a">A <strong style="color:#fff">latch</strong> is level-sensitive: its output is transparent (follows input) whenever the enable is active. It has no clock — it can change output at any time, creating combinational paths that STA cannot fully constrain. A <strong style="color:#fff">flip-flop</strong> is edge-triggered: its output only changes on a clock edge (posedge or negedge). The flip-flop is the fundamental register element of synchronous design. All intentional storage in RTL should use flip-flops (via <code>always @(posedge clk)</code>), never unintentional latches.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>Are latches ever correct in RTL design?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a">Yes — intentional latches are used in two specific contexts: (1) <strong style="color:#fff">Integrated Clock Gating (ICG) cells</strong>: a latch is used to hold the clock-enable signal during the active clock phase, preventing glitches from propagating to the gated clock. This is a standard low-power technique in ASIC design, but the latch is instantiated as a specific standard cell — not inferred by general RTL. (2) <strong style="color:#fff">Explicit latch storage</strong> in some high-performance datapaths. In SystemVerilog, use <code>always_latch</code> to declare the intent explicitly. Any latch that appears without intentional use of <code>always_latch</code> is an unintentional latch — a bug.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>How does always_comb prevent latch inference?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a"><code>always_comb</code> in SystemVerilog causes the elaborator (and most simulators) to issue a <strong style="color:#fff">compile-time error</strong> if the block would infer a latch. This turns what was a silent synthesis issue — discovered only during gate-level netlist review or STA — into an error that stops compilation immediately. Additionally, <code>always_comb</code> executes once at time zero before simulation begins, ensuring outputs are not left in an unknown state at startup. Use <code>always_comb</code> in any flow that supports SystemVerilog; it is strictly superior to <code>always @(*)</code>.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>What is a multi-driver and how do I fix it?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a">A multi-driver occurs when two or more always blocks (or an always block and an assign statement) both drive the same net. In simulation, both drivers "write" the net — if they disagree, the result is X (unknown). In synthesis, it produces a short circuit that will physically short power to ground. The fix: consolidate all driving logic for a signal into a single always block using an internal mux (<code>always @(*) begin out = sel ? a : b; end</code>). Lint tools catch multi-drivers at elaboration. If you are seeing X propagation through a net, a multi-driver is a likely cause.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        <span>What RTL lint warnings should I never ignore?</span>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-a">Treat these lint warnings as errors — they indicate real synthesis bugs: (1) <strong style="color:#fff">Latch inferred</strong> — any unintentional latch. (2) <strong style="color:#fff">Multi-driver</strong> — two sources driving the same net. (3) <strong style="color:#fff">Incomplete sensitivity list</strong> — signal read but not in @(...). (4) <strong style="color:#fff">Blocking in sequential block</strong> — using <code>=</code> inside <code>posedge clk</code>. (5) <strong style="color:#fff">Combinational loop</strong> — a net feeds itself without a register. (6) <strong style="color:#fff">Width mismatch</strong> — assigning a wider expression to a narrower net (truncation). (7) <strong style="color:#fff">Unconnected output port</strong> — a module output left floating. These seven categories catch the majority of RTL bugs before synthesis runs.</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <p>A structured learning platform for VLSI design, RTL development, and semiconductor engineering.</p>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+    <a href="/about/">About</a>
+    <a href="/contact/">Contact</a>
+  </nav>
+  <div class="footer-copy">&copy; <span id="year"></span> EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+  </svg>
+</button>
+
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+  const ham = document.getElementById('hamburger');
+  const menu = document.getElementById('mobileMenu');
+  ham.addEventListener('click', () => menu.classList.toggle('open'));
+  const st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', () => st.classList.toggle('visible', window.scrollY > 400));
+  st.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  function toggleFaq(btn) { btn.parentElement.classList.toggle('open'); }
+  function copyCode(id, btn) {
+    navigator.clipboard.writeText(document.getElementById(id).innerText).then(() => {
+      btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+  (function(){
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, pts;
+    function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    function init(){
+      resize();
+      pts = Array.from({length:45}, () => ({x:Math.random()*W, y:Math.random()*H, vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3, r:Math.random()*1.4+.5}));
+    }
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.strokeStyle='rgba(251,113,133,0.018)'; ctx.lineWidth=1;
+      for(let x=0;x<W;x+=80){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=80){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      for(let i=0;i<pts.length;i++){
+        for(let j=i+1;j<pts.length;j++){
+          const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, d=Math.sqrt(dx*dx+dy*dy);
+          if(d<120){ctx.strokeStyle=`rgba(251,113,133,${.08*(1-d/120)})`;ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.stroke();}
+        }
+      }
+      pts.forEach(p=>{
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle='rgba(251,113,133,0.4)';ctx.fill();
+        p.x+=p.vx;p.y+=p.vy;
+        if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+      });
+      requestAnimationFrame(draw);
+    }
+    window.addEventListener('resize',resize);
+    init();draw();
+  })();
+</script>
+
+<script src="/cookie-consent.js"></script>
+<a href="https://whatsapp.com/channel/0029Vb7U7jxKAwEmqonaUu2x" target="_blank" rel="noopener noreferrer" title="Join EcrioniX on WhatsApp"
+   style="position:fixed;bottom:5.5rem;right:1.5rem;z-index:999;width:54px;height:54px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(37,211,102,0.45);transition:transform .2s,box-shadow .2s"
+   onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(37,211,102,0.6)'"
+   onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(37,211,102,0.45)'">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
+</body>
+</html>
