@@ -265,6 +265,9 @@
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
     #status-msg{color:var(--slate)}
     #status-time{margin-left:auto;color:#3d5166;font-family:var(--mono)}
+    /* Error line highlighting */
+    .hl-err-line{background:rgba(239,68,68,0.18);border-radius:2px;outline:1px solid rgba(239,68,68,0.25)}
+    .hl-err-ln{color:#f87171!important;font-weight:700}
   </style>
 </head>
 <body>
@@ -863,6 +866,55 @@ endmodule`}
 };
 
 // ════════════════════════════════════════════════════════
+//  ERROR TRACKING
+// ════════════════════════════════════════════════════════
+let fileErrors = {};      // { fileIdx: Set<1-based line number> }
+let errorLines  = new Set(); // error lines for the active file
+
+function clearErrors(){
+  fileErrors = {};
+  errorLines  = new Set();
+}
+
+function parseAndMapErrors(stderr, filesList){
+  clearErrors();
+  if(!stderr) return;
+  // Compute 1-based global start line of each file in the concatenated string
+  // join('\n\n') puts 1 blank separator line between files
+  const offsets = [1];
+  for(let i=0;i<filesList.length-1;i++)
+    offsets.push(offsets[i] + filesList[i].code.split('\n').length + 1);
+  // Extract line numbers — iverilog format: "somepath/file.v:LINE: message"
+  const re = /^[^:]+:(\d+):/gm;
+  const globalErrLines = new Set();
+  let m;
+  while((m = re.exec(stderr)) !== null){ const n=+m[1]; if(n>0) globalErrLines.add(n); }
+  // Map each global line to its owning file
+  for(let i=0;i<filesList.length;i++) fileErrors[i] = new Set();
+  for(const gl of globalErrLines){
+    let fi = 0;
+    for(let i=0;i<offsets.length;i++){ if(gl>=offsets[i]) fi=i; }
+    fileErrors[fi].add(gl - offsets[fi] + 1);
+  }
+  errorLines = fileErrors[activeFile] || new Set();
+}
+
+function jumpToFirstError(){
+  if(!errorLines.size) return;
+  const first = Math.min(...errorLines);
+  const lines  = ed.value.split('\n');
+  let pos = 0;
+  for(let i=0;i<Math.min(first-1, lines.length);i++) pos += lines[i].length + 1;
+  ed.focus();
+  ed.selectionStart = ed.selectionEnd = pos;
+  const lh = parseFloat(getComputedStyle(ed).lineHeight) || 20.8;
+  const top = Math.max(0, (first - 3) * lh);
+  ed.scrollTop = top;
+  document.getElementById('hl-layer').scrollTop = top;
+  document.getElementById('lnums').scrollTop    = top;
+}
+
+// ════════════════════════════════════════════════════════
 //  FILE TABS
 // ════════════════════════════════════════════════════════
 let files = [{ name:'design.v', code:'' }];
@@ -882,6 +934,7 @@ function switchFile(idx){
   files[activeFile].code = ed.value;
   activeFile = idx;
   ed.value = files[activeFile].code;
+  errorLines = fileErrors[activeFile] || new Set();
   updateLines(); updateHighlight();
   renderFileTabs();
 }
@@ -981,7 +1034,12 @@ function hlLine(line){
 }
 
 function highlight(code){
-  return code.split('\n').map(hlLine).join('\n');
+  return code.split('\n').map((line,idx)=>{
+    const content = hlLine(line);
+    return errorLines.has(idx+1)
+      ? `<span class="hl-err-line">${content||'​'}</span>`
+      : content;
+  }).join('\n');
 }
 
 function updateHighlight(){
@@ -994,24 +1052,81 @@ const ed = document.getElementById('editor');
 const ln = document.getElementById('lnums');
 
 function updateLines(){
-  const n = ed.value.split('\n').length;
-  ln.innerHTML = Array.from({length:n},(_,i)=>i+1).join('<br>');
+  const lines = ed.value.split('\n');
+  ln.innerHTML = lines.map((_,i)=>{
+    const n = i+1;
+    return errorLines.has(n) ? `<span class="hl-err-ln">${n}</span>` : n;
+  }).join('<br>');
 }
-ed.addEventListener('input', ()=>{ updateLines(); updateHighlight(); });
+ed.addEventListener('input', ()=>{
+  if(errorLines.size){ errorLines=new Set(); fileErrors={}; }
+  updateLines(); updateHighlight();
+});
 ed.addEventListener('scroll', ()=>{
   ln.scrollTop = ed.scrollTop;
   const hl=document.getElementById('hl-layer');
   hl.scrollTop=ed.scrollTop; hl.scrollLeft=ed.scrollLeft;
 });
+
+// ── Auto-close pairs & smart Enter ──────────────────────
+const AUTO_PAIRS = {'(':')', '{':'}', '[':']'};
+const AUTO_CLOSE = new Set([')', '}', ']']);
+
 ed.addEventListener('keydown', e=>{
+  const s=ed.selectionStart, t=ed.selectionEnd, v=ed.value;
+
+  // Tab → 2 spaces
   if(e.key==='Tab'){
     e.preventDefault();
-    const s=ed.selectionStart;
-    ed.value=ed.value.slice(0,s)+'  '+ed.value.slice(ed.selectionEnd);
+    ed.value=v.slice(0,s)+'  '+v.slice(t);
     ed.selectionStart=ed.selectionEnd=s+2;
-    updateLines();
+    updateLines(); updateHighlight(); return;
   }
-  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();runCode();}
+
+  // Ctrl/Cmd+Enter → Run
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();runCode();return;}
+
+  // Auto-close opening bracket (only when nothing selected)
+  if(AUTO_PAIRS[e.key] && s===t){
+    e.preventDefault();
+    const close=AUTO_PAIRS[e.key];
+    ed.value=v.slice(0,s)+e.key+close+v.slice(s);
+    ed.selectionStart=ed.selectionEnd=s+1;
+    updateLines(); updateHighlight(); return;
+  }
+
+  // Skip over auto-inserted closing bracket
+  if(AUTO_CLOSE.has(e.key) && s===t && v[s]===e.key){
+    e.preventDefault();
+    ed.selectionStart=ed.selectionEnd=s+1; return;
+  }
+
+  // Backspace: delete matching empty pair
+  if(e.key==='Backspace' && s===t && s>0 && AUTO_PAIRS[v[s-1]]===v[s]){
+    e.preventDefault();
+    ed.value=v.slice(0,s-1)+v.slice(s+1);
+    ed.selectionStart=ed.selectionEnd=s-1;
+    updateLines(); updateHighlight(); return;
+  }
+
+  // Enter: preserve indent + expand "begin" → begin/end block
+  if(e.key==='Enter'){
+    e.preventDefault();
+    const lineStart = v.lastIndexOf('\n', s-1)+1;
+    const curLine   = v.slice(lineStart, s);
+    const indent    = curLine.match(/^(\s*)/)[1];
+    if(/\bbegin\s*$/.test(curLine.trimEnd())){
+      // Place cursor on blank indented line, add "end" on the line below
+      const ins = '\n'+indent+'  \n'+indent+'end';
+      ed.value = v.slice(0,s)+ins+v.slice(t);
+      ed.selectionStart = ed.selectionEnd = s+1+indent.length+2;
+    } else {
+      const ins = '\n'+indent;
+      ed.value = v.slice(0,s)+ins+v.slice(t);
+      ed.selectionStart = ed.selectionEnd = s+ins.length;
+    }
+    updateLines(); updateHighlight(); return;
+  }
 });
 
 function load(name, btn){
@@ -1056,6 +1171,7 @@ async function runCode(){
   files[activeFile].code = ed.value;
   const code = files.map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
+  clearErrors(); updateHighlight(); updateLines();
   const btn=document.getElementById('run-btn');
   const sp=document.getElementById('spin');
   btn.disabled=true; sp.style.display='block';
@@ -1073,6 +1189,8 @@ async function runCode(){
     if(!d.success&&d.stage==='compile'){
       con.innerHTML+=`<span class="err">── Compile Error ──────────────────────\n${esc(d.stderr)}</span>`;
       setStatus('err','Compilation failed');
+      parseAndMapErrors(d.stderr, files);
+      updateHighlight(); updateLines(); jumpToFirstError();
     } else {
       if(d.stderr) con.innerHTML+=`<span class="warn">── Warnings ────────────────────────────\n${esc(d.stderr)}\n</span>`;
       if(d.stdout) con.innerHTML+=`<span class="ok">── Output ──────────────────────────────\n</span>${esc(d.stdout)}`;
