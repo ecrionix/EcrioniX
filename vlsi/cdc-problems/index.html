@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDC Pulse Problem: How to Pass a Pulse Across Clock Domains | EcrioniX</title>
+  <meta name="description" content="Short pulses get silently lost at CDC crossings. Learn why it happens and how to fix it: toggle synchronizer, pulse stretcher, and REQ/ACK handshake — with complete Verilog code.">
+  <meta name="keywords" content="CDC pulse problem, how to pass pulse across clock domain, toggle synchronizer verilog, pulse stretcher CDC, missed pulse clock domain crossing, pulse synchronizer, CDC fix, RTL design, clock domain crossing pulse">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/vlsi/cdc-problems/">
+  <meta property="og:title" content="CDC Pulse Problem: How to Fix a Short Pulse Crossing Clock Domains | EcrioniX">
+  <meta property="og:description" content="Short pulses get silently lost in CDC. Toggle synchronizer, pulse stretcher, REQ/ACK handshake — complete Verilog code with timing diagrams.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/vlsi/cdc-problems/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CDC Pulse Problem: How to Fix a Short Pulse Crossing Clock Domains">
+  <meta name="twitter:description" content="Toggle synchronizer, pulse stretcher, REQ/ACK — with Verilog code for every CDC pulse fix.">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" type="image/png" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle",
+     "headline":"CDC Pulse Problem: How to Pass a Pulse Across Clock Domains",
+     "description":"Why short pulses get silently lost at CDC crossings, and three proven fixes: toggle synchronizer, pulse stretcher, and REQ/ACK handshake — with complete Verilog code.",
+     "url":"https://ecrionix.org/vlsi/cdc-problems/",
+     "dateModified":"2026-05-17",
+     "author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},
+      {"@type":"ListItem","position":3,"name":"CDC","item":"https://ecrionix.org/vlsi/cdc/"},
+      {"@type":"ListItem","position":4,"name":"CDC Pulse Problems","item":"https://ecrionix.org/vlsi/cdc-problems/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"Why does a short pulse get lost when crossing clock domains?",
+       "acceptedAnswer":{"@type":"Answer","text":"A pulse shorter than one destination clock period may never be sampled — the destination clock edge might arrive before or after the pulse window, missing it entirely. Even a 3-cycle source pulse can be invisible if the clocks are unluckily aligned. The standard 2-FF synchronizer is designed for stable levels, not pulses; it offers no guarantee for short pulses."}},
+      {"@type":"Question","name":"What is a toggle synchronizer and how does it fix the CDC pulse problem?",
+       "acceptedAnswer":{"@type":"Answer","text":"A toggle synchronizer converts a one-shot pulse into a persistent level change in the source domain. A flip-flop toggles its output each time a pulse arrives, creating a lasting signal the destination can safely sample via a 2-FF synchronizer. The destination detects the edge (XOR of two consecutive synchronized stages) to reconstruct a single pulse. Because the toggle stays asserted until the next event, it cannot be missed regardless of clock frequency or alignment."}},
+      {"@type":"Question","name":"When should I use a pulse stretcher instead of a toggle synchronizer?",
+       "acceptedAnswer":{"@type":"Answer","text":"Use a pulse stretcher only when the source clock is significantly faster than the destination clock and you can guarantee the stretched pulse will be at least 2–3 destination clock cycles wide. The toggle synchronizer is preferred for unknown or variable frequency ratios. Pulse stretchers are simpler but fragile — if the frequency ratio or the stretch count is wrong, pulses are still lost."}},
+      {"@type":"Question","name":"Can I use a REQ/ACK handshake to safely pass a pulse?",
+       "acceptedAnswer":{"@type":"Answer","text":"Yes. A REQ/ACK handshake is the safest approach when you also need to pass data with the pulse (write enable + data bus). The source asserts REQ and holds data stable. REQ crosses to the destination via a 2-FF synchronizer. The destination processes the data and asserts ACK, which is synchronized back to the source. This guarantees reliable transfer of both event and data at the cost of multiple clock cycles per transfer."}},
+      {"@type":"Question","name":"What happens if two back-to-back pulses arrive in a toggle synchronizer?",
+       "acceptedAnswer":{"@type":"Answer","text":"If two pulses arrive before the first toggle has propagated to the destination domain, the two toggles cancel — the FF returns to its original value and the destination sees no event at all. Toggle synchronizers require a minimum inter-pulse gap of 3 destination clock cycles (time for the sync chain to settle and the edge detect to fire). For burst events, use an asynchronous FIFO instead."}},
+      {"@type":"Question","name":"What is the minimum pulse width for a CDC synchronizer to work reliably?",
+       "acceptedAnswer":{"@type":"Answer","text":"For a 2-FF synchronizer on a level signal, the signal must be stable for at least 1.5× the destination clock period to guarantee setup time at the sampling flip-flop. For the toggle synchronizer, there is no minimum pulse width — even a single-cycle source pulse is captured. For a pulse stretcher, the stretched output must be at least 2–3 destination clock cycles wide. This sets the STRETCH parameter: STRETCH ≥ ceil(2 × f_src / f_dst)."}},
+      {"@type":"Question","name":"How do I check for CDC pulse violations without a formal tool?",
+       "acceptedAnswer":{"@type":"Answer","text":"With SpyGlass CDC, Questa CDC, or JasperGold, pulse-width violations at domain crossings are flagged automatically. Without formal tools, check manually: any single-bit signal that transitions in the source domain and feeds directly into a flip-flop in a different clock domain (with no toggle register in between) is a potential pulse CDC violation. RTL simulation will never catch this — it requires awareness during code review or static analysis."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:    #020617; --bg-2: #0f172a; --bg-card: rgba(15,23,42,0.7);
+      --border: rgba(148,163,184,0.1); --bh: rgba(251,191,36,0.3);
+      --amber: #fbbf24; --indigo: #6366f1; --ind-l: #818cf8;
+      --text: #f8fafc; --muted: #94a3b8; --dim: #64748b;
+      --green: #4ade80; --teal: #2dd4bf; --purple: #c084fc;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; line-height:1.7; }
+    #bg-canvas { position:fixed; inset:0; z-index:-1; pointer-events:none; }
+
+    /* Navbar */
+    .navbar { position:sticky; top:0; z-index:100; background:rgba(2,6,23,0.85); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
+    .nav-inner { max-width:1200px; margin:0 auto; padding:0 1.25rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+    .nav-logo { font-family:'Orbitron',sans-serif; font-size:1.3rem; font-weight:700; color:#fff; text-decoration:none; letter-spacing:.05em; }
+    .nav-logo span { color:var(--indigo); }
+    .nav-links { display:flex; gap:2rem; list-style:none; }
+    .nav-links a { color:var(--muted); text-decoration:none; font-size:.88rem; font-weight:500; transition:color .2s; }
+    .nav-links a:hover,.nav-links a.active { color:#fff; }
+    .hamburger { display:none; flex-direction:column; gap:5px; cursor:pointer; background:none; border:none; padding:4px; }
+    .hamburger span { display:block; width:24px; height:2px; background:var(--text); border-radius:2px; }
+    .mobile-menu { display:none; flex-direction:column; background:var(--bg-2); border-top:1px solid var(--border); padding:1rem 1.25rem; gap:.25rem; }
+    .mobile-menu.open { display:flex; }
+    .mobile-menu a { color:var(--muted); text-decoration:none; font-size:.95rem; padding:.65rem 0; border-bottom:1px solid var(--border); transition:color .2s; }
+    .mobile-menu a:last-child { border-bottom:none; }
+    .mobile-menu a:hover { color:#fff; }
+    @media(max-width:768px){ .nav-links{display:none;} .hamburger{display:flex;} }
+
+    /* Breadcrumb */
+    .breadcrumb { max-width:1200px; margin:0 auto; padding:1rem 1.25rem 0; display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--dim); flex-wrap:wrap; }
+    .breadcrumb a { color:var(--dim); text-decoration:none; } .breadcrumb a:hover { color:var(--ind-l); }
+
+    /* Hero */
+    .hero { max-width:1200px; margin:0 auto; padding:2.5rem 1.25rem 2rem; }
+    .hero-badge { display:inline-block; padding:.3rem .9rem; border-radius:999px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.25); color:var(--amber); font-size:.72rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; margin-bottom:1rem; }
+    .hero h1 { font-size:clamp(1.6rem,4vw,2.4rem); font-weight:700; line-height:1.25; margin-bottom:.9rem; color:#fff; }
+    .hero h1 span { color:var(--amber); }
+    .hero-desc { font-size:1rem; color:var(--muted); max-width:680px; margin-bottom:1.5rem; }
+    .hero-pills { display:flex; flex-wrap:wrap; gap:.75rem; }
+    .pill { display:flex; align-items:center; gap:.4rem; font-size:.8rem; color:var(--muted); background:rgba(15,23,42,0.6); border:1px solid var(--border); padding:.35rem .85rem; border-radius:100px; }
+    .pill svg { width:13px; height:13px; color:var(--amber); }
+
+    /* Layout */
+    .content { max-width:1200px; margin:0 auto; padding:2.5rem 1.25rem 5rem; display:grid; grid-template-columns:1fr 260px; gap:2.5rem; }
+    @media(max-width:900px){ .content{grid-template-columns:1fr;} }
+
+    /* Article */
+    .article h2 { font-size:1.1rem; font-weight:700; color:#fff; margin:2.5rem 0 .75rem; padding-left:.85rem; border-left:3px solid var(--amber); }
+    .article h2:first-child { margin-top:0; }
+    .article h3 { font-size:.95rem; font-weight:700; color:var(--amber); margin:1.5rem 0 .5rem; }
+    .article p { color:var(--muted); margin-bottom:1rem; font-size:.92rem; }
+    .article strong { color:var(--text); }
+    .article a { color:var(--amber); text-decoration:none; }
+    .article a:hover { text-decoration:underline; }
+
+    /* Info grid */
+    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin:1.25rem 0 1.75rem; }
+    @media(max-width:600px){ .info-grid{grid-template-columns:1fr;} }
+    .info-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.1rem 1.25rem; transition:border-color .3s; }
+    .info-card:hover { border-color:var(--bh); }
+    .info-card h3 { font-size:.88rem; font-weight:700; color:#fff; margin-bottom:.35rem; }
+    .info-card p { font-size:.82rem; color:var(--muted); margin:0; }
+
+    /* Method cards */
+    .method-card { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--amber); border-radius:0 12px 12px 0; padding:1.1rem 1.25rem; margin-bottom:.85rem; }
+    .method-card h3 { font-size:.9rem; font-weight:700; color:var(--amber); margin-bottom:.3rem; }
+    .method-card p { font-size:.84rem; color:var(--muted); margin:0; }
+    .method-card.green { border-left-color:var(--green); }
+    .method-card.green h3 { color:var(--green); }
+    .method-card.teal { border-left-color:var(--teal); }
+    .method-card.teal h3 { color:var(--teal); }
+    .method-card.purple { border-left-color:var(--purple); }
+    .method-card.purple h3 { color:var(--purple); }
+
+    /* Code */
+    .code-block { background:#0a0f1e; border:1px solid rgba(251,191,36,0.15); border-radius:12px; overflow:hidden; margin:1rem 0 1.75rem; position:relative; }
+    .code-hdr { background:rgba(251,191,36,0.05); border-bottom:1px solid rgba(251,191,36,0.1); padding:.5rem 1rem; display:flex; align-items:center; gap:.5rem; }
+    .cd { width:10px; height:10px; border-radius:50%; } .cd-r{background:#ff5f57;} .cd-y{background:#febc2e;} .cd-g{background:#28c840;}
+    .cl { font-size:.72rem; font-weight:600; color:var(--amber); margin-left:auto; letter-spacing:.08em; }
+    .code-block pre { padding:1.25rem; overflow-x:auto; }
+    .code-block code { font-family:'JetBrains Mono',monospace; font-size:.81rem; color:#e2e8f0; line-height:1.7; white-space:pre; display:block; font-variant-ligatures:none; font-feature-settings:"liga" 0,"calt" 0; }
+    .copy-btn { position:absolute; top:.5rem; right:.5rem; background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.25); color:var(--amber); font-size:.68rem; font-family:'Outfit',sans-serif; padding:.25rem .6rem; border-radius:5px; cursor:pointer; transition:.2s; }
+    .copy-btn:hover { background:rgba(251,191,36,0.22); }
+    .copy-btn.ok { color:var(--green); border-color:rgba(74,222,128,0.35); }
+
+    /* Table */
+    .tbl-wrap { overflow-x:auto; border-radius:12px; border:1px solid var(--border); margin:1rem 0 1.75rem; }
+    table { width:100%; border-collapse:collapse; font-size:.84rem; }
+    thead { background:rgba(251,191,36,0.06); }
+    th { padding:.7rem 1rem; text-align:left; font-weight:600; color:var(--amber); font-size:.75rem; letter-spacing:.06em; text-transform:uppercase; border-bottom:1px solid var(--border); }
+    td { padding:.7rem 1rem; color:var(--muted); border-bottom:1px solid rgba(148,163,184,0.06); vertical-align:top; }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:rgba(251,191,36,0.03); color:var(--text); }
+    td.yes { color:var(--green); font-weight:600; }
+    td.no  { color:#f87171; font-weight:600; }
+    td.ok  { color:var(--amber); font-weight:600; }
+
+    /* Callout */
+    .callout { background:rgba(251,191,36,0.05); border-left:3px solid var(--amber); border-radius:0 10px 10px 0; padding:1rem 1.25rem; margin:1rem 0 1.5rem; font-size:.87rem; color:var(--muted); }
+    .callout strong { color:var(--amber); }
+    .callout.danger { background:rgba(248,113,113,0.06); border-left-color:#f87171; }
+    .callout.danger strong { color:#f87171; }
+    .callout.success { background:rgba(74,222,128,0.06); border-left-color:var(--green); }
+    .callout.success strong { color:var(--green); }
+
+    /* Timing diagram */
+    .timing-wrap { background:#060d1a; border:1px solid rgba(251,191,36,0.12); border-radius:12px; overflow:hidden; margin:1rem 0 1.75rem; }
+    .timing-hdr { background:rgba(251,191,36,0.04); border-bottom:1px solid rgba(251,191,36,0.08); padding:.55rem 1rem; font-size:.72rem; font-weight:600; color:var(--amber); letter-spacing:.08em; }
+    canvas.td-canvas { width:100%; display:block; }
+
+    /* Mistake cards */
+    .mistake-list { display:flex; flex-direction:column; gap:.65rem; margin:1rem 0 1.75rem; }
+    .mistake-item { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.9rem 1.1rem; display:flex; gap:.8rem; align-items:flex-start; }
+    .mistake-num { font-family:'Orbitron',sans-serif; font-size:.7rem; font-weight:700; color:#f87171; background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.2); border-radius:5px; padding:.2rem .45rem; flex-shrink:0; margin-top:.1rem; }
+    .mistake-body h4 { font-size:.86rem; font-weight:700; color:var(--text); margin-bottom:.25rem; }
+    .mistake-body p  { font-size:.81rem; color:var(--muted); margin:0; }
+    .fix-tag { display:inline-block; font-size:.72rem; color:var(--green); background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.2); border-radius:4px; padding:.1rem .4rem; margin-top:.35rem; }
+
+    /* Interlink card */
+    .ilink-card { background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.2); border-radius:12px; padding:1.1rem 1.3rem; margin:1.5rem 0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; }
+    .ilink-label { font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ind-l); margin-bottom:.25rem; }
+    .ilink-title { font-size:.92rem; font-weight:700; color:#fff; margin-bottom:.2rem; }
+    .ilink-desc { font-size:.8rem; color:var(--muted); }
+    .ilink-btn { flex-shrink:0; padding:.45rem 1.1rem; border-radius:100px; background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.3); color:var(--ind-l); font-size:.82rem; font-weight:600; text-decoration:none; white-space:nowrap; transition:.2s; }
+    .ilink-btn:hover { background:rgba(99,102,241,0.22); }
+
+    /* Checklist */
+    .checklist { list-style:none; display:flex; flex-direction:column; gap:.5rem; margin:1rem 0 1.75rem; }
+    .checklist li { display:flex; align-items:flex-start; gap:.6rem; font-size:.88rem; color:var(--muted); }
+    .chk { color:#4ade80; font-weight:700; flex-shrink:0; }
+    .xmk { color:#f87171; font-weight:700; flex-shrink:0; }
+
+    /* FAQ */
+    .faq { border:1px solid var(--border); border-radius:12px; overflow:hidden; margin:1rem 0; }
+    .faq-item { border-bottom:1px solid var(--border); }
+    .faq-item:last-child { border-bottom:none; }
+    .faq-q { width:100%; text-align:left; background:none; border:none; padding:1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-family:'Outfit',sans-serif; font-size:.88rem; font-weight:600; color:var(--text); gap:.8rem; }
+    .faq-q svg { width:15px; height:15px; color:var(--amber); flex-shrink:0; transition:transform .3s; }
+    .faq-q.open svg { transform:rotate(180deg); }
+    .faq-a { display:none; padding:0 1.25rem 1rem; font-size:.85rem; color:var(--muted); line-height:1.7; }
+    .faq-a.open { display:block; }
+
+    /* Sidebar */
+    .sidebar-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:1.25rem 1.5rem; margin-bottom:1.25rem; }
+    .sidebar-card h3 { font-size:.72rem; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.85rem; }
+    .sidebar-link { display:block; color:var(--muted); text-decoration:none; font-size:.84rem; padding:.35rem 0; border-bottom:1px solid var(--border); transition:color .2s; }
+    .sidebar-link:last-child { border-bottom:none; }
+    .sidebar-link:hover { color:var(--amber); }
+    .sidebar-tag { display:inline-block; font-size:.65rem; padding:.1rem .35rem; border-radius:3px; margin-left:.4rem; font-weight:600; }
+    .tag-new { background:rgba(74,222,128,0.15); color:var(--green); }
+
+    /* Footer */
+    .footer { background:var(--bg-2); border-top:1px solid var(--border); padding:2.5rem 1.25rem; text-align:center; }
+    .footer-logo { font-family:'Orbitron',sans-serif; font-size:1.1rem; font-weight:700; color:#fff; margin-bottom:.5rem; }
+    .footer-logo span { color:var(--indigo); }
+    .footer p { font-size:.82rem; color:var(--dim); margin-bottom:1.25rem; }
+    .footer-nav { display:flex; justify-content:center; flex-wrap:wrap; gap:1.5rem; margin-bottom:1.5rem; }
+    .footer-nav a { font-size:.82rem; color:var(--dim); text-decoration:none; transition:color .2s; }
+    .footer-nav a:hover { color:var(--ind-l); }
+    .footer-copy { font-size:.78rem; color:var(--dim); border-top:1px solid var(--border); padding-top:1.25rem; }
+
+    .scroll-top { position:fixed; bottom:1.5rem; right:1.5rem; width:40px; height:40px; border-radius:50%; background:rgba(251,191,36,0.7); border:none; color:#fff; cursor:pointer; display:none; align-items:center; justify-content:center; z-index:50; transition:background .2s,transform .2s; }
+    .scroll-top.visible { display:flex; }
+    .scroll-top:hover { background:var(--amber); transform:scale(1.1); }
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/vlsi/" class="active">VLSI</a></li>
+      <li><a href="/rtl_design/">RTL Design</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/sta/">STA</a>
+    <a href="/about/">About</a>
+    <a href="/contact/">Contact</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/vlsi/">VLSI</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/vlsi/cdc/">CDC</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <span style="color:var(--muted)">CDC Pulse Problems</span>
+</div>
+
+<div class="hero">
+  <div class="hero-badge">VLSI — CDC Deep Dive</div>
+  <h1>CDC Pulse Problem: <span>Your Pulse Got Lost.</span> Here's Why — and How to Fix It.</h1>
+  <p class="hero-desc">A one-cycle pulse in the source domain looks fine in simulation. In silicon, it vanishes at the clock domain boundary — silently, with no errors. This is one of the most common CDC bugs in real chips. Three proven fixes, complete Verilog code.</p>
+  <div class="hero-pills">
+    <div class="pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>Toggle Synchronizer</div>
+    <div class="pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Pulse Stretcher</div>
+    <div class="pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>REQ/ACK Handshake</div>
+    <div class="pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>Verilog Code Included</div>
+  </div>
+</div>
+
+<div class="content">
+<article class="article">
+
+<!-- S1: WHY PULSES GET LOST -->
+<h2>Why a Pulse Disappears at a Clock Domain Boundary</h2>
+<p>A standard <a href="/vlsi/cdc/">2-FF synchronizer</a> is designed for <strong>stable level signals</strong> — a signal that stays asserted for many destination clock cycles. It gives the first flip-flop a full clock period to resolve metastability, and the second flip-flop then samples the settled output.</p>
+<p>A short pulse breaks this assumption. If the pulse is only 1–2 source clock cycles wide, the destination clock may never have a rising edge inside the pulse window. The flip-flop never sees the signal — the pulse is gone. Worse, if the destination clock is faster than the source, the pulse might be sampled <em>twice</em>, generating two events where only one existed.</p>
+
+<div class="info-grid">
+  <div class="info-card"><h3>Pulse Too Short</h3><p>Source pulse = 1 cycle = 8 ns. Destination period = 25 ns. The destination clock edge may land entirely outside the 8 ns window every single time.</p></div>
+  <div class="info-card"><h3>Random Alignment</h3><p>The two clocks are asynchronous — their phase relationship drifts continuously. A pulse that gets captured today may be missed tomorrow under different temperature or voltage.</p></div>
+  <div class="info-card"><h3>RTL Simulation Hides It</h3><p>Standard simulation uses ideal timing: zero skew, perfect edges. Metastability never fires and the pulse always lands exactly on an edge. The bug only surfaces in silicon.</p></div>
+  <div class="info-card"><h3>No Functional Error Message</h3><p>The destination logic simply never fires. No assertion fails, no X propagates. The design silently does nothing, and the bug can be traced only by observing missing behavior on the bench.</p></div>
+</div>
+
+<div class="callout danger"><strong>The dangerous assumption:</strong> "My pulse is 3 source cycles wide — that's enough for the destination to catch it." Not guaranteed. With a 2:1 clock ratio, the destination may have its edge at cycle 1 (too early), cycle 4 (too late), or sometimes cycle 2 (captured). The hit rate depends entirely on the asynchronous phase alignment at runtime.</div>
+
+<!-- S2: FIX 1 — TOGGLE SYNCHRONIZER -->
+<h2>Fix 1 — The Toggle Synchronizer (Recommended for All Pulse CDC)</h2>
+<p>The toggle synchronizer is the industry-standard solution for passing pulses across asynchronous clock domains. It works by converting a <strong>transient pulse event</strong> into a <strong>persistent level change</strong> that the destination can safely sample.</p>
+
+<h3>How It Works</h3>
+<p>In the <strong>source domain</strong>, a flip-flop toggles its output every time a pulse arrives. Once toggled, the signal stays at its new level — it doesn't go back. The destination 2-FF synchronizer then captures this stable level. The destination detects the level change (edge detect via XOR) to reconstruct the original one-shot pulse.</p>
+
+<div class="timing-wrap">
+  <div class="timing-hdr">Timing Diagram — Toggle Synchronizer</div>
+  <canvas class="td-canvas" id="tdCanvas" height="216"></canvas>
+</div>
+
+<div class="code-block">
+  <div class="code-hdr"><span class="cd cd-r"></span><span class="cd cd-y"></span><span class="cd cd-g"></span><span class="cl">Verilog — Toggle Synchronizer (Complete Module)</span></div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  <pre><code>module toggle_sync (
+    input  wire clk_src,
+    input  wire clk_dst,
+    input  wire rst_n,        // async active-low reset (or use separate resets)
+    input  wire pulse_src,    // 1-cycle pulse in clk_src domain
+    output wire pulse_dst     // 1-cycle pulse in clk_dst domain
+);
+
+    // ── Source domain: toggle FF ────────────────────────────────────
+    reg toggle_s;
+    always @(posedge clk_src or negedge rst_n)
+        if (!rst_n) toggle_s &lt;= 1'b0;
+        else if (pulse_src) toggle_s &lt;= ~toggle_s;
+
+    // ── Destination domain: 3-stage sync + edge detect ─────────────
+    // 3 stages: FF1 + FF2 for metastability, FF3 for edge detection
+    (* ASYNC_REG = "TRUE" *)
+    reg [2:0] sync_d;
+    always @(posedge clk_dst or negedge rst_n)
+        if (!rst_n) sync_d &lt;= 3'b000;
+        else        sync_d &lt;= {sync_d[1:0], toggle_s};
+
+    // Edge detect: XOR of stages 2 and 3 = 1 for exactly one cycle
+    assign pulse_dst = sync_d[2] ^ sync_d[1];
+
+endmodule</code></pre>
+</div>
+
+<div class="callout success"><strong>Why this can't miss a pulse:</strong> The toggle stays asserted (high or low — it's now a level, not a pulse) until the next event. The 2-FF sync chain has unlimited time to capture it. Whether the destination clock edge arrives 1 ns or 100 µs after the toggle, it will eventually sample the new level and propagate it through the chain.</div>
+
+<h3>Key Constraints</h3>
+<ul class="checklist">
+  <li><span class="chk">✓</span><span><strong>Minimum inter-pulse gap:</strong> 3 destination clock cycles must pass between consecutive pulses. This is the time needed for the first toggle to fully propagate through the 3-stage chain and fire pulse_dst before the next toggle arrives.</span></li>
+  <li><span class="chk">✓</span><span><strong>Use ASYNC_REG attribute</strong> (or FPGA/ASIC equivalent) to co-locate the sync FFs in the same cell, maximizing resolution time and MTBF.</span></li>
+  <li><span class="chk">✓</span><span><strong>Single event only:</strong> One source pulse → one destination pulse. There is no data — only the event. To carry data alongside the pulse, use the REQ/ACK handshake below.</span></li>
+  <li><span class="xmk">✗</span><span><strong>Back-to-back pulses cancel.</strong> If two pulses arrive before the first toggle has propagated, the toggle returns to its original state and the destination sees zero events. If you have burst events, use an async FIFO.</span></li>
+</ul>
+
+<!-- S3: FIX 2 — PULSE STRETCHER -->
+<h2>Fix 2 — Pulse Stretcher (Simple, But Only When You Control the Ratio)</h2>
+<p>A pulse stretcher extends the source pulse to N source clock cycles, wide enough for the destination clock to reliably sample at least once. It is simpler to understand but more fragile — it only works when the source clock is significantly faster and the frequency ratio is known at design time.</p>
+
+<div class="callout"><strong>Rule of thumb:</strong> After stretching, the signal must remain asserted for at least <strong>3 destination clock cycles</strong>. This means:<br><br>STRETCH (in source cycles) ≥ 3 × ceil(T_dst / T_src) = 3 × ceil(f_src / f_dst)<br><br>Example: f_src = 400 MHz, f_dst = 100 MHz → ratio = 4 → STRETCH ≥ 12 source cycles.</div>
+
+<div class="code-block">
+  <div class="code-hdr"><span class="cd cd-r"></span><span class="cd cd-y"></span><span class="cd cd-g"></span><span class="cl">Verilog — Pulse Stretcher</span></div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  <pre><code>module pulse_stretch #(
+    parameter STRETCH = 8     // extend to N source clock cycles
+)(
+    input  wire clk_src,
+    input  wire rst_n,
+    input  wire pulse_in,     // original 1-cycle pulse
+    output wire stretched     // stretched level (feed into 2-FF sync)
+);
+    localparam W = $clog2(STRETCH + 1);
+    reg [W-1:0] cnt;
+
+    always @(posedge clk_src or negedge rst_n)
+        if      (!rst_n)    cnt &lt;= '0;
+        else if (pulse_in)  cnt &lt;= STRETCH[W-1:0]; // reload on new pulse
+        else if (|cnt)      cnt &lt;= cnt - 1'b1;
+
+    assign stretched = |cnt;
+
+endmodule
+
+// ── Usage: stretched output → standard 2-FF sync → edge detect ─────
+// sync_2ff u_sync (.clk_dst(clk_dst), .rst_n(rst_n),
+//                  .async_in(stretched), .sync_out(sync_level));
+//
+// reg sync_prev;
+// always @(posedge clk_dst or negedge rst_n)
+//     if (!rst_n) sync_prev &lt;= 0;
+//     else        sync_prev &lt;= sync_level;
+// assign pulse_dst = sync_level &amp;&amp; !sync_prev;  // rising edge detect</code></pre>
+</div>
+
+<div class="callout danger"><strong>When pulse stretching fails:</strong> If the destination clock frequency changes (PLL reconfiguration, low-power mode), or if your STRETCH count is set at the minimum with no margin, stretched pulses can still be missed. The toggle synchronizer has no such frequency dependency — prefer it when in doubt.</div>
+
+<!-- S4: FIX 3 — REQ/ACK -->
+<h2>Fix 3 — REQ/ACK Handshake (When You Need Data + the Pulse Together)</h2>
+<p>The REQ/ACK handshake is the right answer when a pulse represents a <strong>write event carrying data</strong> — for example, a register write, a command trigger, or a DMA request. It ensures both the event and the associated data are transferred atomically and reliably.</p>
+
+<p>The source holds data stable on a shared bus and asserts <code>req</code>. The destination picks up the data once <code>req</code> is synchronized, asserts <code>ack</code>, and the source releases the bus only after receiving the synchronized <code>ack</code>. This four-phase handshake survives any clock frequency relationship.</p>
+
+<div class="code-block">
+  <div class="code-hdr"><span class="cd cd-r"></span><span class="cd cd-y"></span><span class="cd cd-g"></span><span class="cl">Verilog — REQ/ACK Handshake (Source + Destination)</span></div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  <pre><code>// ── SOURCE DOMAIN ──────────────────────────────────────────────────
+module req_ack_src #(parameter DW = 8) (
+    input  wire          clk_src, rst_n,
+    input  wire          send,        // 1-cycle trigger from local logic
+    input  wire [DW-1:0] data_in,
+    output reg           req,
+    output reg  [DW-1:0] tx_data,
+    input  wire          ack_sync     // ACK synchronized back from destination
+);
+    always @(posedge clk_src or negedge rst_n) begin
+        if (!rst_n) begin req &lt;= 1'b0; tx_data &lt;= '0; end
+        else if (send &amp;&amp; !req &amp;&amp; !ack_sync) begin  // idle: accept new transfer
+            tx_data &lt;= data_in;
+            req     &lt;= 1'b1;
+        end else if (ack_sync &amp;&amp; req) begin          // ACK received: release
+            req &lt;= 1'b0;
+        end
+    end
+endmodule
+
+// ── DESTINATION DOMAIN ─────────────────────────────────────────────
+module req_ack_dst #(parameter DW = 8) (
+    input  wire          clk_dst, rst_n,
+    input  wire          req_sync,    // REQ synchronized from source
+    input  wire [DW-1:0] tx_data,     // stable data from source domain
+    output reg           ack,
+    output reg  [DW-1:0] rx_data
+);
+    reg req_prev;
+    wire req_rise = req_sync &amp;&amp; !req_prev;  // rising edge of synced REQ
+
+    always @(posedge clk_dst or negedge rst_n) begin
+        if (!rst_n) begin ack &lt;= 1'b0; req_prev &lt;= 1'b0; rx_data &lt;= '0; end
+        else begin
+            req_prev &lt;= req_sync;
+            if (req_rise) begin     // new transfer detected
+                rx_data &lt;= tx_data;
+                ack     &lt;= 1'b1;
+            end else if (!req_sync) begin  // REQ deasserted: release ACK
+                ack &lt;= 1'b0;
+            end
+        end
+    end
+endmodule
+
+// ── TOP LEVEL: wire the two domains together with 2-FF syncs ───────
+// sync_2ff u_req_sync (.clk_dst(clk_dst), .async_in(req), .sync_out(req_sync));
+// sync_2ff u_ack_sync (.clk_dst(clk_src), .async_in(ack), .sync_out(ack_sync));</code></pre>
+</div>
+
+<div class="callout"><strong>Throughput:</strong> One handshake cycle takes approximately 4–6 destination clock cycles (2 for REQ to propagate, 1 to process, 2 for ACK to return). For configuration registers and control commands, this latency is acceptable. For high-bandwidth streaming, use an <a href="/vlsi/async_fifo/">async FIFO</a> instead.</div>
+
+<!-- S5: COMPARISON TABLE -->
+<h2>Which Fix to Use — Side-by-Side Comparison</h2>
+
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Min Pulse Width</th>
+        <th>Carries Data?</th>
+        <th>Frequency-Ratio Aware?</th>
+        <th>Burst Safe?</th>
+        <th>Best For</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong style="color:var(--green)">Toggle Sync</strong></td>
+        <td class="yes">1 src cycle</td>
+        <td class="no">No</td>
+        <td class="yes">Yes (any ratio)</td>
+        <td class="no">No (≥3 dst cycles gap)</td>
+        <td>Single event signals: interrupts, triggers, enables</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--amber)">Pulse Stretcher</strong></td>
+        <td class="ok">Must be ≥3 dst cycles</td>
+        <td class="no">No</td>
+        <td class="no">No (ratio must be known)</td>
+        <td class="no">No</td>
+        <td>Fast→slow crossing where ratio is fixed at design time</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--purple)">REQ/ACK</strong></td>
+        <td class="yes">1 src cycle</td>
+        <td class="yes">Yes</td>
+        <td class="yes">Yes (any ratio)</td>
+        <td class="no">No (one at a time)</td>
+        <td>Register writes, command transfers, control + data pairs</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--teal)">Async FIFO</strong></td>
+        <td class="yes">1 src cycle</td>
+        <td class="yes">Yes</td>
+        <td class="yes">Yes (any ratio)</td>
+        <td class="yes">Yes (up to depth)</td>
+        <td>Streaming data, burst events, throughput-critical paths</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- S6: COMMON MISTAKES -->
+<h2>5 Common CDC Pulse Mistakes That Slip Into Real Chips</h2>
+
+<div class="mistake-list">
+  <div class="mistake-item">
+    <div class="mistake-num">01</div>
+    <div class="mistake-body">
+      <h4>Putting a 1-cycle pulse directly through a 2-FF synchronizer</h4>
+      <p>The 2-FF sync is designed for stable levels. A short pulse may be missed entirely, captured once, or captured twice depending on clock alignment. RTL simulation always shows correct behavior because it uses deterministic timing.</p>
+      <div class="fix-tag">Fix: Use toggle synchronizer or stretch the pulse first</div>
+    </div>
+  </div>
+  <div class="mistake-item">
+    <div class="mistake-num">02</div>
+    <div class="mistake-body">
+      <h4>Setting STRETCH too small in a pulse stretcher</h4>
+      <p>Engineers often calculate the stretch for the nominal clock ratio and add no margin. If the destination clock is at the slow end of its tolerance or the source is at the fast end, the pulse can still be missed. Set STRETCH with at least 2× safety margin over the calculated minimum.</p>
+      <div class="fix-tag">Fix: STRETCH ≥ ceil(3 × f_src / f_dst) + margin</div>
+    </div>
+  </div>
+  <div class="mistake-item">
+    <div class="mistake-num">03</div>
+    <div class="mistake-body">
+      <h4>Sending back-to-back pulses into a toggle synchronizer without gap</h4>
+      <p>If two pulses arrive before the first toggle propagates through the destination chain, the toggle register returns to its original value. The destination sees no events. This manifests as intermittently missing events under load — notoriously hard to reproduce.</p>
+      <div class="fix-tag">Fix: Enforce a minimum inter-pulse gap of 3 dst clock cycles, or use async FIFO for bursts</div>
+    </div>
+  </div>
+  <div class="mistake-item">
+    <div class="mistake-num">04</div>
+    <div class="mistake-body">
+      <h4>Forgetting ASYNC_REG on the toggle sync chain</h4>
+      <p>Without the ASYNC_REG attribute (or ASIC equivalent), the P&R tool may place the synchronizer flip-flops far apart with significant routing delay between them. This reduces the time available for metastability resolution, degrading MTBF by orders of magnitude.</p>
+      <div class="fix-tag">Fix: Always annotate (* ASYNC_REG = "TRUE" *) on synchronizer chains</div>
+    </div>
+  </div>
+  <div class="mistake-item">
+    <div class="mistake-num">05</div>
+    <div class="mistake-body">
+      <h4>Resetting the toggle FF in only one domain during reset sequencing</h4>
+      <p>If the source domain toggle FF is reset but the destination sync chain is not (or vice versa), the destination will see a spurious edge on reset release. This causes a phantom pulse event at startup, which may incorrectly trigger downstream logic before the system is ready.</p>
+      <div class="fix-tag">Fix: Reset all FFs in both domains, or sequence resets so destination releases after source</div>
+    </div>
+  </div>
+</div>
+
+<div class="ilink-card">
+  <div>
+    <div class="ilink-label">Related Guide</div>
+    <div class="ilink-title">Clock Domain Crossing (CDC) — The Complete VLSI Reference</div>
+    <div class="ilink-desc">2-FF synchronizer, Gray code, async FIFO pointers, MTBF calculation, CDC verification tools, and SDC constraints.</div>
+  </div>
+  <a href="/vlsi/cdc/" class="ilink-btn">Read CDC Guide →</a>
+</div>
+
+<!-- S7: FAQ -->
+<h2>CDC Pulse FAQ — Questions Engineers Actually Search For</h2>
+<div class="faq">
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">Why does a short pulse get silently lost when crossing clock domains?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">A pulse shorter than one destination clock period may never be sampled — the destination clock edge arrives either before or after the pulse window. Even a 3-cycle source pulse can be invisible if the destination clock is slower or happens to be aligned badly. The 2-FF synchronizer, designed for stable levels, offers no guarantee for short pulses. RTL simulation hides this because it models ideal timing with no asynchronous phase drift.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">What is a toggle synchronizer and why is it the preferred fix?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">A toggle synchronizer converts a one-shot pulse into a level change by toggling a flip-flop in the source domain. Because the toggle persists, the destination 2-FF sync chain has unlimited time to capture it regardless of clock frequencies. The destination XORs consecutive sync stages to detect the edge and reconstruct the pulse. It requires no knowledge of clock ratios, works at any frequency relationship, and has no minimum pulse width requirement — making it the most robust solution.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">What happens if two pulses arrive back-to-back in a toggle synchronizer?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">If two pulses arrive before the first toggle has propagated through the destination chain (less than ~3 destination clock cycles apart), the two toggles cancel each other and the destination sees no event. This is the key limitation of toggle synchronizers. For burst events or back-to-back pulses faster than 3 destination clock cycles, use an asynchronous FIFO, which can store multiple pending events.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">Can I use a pulse stretcher when the destination clock is faster than the source?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">A pulse stretcher only makes sense when the source clock is faster than the destination. If the destination is faster, the 1-cycle source pulse is already wider than several destination clock periods — it would be sampled correctly without stretching. In this case, use a standard 2-FF synchronizer directly. If the original pulse is just 1 cycle, a toggle synchronizer is still safer because it doesn't depend on any frequency assumption.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">How do CDC sign-off tools detect pulse width violations?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">Tools like SpyGlass CDC, Questa CDC, and JasperGold analyze the RTL structurally. They flag any signal that: (1) originates in one clock domain, (2) transitions in fewer cycles than required for the destination to reliably sample it, and (3) is not passed through a recognized synchronization structure (toggle FF + 2-FF chain, or handshake). Pulse width violations typically appear as CDC-13 or similar rule violations in SpyGlass. RTL simulation will never catch these — static analysis is mandatory for signoff.</div>
+  </div>
+  <div class="faq-item">
+    <button class="faq-q" onclick="toggleFaq(this)">What is the minimum inter-pulse gap for a toggle synchronizer?<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+    <div class="faq-a">The minimum gap between consecutive source pulses is 3 destination clock cycles. This is the time needed for the first toggle to propagate through FF1 (resolves metastability), FF2 (samples settled value), and FF3 (the edge detect stage), so that pulse_dst fires before the second toggle arrives and corrupts the chain. In practice, add margin: allow 4–5 destination cycles between pulses. If you cannot guarantee this gap, use an async FIFO with sufficient depth to absorb burst events.</div>
+  </div>
+</div>
+
+</article>
+
+<!-- SIDEBAR -->
+<aside>
+  <div class="sidebar-card">
+    <h3>CDC Topics</h3>
+    <a href="/vlsi/cdc/" class="sidebar-link">← CDC Complete Guide</a>
+    <a href="/vlsi/cdc-problems/" class="sidebar-link" style="color:var(--amber)">CDC Pulse Problems (this page)</a>
+    <a href="/vlsi/async_fifo/" class="sidebar-link">Async FIFO Design</a>
+    <a href="/vlsi/bingray/" class="sidebar-link">Binary ↔ Gray Code</a>
+    <a href="/vlsi/rst_sync/" class="sidebar-link">Reset Synchronizer</a>
+  </div>
+  <div class="sidebar-card">
+    <h3>VLSI Topics</h3>
+    <a href="/vlsi/dflop/" class="sidebar-link">D Flip-Flop Internals</a>
+    <a href="/vlsi/latch/" class="sidebar-link">Latches vs Flip-Flops</a>
+    <a href="/vlsi/clk_gater/" class="sidebar-link">Clock Gating (ICG)</a>
+    <a href="/vlsi/clk_mux/" class="sidebar-link">Glitch-Free Clock Mux</a>
+    <a href="/vlsi/dft/" class="sidebar-link">DFT Scan Chains</a>
+    <a href="/vlsi/low_power_rtl/" class="sidebar-link">Low Power RTL</a>
+  </div>
+  <div class="sidebar-card">
+    <h3>Related Topics</h3>
+    <a href="/rtl_design/cdc/" class="sidebar-link">RTL CDC Deep Dive</a>
+    <a href="/rtl_design/metastability/" class="sidebar-link">Metastability Analysis</a>
+    <a href="/sta/setup-hold/" class="sidebar-link">Setup &amp; Hold Time</a>
+    <a href="/sta/sdc/" class="sidebar-link">SDC Constraints</a>
+  </div>
+</aside>
+</div>
+
+<!-- Bottom related cards -->
+<div style="max-width:1100px;margin:0 auto 2rem;padding:0 1.25rem">
+  <p style="font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#2dd4bf;margin-bottom:.4rem">Continue Learning</p>
+  <h3 style="font-size:1.1rem;font-weight:700;color:#f8fafc;margin-bottom:1rem">Related CDC & Synchronization Topics</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
+    <a href="/vlsi/cdc/" style="text-decoration:none;background:rgba(15,23,42,0.7);border:1px solid rgba(148,163,184,0.1);border-radius:12px;padding:1.2rem;display:block;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(45,212,191,0.4)'" onmouseout="this.style.borderColor='rgba(148,163,184,0.1)'">
+      <div style="font-size:.88rem;font-weight:600;color:#5eead4;margin-bottom:.4rem">CDC Complete Guide</div>
+      <div style="font-size:.82rem;color:#94a3b8;line-height:1.6">2-FF synchronizer, Gray code, async FIFO, MTBF, and CDC verification — the full reference for clock domain crossing in VLSI.</div>
+    </a>
+    <a href="/vlsi/async_fifo/" style="text-decoration:none;background:rgba(15,23,42,0.7);border:1px solid rgba(148,163,184,0.1);border-radius:12px;padding:1.2rem;display:block;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(45,212,191,0.4)'" onmouseout="this.style.borderColor='rgba(148,163,184,0.1)'">
+      <div style="font-size:.88rem;font-weight:600;color:#5eead4;margin-bottom:.4rem">Async FIFO Design</div>
+      <div style="font-size:.82rem;color:#94a3b8;line-height:1.6">When you need to pass burst events or streaming data across clock domains — full Verilog implementation with Gray-coded pointers.</div>
+    </a>
+    <a href="/rtl_design/metastability/" style="text-decoration:none;background:rgba(15,23,42,0.7);border:1px solid rgba(148,163,184,0.1);border-radius:12px;padding:1.2rem;display:block;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(45,212,191,0.4)'" onmouseout="this.style.borderColor='rgba(148,163,184,0.1)'">
+      <div style="font-size:.88rem;font-weight:600;color:#5eead4;margin-bottom:.4rem">Metastability Analysis</div>
+      <div style="font-size:.82rem;color:#94a3b8;line-height:1.6">The physics behind why flip-flops go metastable, MTBF calculations, and how synchronizer stages exponentially improve reliability.</div>
+    </a>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <p>A structured learning platform for VLSI design, RTL development, and semiconductor engineering.</p>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/vlsi/">VLSI Design</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/sta/">STA</a>
+    <a href="/about/">About</a>
+    <a href="/contact/">Contact</a>
+    <a href="/legal/privacy.html">Privacy Policy</a>
+  </nav>
+  <div class="footer-copy">&copy; <span id="year"></span> EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+</button>
+
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  const ham = document.getElementById('hamburger'), menu = document.getElementById('mobileMenu');
+  ham.addEventListener('click', () => menu.classList.toggle('open'));
+  menu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => menu.classList.remove('open')));
+
+  const st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', () => st.classList.toggle('visible', window.scrollY > 400));
+  st.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+  function toggleFaq(btn) {
+    btn.classList.toggle('open');
+    btn.nextElementSibling.classList.toggle('open');
+  }
+
+  function copyCode(btn) {
+    const code = btn.closest('.code-block').querySelector('code').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Copied!'; btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 2000);
+    }).catch(() => { prompt('Copy this:', code); });
+  }
+
+  // ── Toggle Synchronizer Timing Diagram ────────────────────────────
+  (function() {
+    const canvas = document.getElementById('tdCanvas');
+    if (!canvas) return;
+
+    function draw() {
+      const W = canvas.offsetWidth || 600;
+      const H = 216;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = W * dpr;
+      canvas.height = H * dpr;
+      const cx = canvas.getContext('2d');
+      cx.scale(dpr, dpr);
+
+      cx.fillStyle = '#060d1a';
+      cx.fillRect(0, 0, W, H);
+
+      const xL = 92;     // label width
+      const xS = xL + 8; // waveform start
+      const xE = W - 12; // waveform end
+      const xW = xE - xS;
+
+      const ROWS = [
+        { name: 'CLK_SRC',   color: '#64748b' },
+        { name: 'pulse_src', color: '#fbbf24' },
+        { name: 'toggle_s',  color: '#fb923c' },
+        { name: 'CLK_DST',   color: '#94a3b8' },
+        { name: 'sync_d[1]', color: '#c084fc' },
+        { name: 'pulse_dst', color: '#4ade80' },
+      ];
+      const N = ROWS.length;
+      const rH = H / N;
+
+      // Fast source clock: 12 cycles visible → period = xW/12
+      const Ts = xW / 12;   // source period (px)
+      const Td = Ts * 2.5;  // dest period  (px): 2.5× slower
+
+      // pulse_src: 1 source cycle starting at cycle 3
+      const p0 = 3 * Ts, p1 = 4 * Ts;
+
+      // toggle_s: goes high at p0 (same posedge that samples pulse_src)
+      const tog0 = p0;
+
+      // CLK_DST: first falling edge at Ts*1.2 (slight offset)
+      const dOff = Ts * 1.2;
+
+      // First dst posedge after tog0: find it
+      function firstDstEdgeAfter(t) {
+        let e = dOff;
+        while (e <= t) e += Td;
+        return e; // first rising edge ≥ t
+      }
+      const dstEdge1 = firstDstEdgeAfter(tog0); // FF1 samples toggle (may meta)
+      const dstEdge2 = dstEdge1 + Td;           // FF2 captures FF1 → sync_d[0] settles
+      const dstEdge3 = dstEdge2 + Td;           // FF3 captures FF2 → sync_d[1] settles
+
+      // sync_d[1] goes high at dstEdge3
+      // pulse_dst = XOR(sync_d[1], sync_d[2]):
+      //   from dstEdge3 to dstEdge4: sync_d[1]=1, sync_d[2]=0 → 1
+      //   after dstEdge4: both 1 → 0
+      const pulse_dst0 = dstEdge3;
+      const pulse_dst1 = dstEdge3 + Td;
+
+      // Build waveform segments [{x,l}] for each row
+      function seg(changes) { return changes; }
+
+      const waveforms = [
+        // CLK_SRC: square wave
+        (() => {
+          const s = [];
+          for (let i = 0; i <= 24; i++) {
+            s.push({ x: (i * Ts / 2), l: i % 2 });
+          }
+          return s;
+        })(),
+        // pulse_src
+        seg([{x:0,l:0},{x:p0,l:1},{x:p1,l:0}]),
+        // toggle_s
+        seg([{x:0,l:0},{x:tog0,l:1}]),
+        // CLK_DST: square wave offset
+        (() => {
+          const s = [];
+          for (let i = 0; i <= 10; i++) {
+            s.push({ x: dOff + (i * Td / 2), l: i % 2 });
+          }
+          if (dOff > 0) s.unshift({x:0, l:0});
+          return s;
+        })(),
+        // sync_d[1]
+        seg([{x:0,l:0},{x:dstEdge3,l:1}]),
+        // pulse_dst
+        seg([{x:0,l:0},{x:pulse_dst0,l:1},{x:pulse_dst1,l:0}]),
+      ];
+
+      ROWS.forEach((row, ri) => {
+        const y0   = ri * rH + 4;
+        const yH_i = rH - 8;
+        const yTop = y0 + 2;
+        const yBot = y0 + yH_i - 2;
+        const yMid = (yTop + yBot) / 2;
+
+        // Label
+        cx.fillStyle = '#94a3b8';
+        cx.font = `9.5px 'JetBrains Mono', monospace`;
+        cx.textAlign = 'right';
+        cx.fillText(row.name, xL - 4, yMid + 3.5);
+
+        // Divider
+        cx.strokeStyle = 'rgba(148,163,184,0.07)';
+        cx.lineWidth = 0.5;
+        cx.beginPath();
+        cx.moveTo(0, y0 + yH_i + 4);
+        cx.lineTo(W, y0 + yH_i + 4);
+        cx.stroke();
+
+        // Waveform
+        cx.strokeStyle = row.color;
+        cx.lineWidth = 1.6;
+        cx.beginPath();
+        const pts = waveforms[ri];
+        let prevL = pts[0].l;
+        let px = xS + pts[0].x;
+        cx.moveTo(Math.min(px, xE), prevL ? yTop : yBot);
+
+        for (let i = 1; i < pts.length; i++) {
+          const nx = xS + pts[i].x;
+          if (nx > xE) break;
+          const nl = pts[i].l;
+          if (nl !== prevL) {
+            cx.lineTo(nx, prevL ? yTop : yBot);
+            cx.lineTo(nx, nl   ? yTop : yBot);
+          } else {
+            cx.lineTo(nx, nl ? yTop : yBot);
+          }
+          prevL = nl; px = nx;
+        }
+        cx.lineTo(xE, prevL ? yTop : yBot);
+        cx.stroke();
+      });
+
+      // Annotation: pulse captured marker
+      cx.strokeStyle = 'rgba(192,132,252,0.35)';
+      cx.lineWidth = 1;
+      cx.setLineDash([3, 3]);
+      [dstEdge3, pulse_dst1].forEach(tx => {
+        const x = xS + tx;
+        if (x < xE) {
+          cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke();
+        }
+      });
+      cx.setLineDash([]);
+
+      // Legend labels
+      cx.fillStyle = 'rgba(192,132,252,0.7)';
+      cx.font = '8px Outfit, sans-serif';
+      cx.textAlign = 'center';
+      const lx1 = xS + (dstEdge3 + pulse_dst1) / 2;
+      if (lx1 < xE - 10) cx.fillText('pulse_dst', lx1, 12);
+    }
+
+    draw();
+    window.addEventListener('resize', draw);
+  })();
+
+  // Background particles
+  (function() {
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, pts;
+    function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    function init() {
+      resize();
+      pts = Array.from({ length: 40 }, () => ({
+        x: Math.random()*W, y: Math.random()*H,
+        vx: (Math.random()-0.5)*0.3, vy: (Math.random()-0.5)*0.3,
+        r: Math.random()*1.4+0.5
+      }));
+    }
+    function drawBg() {
+      ctx.clearRect(0,0,W,H);
+      for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
+        const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, d=Math.sqrt(dx*dx+dy*dy);
+        if (d<130) { ctx.strokeStyle=`rgba(251,191,36,${0.04*(1-d/130)})`; ctx.lineWidth=0.7; ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke(); }
+      }
+      pts.forEach(p => {
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle='rgba(251,191,36,0.22)'; ctx.fill();
+        p.x+=p.vx; p.y+=p.vy;
+        if(p.x<0||p.x>W)p.vx*=-1; if(p.y<0||p.y>H)p.vy*=-1;
+      });
+      requestAnimationFrame(drawBg);
+    }
+    window.addEventListener('resize', resize);
+    init(); drawBg();
+  })();
+</script>
+<script src="/cookie-consent.js"></script>
+<a href="https://whatsapp.com/channel/0029Vb7U7jxKAwEmqonaUu2x" target="_blank" rel="noopener noreferrer" title="Join EcrioniX on WhatsApp"
+   style="position:fixed;bottom:5.5rem;right:1.5rem;z-index:999;width:54px;height:54px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(37,211,102,0.45);transition:transform .2s,box-shadow .2s"
+   onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(37,211,102,0.6)'"
+   onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(37,211,102,0.45)'">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
+</body>
+</html>
