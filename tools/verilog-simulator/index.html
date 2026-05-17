@@ -241,15 +241,21 @@
     .wave-empty svg{opacity:.3}
 
     /* signal name panel */
-    .sig-panel{width:152px;flex-shrink:0;background:#080e1c;border-right:1px solid rgba(56,189,248,0.1);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+    .sig-panel{width:172px;flex-shrink:0;background:#080e1c;border-right:1px solid rgba(56,189,248,0.1);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
     .sig-panel::-webkit-scrollbar{width:4px}
     .sig-panel::-webkit-scrollbar-thumb{background:#1e293b;border-radius:2px}
     .sig-phdr{padding:.28rem .6rem;background:#0d1424;border-bottom:1px solid var(--border);display:flex;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2a3a50;flex-shrink:0}
-    .sig-phdr-name{flex:1}.sig-phdr-val{width:58px;text-align:right}
+    .sig-phdr-name{flex:1}.sig-phdr-val{width:52px;text-align:right}
     .sig-row{display:flex;align-items:center;padding:0 .6rem;height:40px;border-bottom:1px solid rgba(148,163,184,0.04);flex-shrink:0}
     .sig-row:nth-child(even){background:rgba(15,23,42,0.3)}
-    .sig-name{flex:1;font-family:var(--mono);font-size:.7rem;color:#7dd3fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .sig-val{width:58px;text-align:right;font-family:var(--mono);font-size:.7rem;color:#5eead4;white-space:nowrap}
+    .sig-name{flex:1;font-family:var(--mono);font-size:.7rem;color:#7dd3fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    .sig-val{width:52px;text-align:right;font-family:var(--mono);font-size:.7rem;color:#5eead4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sig-fmt{font-size:.56rem;padding:.04rem .22rem;border-radius:3px;border:1px solid rgba(94,234,212,0.22);background:rgba(94,234,212,0.05);color:#5eead4;cursor:pointer;font-family:var(--mono);line-height:1.5;flex-shrink:0;margin-right:2px;transition:.15s}
+    .sig-fmt:hover{background:rgba(94,234,212,0.14);border-color:rgba(94,234,212,0.45)}
+    .sig-fmt-gap{width:28px;flex-shrink:0}
+    #sig-filter{background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:5px;color:var(--slate);font-family:var(--mono);font-size:.7rem;padding:.15rem .45rem;outline:none;width:120px;transition:.2s}
+    #sig-filter:focus{border-color:var(--sky-brd);background:rgba(15,23,42,1)}
+    #sig-filter::placeholder{color:#2a3a50}
 
     /* canvas scroll area */
     .wave-scroll{flex:1;overflow:auto;position:relative;background:#060c1a;cursor:crosshair}
@@ -395,6 +401,8 @@
         <button class="wz-btn" onclick="zoomOut()" title="Zoom Out">－ Zoom</button>
         <div class="wz-sep"></div>
         <span id="cursor-disp">Cursor: —</span>
+        <div class="wz-sep"></div>
+        <input id="sig-filter" type="text" placeholder="Filter signals…" oninput="setSigFilter(this.value)" title="Filter visible signals">
         <span class="wave-siginfo" id="wave-siginfo"></span>
       </div>
       <!-- body -->
@@ -1451,6 +1459,9 @@ function parseVCD(raw){
 // ════════════════════════════════════════════════════════
 const W={sigs:{},names:[],maxT:0,ppt:1,cursorT:null};
 const ROW_H=40, AX_H=26;
+let sigFmts={};  // name → 'hex'|'bin'|'dec'
+let sigFilter='';
+function visNames(){ if(!sigFilter) return W.names; const f=sigFilter.toLowerCase(); return W.names.filter(n=>n.toLowerCase().includes(f)); }
 
 function calcMaxT(sigs){
   let m=0;
@@ -1478,10 +1489,13 @@ function getValAt(vals,t){
   return v;
 }
 
-function fmtVal(v,bits){
+function fmtVal(v,bits,fmt){
   if(v===null) return '—';
   if(bits===1) return v;
   if(/^[01]+$/.test(v)){
+    fmt=fmt||'hex';
+    if(fmt==='bin') return v;
+    if(fmt==='dec'){ try{return BigInt('0b'+v).toString();}catch(e){return String(parseInt(v,2));} }
     const hex=parseInt(v,2).toString(16).toUpperCase();
     return bits<=4 ? hex : '0x'+hex;
   }
@@ -1494,24 +1508,54 @@ function fmtVal(v,bits){
 function buildSigPanel(){
   const rows=document.getElementById('sig-rows');
   rows.innerHTML='';
-  W.names.forEach((name,i)=>{
+  const vn=visNames();
+  vn.forEach(name=>{
     const r=document.createElement('div');
     r.className='sig-row';
-    r.innerHTML=`<span class="sig-name" title="${name}">${name}</span><span class="sig-val" id="sv${i}">—</span>`;
+    const isBus=W.sigs[name].bits>1;
+    const fmt=(sigFmts[name]||'hex').toUpperCase();
+    const safeName=name.replace(/"/g,'&quot;');
+    if(isBus){
+      r.innerHTML=`<span class="sig-name" title="${safeName}">${safeName}</span><button class="sig-fmt" id="sf_${safeName}" onclick="cycleFmt('${safeName}')">${fmt}</button><span class="sig-val" id="sv_${safeName}">—</span>`;
+    } else {
+      r.innerHTML=`<span class="sig-name" title="${safeName}">${safeName}</span><span class="sig-fmt-gap"></span><span class="sig-val" id="sv_${safeName}">—</span>`;
+    }
     rows.appendChild(r);
   });
-  document.getElementById('wave-siginfo').textContent=W.names.length+' signals';
+  const total=W.names.length, vis=vn.length;
+  document.getElementById('wave-siginfo').textContent=sigFilter ? vis+'/'+total+' sigs' : total+' signals';
   document.getElementById('sig-panel').style.display='flex';
   document.getElementById('wave-scroll').style.display='block';
   document.getElementById('wave-empty').style.display='none';
 }
 
+function cycleFmt(name){
+  const cycle=['hex','bin','dec'];
+  const cur=sigFmts[name]||'hex';
+  sigFmts[name]=cycle[(cycle.indexOf(cur)+1)%3];
+  const btn=document.getElementById('sf_'+name);
+  if(btn) btn.textContent=sigFmts[name].toUpperCase();
+  const el=document.getElementById('sv_'+name);
+  if(el && W.cursorT!==null){
+    const raw=getValAt(W.sigs[name].vals,W.cursorT);
+    el.textContent=fmtVal(raw,W.sigs[name].bits,sigFmts[name]);
+  }
+  drawWave();
+}
+
+function setSigFilter(v){
+  sigFilter=v.trim();
+  buildSigPanel();
+  if(W.cursorT!==null) updateCursorVals(W.cursorT);
+  drawWave();
+}
+
 function updateCursorVals(t){
-  W.names.forEach((name,i)=>{
-    const el=document.getElementById('sv'+i);
+  visNames().forEach(name=>{
+    const el=document.getElementById('sv_'+name);
     if(!el) return;
     const raw=getValAt(W.sigs[name].vals,t);
-    el.textContent=fmtVal(raw,W.sigs[name].bits);
+    el.textContent=fmtVal(raw,W.sigs[name].bits,sigFmts[name]);
   });
 }
 
@@ -1522,8 +1566,9 @@ function drawWave(){
   const cv=document.getElementById('wave-canvas');
   const scroll=document.getElementById('wave-scroll');
   const areaW=scroll.clientWidth||600;
+  const vn=visNames();
   const canW=Math.max(areaW, Math.ceil(W.maxT*W.ppt)+60);
-  const canH=W.names.length*ROW_H+AX_H;
+  const canH=vn.length*ROW_H+AX_H;
   cv.width=canW; cv.height=canH;
 
   const ctx=cv.getContext('2d');
@@ -1533,7 +1578,7 @@ function drawWave(){
   ctx.fillRect(0,0,canW,canH);
 
   // alternating row backgrounds
-  W.names.forEach((_,i)=>{
+  vn.forEach((_,i)=>{
     if(i%2===1){
       ctx.fillStyle='rgba(15,23,42,0.45)';
       ctx.fillRect(0,AX_H+i*ROW_H,canW,ROW_H);
@@ -1543,7 +1588,7 @@ function drawWave(){
   // row dividers
   ctx.strokeStyle='rgba(148,163,184,0.05)';
   ctx.lineWidth=1;
-  for(let i=1;i<=W.names.length;i++){
+  for(let i=1;i<=vn.length;i++){
     const y=AX_H+i*ROW_H;
     ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canW,y);ctx.stroke();
   }
@@ -1576,7 +1621,7 @@ function drawWave(){
   ctx.fillRect(0,AX_H-1,canW,1);
 
   // signals
-  W.names.forEach((name,row)=>{
+  vn.forEach((name,row)=>{
     const sig=W.sigs[name];
     const vals=sig.vals;
     if(!vals.length) return;
@@ -1609,9 +1654,9 @@ function drawWave(){
         ctx.strokeStyle='#2dd4bf';
         ctx.lineWidth=1.2;
         ctx.stroke();
-        // hex label
+        // value label
         if(w>24){
-          const label=fmtVal(v,sig.bits);
+          const label=fmtVal(v,sig.bits,sigFmts[name]);
           ctx.fillStyle='#5eead4';
           ctx.textAlign='center';
           const maxChars=Math.floor(w/7.5);
@@ -1683,12 +1728,19 @@ function renderWave(vcd){
   const names=Object.keys(sigs);
   if(!names.length){resetWave();return;}
   W.sigs=sigs; W.names=names; W.maxT=calcMaxT(sigs); W.cursorT=null;
+  sigFmts={};
+  sigFilter='';
+  const fi=document.getElementById('sig-filter');
+  if(fi) fi.value='';
   buildSigPanel();
   fitZoom();
 }
 
 function resetWave(){
   W.sigs={}; W.names=[]; W.maxT=0; W.cursorT=null;
+  sigFmts={}; sigFilter='';
+  const fi=document.getElementById('sig-filter');
+  if(fi) fi.value='';
   document.getElementById('wave-empty').style.display='flex';
   document.getElementById('sig-panel').style.display='none';
   document.getElementById('wave-scroll').style.display='none';
