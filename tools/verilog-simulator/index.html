@@ -193,6 +193,11 @@
     .ftab-add:hover{color:var(--sky)}
     .file-op-btn{padding:.18rem .52rem;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--slate);font-size:.67rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.15s;white-space:nowrap;line-height:1.5}
     .file-op-btn:hover{border-color:var(--sky-brd);color:var(--sky)}
+    #lint-btn{border-color:rgba(251,191,36,0.35)!important;background:rgba(251,191,36,0.07)!important;color:var(--amber)!important}
+    #lint-btn:hover:not(:disabled){background:rgba(251,191,36,0.15)!important;border-color:rgba(251,191,36,0.55)!important}
+    #lint-out{flex:1;font-family:var(--mono);font-size:.78rem;line-height:1.7;padding:.85rem 1rem;background:var(--bg3);white-space:pre-wrap;overflow:auto;color:#c0cae0}
+    .lint-issue{display:block;border-radius:2px;padding:0 .15rem;margin:0 -.15rem;transition:background .1s;cursor:pointer}
+    .lint-issue:hover{background:rgba(56,189,248,0.06)}
 
     /* EDITOR */
     .editor-body{flex:1;min-height:0;display:flex;overflow:hidden}
@@ -346,6 +351,10 @@
     <span>Synth</span>
     <div class="spinner teal" id="synth-spin"></div>
   </button>
+  <button class="synth-btn" id="lint-btn" onclick="runLint()">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    <span id="lint-label">Lint</span>
+  </button>
   <button class="run-btn" id="run-btn" onclick="runCode()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
     <span>Run</span>
@@ -379,6 +388,7 @@
   <div class="pane">
     <div class="out-tabs">
       <div class="out-tab active" id="tab-console" onclick="switchTab('console',this)">Console</div>
+      <div class="out-tab" id="tab-lint" onclick="switchTab('lint',this)">Lint</div>
       <div class="out-tab" id="tab-waveform" onclick="switchTab('waveform',this)">Waveform</div>
       <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
       <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
@@ -387,6 +397,11 @@
     <!-- CONSOLE -->
     <div class="out-panel active" id="panel-console">
       <div id="console"><span class="dim">// Output appears here after clicking Run...</span></div>
+    </div>
+
+    <!-- LINT -->
+    <div class="out-panel" id="panel-lint">
+      <div id="lint-out"><span class="dim">// Click Lint (or run code) to check for common issues...</span></div>
     </div>
 
     <!-- NETLIST -->
@@ -1010,6 +1025,186 @@ function _doCloseFile(idx){
 }
 
 // ════════════════════════════════════════════════════════
+//  VERILOG LINTER
+// ════════════════════════════════════════════════════════
+function lintStrip(src){
+  let out='',i=0,n=src.length;
+  while(i<n){
+    if(src[i]==='/'&&src[i+1]==='/'){
+      while(i<n&&src[i]!=='\n')i++;
+    }else if(src[i]==='/'&&src[i+1]==='*'){
+      i+=2;
+      while(i<n&&!(src[i]==='*'&&src[i+1]==='/')){out+=src[i]==='\n'?'\n':' ';i++;}
+      i+=2;
+    }else{out+=src[i++];}
+  }
+  return out;
+}
+
+function lintFindAlways(lines){
+  const blocks=[];
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    let type=null;
+    if(/\balways_ff\b/.test(l)||/\balways\s*@\s*\(?\s*(posedge|negedge)/.test(l)) type='seq';
+    else if(/\balways_comb\b/.test(l)||/\balways\s*@\s*\(\s*\*/.test(l)||/\balways\s*@\s*\*/.test(l)) type='comb';
+    if(!type) continue;
+    let depth=0,end=i,found=false;
+    for(let j=i;j<Math.min(i+5,lines.length)&&!found;j++){
+      if(!/\bbegin\b/.test(lines[j])) continue;
+      depth=(lines[j].match(/\bbegin\b/g)||[]).length-(lines[j].match(/\bend\b/g)||[]).length;
+      let k=j+1;
+      while(k<lines.length&&depth>0){
+        depth+=(lines[k].match(/\bbegin\b/g)||[]).length;
+        depth-=(lines[k].match(/\bend\b/g)||[]).length;
+        k++;
+      }
+      end=k-1; found=true;
+    }
+    if(found){blocks.push({type,start:i,end});i=end;}
+  }
+  return blocks;
+}
+
+function lintFindCases(lines){
+  const blocks=[];
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(/\b(casez?|casex)\s*\(/);
+    if(!m) continue;
+    let hasDefault=false,j=i+1;
+    while(j<lines.length&&!/\bendcase\b/.test(lines[j])){
+      if(/\bdefault\s*:/.test(lines[j])) hasDefault=true;
+      j++;
+    }
+    blocks.push({start:i,type:m[1],hasDefault});
+    i=j;
+  }
+  return blocks;
+}
+
+const ALWAYS_KW=/^\s*(always|if|else if|else|end\b|begin\b|case|endcase|for|while|wire|reg|logic|input|output|inout|assign|parameter|localparam|module|endmodule)\b/;
+
+function lintCode(rawCode){
+  const src=lintStrip(rawCode);
+  const lines=src.split('\n');
+  const issues=[];
+  const add=(ln,sev,id,msg)=>issues.push({ln,sev,id,msg});
+
+  // Line-by-line global rules
+  for(let i=0;i<lines.length;i++){
+    const ln=i+1,l=lines[i];
+    if(/\bcasex\b/.test(l))
+      add(ln,'warn','L001','casex treats X as don\'t-care — use casez or unique case instead');
+    if(/(?<!\$)#\s*\d/.test(l)&&!/\bparameter\b|\blocalparam\b/.test(l))
+      add(ln,'info','L005','#delay is not synthesizable — keep in testbench, remove from RTL');
+    if(/\binitial\b/.test(l))
+      add(ln,'info','L006','initial block is not synthesizable — valid in testbench, avoid in RTL');
+    if(/\binteger\s+\w/.test(l)&&!/\bparameter\b|\blocalparam\b/.test(l))
+      add(ln,'info','L007','"integer" type is 32-bit signed — use reg [N:0] for explicit width control');
+  }
+
+  // Always block rules
+  for(const blk of lintFindAlways(lines)){
+    for(let i=blk.start;i<=blk.end;i++){
+      const ln=i+1,l=lines[i];
+      if(blk.type==='seq'){
+        // L002: blocking = in sequential
+        if(!ALWAYS_KW.test(l)&&/(?<![<>!=])=(?!=)/.test(l))
+          add(ln,'warn','L002','Blocking assignment (=) in sequential always — use <= to avoid simulation/synthesis mismatch');
+      } else {
+        // L003: non-blocking <= in combinational
+        const idx=l.indexOf('<=');
+        if(idx>=0){
+          const before=l.slice(0,idx).trim();
+          if(/\w(\s*\[[^\]]*\])?\s*$/.test(before)&&!/\bif\b|\bfor\b|\bwhile\b/.test(before))
+            add(ln,'warn','L003','Non-blocking assignment (<=) in combinational always — use = for correct simulation');
+        }
+      }
+    }
+  }
+
+  // Case rules
+  for(const blk of lintFindCases(lines)){
+    if(!blk.hasDefault)
+      add(blk.start+1,'warn','L004',blk.type+' without default: branch — may infer latch or unintended priority logic');
+  }
+
+  // Unclosed module
+  const mo=(src.match(/\bmodule\b\s+\w/g)||[]).length;
+  const mc=(src.match(/\bendmodule\b/g)||[]).length;
+  if(mo>mc) add(lines.length,'err','L008','Module not closed — missing endmodule');
+
+  return issues.sort((a,b)=>a.ln-b.ln);
+}
+
+function lintAll(){
+  const all=[];
+  files.forEach((f,fi)=>{
+    lintCode(f.code).forEach(iss=>all.push(Object.assign({},iss,{fileIdx:fi,fileName:f.name})));
+  });
+  return all;
+}
+
+function renderLintResults(allIssues){
+  const out=document.getElementById('lint-out');
+  if(!allIssues.length){
+    out.innerHTML='<span class="ok">── Lint Passed ─────────────────────────────────\n✓  No issues detected.\n────────────────────────────────────────────────</span>';
+    return;
+  }
+  let html='',lastFile=null;
+  for(const iss of allIssues){
+    if(iss.fileName!==lastFile){
+      const bar='─'.repeat(Math.max(2,38-iss.fileName.length));
+      html+=`<span class="info">── ${esc(iss.fileName)} ${bar}\n</span>`;
+      lastFile=iss.fileName;
+    }
+    const cls=iss.sev==='err'?'err':iss.sev==='warn'?'warn':'info';
+    const icon=iss.sev==='err'?'✗':iss.sev==='warn'?'⚠':'ℹ';
+    html+=`<span class="lint-issue ${cls}" onclick="lintJumpTo(${iss.fileIdx},${iss.ln})">${icon} [${iss.id}]  line ${String(iss.ln).padStart(4,' ')}  ${esc(iss.msg)}\n</span>`;
+  }
+  const e=allIssues.filter(i=>i.sev==='err').length;
+  const w=allIssues.filter(i=>i.sev==='warn').length;
+  const n=allIssues.filter(i=>i.sev==='info').length;
+  const parts=[];
+  if(e) parts.push(`${e} error${e>1?'s':''}`);
+  if(w) parts.push(`${w} warning${w>1?'s':''}`);
+  if(n) parts.push(`${n} info`);
+  html+=`<span class="dim">────────────────────────────────────────────────\n${parts.join(' · ')}</span>`;
+  out.innerHTML=html;
+}
+
+function updateLintBadge(issues){
+  const tab=document.getElementById('tab-lint');
+  if(!tab) return;
+  const e=issues.filter(i=>i.sev==='err').length;
+  const total=issues.length;
+  if(!total) tab.innerHTML='Lint <span style="color:var(--green);font-size:.65rem;vertical-align:middle">✓</span>';
+  else if(e) tab.innerHTML=`Lint <span style="background:rgba(251,113,133,0.18);color:var(--rose);font-size:.6rem;padding:.03rem .25rem;border-radius:3px;font-weight:700;vertical-align:middle">${total}</span>`;
+  else tab.innerHTML=`Lint <span style="background:rgba(251,191,36,0.18);color:var(--amber);font-size:.6rem;padding:.03rem .25rem;border-radius:3px;font-weight:700;vertical-align:middle">${total}</span>`;
+}
+
+function lintJumpTo(fileIdx,ln){
+  if(fileIdx!==activeFile) switchFile(fileIdx);
+  const lines=ed.value.split('\n');
+  let pos=0;
+  for(let i=0;i<ln-1&&i<lines.length;i++) pos+=lines[i].length+1;
+  ed.focus();
+  ed.selectionStart=ed.selectionEnd=pos;
+  const lh=ed.scrollHeight/Math.max(lines.length,1);
+  const top=Math.max(0,(ln-5)*lh);
+  ed.scrollTop=top;
+  document.getElementById('lnums').scrollTop=top;
+}
+
+function runLint(){
+  files[activeFile].code=ed.value;
+  const issues=lintAll();
+  renderLintResults(issues);
+  updateLintBadge(issues);
+  switchTab('lint',document.getElementById('tab-lint'));
+}
+
+// ════════════════════════════════════════════════════════
 //  FILE SAVE / OPEN
 // ════════════════════════════════════════════════════════
 function saveFile(){
@@ -1307,7 +1502,10 @@ async function runCode(){
   }catch(e){
     con.innerHTML=`<span class="err">── Error ───────────────────────────────\n${esc(e.message)}</span>`;
     setStatus('err','Failed');
-  }finally{btn.disabled=false;sp.style.display='none';}
+  }finally{
+    btn.disabled=false;sp.style.display='none';
+    try{updateLintBadge(lintAll());}catch(_){}
+  }
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
