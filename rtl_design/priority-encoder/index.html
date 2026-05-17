@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Priority Encoder in Verilog — casez, casex & Synthesis | EcrioniX</title>
+  <meta name="description" content="Master Verilog priority encoders using casez and casex. Understand don't-care semantics, why casex is dangerous in simulation, 4-to-2 and 8-to-3 RTL examples, SystemVerilog priority case, and how synthesis maps casez to priority chains.">
+  <meta name="keywords" content="priority encoder verilog, casez verilog, casex verilog, verilog casez don't care, priority encoder RTL, 8 to 3 priority encoder, verilog case statement, priority case systemverilog, unique case, RTL design interview">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/priority-encoder/">
+
+  <meta property="og:title" content="Priority Encoder in Verilog — casez, casex & Synthesis | EcrioniX">
+  <meta property="og:description" content="4-to-2 and 8-to-3 priority encoder RTL, casez vs casex don't-care semantics, why casex is dangerous, SystemVerilog priority case, and synthesis implications.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/priority-encoder/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Priority Encoder — casez vs casex | EcrioniX">
+  <meta name="twitter:description" content="casez vs casex don't-care semantics, 4-to-2 and 8-to-3 priority encoder RTL, SystemVerilog priority case — with synthesis notes.">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle",
+     "headline":"Priority Encoder in Verilog — casez, casex and Synthesis",
+     "description":"Covers priority encoder RTL design using casez and casex, don't-care semantics, why casex is dangerous in simulation, 4-to-2 and 8-to-3 examples, SystemVerilog priority case, and synthesis mapping.",
+     "url":"https://ecrionix.org/rtl_design/priority-encoder/",
+     "datePublished":"2026-05-16","dateModified":"2026-05-16",
+     "author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},
+      {"@type":"ListItem","position":3,"name":"Priority Encoder — casez & casex","item":"https://ecrionix.org/rtl_design/priority-encoder/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between casez and casex in Verilog?",
+       "acceptedAnswer":{"@type":"Answer","text":"In a casez statement, the character 'z' or '?' in a case item is treated as a don't-care — it matches both 0 and 1 (and x and z) in simulation. In a casex statement, both 'x' and 'z' in a case item are treated as don't-cares. casex is dangerous because x values in simulation (from uninitialized registers or unknown values) silently match case items, masking bugs. casez is safe because only explicit 'z' or '?' in the case item pattern acts as don't-care — x values from signals still propagate correctly. Always use casez instead of casex for synthesis-safe RTL."}},
+      {"@type":"Question","name":"How do you implement a priority encoder in Verilog?",
+       "acceptedAnswer":{"@type":"Answer","text":"A priority encoder selects the highest-priority active input and encodes its index as a binary output. In Verilog, use casez with don't-care patterns to describe the priority: check for the highest-priority bit first (e.g., 8'b1xxxxxxx for bit 7), then 8'b01xxxxxx for bit 6, and so on. The first matching branch in a case statement is selected, naturally implementing priority. Synthesis maps this to a priority MUX chain where each level is guarded by the higher-priority condition."}},
+      {"@type":"Question","name":"What is unique case and priority case in SystemVerilog?",
+       "acceptedAnswer":{"@type":"Answer","text":"In SystemVerilog, 'priority case' adds an assertion that at least one branch matches (eliminating implicit latch for the no-match case) and explicitly tells the synthesizer that branches are evaluated in order (priority chain). 'unique case' asserts that exactly one branch matches and that all possible values are covered — allowing the synthesizer to implement a parallel (non-priority) MUX rather than a priority chain. Using these keywords instead of casez/casex makes synthesis intent explicit and enables tool checks."}},
+      {"@type":"Question","name":"What does synthesis generate for a casez priority encoder?",
+       "acceptedAnswer":{"@type":"Answer","text":"A casez priority encoder synthesizes to a chain of MUXes controlled by priority conditions. For an 8-input encoder, synthesis generates: if req[7] → output 3'd7; else if req[6] → output 3'd6; ... else if req[0] → output 3'd0. This creates a ripple-priority chain with increasing delay from the lowest-priority input. The critical path is through all the priority conditions from req[0] to the output. In ASIC libraries, this maps to AOI/OAI cells or a tree of 2-to-1 MUXes."}},
+      {"@type":"Question","name":"What is the difference between a priority encoder and a binary encoder?",
+       "acceptedAnswer":{"@type":"Answer","text":"A binary encoder assumes exactly one input is active at a time — if multiple inputs are active simultaneously, the output is undefined/wrong. A priority encoder handles multiple simultaneous active inputs by selecting the highest-priority (usually highest-index) active input and ignoring the rest. Priority encoders also typically have a 'valid' output that indicates whether any input is active. Most real-world arbitration, interrupt controllers, and grant logic require priority encoders, not plain binary encoders."}},
+      {"@type":"Question","name":"When should I use casez vs if-else for a priority encoder?",
+       "acceptedAnswer":{"@type":"Answer","text":"Both synthesize to identical priority chains. casez is preferred for encoders with many inputs (4+) because the pattern-matching syntax is more readable and less error-prone than long if-else chains. if-else is fine for 2–3 conditions. The key advantage of casez is visual alignment of don't-care patterns (e.g., 8'b1zzzzzzz), which makes the priority ordering immediately obvious. For SystemVerilog, use 'priority casez' or 'priority if' to make the intent explicit to lint tools."}}
+    ]}
+  ]}
+  </script>
+
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+    --border:rgba(148,163,184,0.1);--bh:rgba(245,158,11,0.4);
+    --amber:#f59e0b;--amber-d:rgba(245,158,11,0.12);--amber-b:rgba(245,158,11,0.25);
+    --indigo:#6366f1;--indigo-l:#818cf8;
+    --text:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+  #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+  .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+  .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+  .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+  .nav-logo span{color:var(--indigo)}
+  .nav-links{display:flex;gap:2rem;list-style:none}
+  .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+  .nav-links a:hover,.nav-links a.active{color:#fff}
+  .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+  .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px}
+  .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+  .mobile-menu.open{display:flex}
+  .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+  .mobile-menu a:last-child{border-bottom:none}
+  .mobile-menu a:hover{color:#fff}
+  @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+  .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim);flex-wrap:wrap}
+  .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+  .breadcrumb a:hover{color:var(--indigo-l)}
+
+  .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+  .hero-tag{display:inline-block;background:var(--amber-d);border:1px solid var(--amber-b);color:var(--amber);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+  .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+  .hero h1 span{background:linear-gradient(135deg,var(--amber),#fb923c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+
+  .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+  .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--border);padding:.4rem .9rem;border-radius:100px}
+  .meta-pill svg{width:14px;height:14px;flex-shrink:0;color:var(--amber)}
+
+  .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 4rem;display:grid;grid-template-columns:1fr min(260px,28%);gap:2.5rem;align-items:start}
+  @media(max-width:900px){.content{grid-template-columns:1fr}}
+
+  .article{min-width:0}
+  h2.sec{font-size:1.45rem;font-weight:700;color:#fff;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+  h3.sub{font-size:1.1rem;font-weight:600;color:var(--amber);margin:1.75rem 0 .75rem}
+  p{color:var(--muted);margin-bottom:1rem;font-size:.95rem}
+  ul,ol{color:var(--muted);font-size:.95rem;padding-left:1.4rem;margin-bottom:1rem}
+  li{margin-bottom:.35rem}
+  strong{color:#e2e8f0}
+
+  .code-block{position:relative;background:#0a0f1e;border:1px solid var(--border);border-radius:12px;margin:1.25rem 0;overflow:hidden}
+  .code-label{display:flex;align-items:center;justify-content:space-between;padding:.55rem 1rem;background:rgba(255,255,255,0.03);border-bottom:1px solid var(--border);font-size:.72rem;font-weight:600;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+  .copy-btn{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);color:var(--amber);font-size:.7rem;font-weight:600;padding:.2rem .6rem;border-radius:6px;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.04em}
+  .copy-btn:hover{background:rgba(245,158,11,0.2)}
+  .copy-btn.copied{color:#4ade80;border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.1)}
+  pre{margin:0;padding:1.25rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.65;tab-size:2}
+  .k{color:#818cf8}
+  .t{color:#38bdf8}
+  .s{color:#f59e0b}
+  .c{color:#475569;font-style:italic}
+  .n{color:#f8fafc}
+  .v{color:#fb7185}
+  .g{color:#4ade80}
+  .num{color:#fb923c}
+
+  .callout{border-radius:10px;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;display:flex;gap:.75rem;align-items:flex-start}
+  .callout svg{width:18px;height:18px;flex-shrink:0;margin-top:.15rem}
+  .callout-warn{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#fcd34d}
+  .callout-info{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc}
+  .callout-danger{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#fca5a5}
+  .callout-good{background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:#86efac}
+
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}
+  @media(max-width:680px){.pair{grid-template-columns:1fr}}
+  .pair-label{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem;padding:.2rem .7rem;border-radius:6px;display:inline-block}
+  .pair-bad{color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2)}
+  .pair-good{color:#4ade80;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2)}
+
+  .svg-box{background:#0a0f1e;border:1px solid var(--border);border-radius:12px;padding:1.5rem;margin:1.25rem 0;overflow-x:auto}
+  .svg-box svg{display:block;margin:0 auto}
+
+  .table-wrap{overflow-x:auto;margin:1.25rem 0;border-radius:12px;border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:.84rem}
+  th{background:rgba(245,158,11,0.08);color:var(--amber);font-weight:600;padding:.65rem 1rem;text-align:left;border-bottom:1px solid var(--border)}
+  td{padding:.6rem 1rem;color:var(--muted);border-bottom:1px solid rgba(148,163,184,0.06)}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,0.02)}
+  .yes{color:#4ade80;font-weight:600}
+  .no{color:#f87171;font-weight:600}
+  .warn{color:#fbbf24;font-weight:600}
+
+  .faq{margin:1.25rem 0}
+  .faq-item{border:1px solid var(--border);border-radius:10px;margin-bottom:.6rem;overflow:hidden}
+  .faq-q{width:100%;background:rgba(15,23,42,0.5);border:none;padding:1rem 1.25rem;text-align:left;color:#e2e8f0;font-size:.9rem;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;font-family:inherit;transition:background .2s}
+  .faq-q:hover{background:rgba(245,158,11,0.06)}
+  .faq-icon{width:20px;height:20px;flex-shrink:0;color:var(--amber);transition:transform .3s}
+  .faq-item.open .faq-icon{transform:rotate(45deg)}
+  .faq-a{display:none;padding:0 1.25rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.7}
+  .faq-item.open .faq-a{display:block}
+
+  .toc{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;position:sticky;top:80px}
+  .toc-title{font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-bottom:.9rem}
+  .toc-list{list-style:none;padding:0;display:flex;flex-direction:column;gap:.1rem}
+  .toc-list a{font-size:.82rem;color:var(--dim);text-decoration:none;padding:.3rem .5rem;border-radius:6px;display:block;transition:all .2s;border-left:2px solid transparent}
+  .toc-list a:hover{color:#fff;border-left-color:var(--amber);padding-left:.75rem}
+  .toc-sub{padding-left:.75rem}
+
+  .scroll-top{position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(245,158,11,.8);border:none;color:#000;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:50;transition:.2s;font-size:1.1rem}
+  .scroll-top.visible{display:flex}
+  .scroll-top:hover{background:var(--amber)}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/rtl_design/" class="active">RTL Design</a></li>
+      <li><a href="/about/">About</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/about/">About</a>
+  </div>
+</nav>
+
+<nav class="breadcrumb" aria-label="breadcrumb">
+  <a href="/">Home</a>
+  <span>›</span>
+  <a href="/rtl_design/">RTL Design</a>
+  <span>›</span>
+  <span style="color:#94a3b8">Priority Encoder — casez &amp; casex</span>
+</nav>
+
+<div class="hero">
+  <div class="hero-tag">RTL Deep-Dive</div>
+  <h1>Priority Encoder<br><span>casez, casex &amp; Synthesis</span></h1>
+  <p>Master Verilog's case statement variants for don't-care matching, build 4-to-2 and 8-to-3 priority encoders that synthesize correctly, understand why <code style="color:var(--amber);background:rgba(245,158,11,0.1);padding:.1rem .35rem;border-radius:4px;font-size:.9em">casex</code> masks simulation bugs, and use SystemVerilog's <code style="color:var(--amber);background:rgba(245,158,11,0.1);padding:.1rem .35rem;border-radius:4px;font-size:.9em">priority case</code> to express intent explicitly.</p>
+  <div class="hero-meta">
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      ~18 min read
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Verilog + SystemVerilog
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      High Interview Frequency
+    </div>
+  </div>
+</div>
+
+<div class="content">
+<article class="article">
+
+<!-- ─── 1. WHAT IS A PRIORITY ENCODER ─── -->
+<h2 class="sec" id="what-is">What is a Priority Encoder?</h2>
+<p>A <strong>priority encoder</strong> takes N active-high request inputs and produces a binary-encoded output indicating which input has the <em>highest priority</em> — when multiple inputs are active simultaneously, only the highest-priority one is acknowledged.</p>
+
+<p>A 4-to-2 priority encoder has 4 request inputs (req[3:0]) and 2-bit encoded output (enc[1:0]), plus a <strong>valid</strong> output indicating at least one request is active.</p>
+
+<div class="svg-box">
+<svg width="560" height="180" viewBox="0 0 560 180" xmlns="http://www.w3.org/2000/svg" style="font-family:'Outfit',sans-serif;max-width:100%">
+  <!-- box -->
+  <rect x="180" y="30" width="200" height="120" rx="10" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="280" y="58" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="600" letter-spacing="1">PRIORITY</text>
+  <text x="280" y="75" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="600" letter-spacing="1">ENCODER</text>
+  <text x="280" y="102" text-anchor="middle" fill="#64748b" font-size="10">4-to-2</text>
+
+  <!-- inputs -->
+  <line x1="60" y1="55" x2="180" y2="55" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="55" y="59" text-anchor="end" fill="#94a3b8" font-size="11">req[3] ─ highest priority</text>
+  <line x1="60" y1="80" x2="180" y2="80" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="55" y="84" text-anchor="end" fill="#94a3b8" font-size="11">req[2]</text>
+  <line x1="60" y1="105" x2="180" y2="105" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="55" y="109" text-anchor="end" fill="#94a3b8" font-size="11">req[1]</text>
+  <line x1="60" y1="130" x2="180" y2="130" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="55" y="134" text-anchor="end" fill="#94a3b8" font-size="11">req[0] ─ lowest priority</text>
+
+  <!-- outputs -->
+  <line x1="380" y1="75" x2="490" y2="75" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="495" y="79" fill="#94a3b8" font-size="11">enc[1:0]</text>
+  <line x1="380" y1="110" x2="490" y2="110" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="495" y="114" fill="#94a3b8" font-size="11">valid</text>
+</svg>
+</div>
+
+<p>Truth table (highest-priority active input wins):</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>req[3]</th><th>req[2]</th><th>req[1]</th><th>req[0]</th><th>enc[1:0]</th><th>valid</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>2'b00</td><td class="no">0</td></tr>
+    <tr><td>0</td><td>0</td><td>0</td><td>1</td><td>2'b00</td><td class="yes">1</td></tr>
+    <tr><td>0</td><td>0</td><td>1</td><td>X</td><td>2'b01</td><td class="yes">1</td></tr>
+    <tr><td>0</td><td>1</td><td>X</td><td>X</td><td>2'b10</td><td class="yes">1</td></tr>
+    <tr><td>1</td><td>X</td><td>X</td><td>X</td><td>2'b11</td><td class="yes">1</td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:.82rem;color:var(--dim)">X = don't-care (lower-priority inputs are ignored when a higher-priority request is active)</p>
+
+<!-- ─── 2. casez vs casex ─── -->
+<h2 class="sec" id="casez-casex">casez vs casex — Don't-Care Semantics</h2>
+
+<p>Verilog has three case statement variants: <strong>case</strong>, <strong>casez</strong>, and <strong>casex</strong>. They differ in how they handle the 4-state values <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">0</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">1</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">x</code>, and <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">z</code> in pattern matching.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Statement</th><th>z/? in item = don't-care</th><th>x in item = don't-care</th><th>x in expression = don't-care</th><th>Safe for RTL?</th></tr></thead>
+  <tbody>
+    <tr><td><code style="font-family:'JetBrains Mono',monospace;font-size:.85em;color:#e2e8f0">case</code></td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+    <tr><td><code style="font-family:'JetBrains Mono',monospace;font-size:.85em;color:#f59e0b">casez</code></td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes — preferred</td></tr>
+    <tr><td><code style="font-family:'JetBrains Mono',monospace;font-size:.85em;color:#f87171">casex</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="warn">Yes</td><td class="no">No — dangerous</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-danger">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div><strong>Why casex is dangerous:</strong> when req contains x (from an uninitialized register, a reset state, or a CDC signal), casex silently matches the first case item whose pattern has x or z. Your simulation appears to work correctly but you are testing the wrong branch. casex hides x-propagation bugs that should surface as simulation warnings.</div>
+</div>
+
+<div class="callout callout-good">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <div><strong>Rule:</strong> always use <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">casez</code> (not casex) for don't-care pattern matching. Use <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">?</code> as the don't-care character — it is identical to <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">z</code> in a case item but clearer in intent.</div>
+</div>
+
+<h3 class="sub">Matching rules illustrated</h3>
+<div class="code-block">
+  <div class="code-label">casez vs casex — how x propagates<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="c">// Signal with unknown value after power-up:</span>
+<span class="c">// req = 4'bx100  (bit 3 is x — uninitialized)</span>
+
+<span class="k">casez</span> (req)
+  <span class="num">4'b1???</span>: <span class="c">// does NOT match — x ≠ 1 in expression bit[3]</span>
+  <span class="num">4'b01??</span>: <span class="c">// does NOT match</span>
+  <span class="num">4'b001?</span>: <span class="c">// does NOT match</span>
+  <span class="num">4'b0001</span>: <span class="c">// does NOT match</span>
+  <span class="k">default</span>: <span class="c">// ← lands here → x propagates to output (good!)</span>
+<span class="k">endcase</span>
+
+<span class="c">// Same signal with casex:</span>
+<span class="k">casex</span> (req)
+  <span class="num">4'b1???</span>: <span class="c">// MATCHES — x in expression treated as don't-care!</span>
+             <span class="c">// Bug silently masked. req[3]=x accepted as req[3]=1.</span>
+<span class="k">endcase</span></pre>
+</div>
+
+<!-- ─── 3. 4-to-2 PRIORITY ENCODER ─── -->
+<h2 class="sec" id="4to2">4-to-2 Priority Encoder with casez</h2>
+
+<div class="code-block">
+  <div class="code-label">Verilog — 4-to-2 Priority Encoder<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="k">module</span> <span class="t">priority_enc4</span> (
+  <span class="k">input</span>  <span class="k">wire</span> [<span class="num">3</span>:<span class="num">0</span>] req,
+  <span class="k">output</span> <span class="k">reg</span>  [<span class="num">1</span>:<span class="num">0</span>] enc,
+  <span class="k">output</span> <span class="k">reg</span>        valid
+);
+
+  <span class="k">always</span> @(*) <span class="k">begin</span>
+    <span class="c">// Default assignments first — prevents latch inference</span>
+    enc   = <span class="num">2'b00</span>;
+    valid = <span class="num">1'b0</span>;
+
+    <span class="k">casez</span> (req)
+      <span class="num">4'b1???</span>: <span class="k">begin</span> enc = <span class="num">2'b11</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>  <span class="c">// req[3] highest</span>
+      <span class="num">4'b01??</span>: <span class="k">begin</span> enc = <span class="num">2'b10</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">4'b001?</span>: <span class="k">begin</span> enc = <span class="num">2'b01</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">4'b0001</span>: <span class="k">begin</span> enc = <span class="num">2'b00</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="c">// default: enc=0, valid=0 already set above</span>
+    <span class="k">endcase</span>
+  <span class="k">end</span>
+
+<span class="k">endmodule</span></pre>
+</div>
+
+<div class="callout callout-info">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <div>The <strong>?</strong> character in casez patterns is identical to <strong>z</strong> — both mean don't-care. Using <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">?</code> is more readable. The default assignments at the top of the always block prevent latch inference when no case branch matches.</div>
+</div>
+
+<h3 class="sub">Equivalent if-else chain (same synthesis result)</h3>
+<div class="code-block">
+  <div class="code-label">Verilog — if-else style (identical RTL)<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="k">always</span> @(*) <span class="k">begin</span>
+  enc   = <span class="num">2'b00</span>;
+  valid = <span class="num">1'b0</span>;
+
+  <span class="k">if</span>      (req[<span class="num">3</span>]) <span class="k">begin</span> enc = <span class="num">2'b11</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+  <span class="k">else if</span> (req[<span class="num">2</span>]) <span class="k">begin</span> enc = <span class="num">2'b10</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+  <span class="k">else if</span> (req[<span class="num">1</span>]) <span class="k">begin</span> enc = <span class="num">2'b01</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+  <span class="k">else if</span> (req[<span class="num">0</span>]) <span class="k">begin</span> enc = <span class="num">2'b00</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+<span class="k">end</span></pre>
+</div>
+
+<!-- ─── 4. 8-to-3 PRIORITY ENCODER ─── -->
+<h2 class="sec" id="8to3">8-to-3 Priority Encoder</h2>
+
+<div class="code-block">
+  <div class="code-label">Verilog — 8-to-3 Priority Encoder (casez)<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="k">module</span> <span class="t">priority_enc8</span> (
+  <span class="k">input</span>  <span class="k">wire</span> [<span class="num">7</span>:<span class="num">0</span>] req,
+  <span class="k">output</span> <span class="k">reg</span>  [<span class="num">2</span>:<span class="num">0</span>] enc,
+  <span class="k">output</span> <span class="k">reg</span>        valid
+);
+
+  <span class="k">always</span> @(*) <span class="k">begin</span>
+    enc   = <span class="num">3'd0</span>;
+    valid = <span class="num">1'b0</span>;
+
+    <span class="k">casez</span> (req)
+      <span class="num">8'b1???????</span>: <span class="k">begin</span> enc = <span class="num">3'd7</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b01??????</span>: <span class="k">begin</span> enc = <span class="num">3'd6</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b001?????</span>: <span class="k">begin</span> enc = <span class="num">3'd5</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b0001????</span>: <span class="k">begin</span> enc = <span class="num">3'd4</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b00001???</span>: <span class="k">begin</span> enc = <span class="num">3'd3</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b000001??</span>: <span class="k">begin</span> enc = <span class="num">3'd2</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b0000001?</span>: <span class="k">begin</span> enc = <span class="num">3'd1</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+      <span class="num">8'b00000001</span>: <span class="k">begin</span> enc = <span class="num">3'd0</span>; valid = <span class="num">1'b1</span>; <span class="k">end</span>
+    <span class="k">endcase</span>
+  <span class="k">end</span>
+
+<span class="k">endmodule</span></pre>
+</div>
+
+<!-- ─── 5. SYNTHESIS MAPPING ─── -->
+<h2 class="sec" id="synthesis">How Synthesis Maps casez</h2>
+
+<p>A casez priority encoder synthesizes to a <strong>priority MUX chain</strong> — a series of 2-to-1 multiplexers where each level is gated by the higher-priority condition. The select of each MUX is req[N] ORed with all higher-priority requests.</p>
+
+<div class="svg-box">
+<svg width="580" height="220" viewBox="0 0 580 220" xmlns="http://www.w3.org/2000/svg" style="font-family:'Outfit',sans-serif;max-width:100%">
+  <!-- Title -->
+  <text x="290" y="20" text-anchor="middle" fill="#f59e0b" font-size="11" font-weight="600" letter-spacing="1">SYNTHESIZED PRIORITY CHAIN (4-to-2 example)</text>
+
+  <!-- MUX 1 -->
+  <polygon points="100,50 140,60 140,100 100,110" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="118" y="82" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700">MUX</text>
+  <text x="95" y="65" text-anchor="end" fill="#94a3b8" font-size="10">2'b11</text>
+  <text x="95" y="95" text-anchor="end" fill="#94a3b8" font-size="10">─ (next)</text>
+  <line x1="40" y1="65" x2="100" y2="65" stroke="#38bdf8" stroke-width="1.2"/>
+  <text x="35" y="69" text-anchor="end" fill="#38bdf8" font-size="9">2'b11</text>
+  <line x1="120" y1="130" x2="120" y2="115" stroke="#f87171" stroke-width="1.2"/>
+  <text x="120" y="148" text-anchor="middle" fill="#f87171" font-size="9">req[3]</text>
+
+  <!-- MUX 2 -->
+  <polygon points="220,50 260,60 260,100 220,110" fill="#0f172a" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="238" y="82" text-anchor="middle" fill="#818cf8" font-size="10" font-weight="700">MUX</text>
+  <line x1="140" y1="80" x2="220" y2="80" stroke="#4ade80" stroke-width="1.2"/>
+  <line x1="240" y1="130" x2="240" y2="115" stroke="#f87171" stroke-width="1.2"/>
+  <text x="240" y="148" text-anchor="middle" fill="#f87171" font-size="9">req[2] &amp; ~req[3]</text>
+  <line x1="40" y1="95" x2="80" y2="95" stroke="#38bdf8" stroke-width="1.2"/><line x1="80" y1="95" x2="80" y2="190" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="3"/><line x1="80" y1="190" x2="225" y2="190" stroke="#38bdf8" stroke-width="1.2"/><line x1="225" y1="190" x2="225" y2="105" stroke="#38bdf8" stroke-width="1.2"/>
+  <text x="37" y="98" text-anchor="end" fill="#38bdf8" font-size="9">2'b10</text>
+
+  <!-- MUX 3 -->
+  <polygon points="340,50 380,60 380,100 340,110" fill="#0f172a" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="358" y="82" text-anchor="middle" fill="#818cf8" font-size="10" font-weight="700">MUX</text>
+  <line x1="260" y1="80" x2="340" y2="80" stroke="#4ade80" stroke-width="1.2"/>
+  <line x1="360" y1="130" x2="360" y2="115" stroke="#f87171" stroke-width="1.2"/>
+  <text x="360" y="148" text-anchor="middle" fill="#f87171" font-size="9">req[1] &amp; ~req[3:2]</text>
+  <line x1="40" y1="107" x2="70" y2="107" stroke="#38bdf8" stroke-width="1.2"/><line x1="70" y1="107" x2="70" y2="200" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="3"/><line x1="70" y1="200" x2="345" y2="200" stroke="#38bdf8" stroke-width="1.2"/><line x1="345" y1="200" x2="345" y2="105" stroke="#38bdf8" stroke-width="1.2"/>
+  <text x="37" y="110" text-anchor="end" fill="#38bdf8" font-size="9">2'b01</text>
+
+  <!-- output -->
+  <line x1="380" y1="80" x2="480" y2="80" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="485" y="84" fill="#4ade80" font-size="11" font-weight="600">enc[1:0]</text>
+
+  <!-- critical path annotation -->
+  <text x="290" y="175" text-anchor="middle" fill="#64748b" font-size="9">Critical path: through all priority gates req[3] → req[2] → req[1] → req[0]</text>
+</svg>
+</div>
+
+<p>Key synthesis implications:</p>
+<ul>
+  <li><strong>Critical path</strong> grows linearly with the number of inputs — a 32-input encoder has 32 MUX levels in the worst case. For large encoders (16+ inputs), consider a <strong>tree-based</strong> (hierarchical) priority encoder.</li>
+  <li>The <strong>first matching branch</strong> in casez is selected — exactly like an if-else chain. This is correct by definition for priority encoding.</li>
+  <li>Unlike parallel case (see below), casez does <em>not</em> assume branches are mutually exclusive — synthesis correctly generates priority logic.</li>
+  <li>Adding the <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">// synthesis translate_off/on</code> guardrail or <code style="font-family:'JetBrains Mono',monospace;font-size:.88em;color:#f59e0b">/* synthesis full_case */</code> pragma can reduce the default latch — but only if you understand the implications.</li>
+</ul>
+
+<!-- ─── 6. SYSTEMVERILOG ─── -->
+<h2 class="sec" id="sv">SystemVerilog: priority case &amp; unique case</h2>
+
+<p>SystemVerilog adds <strong>priority</strong> and <strong>unique</strong> modifiers to if/case that communicate synthesis intent to both the tool and the linter.</p>
+
+<div class="pair">
+  <div>
+    <div class="pair-label pair-good">priority case — use for priority encoders</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">SystemVerilog<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="k">module</span> <span class="t">priority_enc8_sv</span> (
+  <span class="k">input</span>  <span class="k">logic</span> [<span class="num">7</span>:<span class="num">0</span>] req,
+  <span class="k">output</span> <span class="k">logic</span> [<span class="num">2</span>:<span class="num">0</span>] enc,
+  <span class="k">output</span> <span class="k">logic</span>       valid
+);
+  <span class="k">always_comb</span> <span class="k">begin</span>
+    enc   = <span class="num">3'd0</span>;
+    valid = <span class="num">1'b0</span>;
+    <span class="k">priority casez</span> (req)
+      <span class="num">8'b1???????</span>: <span class="k">begin</span>
+        enc = <span class="num">3'd7</span>; valid = <span class="num">1'b1</span>;
+      <span class="k">end</span>
+      <span class="num">8'b01??????</span>: <span class="k">begin</span>
+        enc = <span class="num">3'd6</span>; valid = <span class="num">1'b1</span>;
+      <span class="k">end</span>
+      <span class="num">8'b001?????</span>: <span class="k">begin</span>
+        enc = <span class="num">3'd5</span>; valid = <span class="num">1'b1</span>;
+      <span class="k">end</span>
+      <span class="c">// ... remaining cases</span>
+    <span class="k">endcase</span>
+  <span class="k">end</span>
+<span class="k">endmodule</span></pre>
+    </div>
+  </div>
+  <div>
+    <div class="pair-label pair-bad">unique case — NOT for priority encoders</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">SystemVerilog — unique removes priority<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="c">// unique case tells synthesis:</span>
+<span class="c">// "branches are mutually exclusive"</span>
+<span class="c">// → tool generates PARALLEL logic (no priority)</span>
+<span class="c">// → WRONG for priority encoders!</span>
+
+<span class="k">always_comb</span> <span class="k">begin</span>
+  <span class="k">unique case</span> (sel)   <span class="c">// OK for non-overlapping decode</span>
+    <span class="num">2'b00</span>: y = a;
+    <span class="num">2'b01</span>: y = b;
+    <span class="num">2'b10</span>: y = c;
+    <span class="num">2'b11</span>: y = d;
+  <span class="k">endcase</span>
+<span class="k">end</span>
+
+<span class="c">// Simulation: fires assertion if two</span>
+<span class="c">// branches match simultaneously.</span>
+<span class="c">// Good for 1-hot or decoded selects.</span></pre>
+    </div>
+  </div>
+</div>
+
+<h3 class="sub">priority case vs unique case — key differences</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Feature</th><th>priority case</th><th>unique case</th><th>plain case / casez</th></tr></thead>
+  <tbody>
+    <tr><td>Branches evaluated</td><td>In order (priority)</td><td>In parallel (1-hot)</td><td>In order (priority)</td></tr>
+    <tr><td>Overlapping branches allowed?</td><td class="yes">Yes</td><td class="no">No (simulation assertion)</td><td class="yes">Yes</td></tr>
+    <tr><td>Must cover all values?</td><td class="yes">Yes (simulation error if none match)</td><td class="yes">Yes (simulation error)</td><td class="warn">No (latch possible)</td></tr>
+    <tr><td>Synthesizes priority chain?</td><td class="yes">Yes</td><td class="no">No — parallel MUX</td><td class="yes">Yes</td></tr>
+    <tr><td>Use for priority encoder?</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes (add defaults)</td></tr>
+    <tr><td>Use for 1-hot decode?</td><td class="warn">Works but suboptimal</td><td class="yes">Yes — optimal</td><td class="warn">Works but suboptimal</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ─── 7. ANTI-PATTERNS ─── -->
+<h2 class="sec" id="antipatterns">Anti-Patterns to Avoid</h2>
+
+<h3 class="sub">Anti-pattern 1 — using casex instead of casez</h3>
+<div class="pair">
+  <div>
+    <div class="pair-label pair-bad">Dangerous — casex</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">Anti-pattern<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="k">always</span> @(*) <span class="k">begin</span>
+  enc   = <span class="num">2'b00</span>;
+  valid = <span class="num">1'b0</span>;
+  <span class="k">casex</span> (req)  <span class="c">// ← BUG: x in req</span>
+    <span class="num">4'b1xxx</span>: <span class="k">begin</span>   <span class="c">// matches req=4'bx100!</span>
+      enc = <span class="num">2'b11</span>;
+      valid = <span class="num">1'b1</span>;
+    <span class="k">end</span>
+    <span class="c">// ...</span>
+  <span class="k">endcase</span>
+<span class="k">end</span></pre>
+    </div>
+  </div>
+  <div>
+    <div class="pair-label pair-good">Safe — casez with ?</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">Correct<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="k">always</span> @(*) <span class="k">begin</span>
+  enc   = <span class="num">2'b00</span>;
+  valid = <span class="num">1'b0</span>;
+  <span class="k">casez</span> (req)  <span class="c">// ← safe: x in req</span>
+    <span class="num">4'b1???</span>: <span class="k">begin</span>   <span class="c">// does NOT match x100</span>
+      enc = <span class="num">2'b11</span>;
+      valid = <span class="num">1'b1</span>;
+    <span class="k">end</span>
+    <span class="c">// ...</span>
+  <span class="k">endcase</span>
+<span class="k">end</span></pre>
+    </div>
+  </div>
+</div>
+
+<h3 class="sub">Anti-pattern 2 — missing default → latch inference</h3>
+<div class="pair">
+  <div>
+    <div class="pair-label pair-bad">Latch inferred — no default assignment</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">Bug<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="k">always</span> @(*) <span class="k">begin</span>
+  <span class="c">// No default! If req=4'b0000,</span>
+  <span class="c">// enc and valid keep old value</span>
+  <span class="c">// → synthesis infers latch</span>
+  <span class="k">casez</span> (req)
+    <span class="num">4'b1???</span>: <span class="k">begin</span>
+      enc = <span class="num">2'b11</span>; valid = <span class="num">1'b1</span>;
+    <span class="k">end</span>
+    <span class="c">// ... no default case</span>
+  <span class="k">endcase</span>
+<span class="k">end</span></pre>
+    </div>
+  </div>
+  <div>
+    <div class="pair-label pair-good">Correct — default assignment at top</div>
+    <div class="code-block" style="margin-top:.5rem">
+      <div class="code-label">Fixed<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="k">always</span> @(*) <span class="k">begin</span>
+  enc   = <span class="num">2'b00</span>;  <span class="c">// default first</span>
+  valid = <span class="num">1'b0</span>;
+
+  <span class="k">casez</span> (req)
+    <span class="num">4'b1???</span>: <span class="k">begin</span>
+      enc = <span class="num">2'b11</span>; valid = <span class="num">1'b1</span>;
+    <span class="k">end</span>
+    <span class="c">// all outputs already set above</span>
+    <span class="c">// → no latch, no need for default:</span>
+  <span class="k">endcase</span>
+<span class="k">end</span></pre>
+    </div>
+  </div>
+</div>
+
+<h3 class="sub">Anti-pattern 3 — using unique case with overlapping inputs</h3>
+<div class="code-block">
+  <div class="code-label">Bug — unique asserts mutual exclusion, wrong for multi-hot req<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="c">// If req = 8'b1100_0000 (req[7] and req[6] both active):</span>
+<span class="k">unique casez</span> (req)   <span class="c">// ← fires a simulation assertion error!</span>
+  <span class="num">8'b1???????</span>: enc = <span class="num">3'd7</span>;
+  <span class="num">8'b01??????</span>: enc = <span class="num">3'd6</span>;  <span class="c">// both match → unique violation</span>
+  <span class="c">// ...</span>
+<span class="k">endcase</span>
+
+<span class="c">// Fix: use "priority casez" — priority correctly handles multi-hot</span></pre>
+</div>
+
+<!-- ─── 8. TREE ENCODER ─── -->
+<h2 class="sec" id="tree">Scalable: Hierarchical (Tree) Priority Encoder</h2>
+
+<p>For 16 or more inputs, a flat casez chain becomes timing-critical. A <strong>hierarchical encoder</strong> breaks the problem into groups, encodes each group, then merges — achieving O(log N) delay instead of O(N).</p>
+
+<div class="code-block">
+  <div class="code-label">Verilog — 8-to-3 built from two 4-to-2 encoders<button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre><span class="k">module</span> <span class="t">priority_enc8_tree</span> (
+  <span class="k">input</span>  <span class="k">wire</span> [<span class="num">7</span>:<span class="num">0</span>] req,
+  <span class="k">output</span> <span class="k">reg</span>  [<span class="num">2</span>:<span class="num">0</span>] enc,
+  <span class="k">output</span> <span class="k">wire</span>       valid
+);
+  <span class="k">wire</span> [<span class="num">1</span>:<span class="num">0</span>] enc_hi, enc_lo;
+  <span class="k">wire</span>       vld_hi, vld_lo;
+
+  <span class="c">// High group: req[7:4]</span>
+  <span class="t">priority_enc4</span> u_hi (.req(req[<span class="num">7</span>:<span class="num">4</span>]), .enc(enc_hi), .valid(vld_hi));
+  <span class="c">// Low group: req[3:0]</span>
+  <span class="t">priority_enc4</span> u_lo (.req(req[<span class="num">3</span>:<span class="num">0</span>]), .enc(enc_lo), .valid(vld_lo));
+
+  <span class="k">assign</span> valid = vld_hi | vld_lo;
+
+  <span class="k">always</span> @(*) <span class="k">begin</span>
+    <span class="k">if</span> (vld_hi)
+      enc = {<span class="num">1'b1</span>, enc_hi};  <span class="c">// high group wins (req[7:4] = higher priority)</span>
+    <span class="k">else</span>
+      enc = {<span class="num">1'b0</span>, enc_lo};  <span class="c">// low group</span>
+  <span class="k">end</span>
+
+<span class="k">endmodule</span></pre>
+</div>
+
+<div class="callout callout-info">
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <div>The tree encoder has 2-level delay: one level for the 4-to-2 sub-encoders in parallel, one level for the merge MUX. For a 16-input encoder, cascade three levels: four 4-to-2 → two 4-to-2 → one 4-to-2 merge. Delay is proportional to log₂(N).</div>
+</div>
+
+<!-- ─── 9. QUICK REFERENCE TABLE ─── -->
+<h2 class="sec" id="reference">Quick Reference</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Scenario</th><th>Best construct</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td>Priority encoder, don't-cares in pattern</td><td class="yes">casez with ?</td><td>Safe don't-care, x propagates correctly</td></tr>
+    <tr><td>1-hot / fully decoded select</td><td class="yes">unique case</td><td>Parallel MUX, no priority chain needed</td></tr>
+    <tr><td>Priority encoder in SystemVerilog</td><td class="yes">priority casez</td><td>Explicit priority intent, linter checks</td></tr>
+    <tr><td>Don't-care matching of any kind</td><td class="no">casex</td><td>x in expression silently matches — never use</td></tr>
+    <tr><td>FSM state decode (one-hot)</td><td class="yes">unique case</td><td>Parallel MUX, assertion on invalid state</td></tr>
+    <tr><td>All outputs need safe defaults</td><td class="yes">Default assignment before casez</td><td>Prevents latch inference</td></tr>
+    <tr><td>Large (16+) priority encoder</td><td class="yes">Hierarchical tree</td><td>O(log N) delay vs O(N) flat chain</td></tr>
+    <tr><td>Interrupt controller grant logic</td><td class="yes">casez or priority casez</td><td>Multiple simultaneous interrupts must be handled</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ─── 10. FAQ ─── -->
+<h2 class="sec" id="faq">Frequently Asked Questions</h2>
+
+<div class="faq">
+
+  <div class="faq-item">
+    <button class="faq-q">
+      What is the difference between casez and casex in Verilog?
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a">In <strong>casez</strong>, the characters <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">z</code> and <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">?</code> in a <em>case item pattern</em> are treated as don't-cares — they match 0, 1, x, and z in the expression being tested. x values in the <em>expression</em> still propagate as x. In <strong>casex</strong>, both x and z in the case item <em>and</em> x in the expression are treated as don't-cares — so a signal that is x (unknown, from uninitialized state or a reset condition) silently matches the first case item with an x in its pattern. This masks simulation bugs. Always prefer casez.</div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q">
+      Why does casez synthesize correctly for priority encoders?
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a">Because casez evaluates branches <strong>in order</strong>, exactly like an if-else chain. The synthesizer generates a priority MUX chain: first check req[N-1], then req[N-2], and so on. When multiple inputs are active, the first matching (highest-priority) branch is selected and lower-priority branches are masked. This is exactly the behavior a priority encoder needs. In contrast, <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">unique case</code> tells the synthesizer that branches are mutually exclusive, generating a parallel MUX that does not implement priority.</div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q">
+      What is the difference between a 4-to-2 encoder and a 4-to-2 priority encoder?
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a">A plain (binary) encoder assumes exactly one input is asserted at a time. If two inputs are active simultaneously, the output is undefined. A <strong>priority encoder</strong> handles simultaneous active inputs by always selecting the highest-priority one. Priority encoders add: (1) defined behavior for multi-hot inputs, (2) a <strong>valid</strong> output indicating any request is active, and (3) a clear priority ordering. Real systems — interrupt controllers, bus arbiters, resource schedulers — almost always require priority encoders, not plain encoders.</div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q">
+      Can you use casez without a default branch?
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a">Yes — but only if you assign all outputs to their safe defaults <em>before</em> the casez block. The pattern is: assign defaults unconditionally at the top of the always block, then override in the matching casez branch. This guarantees every output is assigned in every code path, so synthesis infers no latch. If you skip the default assignment and have no default casez branch, synthesis will infer latches for every output that is not assigned in the no-match case.</div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q">
+      What is priority if in SystemVerilog?
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a"><code style="font-family:'JetBrains Mono',monospace;font-size:.88em">priority if</code> is the if-else equivalent of priority case. It tells the simulator to fire a runtime error if no branch is taken (all conditions false), ensuring completeness. For synthesis, it communicates that the if-else chain is intentionally a priority structure — the synthesizer generates a priority chain and may suppress warnings about overlapping conditions. It is best paired with <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">always_comb</code>.</div>
+  </div>
+
+  <div class="faq-item">
+    <button class="faq-q">
+      Interview question: code a one-hot to binary converter using casez
+      <svg class="faq-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    </button>
+    <div class="faq-a">A one-hot to binary converter is essentially a priority encoder where inputs are guaranteed to be one-hot. The casez implementation is identical — the only difference is the design assumption. In an interview, use casez for the implementation but mention that: (1) if one-hot is guaranteed, <code style="font-family:'JetBrains Mono',monospace;font-size:.88em">unique casez</code> in SystemVerilog allows the synthesizer to generate parallel (non-priority) logic, which is more area-efficient; (2) casez correctly produces the binary index from the one-hot position; (3) the valid output can be used to detect the zero case (no active input).</div>
+  </div>
+
+</div>
+
+</article>
+
+<!-- ─── TOC SIDEBAR ─── -->
+<aside>
+  <nav class="toc" aria-label="Table of contents">
+    <div class="toc-title">On This Page</div>
+    <ul class="toc-list">
+      <li><a href="#what-is">What is a Priority Encoder?</a></li>
+      <li><a href="#casez-casex">casez vs casex Semantics</a></li>
+      <li><a href="#4to2">4-to-2 Priority Encoder</a></li>
+      <li><a href="#8to3">8-to-3 Priority Encoder</a></li>
+      <li><a href="#synthesis">Synthesis Mapping</a></li>
+      <li><a href="#sv">SystemVerilog priority case</a></li>
+      <li><a href="#antipatterns">Anti-Patterns</a></li>
+      <li><a href="#tree">Hierarchical Encoder</a></li>
+      <li><a href="#reference">Quick Reference</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+</aside>
+
+</div><!-- /content -->
+
+<footer style="background:#0f172a;border-top:1px solid rgba(148,163,184,0.1);padding:2.5rem 1.25rem;text-align:center">
+  <div style="font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.5rem">Ecrioni<span style="color:#6366f1">X</span></div>
+  <p style="font-size:.82rem;color:#64748b;margin-bottom:1.25rem">Free learning platform for VLSI, RTL design, and semiconductor engineering.</p>
+  <div style="display:flex;justify-content:center;gap:1.5rem;flex-wrap:wrap;font-size:.82rem;margin-bottom:1.25rem">
+    <a href="/rtl_design/" style="color:#64748b;text-decoration:none">RTL Design</a>
+    <a href="/rtl_design/blocking-nonblocking/" style="color:#64748b;text-decoration:none">Blocking vs Non-Blocking</a>
+    <a href="/rtl_design/always-blocks/" style="color:#64748b;text-decoration:none">always Blocks</a>
+    <a href="/rtl_design/latch-inference/" style="color:#64748b;text-decoration:none">Latch Inference</a>
+    <a href="/tools/verilog-simulator/" style="color:#64748b;text-decoration:none">Verilog Simulator</a>
+  </div>
+  <div style="font-size:.78rem;color:#64748b;border-top:1px solid rgba(148,163,184,0.1);padding-top:1.25rem">&copy; <span id="year"></span> EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">&#8679;</button>
+
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  const ham = document.getElementById('hamburger');
+  const menu = document.getElementById('mobileMenu');
+  ham.addEventListener('click', () => menu.classList.toggle('open'));
+
+  const st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', () => st.classList.toggle('visible', window.scrollY > 300));
+  st.addEventListener('click', () => window.scrollTo({top:0,behavior:'smooth'}));
+
+  document.querySelectorAll('.faq-q').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.faq-item').classList.toggle('open'));
+  });
+
+  function copyCode(btn) {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  // subtle canvas background
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, dots = [];
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  function init() {
+    resize();
+    dots = Array.from({length: 55}, () => ({
+      x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-.5)*.25, vy: (Math.random()-.5)*.25,
+      r: Math.random()*1.5+.5
+    }));
+  }
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    dots.forEach(d => {
+      d.x += d.vx; d.y += d.vy;
+      if(d.x<0||d.x>W) d.vx*=-1;
+      if(d.y<0||d.y>H) d.vy*=-1;
+      ctx.beginPath();
+      ctx.arc(d.x,d.y,d.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(245,158,11,0.18)';
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  init(); draw();
+  window.addEventListener('resize', resize);
+</script>
+</body>
+</html>
