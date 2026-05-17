@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Async FIFO Lab – Live Pointer & Gray Code Animation | EcrioniX</title>
+  <meta name="description" content="Interactive async FIFO simulator: watch read/write pointers advance on independent clocks, Gray code conversion bit by bit, 2-FF synchronizer pipeline, and FULL/EMPTY flags triggering in real-time. Includes Verilog RTL.">
+  <meta name="keywords" content="async FIFO, asynchronous FIFO, Gray code, clock domain crossing, CDC, FIFO full empty flag, Verilog FIFO, VLSI interview, read write pointer, 2-FF synchronizer, metastability">
+  <meta name="author" content="EcrioniX">
+  <meta property="og:title" content="Async FIFO Lab – Live Pointer & Gray Code Animation | EcrioniX">
+  <meta property="og:description" content="Watch read/write pointers advance on independent clocks, Gray code conversion bit by bit, and FULL/EMPTY flags trigger in real-time.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/tools/async-fifo-lab/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Async FIFO Lab | EcrioniX">
+  <meta name="twitter:description" content="Live async FIFO simulation — Gray code, dual clock, FULL/EMPTY flags, Verilog RTL.">
+  <link rel="icon" type="image/png" href="/favicon1.png">
+  <link rel="canonical" href="https://ecrionix.org/tools/async-fifo-lab/">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle","headline":"Async FIFO Lab – Interactive Pointer & Gray Code Simulation","description":"Interactive async FIFO simulator with dual-clock, Gray code conversion, 2-FF synchronizer, FULL/EMPTY flags, and Verilog RTL.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"datePublished":"2026-05-17","url":"https://ecrionix.org/tools/async-fifo-lab/"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Tools","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":3,"name":"Async FIFO Lab","item":"https://ecrionix.org/tools/async-fifo-lab/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is an asynchronous FIFO?","acceptedAnswer":{"@type":"Answer","text":"An asynchronous FIFO allows data to be written and read using two completely independent clocks. It is the standard safe solution for transferring data across clock domain boundaries (CDC) in SoC and ASIC designs, preventing metastability by synchronizing only single-bit Gray-coded pointers."}},
+      {"@type":"Question","name":"Why is Gray code used in async FIFO pointer synchronization?","acceptedAnswer":{"@type":"Answer","text":"Gray code ensures only 1 bit changes between adjacent values. When a multi-bit counter is synchronized across clock domains using 2 flip-flops, if multiple bits change simultaneously any one bit caught mid-transition causes metastability and a corrupt pointer. Gray code eliminates this — only 1 bit crosses the domain boundary at a time, making synchronization safe."}},
+      {"@type":"Question","name":"How is the FULL flag generated in an async FIFO?","acceptedAnswer":{"@type":"Answer","text":"FULL is generated in the write clock domain by comparing wptr_gray with a modified version of the synchronized rptr_gray: full = (wptr_gray == {~rptr_gray_sync[N:N-1], rptr_gray_sync[N-2:0]}). The top 2 bits are inverted because in Gray code the pointer that has wrapped around differs in its top 2 MSBs from the unwrapped pointer."}},
+      {"@type":"Question","name":"How is the EMPTY flag generated in an async FIFO?","acceptedAnswer":{"@type":"Answer","text":"EMPTY is generated in the read clock domain: empty = (rptr_gray == wptr_gray_sync). When both are equal, the read pointer has caught up to where the write pointer was 2 clock cycles ago, meaning no new data is available. EMPTY is safely initialized to 1 at reset."}},
+      {"@type":"Question","name":"Why do async FIFOs use a 2 flip-flop synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A 2-FF synchronizer gives the first flip-flop's output one full destination clock cycle to resolve metastability before the second FF samples it. This reduces the probability of metastability propagation to negligibly low levels. High-speed designs may add a third FF for extra margin. The key insight: only the Gray-coded pointer (1-bit change at a time) is safe to synchronize this way."}}
+    ]}
+  ]}
+  </script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg2:#0f172a;--card:rgba(15,23,42,0.8);
+      --ind:#6366f1;--ind-l:#818cf8;--teal:#2dd4bf;--teal-l:#5eead4;
+      --amber:#fbbf24;--green:#4ade80;--red:#f87171;--purple:#a78bfa;
+      --muted:#94a3b8;--dim:#64748b;--txt:#f8fafc;
+      --bdr:rgba(148,163,184,0.1);
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--txt);line-height:1.7;overflow-x:hidden}
+
+    /* NAV */
+    .nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--bdr)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none}
+    .nav-logo span{color:var(--ind)}
+    .nav-links{display:flex;gap:1.75rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover{color:#fff}
+    @media(max-width:640px){.nav-links{display:none}}
+
+    /* BREADCRUMB */
+    .bc{max-width:1100px;margin:.9rem auto 0;padding:0 1.25rem;font-size:.78rem;color:var(--dim);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+    .bc a{color:var(--muted);text-decoration:none}.bc a:hover{color:#fff}
+
+    /* HERO */
+    .hero{max-width:1100px;margin:0 auto;padding:2rem 1.25rem 1.5rem}
+    .hero-badge{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.25);border-radius:20px;padding:.22rem .85rem;margin-bottom:.9rem}
+    .hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;line-height:1.2;margin-bottom:.9rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--ind-l),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{color:var(--muted);font-size:1rem;max-width:680px;margin-bottom:1.25rem}
+    .pills{display:flex;gap:.5rem;flex-wrap:wrap}
+    .pill{font-size:.72rem;font-weight:600;padding:.2rem .75rem;border-radius:20px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:var(--ind-l)}
+    .pill.teal{background:rgba(45,212,191,0.08);border-color:rgba(45,212,191,0.2);color:var(--teal)}
+
+    /* LAB WRAPPER */
+    .lab-wrap{max-width:1100px;margin:0 auto 2rem;padding:0 1.25rem}
+
+    /* CONTROLS */
+    .ctrl-bar{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:1.1rem 1.4rem;margin-bottom:1rem;display:flex;flex-direction:column;gap:.85rem}
+    .ctrl-row{display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap}
+    .ctrl-label{font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);min-width:60px}
+    .depth-btns{display:flex;gap:.4rem}
+    .depth-btn{font-size:.8rem;font-weight:700;padding:.3rem .9rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg2);color:var(--muted);cursor:pointer;transition:all .2s;font-family:'JetBrains Mono',monospace}
+    .depth-btn.active{background:rgba(99,102,241,0.15);border-color:var(--ind);color:var(--ind-l)}
+    .spd-group{display:flex;align-items:center;gap:.6rem}
+    .spd-group label{font-size:.8rem;color:var(--muted);white-space:nowrap}
+    .spd-val{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--ind-l);min-width:32px}
+    input[type=range]{-webkit-appearance:none;appearance:none;width:110px;height:4px;border-radius:2px;background:rgba(99,102,241,0.2);outline:none;cursor:pointer}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:var(--ind-l);border:2px solid #fff;cursor:pointer}
+    .tog-btn{font-size:.78rem;font-weight:700;padding:.32rem 1rem;border-radius:8px;border:1px solid;cursor:pointer;transition:all .2s;letter-spacing:.04em}
+    .tog-btn.on{background:rgba(74,222,128,0.12);border-color:rgba(74,222,128,0.4);color:#4ade80}
+    .tog-btn.off{background:rgba(248,113,113,0.08);border-color:rgba(248,113,113,0.25);color:#f87171}
+    .ctrl-btn{font-size:.82rem;font-weight:700;padding:.35rem 1.1rem;border-radius:8px;border:1px solid;cursor:pointer;transition:all .2s}
+    .btn-play{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.4);color:var(--ind-l)}
+    .btn-play:hover{background:rgba(99,102,241,0.25)}
+    .btn-reset{background:rgba(148,163,184,0.08);border-color:var(--bdr);color:var(--muted)}
+    .btn-reset:hover{color:#fff;border-color:rgba(148,163,184,0.3)}
+    .presets{display:flex;gap:.45rem;flex-wrap:wrap}
+    .pre-btn{font-size:.74rem;font-weight:600;padding:.26rem .85rem;border-radius:20px;border:1px solid var(--bdr);background:var(--bg2);color:var(--muted);cursor:pointer;transition:all .2s}
+    .pre-btn:hover{border-color:var(--teal);color:var(--teal)}
+
+    /* MAIN VISUALIZATION */
+    .fifo-vis{display:grid;grid-template-columns:190px 1fr 190px;gap:.75rem;background:#060d1a;border:1px solid var(--bdr);border-radius:16px;padding:1.25rem;margin-bottom:.75rem}
+    @media(max-width:680px){.fifo-vis{grid-template-columns:1fr}}
+
+    /* DOMAIN PANELS */
+    .domain{border-radius:12px;padding:1rem;display:flex;flex-direction:column;gap:.6rem}
+    .w-domain{background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.2)}
+    .r-domain{background:rgba(45,212,191,0.05);border:1px solid rgba(45,212,191,0.2)}
+    .dom-title{font-family:'Orbitron',sans-serif;font-size:.6rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.25rem}
+    .w-domain .dom-title{color:var(--ind-l)}
+    .r-domain .dom-title{color:var(--teal)}
+    .clk-ind{display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:var(--muted);font-weight:600}
+    .clk-dot{width:10px;height:10px;border-radius:50%;border:2px solid;flex-shrink:0;transition:box-shadow .1s}
+    .clk-dot.w{border-color:rgba(129,140,248,0.5)}
+    .clk-dot.r{border-color:rgba(45,212,191,0.5)}
+    .clk-dot.pulse-w{box-shadow:0 0 10px var(--ind-l);border-color:var(--ind-l);background:var(--ind-l)}
+    .clk-dot.pulse-r{box-shadow:0 0 10px var(--teal);border-color:var(--teal);background:var(--teal)}
+    .ptr-box{background:rgba(2,6,23,0.6);border-radius:8px;padding:.6rem .8rem;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.8}
+    .ptr-lbl{color:var(--dim);font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.15rem}
+    .ptr-bin{color:var(--ind-l)}.ptr-gry{color:var(--teal)}
+    .r-domain .ptr-bin{color:var(--teal-l)}.r-domain .ptr-gry{color:var(--ind-l)}
+    .flag-badge{font-size:.68rem;font-weight:800;letter-spacing:.1em;padding:.22rem .75rem;border-radius:20px;text-transform:uppercase;border:1px solid;transition:all .3s;text-align:center}
+    .flag-full{background:rgba(248,113,113,0.05);border-color:rgba(148,163,184,0.15);color:var(--dim)}
+    .flag-full.active{background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.5);color:var(--red);box-shadow:0 0 12px rgba(248,113,113,0.3);animation:flagPulse .6s ease-in-out infinite alternate}
+    .flag-empty{background:rgba(251,191,36,0.05);border-color:rgba(148,163,184,0.15);color:var(--dim)}
+    .flag-empty.active{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.45);color:var(--amber);box-shadow:0 0 12px rgba(251,191,36,0.25);animation:flagPulse .6s ease-in-out infinite alternate}
+    @keyframes flagPulse{from{opacity:.8}to{opacity:1}}
+    .dom-stat{font-size:.75rem;color:var(--dim)}
+    .dom-stat span{color:var(--txt);font-family:'JetBrains Mono',monospace;font-weight:700}
+
+    /* FIFO CELLS */
+    .cells-wrap{display:flex;flex-direction:column;gap:0;min-width:0}
+    .cells-title{font-family:'Orbitron',sans-serif;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-align:center;margin-bottom:.6rem}
+    .cell-row{display:grid;grid-template-columns:28px 54px 1fr 36px;gap:.3rem;align-items:center;padding:.28rem .4rem;border-radius:6px;border:1px solid transparent;transition:background .2s,border-color .2s,box-shadow .2s;margin-bottom:3px}
+    .cell-row.filled{background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.25)}
+    .cell-row.w-ptr{border-color:rgba(99,102,241,0.5);box-shadow:inset 0 0 0 1px rgba(99,102,241,0.3)}
+    .cell-row.r-ptr{border-color:rgba(45,212,191,0.5)}
+    .cell-row.both-ptr{border-color:var(--amber)}
+    @keyframes wFlash{0%{background:rgba(99,102,241,0.5)}100%{background:rgba(99,102,241,0.1)}}
+    @keyframes rFlash{0%{background:rgba(45,212,191,0.35)}100%{background:transparent}}
+    .cell-row.w-flash{animation:wFlash .35s ease-out forwards}
+    .cell-row.r-flash{animation:rFlash .35s ease-out forwards}
+    .cell-addr{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--dim);text-align:center}
+    .cell-data{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--ind-l);font-weight:600}
+    .cell-data.empty-cell{color:var(--dim)}
+    .cell-fill{height:8px;border-radius:4px;background:rgba(99,102,241,0.15);overflow:hidden}
+    .cell-fill-bar{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--ind),var(--ind-l));transition:width .3s}
+    .cell-ptr{font-size:.68rem;font-weight:700;text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap}
+    .ptr-w{color:var(--ind-l)}.ptr-r{color:var(--teal)}.ptr-wr{color:var(--amber)}
+    .fill-bar-row{display:flex;align-items:center;gap:.6rem;margin-top:.5rem}
+    .fill-bar-outer{flex:1;height:8px;background:rgba(15,23,42,0.8);border-radius:4px;overflow:hidden;border:1px solid var(--bdr)}
+    .fill-bar-inner{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--ind),var(--teal));transition:width .3s}
+    .fill-label{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);white-space:nowrap}
+
+    /* GRAY CODE PANEL */
+    .gray-panel{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:1rem 1.25rem;margin-bottom:.75rem}
+    .panel-title{font-family:'Orbitron',sans-serif;font-size:.6rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ind-l);margin-bottom:.9rem}
+    .gray-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+    .gray-row:last-child{margin-bottom:0}
+    .gray-lbl{font-size:.72rem;font-weight:700;color:var(--muted);min-width:80px}
+    .bits-group{display:flex;gap:3px}
+    .bit-b{width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:.8rem;font-weight:700;border:1px solid;transition:all .2s}
+    .bit-b.on{background:rgba(99,102,241,0.2);border-color:rgba(99,102,241,0.5);color:var(--ind-l)}
+    .bit-b.off{background:rgba(15,23,42,0.5);border-color:rgba(148,163,184,0.1);color:var(--dim)}
+    .bit-g.on{background:rgba(45,212,191,0.2);border-color:rgba(45,212,191,0.5);color:var(--teal)}
+    .bit-g.off{background:rgba(15,23,42,0.5);border-color:rgba(148,163,184,0.1);color:var(--dim)}
+    .gray-arrow{color:var(--dim);font-size:.9rem;margin:0 .3rem}
+
+    /* SYNC PANEL */
+    .sync-panel{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:1rem 1.25rem}
+    .sync-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem;font-size:.78rem}
+    .sync-row:last-child{margin-bottom:0}
+    .sync-lbl{color:var(--muted);min-width:130px;font-weight:600}
+    .sync-bits{font-family:'JetBrains Mono',monospace;background:rgba(2,6,23,0.6);border:1px solid var(--bdr);border-radius:6px;padding:.2rem .55rem;color:var(--txt);font-size:.78rem}
+    .sync-arrow{color:var(--dim)}
+    .sync-ff{background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:.2rem .55rem;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--amber)}
+    .sync-result{background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:6px;padding:.2rem .55rem;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--green)}
+    .sync-use{font-size:.7rem;color:var(--dim);font-style:italic}
+
+    /* CONTENT */
+    .content{max-width:1100px;margin:0 auto;padding:0 1.25rem 4rem;display:grid;grid-template-columns:1fr 240px;gap:2rem;align-items:start}
+    @media(max-width:820px){.content{grid-template-columns:1fr}}
+    .sidebar{display:flex;flex-direction:column;gap:1rem;position:sticky;top:80px}
+    @media(max-width:820px){.sidebar{display:none}}
+    .sb-card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:1rem}
+    .sb-card h4{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.7rem}
+    .sb-card a{display:block;font-size:.82rem;color:var(--muted);text-decoration:none;padding:.3rem 0;border-bottom:1px solid var(--bdr);transition:color .2s}
+    .sb-card a:last-child{border-bottom:none}
+    .sb-card a:hover{color:var(--ind-l)}
+    .main-content{min-width:0}
+    .section{margin-bottom:2.5rem}
+    .section h2{font-size:1.3rem;font-weight:700;margin-bottom:.9rem;padding-bottom:.45rem;border-bottom:1px solid var(--bdr)}
+    .section h3{font-size:1rem;font-weight:700;margin:1.4rem 0 .5rem;color:var(--ind-l)}
+    .section p{color:var(--muted);margin-bottom:.8rem;font-size:.95rem}
+    .section ul{color:var(--muted);padding-left:1.4rem;margin-bottom:.8rem;font-size:.95rem}
+    .section li{margin-bottom:.3rem}
+    .callout{background:rgba(99,102,241,0.06);border-left:3px solid var(--ind);border-radius:0 10px 10px 0;padding:.8rem 1rem;margin:1rem 0;color:var(--muted);font-size:.9rem}
+    .callout strong{color:var(--txt)}
+    .callout-amber{background:rgba(251,191,36,0.06);border-left-color:var(--amber)}
+    .callout-amber strong{color:var(--amber)}
+    .formula-box{position:relative;background:#0d1117;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:.9rem 3rem .9rem 1rem;margin:.75rem 0;font-family:'JetBrains Mono',monospace;font-size:.83rem;line-height:1.9;overflow-x:auto}
+    .f-ind{color:var(--ind-l)}.f-teal{color:var(--teal)}.f-amb{color:var(--amber)}.f-grn{color:#4ade80}.f-red{color:#f87171}.f-dim{color:#64748b}
+    .copy-btn{position:absolute;top:.5rem;right:.5rem;font-size:.68rem;padding:.18rem .5rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:5px;color:var(--ind-l);cursor:pointer;transition:all .2s}
+    .copy-btn:hover{background:rgba(99,102,241,0.22)}
+    .copy-btn.copied{color:#4ade80;border-color:rgba(74,222,128,0.3)}
+    .tbl-wrap{overflow-x:auto;margin:.75rem 0}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th{background:rgba(99,102,241,0.1);color:var(--ind-l);font-weight:700;text-align:left;padding:.55rem .85rem;border-bottom:1px solid var(--bdr)}
+    td{padding:.5rem .85rem;border-bottom:1px solid var(--bdr);color:var(--muted)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(15,23,42,0.5)}
+    .faq-item{border:1px solid var(--bdr);border-radius:10px;margin-bottom:.5rem;overflow:hidden}
+    .faq-q{width:100%;text-align:left;background:var(--card);padding:.85rem 1rem;font-size:.88rem;font-weight:600;color:var(--txt);cursor:pointer;border:none;display:flex;justify-content:space-between;align-items:center}
+    .faq-q:hover{background:rgba(15,23,42,0.95)}
+    .faq-icon{color:var(--dim);font-size:1.1rem;transition:transform .25s}
+    .faq-item.open .faq-icon{transform:rotate(45deg)}
+    .faq-a{display:none;padding:.8rem 1rem 1rem;color:var(--muted);font-size:.88rem;border-top:1px solid var(--bdr);background:rgba(2,6,23,0.4)}
+    .faq-item.open .faq-a{display:block}
+
+    /* CROSS LINKS */
+    .cross-links{max-width:1100px;margin:0 auto;padding:0 1.25rem 3rem}
+    .cross-links h3{font-family:'Orbitron',sans-serif;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ind-l);margin-bottom:.9rem}
+    .cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem}
+    .cl-card{display:block;background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;text-decoration:none;transition:all .25s}
+    .cl-card:hover{border-color:rgba(99,102,241,0.4);transform:translateY(-2px)}
+    .cl-tag{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ind-l);margin-bottom:.35rem}
+    .cl-title{font-size:.88rem;font-weight:700;color:var(--txt);margin-bottom:.2rem}
+    .cl-desc{font-size:.75rem;color:var(--dim)}
+
+    /* FOOTER */
+    footer{text-align:center;padding:2rem 1rem;border-top:1px solid var(--bdr);color:var(--dim);font-size:.82rem}
+    footer a{color:var(--dim);text-decoration:none}.footer a:hover{color:#fff}
+
+    /* SCROLL TOP */
+    .scroll-top{position:fixed;bottom:5.5rem;right:1.5rem;z-index:99;width:44px;height:44px;border-radius:50%;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:var(--ind-l);font-size:1.1rem;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .2s}
+    .scroll-top.visible{display:flex}
+    .scroll-top:hover{background:rgba(99,102,241,0.3)}
+
+    /* SVG ARCH */
+    .arch-svg{width:100%;max-width:640px;display:block;margin:.75rem auto}
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/">RTL Design</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- BREADCRUMB -->
+<nav aria-label="breadcrumb" class="bc">
+  <a href="/">Home</a><span>›</span>
+  <a href="/">Tools</a><span>›</span>
+  <span>Async FIFO Lab</span>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">⚗ Interactive Lab</div>
+  <h1>Async FIFO <span>Pointer Lab</span></h1>
+  <p>Watch read &amp; write pointers advance on two completely independent clocks. See Gray code conversion bit by bit, the 2-FF synchronizer pipeline in action, and FULL/EMPTY flags trigger in real-time.</p>
+  <div class="pills">
+    <span class="pill">Dual-Clock Simulation</span>
+    <span class="pill teal">Gray Code</span>
+    <span class="pill">2-FF Synchronizer</span>
+    <span class="pill teal">FULL / EMPTY Flags</span>
+    <span class="pill">Verilog RTL</span>
+  </div>
+</div>
+
+<!-- LAB -->
+<div class="lab-wrap">
+
+  <!-- CONTROLS -->
+  <div class="ctrl-bar">
+    <div class="ctrl-row">
+      <span class="ctrl-label">Depth</span>
+      <div class="depth-btns">
+        <button class="depth-btn" id="d4" onclick="setDepth(2)">4</button>
+        <button class="depth-btn active" id="d8" onclick="setDepth(3)">8</button>
+        <button class="depth-btn" id="d16" onclick="setDepth(4)">16</button>
+      </div>
+      <div style="width:1px;height:24px;background:var(--bdr)"></div>
+      <div class="spd-group">
+        <label>WCLK</label>
+        <input type="range" id="wspd" min="1" max="16" value="6" step="1" oninput="state.wSpeed=+this.value/4;document.getElementById('wsv').textContent=(state.wSpeed).toFixed(2)+'x'">
+        <span class="spd-val" id="wsv">1.50x</span>
+      </div>
+      <div class="spd-group">
+        <label>RCLK</label>
+        <input type="range" id="rspd" min="1" max="16" value="4" step="1" oninput="state.rSpeed=+this.value/4;document.getElementById('rsv').textContent=(state.rSpeed).toFixed(2)+'x'">
+        <span class="spd-val" id="rsv">1.00x</span>
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <button class="tog-btn on" id="wenBtn" onclick="toggleWen()">WEN ●</button>
+      <button class="tog-btn on" id="renBtn" onclick="toggleRen()">REN ●</button>
+      <button class="ctrl-btn btn-play" id="playBtn" onclick="togglePlay()">▶ Play</button>
+      <button class="ctrl-btn btn-reset" onclick="doReset()">⟳ Reset</button>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Presets</span>
+      <div class="presets">
+        <button class="pre-btn" onclick="applyPreset('normal')">Normal</button>
+        <button class="pre-btn" onclick="applyPreset('fill')">Fill FIFO</button>
+        <button class="pre-btn" onclick="applyPreset('drain')">Drain FIFO</button>
+        <button class="pre-btn" onclick="applyPreset('burst')">Burst Write</button>
+        <button class="pre-btn" onclick="applyPreset('fastread')">Fast Read</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISUALIZATION -->
+  <div class="fifo-vis">
+
+    <!-- WRITE DOMAIN -->
+    <div class="domain w-domain">
+      <div class="dom-title">Write Domain</div>
+      <div class="clk-ind">
+        <div class="clk-dot w" id="wdot"></div>
+        WCLK &nbsp;<span id="wclk-spd" style="color:var(--ind-l);font-family:'JetBrains Mono',monospace;font-size:.72rem">1.50x</span>
+      </div>
+      <div class="ptr-box">
+        <div class="ptr-lbl">WPTR</div>
+        <div class="ptr-bin" id="wbin">BIN: 0000</div>
+        <div class="ptr-gry" id="wgry">GRY: 0000</div>
+      </div>
+      <div class="flag-badge flag-full" id="full-flag">● FULL</div>
+      <div class="dom-stat">Writes: <span id="wcount">0</span></div>
+      <div class="dom-stat" style="margin-top:.1rem">rptr_gray_sync:</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--amber)" id="rgs-disp">0000</div>
+    </div>
+
+    <!-- FIFO CELLS -->
+    <div class="cells-wrap">
+      <div class="cells-title">FIFO Memory</div>
+      <div id="cells-container"></div>
+      <div class="fill-bar-row">
+        <div class="fill-bar-outer"><div class="fill-bar-inner" id="fill-bar" style="width:0%"></div></div>
+        <div class="fill-label" id="fill-label">0/8</div>
+      </div>
+    </div>
+
+    <!-- READ DOMAIN -->
+    <div class="domain r-domain">
+      <div class="dom-title">Read Domain</div>
+      <div class="clk-ind">
+        <div class="clk-dot r" id="rdot"></div>
+        RCLK &nbsp;<span id="rclk-spd" style="color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:.72rem">1.00x</span>
+      </div>
+      <div class="ptr-box">
+        <div class="ptr-lbl">RPTR</div>
+        <div class="ptr-bin" id="rbin">BIN: 0000</div>
+        <div class="ptr-gry" id="rgry">GRY: 0000</div>
+      </div>
+      <div class="flag-badge flag-empty active" id="empty-flag">● EMPTY</div>
+      <div class="dom-stat">Reads: <span id="rcount">0</span></div>
+      <div class="dom-stat" style="margin-top:.1rem">wptr_gray_sync:</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--amber)" id="wgs-disp">0000</div>
+    </div>
+
+  </div><!-- /fifo-vis -->
+
+  <!-- GRAY CODE PANEL -->
+  <div class="gray-panel">
+    <div class="panel-title">Gray Code Conversion — binary → XOR with right shift</div>
+    <div class="gray-row">
+      <span class="gray-lbl" style="color:var(--ind-l)">WPTR BIN</span>
+      <div class="bits-group" id="wbin-bits"></div>
+      <span class="gray-arrow">→</span>
+      <span class="gray-lbl" style="color:var(--teal)">GRAY</span>
+      <div class="bits-group" id="wgry-bits"></div>
+    </div>
+    <div class="gray-row">
+      <span class="gray-lbl" style="color:var(--teal-l)">RPTR BIN</span>
+      <div class="bits-group" id="rbin-bits"></div>
+      <span class="gray-arrow">→</span>
+      <span class="gray-lbl" style="color:var(--ind-l)">GRAY</span>
+      <div class="bits-group" id="rgry-bits"></div>
+    </div>
+  </div>
+
+  <!-- SYNCHRONIZER PANEL -->
+  <div class="sync-panel">
+    <div class="panel-title" style="color:var(--amber)">2-FF Synchronizer Pipeline — clock domain crossing</div>
+    <div class="sync-row">
+      <span class="sync-lbl" style="color:var(--ind-l)">W→R (EMPTY):</span>
+      <span class="sync-bits" id="wg-now">—</span>
+      <span class="sync-arrow">→</span>
+      <span class="sync-ff" id="wg-ff1">FF1: —</span>
+      <span class="sync-arrow">→</span>
+      <span class="sync-ff" id="wg-ff2">FF2: —</span>
+      <span class="sync-arrow">=</span>
+      <span class="sync-result" id="wg-sync">sync: —</span>
+      <span class="sync-use">← used for EMPTY</span>
+    </div>
+    <div class="sync-row">
+      <span class="sync-lbl" style="color:var(--teal)">R→W (FULL):</span>
+      <span class="sync-bits" id="rg-now">—</span>
+      <span class="sync-arrow">→</span>
+      <span class="sync-ff" id="rg-ff1">FF1: —</span>
+      <span class="sync-arrow">→</span>
+      <span class="sync-ff" id="rg-ff2">FF2: —</span>
+      <span class="sync-arrow">=</span>
+      <span class="sync-result" id="rg-sync">sync: —</span>
+      <span class="sync-use">← used for FULL</span>
+    </div>
+  </div>
+
+</div><!-- /lab-wrap -->
+
+<!-- CONTENT -->
+<div class="content">
+  <div class="main-content">
+
+    <div class="section">
+      <h2>What is an Asynchronous FIFO?</h2>
+      <p>An <strong>asynchronous FIFO</strong> (First-In First-Out buffer) allows data to be written and read using two completely independent clocks — there is no shared clock signal between the writer and the reader. This makes it the fundamental building block for crossing <strong>clock domain boundaries</strong> in modern SoC designs.</p>
+      <p>Common use cases include: PCIe controller ↔ NVMe SSD, CPU ↔ DDR PHY, USB MAC ↔ application logic, Ethernet MAC ↔ system fabric, and any interface between two IPs clocked at different frequencies.</p>
+      <div class="callout-amber callout"><strong>Key problem:</strong> You cannot simply connect wires between two clock domains. A flip-flop in domain B sampling a signal from domain A may violate setup/hold timing and enter <strong>metastability</strong> — an indeterminate output that resolves to 0 or 1 unpredictably. The async FIFO solves this by synchronizing only a single-bit-changing Gray-coded pointer.</div>
+      <div class="tbl-wrap">
+        <table>
+          <tr><th>Property</th><th>Synchronous FIFO</th><th>Asynchronous FIFO</th></tr>
+          <tr><td>Clock domains</td><td>Single shared clock</td><td>Independent WCLK and RCLK</td></tr>
+          <tr><td>Pointer crossing</td><td>Not needed</td><td>2-FF synchronizer with Gray code</td></tr>
+          <tr><td>Full/Empty logic</td><td>Simple subtraction</td><td>Gray code comparison</td></tr>
+          <tr><td>Complexity</td><td>Low</td><td>Medium (5 modules)</td></tr>
+          <tr><td>Use case</td><td>Same-clock buffering</td><td>Clock domain crossing (CDC)</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Architecture</h2>
+      <p>A properly designed async FIFO (Cliff Cummings style) has five modules:</p>
+      <svg class="arch-svg" viewBox="0 0 640 200" xmlns="http://www.w3.org/2000/svg">
+        <rect width="640" height="200" fill="#060d1a" rx="10"/>
+        <!-- Write ptr block -->
+        <rect x="12" y="50" width="140" height="100" rx="8" fill="rgba(99,102,241,0.1)" stroke="rgba(99,102,241,0.4)" stroke-width="1.5"/>
+        <text x="82" y="90" fill="#818cf8" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">WRITE PTR</text>
+        <text x="82" y="104" fill="#818cf8" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">LOGIC</text>
+        <text x="82" y="122" fill="#64748b" font-size="8" text-anchor="middle">wptr_gray</text>
+        <text x="82" y="134" fill="#64748b" font-size="8" text-anchor="middle">FULL flag</text>
+        <!-- Sync R→W -->
+        <rect x="168" y="80" width="82" height="40" rx="6" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.35)" stroke-width="1.2"/>
+        <text x="209" y="98" fill="#fbbf24" font-family="Orbitron,sans-serif" font-size="7.5" font-weight="700" text-anchor="middle">2-FF SYNC</text>
+        <text x="209" y="111" fill="#64748b" font-size="7.5" text-anchor="middle">R→W</text>
+        <!-- Dual port RAM -->
+        <rect x="266" y="30" width="108" height="140" rx="8" fill="rgba(15,23,42,0.9)" stroke="rgba(148,163,184,0.2)" stroke-width="1.5"/>
+        <text x="320" y="95" fill="#f8fafc" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">DUAL-PORT</text>
+        <text x="320" y="109" fill="#f8fafc" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">RAM</text>
+        <text x="320" y="128" fill="#64748b" font-size="7.5" text-anchor="middle">mem[0:DEPTH-1]</text>
+        <!-- Sync W→R -->
+        <rect x="390" y="80" width="82" height="40" rx="6" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.35)" stroke-width="1.2"/>
+        <text x="431" y="98" fill="#fbbf24" font-family="Orbitron,sans-serif" font-size="7.5" font-weight="700" text-anchor="middle">2-FF SYNC</text>
+        <text x="431" y="111" fill="#64748b" font-size="7.5" text-anchor="middle">W→R</text>
+        <!-- Read ptr block -->
+        <rect x="488" y="50" width="140" height="100" rx="8" fill="rgba(45,212,191,0.08)" stroke="rgba(45,212,191,0.35)" stroke-width="1.5"/>
+        <text x="558" y="90" fill="#2dd4bf" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">READ PTR</text>
+        <text x="558" y="104" fill="#2dd4bf" font-family="Orbitron,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">LOGIC</text>
+        <text x="558" y="122" fill="#64748b" font-size="8" text-anchor="middle">rptr_gray</text>
+        <text x="558" y="134" fill="#64748b" font-size="8" text-anchor="middle">EMPTY flag</text>
+        <!-- Arrows -->
+        <line x1="152" y1="100" x2="167" y2="100" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="250" y1="100" x2="265" y2="100" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="374" y1="100" x2="389" y2="100" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="472" y1="100" x2="487" y2="100" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- wclk rclk labels -->
+        <text x="12" y="170" fill="#818cf8" font-size="8.5" font-weight="600">← WCLK domain</text>
+        <text x="490" y="170" fill="#2dd4bf" font-size="8.5" font-weight="600">RCLK domain →</text>
+        <line x1="320" y1="12" x2="320" y2="185" stroke="rgba(148,163,184,0.12)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="323" y="20" fill="#64748b" font-size="7">clock boundary</text>
+        <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker></defs>
+      </svg>
+    </div>
+
+    <div class="section">
+      <h2>Why Gray Code?</h2>
+      <p>This is the single most important insight in async FIFO design. When you synchronize a multi-bit signal across clock domains with 2 flip-flops, you are betting that the signal is stable when the destination FF samples it.</p>
+      <p>With a <strong>binary counter</strong>, transitioning from 3 (011) to 4 (100) changes <em>all three bits simultaneously</em>. If the destination FF samples during this transition, it might see 111, 010, 101 — any combination — not just 3 or 4. This corrupt value can cause a catastrophic FIFO over/underflow.</p>
+      <div class="callout"><strong>Gray code rule:</strong> Only 1 bit changes between any two consecutive values. Even if that 1 bit is caught mid-transition (metastability), the worst case is reading the old pointer — which is a <em>conservative</em> error (you think the FIFO has slightly less data than it really does). This is safe.</div>
+      <div class="tbl-wrap">
+        <table>
+          <tr><th>Count</th><th>Binary</th><th>Bits changed</th><th>Gray Code</th><th>Bits changed</th></tr>
+          <tr><td>0</td><td>000</td><td>—</td><td>000</td><td>—</td></tr>
+          <tr><td>1</td><td>001</td><td style="color:#f87171">1 bit</td><td>001</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>2</td><td>010</td><td style="color:#f87171">2 bits!</td><td>011</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>3</td><td>011</td><td style="color:#4ade80">1 bit</td><td>010</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>4</td><td>100</td><td style="color:#f87171">3 bits!!!</td><td>110</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>5</td><td>101</td><td style="color:#4ade80">1 bit</td><td>111</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>6</td><td>110</td><td style="color:#f87171">2 bits!</td><td>101</td><td style="color:#4ade80">1 bit ✓</td></tr>
+          <tr><td>7</td><td>111</td><td style="color:#4ade80">1 bit</td><td>100</td><td style="color:#4ade80">1 bit ✓</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Full &amp; Empty Flag Logic</h2>
+      <h3>Pointer Width</h3>
+      <p>For a FIFO of depth 2<sup>N</sup>, use <strong>(N+1)-bit pointers</strong>. The extra MSB acts as a wrap-around indicator, allowing full/empty distinction when both pointers point to the same address.</p>
+      <h3>EMPTY Flag (Read Domain)</h3>
+      <div class="formula-box">
+        <button class="copy-btn" onclick="copyFmla(this)">Copy</button>
+        <span class="f-teal">empty</span> = (<span class="f-ind">rptr_gray</span> == <span class="f-amb">wptr_gray_sync</span>)<br>
+        <span class="f-dim">// Both pointers at same gray value → no unread data</span><br>
+        <span class="f-dim">// wptr_gray_sync = wptr_gray delayed by 2 RCLK cycles (2-FF sync)</span>
+      </div>
+      <h3>FULL Flag (Write Domain)</h3>
+      <div class="formula-box">
+        <button class="copy-btn" onclick="copyFmla(this)">Copy</button>
+        <span class="f-red">full</span>  = (<span class="f-ind">wptr_gray</span> == { ~<span class="f-amb">rptr_gray_sync</span>[N:N-1], <span class="f-amb">rptr_gray_sync</span>[N-2:0] })<br>
+        <span class="f-dim">// Top 2 MSBs inverted — detects wrap-around in Gray code space</span><br>
+        <span class="f-dim">// rptr_gray_sync = rptr_gray delayed by 2 WCLK cycles (2-FF sync)</span>
+      </div>
+      <p>The top-2-MSB inversion works because in Gray code, a pointer that has wrapped around once differs from the "same address" unwrapped pointer in exactly the top 2 MSBs. The remaining lower bits are identical in Gray code.</p>
+    </div>
+
+    <div class="section">
+      <h2>Verilog RTL</h2>
+      <div class="formula-box" style="font-size:.78rem">
+        <button class="copy-btn" onclick="copyFmla(this)">Copy</button>
+<span class="f-dim">// Async FIFO — synthesizable, Cliff Cummings style</span>
+<span class="f-ind">module</span> async_fifo <span class="f-dim">#(</span>
+  <span class="f-ind">parameter</span> DATA_W    = 8,
+  <span class="f-ind">parameter</span> DEPTH_BITS = 3   <span class="f-dim">// depth = 2^3 = 8</span>
+<span class="f-dim">)(</span>
+  <span class="f-ind">input</span>  wire             wclk, wrst_n, wen,
+  <span class="f-ind">input</span>  wire [DATA_W-1:0] wdata,
+  <span class="f-teal">output</span> wire             full,
+  <span class="f-ind">input</span>  wire             rclk, rrst_n, ren,
+  <span class="f-teal">output</span> reg  [DATA_W-1:0] rdata,
+  <span class="f-teal">output</span> wire             empty
+<span class="f-dim">);</span>
+  <span class="f-ind">localparam</span> DEPTH = 1 &lt;&lt; DEPTH_BITS;
+  <span class="f-ind">localparam</span> PTR_W = DEPTH_BITS + 1;
+
+  <span class="f-ind">reg</span> [DATA_W-1:0] mem [0:DEPTH-1];
+  <span class="f-ind">reg</span> [PTR_W-1:0]  wptr, rptr;
+
+  <span class="f-dim">// Binary → Gray code</span>
+  wire [PTR_W-1:0] wgray = wptr ^ (wptr >> 1);
+  wire [PTR_W-1:0] rgray = rptr ^ (rptr >> 1);
+
+  <span class="f-dim">// 2-FF synchronizers</span>
+  <span class="f-ind">reg</span> [PTR_W-1:0] wg_r1, wg_r2; <span class="f-dim">// wgray → read domain</span>
+  <span class="f-ind">reg</span> [PTR_W-1:0] rg_w1, rg_w2; <span class="f-dim">// rgray → write domain</span>
+
+  <span class="f-dim">// Write logic</span>
+  <span class="f-amb">always</span> @(<span class="f-grn">posedge</span> wclk <span class="f-amb">or</span> <span class="f-grn">negedge</span> wrst_n)
+    <span class="f-amb">if</span> (!wrst_n) wptr &lt;= 0;
+    <span class="f-amb">else if</span> (wen &amp;&amp; !full) <span class="f-amb">begin</span>
+      mem[wptr[DEPTH_BITS-1:0]] &lt;= wdata;
+      wptr &lt;= wptr + 1;
+    <span class="f-amb">end</span>
+
+  <span class="f-dim">// Read logic</span>
+  <span class="f-amb">always</span> @(<span class="f-grn">posedge</span> rclk <span class="f-amb">or</span> <span class="f-grn">negedge</span> rrst_n)
+    <span class="f-amb">if</span> (!rrst_n) rptr &lt;= 0;
+    <span class="f-amb">else if</span> (ren &amp;&amp; !empty) <span class="f-amb">begin</span>
+      rdata &lt;= mem[rptr[DEPTH_BITS-1:0]];
+      rptr  &lt;= rptr + 1;
+    <span class="f-amb">end</span>
+
+  <span class="f-dim">// Sync wgray into read domain</span>
+  <span class="f-amb">always</span> @(<span class="f-grn">posedge</span> rclk <span class="f-amb">or</span> <span class="f-grn">negedge</span> rrst_n)
+    <span class="f-amb">if</span> (!rrst_n) {wg_r2, wg_r1} &lt;= 0;
+    <span class="f-amb">else</span>         {wg_r2, wg_r1} &lt;= {wg_r1, wgray};
+
+  <span class="f-dim">// Sync rgray into write domain</span>
+  <span class="f-amb">always</span> @(<span class="f-grn">posedge</span> wclk <span class="f-amb">or</span> <span class="f-grn">negedge</span> wrst_n)
+    <span class="f-amb">if</span> (!wrst_n) {rg_w2, rg_w1} &lt;= 0;
+    <span class="f-amb">else</span>         {rg_w2, rg_w1} &lt;= {rg_w1, rgray};
+
+  <span class="f-dim">// FULL (write domain) — top 2 MSBs inverted in comparison</span>
+  assign full  = (wgray == {~rg_w2[PTR_W-1:PTR_W-2], rg_w2[PTR_W-3:0]});
+  <span class="f-dim">// EMPTY (read domain)</span>
+  assign empty = (rgray == wg_r2);
+
+<span class="f-ind">endmodule</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Interview FAQ</h2>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What is an asynchronous FIFO and when do you use it? <span class="faq-icon">+</span></button>
+        <div class="faq-a">An async FIFO is a data buffer that allows safe data transfer between two clock domains with different (and potentially unrelated) frequencies or phases. You use it whenever two IPs must exchange data but run on separate clocks — e.g., PCIe controller to NVMe, CPU to DDR PHY, or USB MAC to application logic. The FIFO absorbs the timing difference and prevents metastability from propagating into the design.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Why is Gray code critical for async FIFO pointer synchronization? <span class="faq-icon">+</span></button>
+        <div class="faq-a">When you synchronize a multi-bit counter across clock domains with 2 flip-flops, if more than 1 bit changes simultaneously, the destination FF could sample a completely invalid intermediate value (e.g., 011→100 could sample as 111, 010, 101...). Gray code guarantees only 1 bit changes per count step. Even if that 1 bit is caught mid-transition (metastability), the synchronized value is either the old count or the new count — both are safe, conservative values.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">How is the FULL flag generated? Walk through the logic. <span class="faq-icon">+</span></button>
+        <div class="faq-a">FULL is computed in the write domain. The synchronized rptr_gray (rptr_gray_sync, 2 WCLK cycles old) is compared to wptr_gray with the top 2 MSBs inverted: full = (wptr_gray == {~rptr_gray_sync[N:N-1], rptr_gray_sync[N-2:0]}). This pattern appears in Gray code when the write pointer has wrapped around once and is now exactly DEPTH entries ahead of the read pointer. The top-2-MSB inversion distinguishes "same address, same wrap" (empty/equal) from "same address, one wrap apart" (full).</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">What happens if FULL or EMPTY is asserted slightly late? <span class="faq-icon">+</span></button>
+        <div class="faq-a">The 2-FF synchronizer introduces a 2-cycle delay, so FULL/EMPTY flags are slightly conservative — they assert a bit later than the actual condition (from the other domain's perspective). This means the FIFO might be slightly fuller than the write domain thinks (it won't overwrite data) or slightly emptier than the read domain thinks (it won't read invalid data). This is safe by design. The FIFO may appear to have slightly less capacity than its rated depth due to this margin.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">Can you use a single FF synchronizer instead of 2 FFs? <span class="faq-icon">+</span></button>
+        <div class="faq-a">No. A single FF synchronizer is not sufficient for reliable CDC. The single FF output has insufficient time to resolve metastability before it is sampled by downstream logic. A 2-FF synchronizer gives the first FF one full destination clock cycle to settle, reducing the probability of metastability propagation to negligibly low levels (typically &lt;10⁻¹⁴ errors/second for modern processes). High-speed designs at 1 GHz+ sometimes use 3-FF synchronizers for extra margin.</div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <div class="sidebar">
+    <div class="sb-card">
+      <h4>On This Page</h4>
+      <a href="#" onclick="document.querySelector('.lab-wrap').scrollIntoView({behavior:'smooth'});return false">⚗ Interactive Lab</a>
+      <a href="#">What is Async FIFO?</a>
+      <a href="#">Architecture</a>
+      <a href="#">Why Gray Code?</a>
+      <a href="#">Full &amp; Empty Flags</a>
+      <a href="#">Verilog RTL</a>
+      <a href="#">Interview FAQ</a>
+    </div>
+    <div class="sb-card">
+      <h4>Related Labs</h4>
+      <a href="/sta/setup-hold-lab/">Setup &amp; Hold Lab →</a>
+      <a href="/tools/scrambler-lab/">Scrambler Lab →</a>
+    </div>
+    <div class="sb-card" style="background:rgba(45,212,191,0.05);border-color:rgba(45,212,191,0.2)">
+      <h4 style="color:var(--teal)">Key Numbers</h4>
+      <a href="#" style="color:var(--dim);cursor:default">Sync delay: 2 clock cycles</a>
+      <a href="#" style="color:var(--dim);cursor:default">Gray code: 1-bit change/step</a>
+      <a href="#" style="color:var(--dim);cursor:default">Pointer width: N+1 bits</a>
+    </div>
+  </div>
+</div><!-- /content -->
+
+<!-- CROSS LINKS -->
+<div class="cross-links">
+  <h3>Related Topics</h3>
+  <div class="cl-grid">
+    <a href="/sta/setup-hold-lab/" class="cl-card">
+      <div class="cl-tag">Interactive Lab</div>
+      <div class="cl-title">Setup &amp; Hold Violation Lab</div>
+      <div class="cl-desc">Live slack computation with 6 sliders</div>
+    </a>
+    <a href="/tools/scrambler-lab/" class="cl-card">
+      <div class="cl-tag">Interactive Lab</div>
+      <div class="cl-title">Scrambler &amp; Descrambler Lab</div>
+      <div class="cl-desc">LFSR bit-by-bit with PCIe/SATA polynomials</div>
+    </a>
+    <a href="/digital-electronics/lfsr/" class="cl-card">
+      <div class="cl-tag">Deep Dive</div>
+      <div class="cl-title">LFSR – Linear Feedback Shift Register</div>
+      <div class="cl-desc">Fibonacci vs Galois, BIST, CRC, PRBS</div>
+    </a>
+    <a href="/rtl_design/" class="cl-card">
+      <div class="cl-tag">Next Steps</div>
+      <div class="cl-title">RTL Design Hub</div>
+      <div class="cl-desc">FSM, CDC, pipelining, metastability in Verilog</div>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <p>&copy; 2026 EcrioniX · <a href="/">ecrionix.org</a> · <a href="/legal/privacy.html">Privacy</a> · <a href="/legal/terms.html">Terms</a></p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+
+<!-- WhatsApp -->
+<a href="https://whatsapp.com/channel/0029Vb7U7jxKAwEmqonaUu2x" target="_blank" rel="noopener noreferrer" title="Join EcrioniX on WhatsApp"
+   style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;width:52px;height:52px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(37,211,102,0.4);transition:transform .2s"
+   onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+  <svg width="27" height="27" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.932-1.418A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 11.999 2zm.001 18a7.975 7.975 0 01-4.076-1.115l-.292-.174-3.047.876.843-3.022-.189-.308A7.952 7.952 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z"/></svg>
+</a>
+
+<script>
+// ── SIMULATION ──────────────────────────────────────────────────
+class AsyncFIFO {
+  constructor(depthBits) {
+    this.depthBits = depthBits;
+    this.depth = 1 << depthBits;
+    this.ptrBits = depthBits + 1;
+    this.mask = (1 << this.ptrBits) - 1;
+    this.addrMask = this.depth - 1;
+    this.reset();
+  }
+  reset() {
+    this.mem = new Array(this.depth).fill(null);
+    this.wptr = 0; this.rptr = 0;
+    this.wptr_gray_pipe = [0, 0]; // in read domain
+    this.rptr_gray_pipe = [0, 0]; // in write domain
+    this.wcount = 0; this.rcount = 0;
+    this.dataCtr = 0;
+    this.lastWriteAddr = -1; this.lastReadAddr = -1;
+  }
+  toGray(b) { return b ^ (b >> 1); }
+  get wgray() { return this.toGray(this.wptr); }
+  get rgray() { return this.toGray(this.rptr); }
+  get wgray_sync() { return this.wptr_gray_pipe[1]; }
+  get rgray_sync() { return this.rptr_gray_pipe[1]; }
+  get full() {
+    const invMask = 3 << (this.depthBits - 1);
+    return this.wgray === (this.rgray_sync ^ invMask);
+  }
+  get empty() { return this.rgray === this.wgray_sync; }
+  get fillCount() { return (this.wptr - this.rptr) & this.mask; }
+  wclkEdge(wen) {
+    this.rptr_gray_pipe[1] = this.rptr_gray_pipe[0];
+    this.rptr_gray_pipe[0] = this.rgray;
+    this.lastWriteAddr = -1;
+    if (wen && !this.full) {
+      const addr = this.wptr & this.addrMask;
+      this.mem[addr] = this.dataCtr & 0xFF;
+      this.dataCtr++;
+      this.wptr = (this.wptr + 1) & this.mask;
+      this.wcount++;
+      this.lastWriteAddr = addr;
+    }
+  }
+  rclkEdge(ren) {
+    this.wptr_gray_pipe[1] = this.wptr_gray_pipe[0];
+    this.wptr_gray_pipe[0] = this.wgray;
+    this.lastReadAddr = -1;
+    if (ren && !this.empty) {
+      const addr = this.rptr & this.addrMask;
+      this.rptr = (this.rptr + 1) & this.mask;
+      this.rcount++;
+      this.lastReadAddr = addr;
+    }
+  }
+}
+
+// ── STATE ────────────────────────────────────────────────────────
+const state = { depthBits: 3, wSpeed: 1.5, rSpeed: 1.0, wen: true, ren: true, running: false };
+let fifo = new AsyncFIFO(3);
+let rafId = null, lastW = 0, lastR = 0;
+const BASE = 700;
+
+// ── BUILD CELLS ──────────────────────────────────────────────────
+function buildCells() {
+  const c = document.getElementById('cells-container');
+  c.innerHTML = '';
+  for (let i = 0; i < fifo.depth; i++) {
+    const row = document.createElement('div');
+    row.className = 'cell-row';
+    row.id = 'cell-' + i;
+    row.innerHTML = `<div class="cell-addr">${i}</div><div class="cell-data empty-cell" id="cd-${i}">--</div><div class="cell-fill"><div class="cell-fill-bar" id="cf-${i}" style="width:0%"></div></div><div class="cell-ptr" id="cp-${i}"></div>`;
+    c.appendChild(row);
+  }
+}
+
+// ── RENDER ───────────────────────────────────────────────────────
+function toBinStr(val, bits) {
+  return val.toString(2).padStart(bits, '0');
+}
+function toHexStr(val) {
+  return '0x' + val.toString(16).toUpperCase().padStart(2,'0');
+}
+
+function renderBitBoxes(containerId, val, bits, cls) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+  for (let i = bits - 1; i >= 0; i--) {
+    const b = document.createElement('div');
+    const bit = (val >> i) & 1;
+    b.className = `bit-b ${cls} ${bit ? 'on' : 'off'}`;
+    b.textContent = bit;
+    el.appendChild(b);
+  }
+}
+
+function renderAll() {
+  const pb = fifo.ptrBits;
+  // Domain panels
+  document.getElementById('wbin').textContent = 'BIN: ' + toBinStr(fifo.wptr, pb);
+  document.getElementById('wgry').textContent = 'GRY: ' + toBinStr(fifo.wgray, pb);
+  document.getElementById('rbin').textContent = 'BIN: ' + toBinStr(fifo.rptr, pb);
+  document.getElementById('rgry').textContent = 'GRY: ' + toBinStr(fifo.rgray, pb);
+  document.getElementById('wcount').textContent = fifo.wcount;
+  document.getElementById('rcount').textContent = fifo.rcount;
+  document.getElementById('rgs-disp').textContent = toBinStr(fifo.rgray_sync, pb);
+  document.getElementById('wgs-disp').textContent = toBinStr(fifo.wgray_sync, pb);
+
+  // Flags
+  const ff = document.getElementById('full-flag');
+  const ef = document.getElementById('empty-flag');
+  ff.classList.toggle('active', fifo.full);
+  ef.classList.toggle('active', fifo.empty);
+
+  // Cells
+  const wa = fifo.wptr & fifo.addrMask;
+  const ra = fifo.rptr & fifo.addrMask;
+  for (let i = 0; i < fifo.depth; i++) {
+    const row = document.getElementById('cell-' + i);
+    const cd = document.getElementById('cd-' + i);
+    const cf = document.getElementById('cf-' + i);
+    const cp = document.getElementById('cp-' + i);
+    const filled = fifo.mem[i] !== null;
+    row.classList.toggle('filled', filled);
+    cd.textContent = filled ? toHexStr(fifo.mem[i]) : '--';
+    cd.className = 'cell-data' + (filled ? '' : ' empty-cell');
+    cf.style.width = filled ? '100%' : '0%';
+    const isW = (i === wa);
+    const isR = (i === ra);
+    row.classList.toggle('w-ptr', isW && !isR);
+    row.classList.toggle('r-ptr', isR && !isW);
+    row.classList.toggle('both-ptr', isW && isR);
+    if (isW && isR) cp.innerHTML = '<span class="ptr-wr">WR</span>';
+    else if (isW) cp.innerHTML = '<span class="ptr-w">W→</span>';
+    else if (isR) cp.innerHTML = '<span class="ptr-r">R→</span>';
+    else cp.innerHTML = '';
+  }
+
+  // Fill bar
+  const fill = fifo.fillCount;
+  document.getElementById('fill-bar').style.width = (fill / fifo.depth * 100) + '%';
+  document.getElementById('fill-label').textContent = fill + '/' + fifo.depth;
+
+  // Gray code bits
+  renderBitBoxes('wbin-bits', fifo.wptr, pb, 'bit-b');
+  renderBitBoxes('wgry-bits', fifo.wgray, pb, 'bit-g');
+  renderBitBoxes('rbin-bits', fifo.rptr, pb, 'bit-b');
+  renderBitBoxes('rgry-bits', fifo.rgray, pb, 'bit-g');
+
+  // Sync panel
+  document.getElementById('wg-now').textContent = toBinStr(fifo.wgray, pb);
+  document.getElementById('wg-ff1').textContent = 'FF1: ' + toBinStr(fifo.wptr_gray_pipe[0], pb);
+  document.getElementById('wg-ff2').textContent = 'FF2: ' + toBinStr(fifo.wptr_gray_pipe[1], pb);
+  document.getElementById('wg-sync').textContent = 'sync: ' + toBinStr(fifo.wgray_sync, pb);
+  document.getElementById('rg-now').textContent = toBinStr(fifo.rgray, pb);
+  document.getElementById('rg-ff1').textContent = 'FF1: ' + toBinStr(fifo.rptr_gray_pipe[0], pb);
+  document.getElementById('rg-ff2').textContent = 'FF2: ' + toBinStr(fifo.rptr_gray_pipe[1], pb);
+  document.getElementById('rg-sync').textContent = 'sync: ' + toBinStr(fifo.rgray_sync, pb);
+
+  // Speed labels
+  document.getElementById('wclk-spd').textContent = state.wSpeed.toFixed(2) + 'x';
+  document.getElementById('rclk-spd').textContent = state.rSpeed.toFixed(2) + 'x';
+}
+
+function pulseW(wrote) {
+  const dot = document.getElementById('wdot');
+  dot.classList.add('pulse-w');
+  setTimeout(() => dot.classList.remove('pulse-w'), 200);
+  if (wrote) {
+    const addr = fifo.lastWriteAddr;
+    if (addr >= 0) {
+      const row = document.getElementById('cell-' + addr);
+      row.classList.remove('w-flash');
+      void row.offsetWidth;
+      row.classList.add('w-flash');
+    }
+  }
+}
+function pulseR(read) {
+  const dot = document.getElementById('rdot');
+  dot.classList.add('pulse-r');
+  setTimeout(() => dot.classList.remove('pulse-r'), 200);
+  if (read) {
+    const addr = fifo.lastReadAddr;
+    if (addr >= 0) {
+      const row = document.getElementById('cell-' + addr);
+      row.classList.remove('r-flash');
+      void row.offsetWidth;
+      row.classList.add('r-flash');
+    }
+  }
+}
+
+// ── LOOP ─────────────────────────────────────────────────────────
+function loop(ts) {
+  if (!state.running) return;
+  const wp = BASE / state.wSpeed;
+  const rp = BASE / state.rSpeed;
+  let changed = false;
+  if (ts - lastW >= wp) {
+    const prevWcount = fifo.wcount;
+    fifo.wclkEdge(state.wen);
+    lastW = ts;
+    pulseW(fifo.wcount > prevWcount);
+    changed = true;
+  }
+  if (ts - lastR >= rp) {
+    const prevRcount = fifo.rcount;
+    fifo.rclkEdge(state.ren);
+    lastR = ts;
+    pulseR(fifo.rcount > prevRcount);
+    changed = true;
+  }
+  if (changed) renderAll();
+  rafId = requestAnimationFrame(loop);
+}
+
+// ── CONTROLS ─────────────────────────────────────────────────────
+function togglePlay() {
+  state.running = !state.running;
+  document.getElementById('playBtn').textContent = state.running ? '⏸ Pause' : '▶ Play';
+  if (state.running) {
+    const now = performance.now();
+    lastW = now; lastR = now;
+    rafId = requestAnimationFrame(loop);
+  }
+}
+function doReset() {
+  state.running = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  fifo.reset();
+  buildCells();
+  renderAll();
+}
+function toggleWen() {
+  state.wen = !state.wen;
+  const btn = document.getElementById('wenBtn');
+  btn.textContent = state.wen ? 'WEN ●' : 'WEN ○';
+  btn.className = 'tog-btn ' + (state.wen ? 'on' : 'off');
+}
+function toggleRen() {
+  state.ren = !state.ren;
+  const btn = document.getElementById('renBtn');
+  btn.textContent = state.ren ? 'REN ●' : 'REN ○';
+  btn.className = 'tog-btn ' + (state.ren ? 'on' : 'off');
+}
+function setDepth(bits) {
+  state.running = false;
+  document.getElementById('playBtn').textContent = '▶ Play';
+  state.depthBits = bits;
+  fifo = new AsyncFIFO(bits);
+  buildCells();
+  renderAll();
+  document.querySelectorAll('.depth-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('d' + (1<<bits)).classList.add('active');
+}
+function applyPreset(p) {
+  const presets = {
+    normal:   { ws:6, rs:4, wen:true,  ren:true  },
+    fill:     { ws:16, rs:1, wen:true,  ren:false },
+    drain:    { ws:1, rs:16, wen:false, ren:true  },
+    burst:    { ws:16, rs:4, wen:true,  ren:true  },
+    fastread: { ws:4, rs:16, wen:true,  ren:true  },
+  };
+  const pr = presets[p]; if (!pr) return;
+  document.getElementById('wspd').value = pr.ws;
+  state.wSpeed = pr.ws / 4;
+  document.getElementById('wsv').textContent = state.wSpeed.toFixed(2) + 'x';
+  document.getElementById('rspd').value = pr.rs;
+  state.rSpeed = pr.rs / 4;
+  document.getElementById('rsv').textContent = state.rSpeed.toFixed(2) + 'x';
+  if (state.wen !== pr.wen) toggleWen();
+  if (state.ren !== pr.ren) toggleRen();
+  doReset();
+  setTimeout(() => { state.running = true; document.getElementById('playBtn').textContent = '⏸ Pause'; const now=performance.now(); lastW=now; lastR=now; rafId=requestAnimationFrame(loop); }, 100);
+}
+
+// ── FAQ ──────────────────────────────────────────────────────────
+function toggleFaq(btn) {
+  btn.parentElement.classList.toggle('open');
+}
+
+// ── COPY BUTTONS ─────────────────────────────────────────────────
+function copyFmla(btn) {
+  const box = btn.closest('.formula-box');
+  const text = box.innerText.replace('Copy','').replace('Copied!','').trim();
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+// ── SCROLL TOP ───────────────────────────────────────────────────
+window.addEventListener('scroll', () => {
+  document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
+});
+
+// ── INIT ─────────────────────────────────────────────────────────
+buildCells();
+renderAll();
+</script>
+</body>
+</html>
