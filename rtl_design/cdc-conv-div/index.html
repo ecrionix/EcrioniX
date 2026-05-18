@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDC Convergence & Divergence – The Sneakiest Clock Domain Bugs | EcrioniX</title>
+  <meta name="description" content="Convergence and divergence are the most misunderstood CDC bugs. Learn what happens when one signal fans out to two clock domains (divergence) or when two related signals sync independently (convergence) — with Verilog fixes and interview answers.">
+  <meta name="keywords" content="CDC convergence, CDC divergence, clock domain crossing bug, metastability fan-out, multi-domain CDC, CDC interview question, synchronizer bug, RTL design, Verilog CDC, ASIC interview">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/cdc-conv-div/">
+  <meta property="og:title" content="CDC Convergence & Divergence – The Sneakiest Clock Domain Bugs | EcrioniX">
+  <meta property="og:description" content="Learn why fanning one CDC signal to two domains (divergence) or syncing related signals independently (convergence) breaks your chip — and how to fix it.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/cdc-conv-div/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CDC Convergence & Divergence – The Sneakiest Clock Domain Bugs">
+  <meta name="twitter:description" content="Fanning one CDC signal to two domains or syncing related signals independently both corrupt chip state. Here's why and how to fix both.">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle",
+     "headline":"CDC Convergence & Divergence – The Sneakiest Clock Domain Bugs",
+     "description":"Convergence and divergence are advanced CDC failure modes. This article explains both, shows buggy RTL, explains what fails and why, then gives the correct Verilog fix.",
+     "url":"https://ecrionix.org/rtl_design/cdc-conv-div/",
+     "dateModified":"2026-05-18",
+     "author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},
+      {"@type":"ListItem","position":3,"name":"CDC","item":"https://ecrionix.org/rtl_design/cdc/"},
+      {"@type":"ListItem","position":4,"name":"Convergence & Divergence","item":"https://ecrionix.org/rtl_design/cdc-conv-div/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is CDC divergence?",
+       "acceptedAnswer":{"@type":"Answer","text":"CDC divergence occurs when a single signal from one clock domain fans out to flip-flops in two or more different destination clock domains, each with its own synchronizer chain. During a metastability event, one synchronizer chain may resolve high while another resolves low — the two destinations permanently disagree on the value of the same signal, corrupting system state. The fix is to synchronize the signal into exactly one intermediate domain first, then distribute it within that domain."}},
+      {"@type":"Question","name":"What is CDC convergence?",
+       "acceptedAnswer":{"@type":"Answer","text":"CDC convergence occurs when two or more signals that are logically related (e.g. req and data) originate in one clock domain but cross independently into a destination domain via separate synchronizer chains. Because each chain resolves metastability independently, they may complete at different destination clock cycles. The destination may sample req as valid before data has fully resolved, reading corrupted data. The fix is a handshake or multi-bit synchronization structure (Gray code, async FIFO, or req-first sampling) that guarantees all related signals are stable before they are used."}},
+      {"@type":"Question","name":"Why can't I just put two 2-FF synchronizers in parallel for related signals?",
+       "acceptedAnswer":{"@type":"Answer","text":"Each 2-FF synchronizer resolves metastability independently. If both signals are transitioning simultaneously, FF1 of chain A may resolve in cycle N while FF1 of chain B takes until cycle N+1. The destination samples in cycle N+1 and sees a valid req but the data has only just resolved — depending on exact timing, the data bits may be partially metastable. Parallel independent synchronizers offer zero guarantee of simultaneous valid capture."}},
+      {"@type":"Question","name":"How do SpyGlass or Questa CDC tools detect divergence bugs?",
+       "acceptedAnswer":{"@type":"Answer","text":"CDC tools model fan-out from a CDC crossing point. If a net that has crossed a domain boundary (i.e., is in the destination domain after sync) fans back to a flip-flop clocked by a third domain without re-synchronization, the tool flags it as a divergence violation. Similarly, if two signals from the same source domain arrive at the same destination logic block through independent sync chains, the tool flags a convergence risk. SpyGlass calls these 'multi-domain convergence' violations."}},
+      {"@type":"Question","name":"What is the golden rule of CDC fan-out?",
+       "acceptedAnswer":{"@type":"Answer","text":"Synchronize once, distribute many. Always route a crossing signal through a single synchronizer into one 'hub' domain. Fan out the synchronized output only to logic in that same clock domain. Never let the pre-synchronized (source-domain) net feed synchronizers in two different destination domains simultaneously."}},
+      {"@type":"Question","name":"How is CDC divergence different from a simple metastability failure?",
+       "acceptedAnswer":{"@type":"Answer","text":"Simple metastability is a timing failure — one flip-flop settles to the wrong value with very low probability. CDC divergence is a structural design bug — two flip-flops in different domains will always be able to disagree on the same source signal during any metastability window, because they resolve independently. No amount of waiting or adding pipeline stages fixes a structural divergence bug. The architecture must be changed."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+      --border:rgba(148,163,184,0.1);--border-h:rgba(56,189,248,0.4);
+      --sky:#38bdf8;--sky-l:#7dd3fc;--sky-dim:rgba(56,189,248,0.12);
+      --amber:#fbbf24;--indigo:#6366f1;--indigo-l:#818cf8;
+      --rose:#fb7185;--green:#4ade80;--teal:#2dd4bf;--violet:#a78bfa;
+      --txt:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--txt);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+    .mobile-menu a:last-child{border-bottom:none}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;font-size:.8rem;color:var(--dim)}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+    .breadcrumb a:hover{color:var(--sky-l)}
+    .breadcrumb span{color:var(--muted)}
+
+    .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+    .hero-tag{display:inline-block;background:var(--sky-dim);border:1px solid rgba(56,189,248,0.3);color:var(--sky);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--sky),var(--sky-l));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+    .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+    .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--border);padding:.4rem .9rem;border-radius:100px}
+    .meta-pill svg{width:14px;height:14px;color:var(--sky);flex-shrink:0}
+
+    .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 5rem}
+    .section{margin-bottom:4.5rem}
+    .section-label{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--sky);margin-bottom:.4rem}
+    .section-title{font-size:clamp(1.3rem,2.5vw,1.75rem);font-weight:700;color:#fff;margin-bottom:.75rem}
+    .section-body{font-size:.95rem;color:var(--muted);line-height:1.8;margin-bottom:1rem}
+
+    /* Problem blocks */
+    .prob-block{background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:20px;padding:2rem;margin-bottom:2rem;position:relative;overflow:hidden}
+    .prob-block::before{content:'';position:absolute;top:0;right:0;width:200px;height:200px;pointer-events:none;border-radius:50%}
+    .prob-diverge::before{background:radial-gradient(circle at top right,rgba(251,113,133,0.07),transparent 70%)}
+    .prob-converge::before{background:radial-gradient(circle at top right,rgba(251,191,36,0.07),transparent 70%)}
+    .prob-fix::before{background:radial-gradient(circle at top right,rgba(74,222,128,0.07),transparent 70%)}
+    .prob-tag{display:inline-flex;align-items:center;gap:.5rem;font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .8rem;border-radius:100px;margin-bottom:1rem}
+    .tag-danger{background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.25);color:var(--rose)}
+    .tag-warn{background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);color:var(--amber)}
+    .tag-safe{background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.25);color:var(--green)}
+    .tag-info{background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);color:var(--sky)}
+    .prob-title{font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.6rem}
+    .prob-body{font-size:.92rem;color:var(--muted);line-height:1.8;margin-bottom:1rem}
+
+    /* Rule box */
+    .rule-box{background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);border-radius:14px;padding:1.25rem 1.5rem;margin:1.5rem 0;display:flex;gap:1rem;align-items:flex-start}
+    .rule-icon{font-size:1.4rem;flex-shrink:0;margin-top:.1rem}
+    .rule-text{font-size:.9rem;color:var(--txt);line-height:1.7}
+    .rule-text strong{color:var(--sky)}
+    .rule-box.warn{background:rgba(251,191,36,0.05);border-color:rgba(251,191,36,0.2)}
+    .rule-box.warn .rule-text strong{color:var(--amber)}
+    .rule-box.danger{background:rgba(251,113,133,0.05);border-color:rgba(251,113,133,0.2)}
+    .rule-box.danger .rule-text strong{color:var(--rose)}
+    .rule-box.success{background:rgba(74,222,128,0.05);border-color:rgba(74,222,128,0.2)}
+    .rule-box.success .rule-text strong{color:var(--green)}
+
+    /* Code */
+    .code-block{background:#0a0f1e;border:1px solid rgba(56,189,248,0.2);border-radius:12px;overflow:hidden;margin:1.25rem 0}
+    .code-header{background:rgba(56,189,248,0.07);border-bottom:1px solid rgba(56,189,248,0.15);padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between}
+    .code-label{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--sky);font-weight:600;letter-spacing:.06em}
+    .copy-btn{background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);color:var(--sky);font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
+    .copy-btn:hover{background:rgba(56,189,248,0.2)}
+    .copy-btn.copied{background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.3);color:var(--green)}
+    pre,code{font-family:'JetBrains Mono',monospace;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+    .code-block pre{padding:1.25rem 1rem;overflow-x:auto;font-size:.82rem;line-height:1.75;color:#e2e8f0;white-space:pre}
+    .kw{color:#38bdf8}.cm{color:#64748b;font-style:italic}.mod{color:#67e8f9}
+    .sig{color:#c084fc}.num{color:#fbbf24}.str{color:#86efac}.err{color:#fb7185}
+
+    /* SVG diagrams */
+    .diagram-wrap{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:14px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto}
+    .diagram-title{font-size:.75rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--sky);margin-bottom:1rem}
+    svg.diag{display:block;width:100%;max-width:720px;margin:0 auto;height:auto}
+
+    /* Q&A accordion */
+    .faq-list{margin-top:1.5rem}
+    .faq-item{border:1px solid var(--border);border-radius:12px;margin-bottom:.75rem;overflow:hidden;transition:border-color .2s}
+    .faq-item.open{border-color:rgba(56,189,248,0.3)}
+    .faq-q{width:100%;background:none;border:none;text-align:left;padding:1rem 1.25rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;color:#fff;font-family:'Outfit',sans-serif;font-size:.92rem;font-weight:600}
+    .faq-q:hover{background:rgba(56,189,248,0.04)}
+    .faq-arrow{width:18px;height:18px;flex-shrink:0;color:var(--sky);transition:transform .3s}
+    .faq-item.open .faq-arrow{transform:rotate(180deg)}
+    .faq-a{display:none;padding:0 1.25rem 1rem;font-size:.88rem;color:var(--muted);line-height:1.8;border-top:1px solid var(--border)}
+    .faq-item.open .faq-a{display:block}
+
+    /* Steps */
+    .steps{display:flex;flex-direction:column;gap:1rem;margin:1.25rem 0}
+    .step{display:flex;gap:1rem;align-items:flex-start}
+    .step-num{width:32px;height:32px;border-radius:50%;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);color:var(--sky);font-family:'Orbitron',sans-serif;font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .step-body{font-size:.9rem;color:var(--muted);line-height:1.7;padding-top:.3rem}
+    .step-body strong{color:#fff}
+
+    /* Compare grid */
+    .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.5rem 0}
+    @media(max-width:640px){.compare-grid{grid-template-columns:1fr}}
+    .cmp-card{background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:14px;padding:1.25rem}
+    .cmp-card.bad{border-top:3px solid var(--rose)}
+    .cmp-card.good{border-top:3px solid var(--green)}
+    .cmp-head{font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.65rem}
+    .cmp-card.bad .cmp-head{color:var(--rose)}
+    .cmp-card.good .cmp-head{color:var(--green)}
+    .cmp-body{font-size:.85rem;color:var(--muted);line-height:1.7}
+
+    /* Summary table */
+    .table-wrap{overflow-x:auto;margin:1.25rem 0}
+    table{width:100%;border-collapse:collapse;font-size:.85rem}
+    th{background:rgba(56,189,248,0.1);color:var(--sky);font-weight:600;padding:.75rem 1rem;text-align:left;border-bottom:1px solid rgba(56,189,248,0.2)}
+    td{padding:.7rem 1rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+    tr:hover td{background:rgba(15,23,42,0.4)}
+    .badge{display:inline-block;font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:100px}
+    .badge-r{background:rgba(251,113,133,0.12);color:var(--rose);border:1px solid rgba(251,113,133,0.2)}
+    .badge-a{background:rgba(251,191,36,0.12);color:var(--amber);border:1px solid rgba(251,191,36,0.2)}
+    .badge-g{background:rgba(74,222,128,0.12);color:var(--green);border:1px solid rgba(74,222,128,0.2)}
+
+    /* Related */
+    .related-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-top:1.25rem}
+    .rel-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.25rem;text-decoration:none;transition:border-color .3s,transform .2s}
+    .rel-card:hover{border-color:var(--border-h);transform:translateY(-3px)}
+    .rel-card-tag{font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--sky);margin-bottom:.45rem}
+    .rel-card-title{font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.35rem}
+    .rel-card-desc{font-size:.82rem;color:var(--muted);line-height:1.6}
+
+    .divider{height:1px;background:var(--border);max-width:1200px;margin:0 auto 4rem}
+    .footer{background:var(--bg-2);border-top:1px solid var(--border);padding:2.5rem 1.25rem;text-align:center}
+    .footer-logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .footer-logo span{color:var(--indigo)}
+    .footer p{font-size:.82rem;color:var(--dim);margin-bottom:1.25rem}
+    .footer-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:1.5rem;margin-bottom:1.5rem}
+    .footer-nav a{font-size:.82rem;color:var(--dim);text-decoration:none;transition:color .2s}
+    .footer-nav a:hover{color:var(--indigo-l)}
+    .footer-copy{font-size:.78rem;color:var(--dim);border-top:1px solid var(--border);padding-top:1.25rem}
+    .scroll-top{position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(56,189,248,0.75);border:none;color:#020617;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .2s;z-index:50}
+    .scroll-top.visible{display:flex}
+    .scroll-top:hover{background:var(--sky);transform:scale(1.1)}
+    @media(max-width:768px){.content{padding:0 1rem 4rem}.hero{padding:2rem 1rem 1.5rem}}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/" class="active">RTL Design</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/rtl_design/">RTL Design</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/rtl_design/cdc/">CDC</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <span>Convergence &amp; Divergence</span>
+</div>
+
+<header class="hero">
+  <div class="hero-tag">Advanced CDC Problems</div>
+  <h1>CDC <span>Convergence &amp; Divergence</span><br>— The Sneakiest Clock Domain Bugs</h1>
+  <p>Your 2-FF synchronizer is correct. Your metastability math checks out. And your chip still silently corrupts state. These two structural CDC bugs are invisible to simulation, missed by code review, and guaranteed to appear in silicon.</p>
+  <div class="hero-meta">
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      18 min read
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+      Advanced level
+    </div>
+    <div class="meta-pill">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+      Verilog RTL
+    </div>
+  </div>
+</header>
+
+<main class="content">
+
+  <!-- ── INTRO ── -->
+  <section class="section">
+    <div class="section-label">The Setup</div>
+    <h2 class="section-title">Two bugs. Both invisible in simulation.</h2>
+    <p class="section-body">
+      CDC divergence and CDC convergence are structural design errors — not timing violations. RTL simulation runs with unit delays and almost never exercises metastability windows, so both bugs pass simulation cleanly. They also pass RTL lint. They fail in silicon, intermittently, under specific clock frequency combinations, and only after you've shipped.
+    </p>
+    <p class="section-body">
+      This page walks through each problem with a concrete scenario, a timing diagram, the correct fix, and exactly what to say in an interview.
+    </p>
+
+    <div class="rule-box">
+      <div class="rule-icon">⚠️</div>
+      <div class="rule-text">
+        <strong>Key insight:</strong> both bugs share the same root cause — multiple synchronizer chains resolving metastability <em>independently</em> when they should be coordinated. The difference is topology: divergence is one source fanning to multiple destinations; convergence is multiple signals arriving at one destination from separate chains.
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════ PROBLEM 1: DIVERGENCE ════════════════════════════════ -->
+  <section class="section" id="divergence">
+    <div class="section-label">Problem 1</div>
+    <h2 class="section-title">CDC Divergence — One Signal, Two Destinations, Two Different Answers</h2>
+    <p class="section-body">
+      You have a single control signal <code>en</code> generated in <strong>CLK_A</strong>. Module B (in domain CLK_B) and Module C (in domain CLK_C) both need it. The natural instinct is to add a 2-FF synchronizer in each domain.
+    </p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Divergence — Structural Bug</div>
+      <svg class="diag" viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" font-family="JetBrains Mono, monospace" font-size="11">
+        <!-- CLK_A domain box -->
+        <rect x="20" y="60" width="120" height="60" rx="10" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.35)" stroke-width="1.5"/>
+        <text x="80" y="87" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="bold">CLK_A</text>
+        <text x="80" y="103" text-anchor="middle" fill="#94a3b8" font-size="10">Domain</text>
+        <text x="80" y="116" text-anchor="middle" fill="#f8fafc" font-size="10">en</text>
+
+        <!-- Arrow from en to two sync chains -->
+        <line x1="140" y1="90" x2="190" y2="90" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- Branch point -->
+        <circle cx="190" cy="90" r="4" fill="#38bdf8"/>
+        <line x1="190" y1="90" x2="190" y2="50" stroke="#38bdf8" stroke-width="1.5"/>
+        <line x1="190" y1="90" x2="190" y2="160" stroke="#38bdf8" stroke-width="1.5"/>
+
+        <!-- SYNC CHAIN B (top) -->
+        <line x1="190" y1="50" x2="230" y2="50" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="230" y="36" width="32" height="28" rx="4" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.4)" stroke-width="1.5"/>
+        <text x="246" y="54" text-anchor="middle" fill="#fb7185" font-size="10">FF1</text>
+        <line x1="262" y1="50" x2="290" y2="50" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="290" y="36" width="32" height="28" rx="4" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.4)" stroke-width="1.5"/>
+        <text x="306" y="54" text-anchor="middle" fill="#fb7185" font-size="10">FF2</text>
+        <line x1="322" y1="50" x2="380" y2="50" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- CLK_B domain -->
+        <rect x="380" y="26" width="110" height="48" rx="8" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.35)" stroke-width="1.5"/>
+        <text x="435" y="46" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="bold">CLK_B</text>
+        <text x="435" y="60" text-anchor="middle" fill="#94a3b8" font-size="10">Module B</text>
+        <!-- clk label top -->
+        <text x="246" y="30" text-anchor="middle" fill="#a78bfa" font-size="9">clk_b</text>
+        <text x="306" y="30" text-anchor="middle" fill="#a78bfa" font-size="9">clk_b</text>
+
+        <!-- SYNC CHAIN C (bottom) -->
+        <line x1="190" y1="160" x2="230" y2="160" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="230" y="146" width="32" height="28" rx="4" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.4)" stroke-width="1.5"/>
+        <text x="246" y="164" text-anchor="middle" fill="#fb7185" font-size="10">FF1</text>
+        <line x1="262" y1="160" x2="290" y2="160" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="290" y="146" width="32" height="28" rx="4" fill="rgba(251,113,133,0.12)" stroke="rgba(251,113,133,0.4)" stroke-width="1.5"/>
+        <text x="306" y="164" text-anchor="middle" fill="#fb7185" font-size="10">FF2</text>
+        <line x1="322" y1="160" x2="380" y2="160" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- CLK_C domain -->
+        <rect x="380" y="136" width="110" height="48" rx="8" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.35)" stroke-width="1.5"/>
+        <text x="435" y="156" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="bold">CLK_C</text>
+        <text x="435" y="170" text-anchor="middle" fill="#94a3b8" font-size="10">Module C</text>
+        <!-- clk label bottom -->
+        <text x="246" y="142" text-anchor="middle" fill="#fbbf24" font-size="9">clk_c</text>
+        <text x="306" y="142" text-anchor="middle" fill="#fbbf24" font-size="9">clk_c</text>
+
+        <!-- DANGER annotation -->
+        <rect x="500" y="70" width="170" height="80" rx="8" fill="rgba(251,113,133,0.08)" stroke="rgba(251,113,133,0.3)" stroke-width="1"/>
+        <text x="585" y="92" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="bold">DANGER ZONE</text>
+        <text x="585" y="108" text-anchor="middle" fill="#94a3b8" font-size="9">Module B sees en=1</text>
+        <text x="585" y="122" text-anchor="middle" fill="#94a3b8" font-size="9">Module C sees en=0</text>
+        <text x="585" y="136" text-anchor="middle" fill="#fb7185" font-size="9">← System state corrupted</text>
+        <!-- arrow to danger -->
+        <line x1="490" y1="110" x2="500" y2="110" stroke="rgba(251,113,133,0.5)" stroke-width="1" stroke-dasharray="4,2"/>
+      </svg>
+    </div>
+
+    <div class="prob-block prob-diverge">
+      <div class="prob-tag tag-danger">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        Buggy RTL — Divergence
+      </div>
+      <div class="prob-title">The Bug: Independent Synchronizers into Two Domains</div>
+      <div class="prob-body">Each domain gets its own 2-FF synchronizer directly from the source signal. This looks safe — every crossing has a synchronizer. But during a metastability event, FF1 in chain B and FF1 in chain C resolve independently.</div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-label">verilog — WRONG (divergence bug)</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><span class="cm">// Source domain: CLK_A generates en</span>
+<span class="cm">// ─────────────────────────────────────────────────────────────────</span>
+<span class="cm">// WRONG: en fans out to two independent synchronizer chains.</span>
+<span class="cm">// During metastability: Module B may see en_b=1, Module C en_c=0.</span>
+
+<span class="kw">module</span> <span class="mod">top</span> (
+  <span class="kw">input</span>  clk_a, clk_b, clk_c, rst_n,
+  <span class="kw">input</span>  en_a,           <span class="cm">// source signal in CLK_A domain</span>
+  <span class="kw">output</span> out_b, out_c
+);
+
+  <span class="cm">// Synchronizer into CLK_B domain</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] sync_b;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) sync_b &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        sync_b &lt;= {sync_b[<span class="num">0</span>], en_a}; <span class="err">// ← directly samples en_a</span>
+
+  <span class="cm">// Synchronizer into CLK_C domain</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] sync_c;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_c <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) sync_c &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        sync_c &lt;= {sync_c[<span class="num">0</span>], en_a}; <span class="err">// ← directly samples en_a</span>
+                                               <span class="err">//   different clock → may disagree!</span>
+
+  <span class="kw">assign</span> out_b = sync_b[<span class="num">1</span>];
+  <span class="kw">assign</span> out_c = sync_c[<span class="num">1</span>];
+
+<span class="kw">endmodule</span></pre>
+      </div>
+
+      <div class="rule-box danger">
+        <div class="rule-icon">💀</div>
+        <div class="rule-text"><strong>What fails:</strong> When <code>en_a</code> transitions, both FF1 chains enter their setup-violation window simultaneously. Chain B's FF1 resolves high. Chain C's FF1 resolves low. Both then propagate their resolved values through FF2 and into logic. For the remainder of this enable pulse, Module B's enable is asserted and Module C's is not. The two modules now have an inconsistent view of the same control signal — and this is a <em>permanent</em> discrepancy, not a glitch.</div>
+      </div>
+    </div>
+
+    <div class="prob-block prob-fix">
+      <div class="prob-tag tag-safe">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Fixed RTL — Hub Synchronization
+      </div>
+      <div class="prob-title">The Fix: Synchronize Once, Fan Out Within One Domain</div>
+      <div class="prob-body">Pick one destination domain as the "hub." Synchronize <code>en_a</code> into that domain. Then distribute the already-synchronized signal to every other destination in that same domain, or re-synchronize from the hub into any remaining domains.</div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-label">verilog — CORRECT (hub synchronization)</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><span class="cm">// CORRECT: Synchronize en_a → CLK_B first (hub).
+// Fan en_b to Module B directly.
+// Re-synchronize en_b → CLK_C for Module C.
+// Both now agree: they see the SAME source value.</span>
+
+<span class="kw">module</span> <span class="mod">top</span> (
+  <span class="kw">input</span>  clk_a, clk_b, clk_c, rst_n,
+  <span class="kw">input</span>  en_a,
+  <span class="kw">output</span> out_b, out_c
+);
+
+  <span class="cm">// Stage 1: Sync en_a → CLK_B (single synchronizer, single resolution)</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] sync_to_b;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) sync_to_b &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        sync_to_b &lt;= {sync_to_b[<span class="num">0</span>], en_a};
+
+  <span class="kw">wire</span> en_b = sync_to_b[<span class="num">1</span>]; <span class="cm">// Now stable in CLK_B domain</span>
+
+  <span class="cm">// Stage 2a: Module B uses en_b directly — same clock domain</span>
+  <span class="kw">assign</span> out_b = en_b;
+
+  <span class="cm">// Stage 2b: Re-sync en_b → CLK_C. Source is now a stable CLK_B signal.</span>
+  <span class="cm">// No metastability risk: en_b changed in CLK_B, not CLK_C, but it is</span>
+  <span class="cm">// a stable level by the time it enters this second synchronizer.</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] sync_to_c;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_c <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) sync_to_c &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        sync_to_c &lt;= {sync_to_c[<span class="num">0</span>], en_b};
+
+  <span class="kw">assign</span> out_c = sync_to_c[<span class="num">1</span>];
+
+<span class="kw">endmodule</span></pre>
+      </div>
+
+      <div class="rule-box success">
+        <div class="rule-icon">✅</div>
+        <div class="rule-text"><strong>Why this is correct:</strong> There is exactly <em>one</em> metastability resolution event — in the first sync chain targeting CLK_B. After FF2, <code>en_b</code> is a fully resolved, stable signal in the CLK_B domain. When it fans out to the second synchronizer chain (CLK_C), it is a clean digital level. There is no longer any possibility of divergent resolution — both domains will eventually agree on the same value.</div>
+      </div>
+    </div>
+
+    <div class="rule-box">
+      <div class="rule-icon">📌</div>
+      <div class="rule-text"><strong>Golden rule — CDC Divergence:</strong> "Synchronize once, distribute many." A synchronized output is a clean digital signal. Fan it as much as you want — but only within one domain, or through a chain of synchronizers, never in parallel from the same unresolved source.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════ PROBLEM 2: CONVERGENCE ════════════════════════════════ -->
+  <section class="section" id="convergence">
+    <div class="section-label">Problem 2</div>
+    <h2 class="section-title">CDC Convergence — Two Signals, One Destination, One Race</h2>
+    <p class="section-body">
+      Two logically coupled signals — a <strong>request flag</strong> <code>req</code> and an <strong>8-bit data bus</strong> <code>data[7:0]</code> — originate in domain CLK_A. Module B in CLK_B needs both. Again, the natural approach is a separate 2-FF synchronizer for each.
+    </p>
+
+    <div class="diagram-wrap">
+      <div class="diagram-title">Convergence — Structural Bug</div>
+      <svg class="diag" viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" font-family="JetBrains Mono, monospace" font-size="11">
+        <!-- CLK_A box -->
+        <rect x="20" y="50" width="120" height="100" rx="10" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.35)" stroke-width="1.5"/>
+        <text x="80" y="75" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="bold">CLK_A</text>
+        <text x="80" y="91" text-anchor="middle" fill="#f8fafc" font-size="10">req</text>
+        <text x="80" y="110" text-anchor="middle" fill="#f8fafc" font-size="10">data[7:0]</text>
+        <text x="80" y="125" text-anchor="middle" fill="#94a3b8" font-size="9">(8 independent</text>
+        <text x="80" y="138" text-anchor="middle" fill="#94a3b8" font-size="9">bit-syncs)</text>
+
+        <!-- req sync chain -->
+        <line x1="140" y1="91" x2="180" y2="91" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="180" y="78" width="36" height="26" rx="4" fill="rgba(251,191,36,0.1)" stroke="rgba(251,191,36,0.4)" stroke-width="1.5"/>
+        <text x="198" y="95" text-anchor="middle" fill="#fbbf24" font-size="10">2-FF</text>
+        <line x1="216" y1="91" x2="260" y2="91" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="198" y="74" text-anchor="middle" fill="#fbbf24" font-size="9">req sync</text>
+
+        <!-- data sync chain -->
+        <line x1="140" y1="118" x2="180" y2="118" stroke="#38bdf8" stroke-width="1.5"/>
+        <rect x="180" y="105" width="36" height="26" rx="4" fill="rgba(251,113,133,0.1)" stroke="rgba(251,113,133,0.4)" stroke-width="1.5"/>
+        <text x="198" y="122" text-anchor="middle" fill="#fb7185" font-size="10">2-FF</text>
+        <line x1="216" y1="118" x2="260" y2="118" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="198" y="103" text-anchor="middle" fill="#fb7185" font-size="9">data sync</text>
+
+        <!-- CLK_B box -->
+        <rect x="260" y="50" width="130" height="100" rx="10" fill="rgba(167,139,250,0.08)" stroke="rgba(167,139,250,0.35)" stroke-width="1.5"/>
+        <text x="325" y="75" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="bold">CLK_B / Module B</text>
+        <text x="325" y="95" text-anchor="middle" fill="#fbbf24" font-size="9">req_b arrives cycle N</text>
+        <text x="325" y="112" text-anchor="middle" fill="#fb7185" font-size="9">data_b still</text>
+        <text x="325" y="126" text-anchor="middle" fill="#fb7185" font-size="9">metastable cycle N!</text>
+        <text x="325" y="142" text-anchor="middle" fill="#94a3b8" font-size="9">Module reads garbage</text>
+
+        <!-- DANGER arrow -->
+        <rect x="410" y="65" width="170" height="70" rx="8" fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
+        <text x="495" y="87" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="bold">RACE CONDITION</text>
+        <text x="495" y="103" text-anchor="middle" fill="#94a3b8" font-size="9">req resolves in N cycles</text>
+        <text x="495" y="117" text-anchor="middle" fill="#94a3b8" font-size="9">data may need N+1</text>
+        <text x="495" y="131" text-anchor="middle" fill="#fbbf24" font-size="9">← independent chains</text>
+        <line x1="390" y1="100" x2="410" y2="100" stroke="rgba(251,191,36,0.5)" stroke-width="1" stroke-dasharray="4,2"/>
+      </svg>
+    </div>
+
+    <div class="prob-block prob-converge">
+      <div class="prob-tag tag-warn">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        Buggy RTL — Convergence
+      </div>
+      <div class="prob-title">The Bug: req and data Synchronized Independently</div>
+      <div class="prob-body">
+        Both <code>req</code> and each bit of <code>data[7:0]</code> cross the clock boundary through their own separate 2-FF chains. The designer assumes they arrive at the same time. They almost certainly do not.
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-label">verilog — WRONG (convergence bug)</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><span class="cm">// WRONG: req and data synchronized by separate, independent chains.
+// req may resolve to valid 1 cycle before data bits have all settled.</span>
+
+<span class="kw">module</span> <span class="mod">cdc_conv_bug</span> (
+  <span class="kw">input</span>        clk_a, clk_b, rst_n,
+  <span class="kw">input</span>        req_a,
+  <span class="kw">input</span>  [<span class="num">7</span>:<span class="num">0</span>] data_a,
+  <span class="kw">output</span>       req_b,
+  <span class="kw">output</span> [<span class="num">7</span>:<span class="num">0</span>] data_b
+);
+
+  <span class="cm">// req synchronizer</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] req_sync;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) req_sync &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        req_sync &lt;= {req_sync[<span class="num">0</span>], req_a};
+
+  <span class="kw">assign</span> req_b = req_sync[<span class="num">1</span>];
+
+  <span class="cm">// data synchronizer — 8 independent 2-FF chains, one per bit</span>
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>] data_s1, data_s2;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) begin data_s1 &lt;= <span class="num">8'h00</span>; data_s2 &lt;= <span class="num">8'h00</span>; end
+    <span class="kw">else</span>        begin data_s1 &lt;= data_a; data_s2 &lt;= data_s1; end
+                        <span class="err">// ↑ each bit resolves metastability independently!</span>
+
+  <span class="kw">assign</span> data_b = data_s2;
+
+  <span class="cm">// Module B logic: act when req_b is seen</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b)
+    <span class="kw">if</span> (req_b)
+      process(data_b); <span class="err">// ← data_b may not be valid yet!</span>
+
+<span class="kw">endmodule</span></pre>
+      </div>
+
+      <div class="rule-box warn">
+        <div class="rule-icon">⏱️</div>
+        <div class="rule-text">
+          <strong>The race in slow motion:</strong> At cycle T in CLK_A, <code>req_a</code> goes high and <code>data_a</code> is loaded with a new value. Both signals are simultaneously setup-violated at their respective destination FF1s in CLK_B.<br><br>
+          <code>req</code> chain: FF1 resolves in CLK_B cycle N. FF2 sees it in cycle N+1. <code>req_b = 1</code>.<br>
+          <code>data[3]</code> chain: FF1 takes until CLK_B cycle N+1 to resolve. <code>data_b[3]</code> is correct in cycle N+2.<br><br>
+          Module B sees <strong><code>req_b=1</code></strong> in cycle N+1, reads <code>data_b</code> — but <code>data_b[3]</code> is still metastable. The data word is corrupted.
+        </div>
+      </div>
+    </div>
+
+    <div class="prob-block prob-fix">
+      <div class="prob-tag tag-safe">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Fixed RTL — req-first Handshake Sampling
+      </div>
+      <div class="prob-title">The Fix: Sync req, Then Sample data</div>
+      <div class="prob-body">
+        Only synchronize <code>req</code> across the clock boundary. Keep <code>data</code> stable in the source domain until the synchronized <code>req</code> tells us to latch it. Sample <code>data</code> in the destination domain <em>only after</em> the synchronized req edge is confirmed valid.
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-label">verilog — CORRECT (req-first sampling)</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><span class="cm">// CORRECT: Only req crosses the boundary via a 2-FF synchronizer.
+// data_a is sampled in the CLK_B domain the cycle AFTER req_b goes high.
+// By then, data_a has been stable for many CLK_B periods — it is safe to latch.
+//
+// Rule: source must hold data_a stable until the CLK_B ack is received.</span>
+
+<span class="kw">module</span> <span class="mod">cdc_conv_fix</span> (
+  <span class="kw">input</span>        clk_a, clk_b, rst_n,
+  <span class="kw">input</span>        req_a,
+  <span class="kw">input</span>  [<span class="num">7</span>:<span class="num">0</span>] data_a,     <span class="cm">// held stable in CLK_A until ack</span>
+  <span class="kw">output</span>       ack_b,      <span class="cm">// pulsed back when data latched</span>
+  <span class="kw">output</span> [<span class="num">7</span>:<span class="num">0</span>] data_captured
+);
+
+  <span class="cm">// Step 1: Synchronize req_a into CLK_B (single source of truth)</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] req_sync;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) req_sync &lt;= <span class="num">2'b00</span>;
+    <span class="kw">else</span>        req_sync &lt;= {req_sync[<span class="num">0</span>], req_a};
+
+  <span class="kw">wire</span> req_b      = req_sync[<span class="num">1</span>];
+  <span class="kw">wire</span> req_b_prev = req_sync[<span class="num">0</span>]; <span class="cm">// detect rising edge</span>
+  <span class="kw">wire</span> req_rise   = req_b &amp; ~req_b_prev;
+
+  <span class="cm">// Step 2: Sample data_a only on the rising edge of req_b.
+  //   At this point, req has been synchronized (≥2 CLK_B cycles old).
+  //   data_a has been stable in CLK_A for at least those same cycles.
+  //   Crossing a stable level never causes metastability.</span>
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>] data_latch;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n)      data_latch &lt;= <span class="num">8'h00</span>;
+    <span class="kw">else if</span> (req_rise) data_latch &lt;= data_a; <span class="cm">// safe: data_a is stable</span>
+
+  <span class="kw">assign</span> data_captured = data_latch;
+  <span class="kw">assign</span> ack_b         = req_rise;   <span class="cm">// pulse ack back to source</span>
+
+<span class="kw">endmodule</span></pre>
+      </div>
+
+      <div class="rule-box success">
+        <div class="rule-icon">✅</div>
+        <div class="rule-text">
+          <strong>Why this is correct:</strong> Only <em>one</em> bit crosses the CDC boundary through a synchronizer — <code>req_a</code>. The multi-bit <code>data_a</code> is sampled <strong>from the source domain</strong> in the destination's clock, but only <em>after</em> the synchronized req has told us the data is stable. A value that is already stable at the time of crossing cannot be metastable — metastability only occurs when a signal transitions within the setup/hold window. Since the source holds <code>data_a</code> static until ack, sampling it in CLK_B after the req sync is always safe.
+        </div>
+      </div>
+    </div>
+
+    <div class="prob-block prob-fix">
+      <div class="prob-tag tag-info">Alternative Fix</div>
+      <div class="prob-title">Alternative: Full REQ/ACK Handshake</div>
+      <div class="prob-body">For cases where source cannot easily hold data stable, or when the source needs confirmation before releasing the bus, use a full REQ/ACK handshake with separate synchronizers for each direction.</div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-label">verilog — Full Handshake with ACK return path</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><span class="cm">// Full REQ/ACK handshake:
+//  1. Source sets req_a=1, holds data_a stable.
+//  2. req_a → 2-FF sync → req_b in CLK_B.
+//  3. CLK_B captures data_a, asserts ack_b.
+//  4. ack_b → 2-FF sync → ack_a in CLK_A.
+//  5. CLK_A de-asserts req_a, may update data_a.</span>
+
+<span class="kw">module</span> <span class="mod">req_ack_handshake</span> (
+  <span class="kw">input</span>        clk_a, clk_b, rst_n,
+  <span class="cm">// Source side</span>
+  <span class="kw">input</span>        send_a,       <span class="cm">// pulse: source wants to send</span>
+  <span class="kw">input</span>  [<span class="num">7</span>:<span class="num">0</span>] data_a,
+  <span class="kw">output</span>       ready_a,      <span class="cm">// source can send next word</span>
+  <span class="cm">// Destination side</span>
+  <span class="kw">output</span>       valid_b,
+  <span class="kw">output</span> [<span class="num">7</span>:<span class="num">0</span>] data_b
+);
+
+  <span class="cm">// ── Source FSM ──</span>
+  <span class="kw">reg</span>       req_a, ack_a;
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>] data_hold;
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_a <span class="kw">or</span> <span class="kw">negedge</span> rst_n) begin
+    <span class="kw">if</span> (!rst_n) begin req_a &lt;= <span class="num">0</span>; data_hold &lt;= <span class="num">0</span>; end
+    <span class="kw">else if</span> (send_a &amp;&amp; !req_a) begin
+      req_a     &lt;= <span class="num">1</span>;
+      data_hold &lt;= data_a;     <span class="cm">// latch and hold until ack</span>
+    end <span class="kw">else if</span> (ack_a) begin
+      req_a &lt;= <span class="num">0</span>;
+    end
+  end
+  <span class="kw">assign</span> ready_a = !req_a;
+
+  <span class="cm">// ── REQ sync: CLK_A → CLK_B ──</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] req_s;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) req_s &lt;= <span class="num">0</span>;
+    <span class="kw">else</span>        req_s &lt;= {req_s[<span class="num">0</span>], req_a};
+
+  <span class="kw">wire</span> req_b = req_s[<span class="num">1</span>];
+
+  <span class="cm">// ── Destination: latch data on req_b rising edge ──</span>
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>] data_cap;
+  <span class="kw">reg</span>       req_b_r, ack_b;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_n) begin
+    <span class="kw">if</span> (!rst_n) begin req_b_r &lt;= <span class="num">0</span>; ack_b &lt;= <span class="num">0</span>; data_cap &lt;= <span class="num">0</span>; end
+    <span class="kw">else</span> begin
+      req_b_r &lt;= req_b;
+      <span class="kw">if</span> (req_b &amp;&amp; !req_b_r) begin   <span class="cm">// rising edge of req_b</span>
+        data_cap &lt;= data_hold;        <span class="cm">// safe: held stable in CLK_A</span>
+        ack_b    &lt;= <span class="num">1</span>;
+      end <span class="kw">else</span>
+        ack_b &lt;= <span class="num">0</span>;
+    end
+  end
+  <span class="kw">assign</span> valid_b = (req_b &amp;&amp; !req_b_r);
+  <span class="kw">assign</span> data_b  = data_cap;
+
+  <span class="cm">// ── ACK sync: CLK_B → CLK_A ──</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] ack_s;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_a <span class="kw">or</span> <span class="kw">negedge</span> rst_n)
+    <span class="kw">if</span> (!rst_n) ack_s &lt;= <span class="num">0</span>;
+    <span class="kw">else</span>        ack_s &lt;= {ack_s[<span class="num">0</span>], ack_b};
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_a) ack_a &lt;= ack_s[<span class="num">1</span>];
+
+<span class="kw">endmodule</span></pre>
+      </div>
+    </div>
+
+    <div class="rule-box">
+      <div class="rule-icon">📌</div>
+      <div class="rule-text"><strong>Golden rule — CDC Convergence:</strong> "Never infer data validity from a separately-synchronized control signal." If <code>req</code> and <code>data</code> cross through independent chains, their valid windows in the destination domain are independent too. Always gate data sampling on the synchronized req — not on the req and data arriving "at the same time," because they never do.</div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════ COMPARE ════════════════════════════════ -->
+  <section class="section" id="compare">
+    <div class="section-label">Summary</div>
+    <h2 class="section-title">Side-by-Side: Divergence vs Convergence</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Property</th>
+            <th>CDC Divergence</th>
+            <th>CDC Convergence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Topology</td>
+            <td>1 source signal → 2+ destination domains</td>
+            <td>2+ source signals → 1 destination domain</td>
+          </tr>
+          <tr>
+            <td>Root cause</td>
+            <td>Independent metastability resolution in each destination's FF1</td>
+            <td>Independent metastability resolution per-bit or per-signal at destination</td>
+          </tr>
+          <tr>
+            <td>Failure mode</td>
+            <td>Two modules permanently disagree on same signal</td>
+            <td>Control signal valid before data bus is stable</td>
+          </tr>
+          <tr>
+            <td>Visible in simulation?</td>
+            <td><span class="badge badge-r">Never</span></td>
+            <td><span class="badge badge-r">Never</span></td>
+          </tr>
+          <tr>
+            <td>Fix strategy</td>
+            <td>Sync to one hub domain first; fan out from there</td>
+            <td>Sync control only; sample data after control resolves</td>
+          </tr>
+          <tr>
+            <td>Best structural fix</td>
+            <td>Hub synchronization</td>
+            <td>REQ/ACK handshake or req-first sampling</td>
+          </tr>
+          <tr>
+            <td>Detection tool</td>
+            <td>SpyGlass CDC, Questa CDC</td>
+            <td>SpyGlass CDC (multi-domain convergence)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════ INTERVIEW Q&A ════════════════════════════════ -->
+  <section class="section" id="faq">
+    <div class="section-label">Interview Prep</div>
+    <h2 class="section-title">Q&amp;A — What Interviewers Actually Ask</h2>
+
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          <span>"I have a signal that needs to go to two different clock domains. I put a 2-FF sync in each. Is that correct?"</span>
+          <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="faq-a">
+          <strong>Answer:</strong> No — this is the CDC divergence bug. Each synchronizer chain resolves metastability independently. During a metastability window, domain B's FF1 may resolve to 1 while domain C's FF1 resolves to 0. Both then propagate their resolved values, leaving the two modules permanently disagreeing on the same signal.
+          <br><br>
+          The fix: synchronize the signal into one domain first ("hub"). Then either fan out the already-stable output within that domain, or run it through a second synchronizer into any remaining domains. There is only one metastability event — in the hub synchronizer — and all domains then see a consistent value.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          <span>"We have req and data[7:0] crossing from CLK_A to CLK_B. Each bit has its own 2-FF sync. Why could this fail?"</span>
+          <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="faq-a">
+          <strong>Answer:</strong> This is the CDC convergence bug. req and every bit of data each resolve metastability independently. It is entirely possible for req to resolve in destination clock cycle N and some bit of data to still be metastable in cycle N. When the destination samples data upon seeing req valid, it reads a corrupted word.
+          <br><br>
+          The fix: synchronize only req through the 2-FF chain. Only after the synchronized req edge is confirmed in CLK_B is it safe to sample data_a — at that point, data_a has been held stable in CLK_A for at least 2 CLK_B cycles (the synchronizer latency), so it cannot be metastable when read. For full reliability, use a REQ/ACK handshake so the source holds data stable until the destination confirms receipt.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          <span>"Why doesn't simulation catch these bugs?"</span>
+          <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="faq-a">
+          RTL simulation uses zero or unit delays and resolves every signal to a definite 0 or 1 in the same simulation timestep. It has no concept of metastability. When a transition meets the setup violation window, the simulator picks 0 or 1 deterministically — it never drives X unless you explicitly model metastability (e.g., inject Xs via a force statement). Both divergence and convergence failures depend on two independent resolution events differing — which simulation cannot represent.
+          <br><br>
+          CDC static analysis tools (SpyGlass CDC, Questa CDC, JasperGold) model the domain structure and catch these structural violations at the RTL level, before synthesis.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          <span>"What is the golden rule of CDC fan-out?"</span>
+          <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="faq-a">
+          <strong>Synchronize once, distribute many.</strong>
+          <br><br>
+          A synchronized signal is a clean digital value — fan it to as many consumers as you want, but only within one clock domain. If consumers live in different clock domains, run the signal through a chain of synchronizers (one per domain hop), never in parallel from the same unsynchronized source.
+          <br><br>
+          Corollary: the pre-synchronized (source-domain) copy of a CDC signal must <em>never</em> fan out to flip-flops in more than one destination domain simultaneously.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)">
+          <span>"How would SpyGlass CDC flag a divergence or convergence bug?"</span>
+          <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="faq-a">
+          For <strong>divergence</strong>: SpyGlass identifies every net that crosses a clock domain boundary (a "CDC crossing point"). If that net fans out to flip-flops in two different destination clock domains — each with its own synchronizer — it flags a "DIVERGE" or "multi-domain fan-out" violation.
+          <br><br>
+          For <strong>convergence</strong>: SpyGlass checks if two or more signals that originated in the same source domain arrive at a single combinational logic cone or flip-flop in a destination domain through independent synchronizer chains. It reports this as a "CONVERGENCE" or "multi-bit CDC" violation, because those chains may resolve at different times.
+          <br><br>
+          Both violations are waiveable if the design intent is understood and architecture is safe, but the default policy in most tape-out flows is to treat them as errors.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════ RELATED ════════════════════════════════ -->
+  <section class="section" id="related">
+    <div class="section-label">Keep Learning</div>
+    <h2 class="section-title">Related CDC Resources</h2>
+    <div class="related-grid">
+      <a href="/rtl_design/cdc/" class="rel-card">
+        <div class="rel-card-tag">RTL Design</div>
+        <div class="rel-card-title">CDC Fundamentals</div>
+        <div class="rel-card-desc">2-FF synchronizers, MTBF formula, pulse sync, handshake, async FIFO, Gray code — the full CDC toolkit.</div>
+      </a>
+      <a href="/tools/cdc-lab/" class="rel-card">
+        <div class="rel-card-tag">Interactive Lab</div>
+        <div class="rel-card-title">CDC Simulation Lab</div>
+        <div class="rel-card-desc">Animate metastability windows, compare 1-FF vs 2-FF MTBF, toggle pulse synchronizer, and watch handshake cycles live.</div>
+      </a>
+      <a href="/vlsi/cdc-problems/" class="rel-card">
+        <div class="rel-card-tag">Problem Deep-Dive</div>
+        <div class="rel-card-title">CDC Pulse Problem</div>
+        <div class="rel-card-desc">Why short pulses get silently lost crossing clock domains — toggle synchronizer, pulse stretcher, and REQ/ACK fixes.</div>
+      </a>
+      <a href="/vlsi/async_fifo/" class="rel-card">
+        <div class="rel-card-tag">VLSI Design</div>
+        <div class="rel-card-title">Async FIFO Design</div>
+        <div class="rel-card-desc">The correct solution for multi-bit data crossing clock domains — Gray-code pointers, empty/full flags, and Verilog RTL.</div>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<div class="divider"></div>
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <p>VLSI &amp; RTL Design education for the next generation of chip designers.</p>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/sta/">STA</a>
+    <a href="/tools/cdc-lab/">CDC Lab</a>
+  </nav>
+  <div class="footer-copy">&copy; 2026 EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+</button>
+
+<script>
+/* ── Background canvas ── */
+const bgC = document.getElementById('bg-canvas');
+const bgX = bgC.getContext('2d');
+let W, H, particles = [];
+function resizeBg() {
+  W = bgC.width = window.innerWidth;
+  H = bgC.height = window.innerHeight;
+}
+resizeBg();
+window.addEventListener('resize', resizeBg);
+for (let i = 0; i < 55; i++) {
+  particles.push({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    vx: (Math.random() - 0.5) * 0.25,
+    vy: (Math.random() - 0.5) * 0.25,
+    r: Math.random() * 1.5 + 0.5,
+    a: Math.random() * 0.3 + 0.05
+  });
+}
+function drawBg() {
+  bgX.clearRect(0, 0, W, H);
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+    bgX.beginPath();
+    bgX.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    bgX.fillStyle = `rgba(56,189,248,${p.a})`;
+    bgX.fill();
+  });
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+/* ── Hamburger ── */
+document.getElementById('hamburger').addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.toggle('open');
+});
+
+/* ── Scroll top ── */
+const st = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => st.classList.toggle('visible', window.scrollY > 400));
+st.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+/* ── Copy buttons ── */
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+/* ── FAQ accordion ── */
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  item.classList.toggle('open');
+}
+</script>
+</body>
+</html>
