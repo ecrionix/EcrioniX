@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clock Domain Crossing (CDC) Lab – Metastability, 2-FF Synchronizer | EcrioniX</title>
+  <meta name="description" content="Interactive CDC lab: animate metastability window, compare 1-FF vs 2-FF synchronizer failure, simulate pulse sync and handshake sync, calculate MTBF. Verilog RTL included.">
+  <meta name="keywords" content="clock domain crossing CDC metastability synchronizer 2ff sync pulse synchronizer handshake mtbf verilog asic fpga">
+  <meta name="author" content="EcrioniX">
+  <meta property="og:title" content="CDC Lab – Clock Domain Crossing & Metastability | EcrioniX">
+  <meta property="og:description" content="Animate metastability window, compare 1-FF vs 2-FF synchronizer failure, simulate pulse and handshake synchronizers, calculate MTBF.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://ecrionix.org/tools/cdc-lab/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="CDC Lab – Clock Domain Crossing | EcrioniX">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link rel="canonical" href="https://ecrionix.org/tools/cdc-lab/">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle","headline":"Clock Domain Crossing (CDC) Lab","description":"Interactive CDC lab covering metastability, 1-FF vs 2-FF synchronizer, pulse synchronizer, handshake synchronizer, and MTBF calculation with Verilog RTL.","url":"https://ecrionix.org/tools/cdc-lab/","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","logo":{"@type":"ImageObject","url":"https://ecrionix.org/favicon1.png"}}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Labs","item":"https://ecrionix.org/tools/"},{"@type":"ListItem","position":3,"name":"CDC Lab","item":"https://ecrionix.org/tools/cdc-lab/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is clock domain crossing (CDC)?","acceptedAnswer":{"@type":"Answer","text":"Clock domain crossing (CDC) occurs when a signal generated in one clock domain is sampled by logic clocked by a different, asynchronous clock. Because the two clocks have no fixed phase relationship, the signal can change at any time relative to the capturing clock's setup-hold window, potentially causing metastability. CDC is one of the leading sources of functional silicon bugs in SoC designs."}},
+      {"@type":"Question","name":"What is metastability in digital circuits?","acceptedAnswer":{"@type":"Answer","text":"Metastability occurs when a flip-flop's D input changes within its setup-hold window around the clock edge. The output then enters an indeterminate state — neither logic 0 nor logic 1 — and resolves exponentially over time. The danger is that if the output is still undefined when sampled by downstream logic, it causes unpredictable behavior. The probability of failure decays as e^(-t/τ), where τ is the technology's metastability time constant (typically 50–200 ps)."}},
+      {"@type":"Question","name":"Why does a 2-FF synchronizer work?","acceptedAnswer":{"@type":"Answer","text":"A 2-FF synchronizer inserts a full clock period of resolution time between the potentially metastable FF1 output and the FF2 input. Since metastability probability decays as e^(-Tr/τ), one extra clock period (e.g., 2 ns at 500 MHz) reduces the failure rate by e^(2e-9 / 100e-12) ≈ e^20 ≈ 485 million times. The second FF then captures a fully resolved 0 or 1 with extremely high probability, making MTBF billions of years."}},
+      {"@type":"Question","name":"What is a pulse synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A pulse synchronizer transfers a single-cycle pulse across clock domains using a toggle-based approach. The source domain toggles a flip-flop on each input pulse. This toggle signal is synchronized to the destination domain using a 2-FF synchronizer. An XOR gate then detects the edge (transition) in the destination domain and regenerates the pulse. This method works even when the destination clock is slower than the source clock."}},
+      {"@type":"Question","name":"When should I use a handshake synchronizer?","acceptedAnswer":{"@type":"Answer","text":"Use a handshake synchronizer when you need to transfer a multi-cycle control signal or when you need guaranteed acknowledgment that the destination received the data. The source asserts REQ, waits for it to propagate (2 cycles through 2-FF sync) and for the destination to assert ACK, then waits for ACK to propagate back (2 more cycles). Total latency is 4+ clock cycles but correctness is guaranteed. Use it for control signals; use gray-coded FIFOs for bulk data."}},
+      {"@type":"Question","name":"What is MTBF in the context of synchronizers?","acceptedAnswer":{"@type":"Answer","text":"MTBF (Mean Time Between Failures) for a synchronizer is calculated as: MTBF = exp(Tr / τ) / (fc × fd × Tw), where Tr is the resolution time available (≈ 1 clock period minus setup time), τ is the metastability time constant (~100 ps), fc is the capturing clock frequency, fd is the data toggle rate, and Tw is the metastability window width (~100 ps). A well-designed 2-FF synchronizer at 500 MHz typically achieves MTBF > 10,000 years."}}
+    ]}
+  ]}
+  </script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#020617;--card:rgba(15,23,42,0.8);--ind:#6366f1;--ind-l:#818cf8;--teal:#2dd4bf;--amber:#fbbf24;--red:#f87171;--purple:#a78bfa;--muted:#94a3b8;--dim:#64748b;--txt:#f8fafc;--bdr:rgba(148,163,184,0.1)}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{background:var(--bg);color:var(--txt);font-family:'Outfit',sans-serif;scroll-behavior:smooth}
+    body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(99,102,241,0.12) 0%,transparent 70%),var(--bg)}
+
+    /* NAV */
+    nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(2,6,23,0.85);border-bottom:1px solid var(--bdr);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:56px}
+    .nav-brand{font-family:'Orbitron',sans-serif;font-size:1.15rem;font-weight:700;background:linear-gradient(135deg,var(--ind-l),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-decoration:none}
+    .nav-links{display:flex;gap:1.25rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.875rem;transition:color .2s}
+    .nav-links a:hover{color:var(--txt)}
+
+    /* BREADCRUMB */
+    .breadcrumb{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim);padding:1rem 2rem 0;flex-wrap:wrap}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}.breadcrumb a:hover{color:var(--ind-l)}
+    .breadcrumb span{color:var(--dim)}
+
+    /* HERO */
+    .hero{text-align:center;padding:2.5rem 1.5rem 1.5rem;max-width:800px;margin:0 auto}
+    .hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:999px;padding:.3rem .9rem;font-size:.78rem;color:var(--ind-l);margin-bottom:1.2rem}
+    .hero h1{font-size:clamp(1.6rem,4vw,2.4rem);font-weight:700;line-height:1.2;margin-bottom:.8rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--ind-l),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .hero p{color:var(--muted);font-size:1rem;max-width:600px;margin:0 auto}
+
+    /* TABS */
+    .tab-bar{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;padding:1.5rem 1rem .5rem;max-width:900px;margin:0 auto}
+    .tab-btn{padding:.5rem 1.2rem;border-radius:8px;border:1px solid var(--bdr);background:rgba(15,23,42,0.5);color:var(--muted);font-size:.875rem;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
+    .tab-btn.active{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.4);color:var(--ind-l)}
+    .tab-panel{display:none;max-width:960px;margin:0 auto;padding:1rem 1.5rem 3rem}
+    .tab-panel.active{display:block}
+
+    /* CARDS */
+    .card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-bottom:1.5rem;backdrop-filter:blur(8px)}
+    .card h2{font-size:1.15rem;font-weight:600;margin-bottom:1rem;color:var(--txt)}
+    .card h3{font-size:.95rem;font-weight:600;margin:.8rem 0 .5rem;color:var(--muted)}
+
+    /* CONTROLS */
+    .ctrl-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
+    .ctrl-label{font-size:.8rem;color:var(--muted);min-width:120px}
+    input[type=range]{-webkit-appearance:none;width:180px;height:4px;border-radius:2px;background:rgba(148,163,184,0.2);outline:none}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--ind-l);cursor:pointer}
+    .ctrl-val{font-size:.8rem;color:var(--txt);min-width:60px;font-weight:600}
+    .btn{padding:.45rem 1rem;border-radius:8px;border:none;cursor:pointer;font-size:.85rem;font-family:'Outfit',sans-serif;font-weight:600;transition:all .2s}
+    .btn-ind{background:rgba(99,102,241,0.2);color:var(--ind-l);border:1px solid rgba(99,102,241,0.3)}
+    .btn-ind:hover{background:rgba(99,102,241,0.35)}
+    .btn-red{background:rgba(248,113,113,0.2);color:var(--red);border:1px solid rgba(248,113,113,0.3)}
+    .btn-red:hover{background:rgba(248,113,113,0.35)}
+    .btn-teal{background:rgba(45,212,191,0.2);color:var(--teal);border:1px solid rgba(45,212,191,0.3)}
+    .btn-teal:hover{background:rgba(45,212,191,0.35)}
+    .btn-amber{background:rgba(251,191,36,0.2);color:var(--amber);border:1px solid rgba(251,191,36,0.3)}
+    .btn-amber:hover{background:rgba(251,191,36,0.35)}
+
+    /* CANVAS */
+    canvas{width:100%;border-radius:8px;display:block;border:1px solid var(--bdr)}
+
+    /* MTBF display */
+    .mtbf-box{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;margin:1rem 0}
+    .mtbf-label{font-size:.75rem;color:var(--dim);margin-bottom:.3rem}
+    .mtbf-value{font-size:2rem;font-weight:700;font-family:'Orbitron',sans-serif}
+    .mtbf-good{color:var(--teal)}
+    .mtbf-warn{color:var(--amber)}
+    .mtbf-bad{color:var(--red)}
+
+    /* BADGE */
+    .badge{display:inline-block;padding:.2rem .6rem;border-radius:6px;font-size:.75rem;font-weight:600}
+    .badge-red{background:rgba(248,113,113,0.15);color:var(--red);border:1px solid rgba(248,113,113,0.25)}
+    .badge-teal{background:rgba(45,212,191,0.15);color:var(--teal);border:1px solid rgba(45,212,191,0.25)}
+    .badge-amber{background:rgba(251,191,36,0.15);color:var(--amber);border:1px solid rgba(251,191,36,0.25)}
+
+    /* COUNTER */
+    .counter-row{display:flex;gap:1rem;flex-wrap:wrap;margin:.75rem 0}
+    .counter-box{background:rgba(15,23,42,0.6);border:1px solid var(--bdr);border-radius:8px;padding:.6rem 1rem;min-width:120px;text-align:center}
+    .counter-box .num{font-size:1.4rem;font-weight:700;font-family:'Orbitron',sans-serif}
+    .counter-box .lbl{font-size:.7rem;color:var(--dim);margin-top:.1rem}
+
+    /* METASTABILITY SVG */
+    .meta-svg-wrap{background:rgba(2,6,23,0.6);border-radius:10px;border:1px solid var(--bdr);padding:1rem;margin:.75rem 0;overflow:hidden}
+
+    /* TABLE */
+    table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
+    th{text-align:left;padding:.6rem .8rem;border-bottom:1px solid var(--bdr);color:var(--dim);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+    td{padding:.55rem .8rem;border-bottom:1px solid rgba(148,163,184,0.06);color:var(--muted)}
+    tr:last-child td{border-bottom:none}
+    td:first-child{color:var(--txt);font-weight:500}
+
+    /* CODE */
+    .code-block{position:relative;background:#0a0f1e;border:1px solid var(--bdr);border-radius:10px;margin:.75rem 0;overflow:hidden}
+    .code-header{display:flex;align-items:center;justify-content:space-between;padding:.5rem 1rem;background:rgba(148,163,184,0.04);border-bottom:1px solid var(--bdr)}
+    .code-lang{font-size:.75rem;color:var(--dim);font-weight:600;text-transform:uppercase}
+    .copy-btn{padding:.25rem .7rem;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--dim);font-size:.75rem;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
+    .copy-btn:hover{color:var(--txt);border-color:var(--ind-l)}
+    pre{padding:1rem;overflow-x:auto;font-size:.8rem;line-height:1.7;color:#c9d1d9;tab-size:2}
+
+    /* SUB-TABS */
+    .sub-tab-bar{display:flex;gap:.4rem;margin-bottom:1rem}
+    .sub-tab-btn{padding:.4rem .9rem;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--dim);font-size:.8rem;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
+    .sub-tab-btn.active{background:rgba(45,212,191,0.1);border-color:rgba(45,212,191,0.3);color:var(--teal)}
+    .sub-tab-panel{display:none}
+    .sub-tab-panel.active{display:block}
+
+    /* FAQ */
+    .faq-wrap{max-width:960px;margin:0 auto;padding:0 1.5rem 4rem}
+    .faq-title{font-size:1.3rem;font-weight:700;margin-bottom:1.5rem;color:var(--txt)}
+    details{background:var(--card);border:1px solid var(--bdr);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    summary{padding:1rem 1.25rem;cursor:pointer;font-weight:500;font-size:.9rem;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    summary::after{content:'＋';color:var(--dim);transition:transform .2s;font-size:1rem}
+    details[open] summary::after{transform:rotate(45deg)}
+    details p{padding:.75rem 1.25rem 1.25rem;color:var(--muted);font-size:.875rem;line-height:1.7}
+
+    /* FOOTER */
+    footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;color:var(--dim);font-size:.8rem}
+    footer a{color:var(--ind-l);text-decoration:none}
+
+    /* BACK TO TOP */
+    #btt{position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.35);color:var(--ind-l);font-size:1.1rem;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .3s;z-index:40;text-decoration:none}
+    #btt.visible{opacity:1}
+
+    /* STATUS BAR */
+    .status-bar{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--muted);margin:.5rem 0}
+    .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+    .dot-red{background:var(--red);box-shadow:0 0 6px var(--red)}
+    .dot-teal{background:var(--teal);box-shadow:0 0 6px var(--teal)}
+    .dot-amber{background:var(--amber);animation:blink 1s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+    @media(max-width:600px){
+      .ctrl-row{flex-direction:column;align-items:flex-start}
+      input[type=range]{width:100%}
+      .counter-row{gap:.5rem}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-brand">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/digital-electronics/">Digital</a></li>
+    <li><a href="/rtl_design/">RTL</a></li>
+    <li><a href="/protocols/">Protocols</a></li>
+    <li><a href="/sta/">STA</a></li>
+    <li><a href="/tools/">Tools</a></li>
+  </ul>
+</nav>
+
+<div class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/tools/">Labs &amp; Tools</a><span>›</span>
+  <span style="color:var(--ind-l)">CDC Lab</span>
+</div>
+
+<div class="hero">
+  <div class="hero-badge">
+    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    Interactive Lab
+  </div>
+  <h1>Clock Domain Crossing<br><span>(CDC) Lab</span></h1>
+  <p>Animate the metastability window. Watch 1-FF fail and 2-FF rescue it. Simulate pulse sync and handshake sync — the #1 SoC silicon bug, finally visible.</p>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('meta')">⚡ Metastability</button>
+  <button class="tab-btn" onclick="switchTab('sync')">🔁 Synchronizers</button>
+  <button class="tab-btn" onclick="switchTab('pulse')">📡 Pulse &amp; Handshake</button>
+</div>
+
+<!-- ===== TAB 1: METASTABILITY ===== -->
+<div id="tab-meta" class="tab-panel active">
+
+  <div class="card">
+    <h2>What is the Metastability Window?</h2>
+    <p style="color:var(--muted);font-size:.875rem;line-height:1.7;margin-bottom:1rem">
+      Every flip-flop has a <strong style="color:var(--amber)">setup time</strong> (data must be stable before clock edge) and a
+      <strong style="color:var(--red)">hold time</strong> (data must stay stable after clock edge). If the data transition falls
+      inside this window, the FF output becomes <strong style="color:var(--red)">metastable</strong> — stuck between 0 and 1 for an unpredictable duration.
+    </p>
+
+    <div class="meta-svg-wrap">
+      <svg id="meta-svg" viewBox="0 0 640 220" style="width:100%;height:auto">
+        <!-- Grid lines -->
+        <line x1="0" y1="50" x2="640" y2="50" stroke="rgba(148,163,184,0.06)" stroke-width="1"/>
+        <line x1="0" y1="110" x2="640" y2="110" stroke="rgba(148,163,184,0.06)" stroke-width="1"/>
+        <line x1="0" y1="170" x2="640" y2="170" stroke="rgba(148,163,184,0.06)" stroke-width="1"/>
+
+        <!-- Labels -->
+        <text x="8" y="45" fill="#94a3b8" font-size="11" font-family="Outfit,sans-serif">CLK</text>
+        <text x="8" y="105" fill="#6366f1" font-size="11" font-family="Outfit,sans-serif">DATA</text>
+        <text x="8" y="165" fill="#2dd4bf" font-size="11" font-family="Outfit,sans-serif">FF_Q</text>
+
+        <!-- CLK signal -->
+        <polyline points="50,65 150,65 150,28 270,28 270,65 390,65 390,28 510,28 510,65 600,65"
+          fill="none" stroke="#94a3b8" stroke-width="2"/>
+
+        <!-- Setup/Hold danger zone shading (around clock edge at x=270) -->
+        <rect id="danger-zone" x="230" y="0" width="80" height="220" fill="rgba(248,113,113,0.08)" rx="0"/>
+        <line x1="230" y1="0" x2="230" y2="220" stroke="rgba(248,113,113,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="310" y1="0" x2="310" y2="220" stroke="rgba(248,113,113,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="235" y="12" fill="rgba(248,113,113,0.7)" font-size="9" font-family="Outfit,sans-serif">← setup →|← hold →</text>
+
+        <!-- Clock edge marker -->
+        <line x1="270" y1="0" x2="270" y2="220" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+        <text x="263" y="218" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CLK↑</text>
+
+        <!-- DATA signal (moveable via JS) -->
+        <polyline id="data-wave" points="50,120 220,120 220,97 450,97 450,120 600,120"
+          fill="none" stroke="#6366f1" stroke-width="2"/>
+
+        <!-- FF_Q output -->
+        <polyline id="ffq-wave" points="50,180 290,180 290,157 600,157"
+          fill="none" stroke="#2dd4bf" stroke-width="2"/>
+
+        <!-- Metastable region on FF_Q (shown when in danger zone) -->
+        <g id="meta-region" opacity="0">
+          <rect x="280" y="152" width="80" height="30" fill="rgba(248,113,113,0.1)" rx="2"/>
+          <text x="284" y="172" fill="#f87171" font-size="10" font-family="Outfit,sans-serif" font-weight="600">METASTABLE</text>
+          <polyline id="meta-squiggle" fill="none" stroke="#f87171" stroke-width="1.5" opacity="0.8"/>
+        </g>
+
+        <!-- Data transition marker (draggable indicator) -->
+        <line id="data-edge" x1="220" y1="90" x2="220" y2="130" stroke="rgba(99,102,241,0.6)" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <div class="ctrl-row">
+      <span class="ctrl-label">Data transition position</span>
+      <input type="range" id="sl-pos" min="80" max="420" value="220" oninput="updateMetaSvg()">
+      <span class="ctrl-val" id="pos-label">Safe (before setup window)</span>
+    </div>
+
+    <div id="meta-status" class="status-bar">
+      <span class="dot dot-teal"></span>
+      <span id="meta-status-txt" style="color:var(--teal)">Data stable — FF captures cleanly</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>MTBF Calculator</h2>
+    <p style="color:var(--muted);font-size:.875rem;line-height:1.7;margin-bottom:1rem">
+      MTBF = e<sup>Tr/τ</sup> / (f<sub>clk</sub> × f<sub>data</sub> × T<sub>w</sub>)<br>
+      <span style="font-size:.8rem;color:var(--dim)">Tr = resolution time available &nbsp;|&nbsp; τ = metastability time constant &nbsp;|&nbsp; Tw = danger window width</span>
+    </p>
+
+    <div class="ctrl-row">
+      <span class="ctrl-label">Clock freq (f<sub>clk</sub>)</span>
+      <input type="range" id="sl-fc" min="50" max="1000" step="50" value="500" oninput="updateMTBF()">
+      <span class="ctrl-val"><span id="v-fc">500</span> MHz</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Data toggle rate</span>
+      <input type="range" id="sl-fd" min="1" max="500" step="1" value="100" oninput="updateMTBF()">
+      <span class="ctrl-val"><span id="v-fd">100</span> MHz</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Resolution time Tr</span>
+      <input type="range" id="sl-tr" min="0.5" max="4" step="0.1" value="1.5" oninput="updateMTBF()">
+      <span class="ctrl-val"><span id="v-tr">1.5</span> ns</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">Time constant τ</span>
+      <input type="range" id="sl-tau" min="30" max="200" step="5" value="100" oninput="updateMTBF()">
+      <span class="ctrl-val"><span id="v-tau">100</span> ps</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        <div style="font-size:.78rem;color:var(--dim);margin-bottom:.3rem">1-FF Synchronizer (Tr = 1×)</div>
+        <div class="mtbf-box">
+          <div class="mtbf-label">MTBF</div>
+          <div class="mtbf-value" id="mtbf1">—</div>
+          <div style="font-size:.7rem;color:var(--dim);margin-top:.3rem" id="mtbf1-raw"></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.78rem;color:var(--dim);margin-bottom:.3rem">2-FF Synchronizer (Tr = 2×)</div>
+        <div class="mtbf-box" style="border-color:rgba(45,212,191,0.25)">
+          <div class="mtbf-label">MTBF</div>
+          <div class="mtbf-value" id="mtbf2">—</div>
+          <div style="font-size:.7rem;color:var(--dim);margin-top:.3rem" id="mtbf2-raw"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== TAB 2: SYNCHRONIZERS ===== -->
+<div id="tab-sync" class="tab-panel">
+
+  <div class="card">
+    <h2>1-FF vs 2-FF Synchronizer — Live Waveform</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:1rem">
+      DATA_A crosses from the fast clock (CLK_A) to the slow clock (CLK_B).
+      <span class="badge badge-red">FF1_Q</span> — first FF, can go metastable.
+      <span class="badge badge-teal">FF2_Q</span> — second FF, always resolves cleanly.
+    </p>
+
+    <canvas id="sync-canvas" height="260"></canvas>
+
+    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-top:1rem">
+      <button class="btn btn-red" onclick="triggerMetastable()">⚡ Force Metastable Event</button>
+      <button class="btn btn-ind" id="bp-btn" onclick="toggleSyncPause()">⏸ Pause</button>
+    </div>
+
+    <div class="counter-row">
+      <div class="counter-box">
+        <div class="num" id="cnt-cycles" style="color:var(--ind-l)">0</div>
+        <div class="lbl">CLK_B Cycles</div>
+      </div>
+      <div class="counter-box">
+        <div class="num" id="cnt-meta" style="color:var(--red)">0</div>
+        <div class="lbl">Metastable Events (FF1)</div>
+      </div>
+      <div class="counter-box">
+        <div class="num" id="cnt-fail" style="color:var(--amber)">0</div>
+        <div class="lbl">FF1 Failures (propagated)</div>
+      </div>
+      <div class="counter-box">
+        <div class="num" id="cnt-ff2ok" style="color:var(--teal)">0</div>
+        <div class="lbl">FF2 Safe Resolutions</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Why the 2-FF Works — The Math</h2>
+    <table>
+      <thead><tr><th>Property</th><th>1-FF Synchronizer</th><th>2-FF Synchronizer</th></tr></thead>
+      <tbody>
+        <tr><td>Resolution time (Tr)</td><td style="color:var(--amber)">1 × T<sub>clk</sub></td><td style="color:var(--teal)">2 × T<sub>clk</sub></td></tr>
+        <tr><td>Failure probability / cycle</td><td style="color:var(--amber)">∝ e<sup>−Tr/τ</sup></td><td style="color:var(--teal)">∝ e<sup>−2Tr/τ</sup></td></tr>
+        <tr><td>MTBF improvement</td><td>Baseline</td><td style="color:var(--teal)">~e<sup>Tclk/τ</sup> × better</td></tr>
+        <tr><td>Latency added</td><td style="color:var(--teal)">1 cycle (CLK_B)</td><td style="color:var(--amber)">2 cycles (CLK_B)</td></tr>
+        <tr><td>Safe for single-bit?</td><td style="color:var(--amber)">Risky</td><td style="color:var(--teal)">Yes ✓</td></tr>
+        <tr><td>Safe for multi-bit bus?</td><td style="color:var(--red)">No ✗</td><td style="color:var(--red)">No — use Gray code or FIFO ✗</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Verilog — 2-FF Synchronizer</h2>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">verilog</span><button class="copy-btn" onclick="copyCode('code-sync')">Copy</button></div>
+      <pre id="code-sync">// 2-FF Synchronizer (single-bit CDC)
+// Place both FFs in the DESTINATION clock domain
+module sync_2ff #(
+  parameter STAGES = 2  // increase to 3 for very high-speed designs
+)(
+  input  wire clk_dst,  // destination clock
+  input  wire rst_n,
+  input  wire d_src,    // async input from source domain
+  output wire q_sync    // synchronized output
+);
+  reg [STAGES-1:0] sync_ff;
+
+  always @(posedge clk_dst or negedge rst_n) begin
+    if (!rst_n)
+      sync_ff <= '0;
+    else
+      sync_ff <= {sync_ff[STAGES-2:0], d_src};
+  end
+
+  assign q_sync = sync_ff[STAGES-1];
+
+  // Synthesis attributes to prevent optimization
+  // Xilinx:  (* ASYNC_REG = "TRUE" *) reg [STAGES-1:0] sync_ff;
+  // Intel:   (* altera_attribute = "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS" *)
+endmodule</pre>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== TAB 3: PULSE & HANDSHAKE ===== -->
+<div id="tab-pulse" class="tab-panel">
+
+  <div class="card">
+    <div class="sub-tab-bar">
+      <button class="sub-tab-btn active" onclick="switchSubTab('pulse-sync')">Pulse Synchronizer</button>
+      <button class="sub-tab-btn" onclick="switchSubTab('hs-sync')">Handshake Synchronizer</button>
+    </div>
+
+    <!-- PULSE SYNC -->
+    <div id="sub-pulse-sync" class="sub-tab-panel active">
+      <h2>Toggle-Based Pulse Synchronizer</h2>
+      <p style="color:var(--muted);font-size:.875rem;line-height:1.7;margin-bottom:1rem">
+        A simple 2-FF sync can miss pulses if the source clock is faster. The toggle approach converts each pulse into a level change — guaranteed to be captured regardless of clock ratio.
+      </p>
+
+      <!-- Pulse sync SVG diagram -->
+      <div class="meta-svg-wrap" style="margin-bottom:1rem">
+        <svg viewBox="0 0 600 130" style="width:100%;height:auto">
+          <!-- Source domain box -->
+          <rect x="10" y="20" width="140" height="90" rx="6" fill="rgba(99,102,241,0.08)" stroke="rgba(99,102,241,0.25)" stroke-width="1"/>
+          <text x="80" y="14" text-anchor="middle" fill="#818cf8" font-size="10" font-family="Outfit,sans-serif">CLK_A Domain</text>
+          <!-- Toggle FF -->
+          <rect x="25" y="45" width="50" height="40" rx="4" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" stroke-width="1"/>
+          <text x="50" y="68" text-anchor="middle" fill="#818cf8" font-size="9" font-family="Outfit,sans-serif">Toggle FF</text>
+          <text x="50" y="79" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">(XOR feedback)</text>
+          <text x="12" y="52" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">PULSE_IN →</text>
+          <line x1="75" y1="65" x2="110" y2="65" stroke="#818cf8" stroke-width="1.5"/>
+          <text x="78" y="58" fill="#818cf8" font-size="8" font-family="Outfit,sans-serif">TOGGLE</text>
+
+          <!-- Arrows to 2FF block -->
+          <line x1="150" y1="65" x2="200" y2="65" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+          <!-- 2-FF sync block -->
+          <rect x="200" y="30" width="80" height="80" rx="6" fill="rgba(45,212,191,0.08)" stroke="rgba(45,212,191,0.25)" stroke-width="1"/>
+          <text x="240" y="24" text-anchor="middle" fill="#2dd4bf" font-size="10" font-family="Outfit,sans-serif">2-FF Sync</text>
+          <rect x="210" y="40" width="25" height="30" rx="3" fill="rgba(45,212,191,0.15)" stroke="rgba(45,212,191,0.3)" stroke-width="1"/>
+          <text x="222" y="59" text-anchor="middle" fill="#2dd4bf" font-size="8" font-family="Outfit,sans-serif">FF1</text>
+          <rect x="245" y="40" width="25" height="30" rx="3" fill="rgba(45,212,191,0.15)" stroke="rgba(45,212,191,0.3)" stroke-width="1"/>
+          <text x="257" y="59" text-anchor="middle" fill="#2dd4bf" font-size="8" font-family="Outfit,sans-serif">FF2</text>
+          <line x1="235" y1="55" x2="245" y2="55" stroke="#2dd4bf" stroke-width="1"/>
+          <text x="240" y="90" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">CLK_B</text>
+
+          <!-- Arrows to edge detect -->
+          <line x1="280" y1="65" x2="330" y2="65" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+          <!-- Dest domain box -->
+          <rect x="330" y="20" width="200" height="90" rx="6" fill="rgba(45,212,191,0.06)" stroke="rgba(45,212,191,0.2)" stroke-width="1"/>
+          <text x="430" y="14" text-anchor="middle" fill="#2dd4bf" font-size="10" font-family="Outfit,sans-serif">CLK_B Domain</text>
+          <!-- XOR edge detect -->
+          <rect x="345" y="45" width="60" height="40" rx="4" fill="rgba(45,212,191,0.12)" stroke="rgba(45,212,191,0.35)" stroke-width="1"/>
+          <text x="375" y="63" text-anchor="middle" fill="#2dd4bf" font-size="9" font-family="Outfit,sans-serif">XOR Edge</text>
+          <text x="375" y="74" text-anchor="middle" fill="#2dd4bf" font-size="9" font-family="Outfit,sans-serif">Detect</text>
+          <line x1="405" y1="65" x2="440" y2="65" stroke="#2dd4bf" stroke-width="1.5"/>
+          <text x="445" y="62" fill="#2dd4bf" font-size="9" font-family="Outfit,sans-serif">PULSE_OUT</text>
+
+          <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#64748b"/></marker></defs>
+        </svg>
+      </div>
+
+      <canvas id="pulse-canvas" height="220"></canvas>
+
+      <div style="display:flex;gap:.75rem;align-items:center;margin-top:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ind" onclick="sendPulse()">▶ Send Pulse (CLK_A)</button>
+        <button class="btn btn-teal" onclick="togglePulsePause()">⏸ Pause</button>
+        <span style="font-size:.8rem;color:var(--dim)">Pulses sent: <strong id="pulse-count" style="color:var(--ind-l)">0</strong> &nbsp;|&nbsp; Received: <strong id="pulse-rx" style="color:var(--teal)">0</strong></span>
+      </div>
+
+      <div class="code-block" style="margin-top:1.25rem">
+        <div class="code-header"><span class="code-lang">verilog</span><button class="copy-btn" onclick="copyCode('code-pulse')">Copy</button></div>
+        <pre id="code-pulse">// Toggle-based Pulse Synchronizer
+module pulse_sync (
+  input  wire clk_src,   // source clock
+  input  wire clk_dst,   // destination clock
+  input  wire rst_n,
+  input  wire pulse_in,  // single-cycle pulse in clk_src domain
+  output wire pulse_out  // pulse in clk_dst domain
+);
+  // Source domain: toggle on each pulse
+  reg toggle_src;
+  always @(posedge clk_src or negedge rst_n)
+    if (!rst_n) toggle_src <= 1'b0;
+    else if (pulse_in) toggle_src <= ~toggle_src;
+
+  // 2-FF synchronizer to destination clock
+  (* ASYNC_REG = "TRUE" *) reg [1:0] sync_ff;
+  always @(posedge clk_dst or negedge rst_n)
+    if (!rst_n) sync_ff <= 2'b00;
+    else        sync_ff <= {sync_ff[0], toggle_src};
+
+  // Edge detect: any transition on sync output = one pulse
+  reg sync_prev;
+  always @(posedge clk_dst or negedge rst_n)
+    if (!rst_n) sync_prev <= 1'b0;
+    else        sync_prev <= sync_ff[1];
+
+  assign pulse_out = sync_ff[1] ^ sync_prev;
+endmodule</pre>
+      </div>
+    </div>
+
+    <!-- HANDSHAKE SYNC -->
+    <div id="sub-hs-sync" class="sub-tab-panel">
+      <h2>Request-Acknowledge Handshake Synchronizer</h2>
+      <p style="color:var(--muted);font-size:.875rem;line-height:1.7;margin-bottom:1rem">
+        For multi-cycle control or when acknowledgment is required. Total latency ≈ 4 destination clock cycles (2 forward + 2 back). Data must be held stable throughout.
+      </p>
+
+      <!-- Handshake timing diagram -->
+      <div class="meta-svg-wrap" style="margin-bottom:1rem">
+        <svg viewBox="0 0 600 200" style="width:100%;height:auto">
+          <text x="8" y="30" fill="#818cf8" font-size="10" font-family="Outfit,sans-serif">CLK_A</text>
+          <text x="8" y="70" fill="#6366f1" font-size="10" font-family="Outfit,sans-serif">REQ_A</text>
+          <text x="8" y="110" fill="#2dd4bf" font-size="10" font-family="Outfit,sans-serif">REQ_B</text>
+          <text x="8" y="150" fill="#a78bfa" font-size="10" font-family="Outfit,sans-serif">ACK_B</text>
+          <text x="8" y="190" fill="#fbbf24" font-size="10" font-family="Outfit,sans-serif">ACK_A</text>
+
+          <!-- CLK_A -->
+          <polyline points="55,40 90,40 90,18 130,18 130,40 170,40 170,18 210,18 210,40 250,40 250,18 290,18 290,40 330,40 330,18 370,18 370,40 410,40 410,18 450,18 450,40 490,40 490,18 530,18 530,40 570,40"
+            fill="none" stroke="#818cf8" stroke-width="1.5"/>
+
+          <!-- REQ_A: goes high at t=90, stays high -->
+          <polyline points="55,80 90,80 90,58 530,58 530,80 570,80"
+            fill="none" stroke="#6366f1" stroke-width="2"/>
+          <text x="93" y="54" fill="#6366f1" font-size="8" font-family="Outfit,sans-serif">assert</text>
+
+          <!-- REQ_B: 2-cycle delay (~2 CLK_B cycles later) -->
+          <polyline points="55,120 170,120 170,98 530,98 530,120 570,120"
+            fill="none" stroke="#2dd4bf" stroke-width="2"/>
+          <text x="173" y="94" fill="#2dd4bf" font-size="8" font-family="Outfit,sans-serif">+2 cycles</text>
+          <line x1="90" y1="52" x2="170" y2="94" stroke="rgba(45,212,191,0.3)" stroke-width="1" stroke-dasharray="3,2"/>
+
+          <!-- ACK_B: asserted after REQ_B sampled -->
+          <polyline points="55,160 250,160 250,138 450,138 450,160 570,160"
+            fill="none" stroke="#a78bfa" stroke-width="2"/>
+          <text x="253" y="134" fill="#a78bfa" font-size="8" font-family="Outfit,sans-serif">ACK_B</text>
+
+          <!-- ACK_A: 2-cycle delay back -->
+          <polyline points="55,200 370,200 370,178 490,178 490,200 570,200"
+            fill="none" stroke="#fbbf24" stroke-width="2"/>
+          <text x="373" y="174" fill="#fbbf24" font-size="8" font-family="Outfit,sans-serif">+2 cycles</text>
+          <line x1="250" y1="132" x2="370" y2="174" stroke="rgba(251,191,36,0.3)" stroke-width="1" stroke-dasharray="3,2"/>
+
+          <!-- Total latency bracket -->
+          <line x1="90" y1="8" x2="490" y2="8" stroke="rgba(148,163,184,0.3)" stroke-width="1"/>
+          <line x1="90" y1="5" x2="90" y2="11" stroke="rgba(148,163,184,0.3)" stroke-width="1"/>
+          <line x1="490" y1="5" x2="490" y2="11" stroke="rgba(148,163,184,0.3)" stroke-width="1"/>
+          <text x="270" y="6" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">≈ 4 CLK cycles total latency</text>
+        </svg>
+      </div>
+
+      <canvas id="hs-canvas" height="220"></canvas>
+
+      <div style="display:flex;gap:.75rem;align-items:center;margin-top:.75rem;flex-wrap:wrap">
+        <button class="btn btn-ind" onclick="sendRequest()">▶ Send Request (CLK_A)</button>
+        <button class="btn btn-purple" style="background:rgba(167,139,250,0.2);color:var(--purple);border:1px solid rgba(167,139,250,0.3)" onclick="toggleHsPause()">⏸ Pause</button>
+        <span id="hs-state-label" style="font-size:.8rem;color:var(--dim)">State: IDLE</span>
+      </div>
+
+      <div class="code-block" style="margin-top:1.25rem">
+        <div class="code-header"><span class="code-lang">verilog</span><button class="copy-btn" onclick="copyCode('code-hs')">Copy</button></div>
+        <pre id="code-hs">// Request-Acknowledge Handshake Synchronizer
+module handshake_sync (
+  // Source domain
+  input  wire clk_src, rst_src_n,
+  input  wire req_in,        // request from source logic
+  input  wire [7:0] data_in, // data to transfer (held stable during handshake)
+  output wire ack_out,       // acknowledgment back to source
+  // Destination domain
+  input  wire clk_dst, rst_dst_n,
+  output reg  [7:0] data_out,
+  output wire data_valid
+);
+  // Source: register REQ
+  reg req_src;
+  always @(posedge clk_src or negedge rst_src_n)
+    if (!rst_src_n) req_src <= 0;
+    else if (req_in & ~ack_out) req_src <= 1; // assert
+    else if (ack_out)           req_src <= 0; // de-assert on ack
+
+  // 2-FF sync REQ to destination
+  (* ASYNC_REG = "TRUE" *) reg [1:0] req_sync;
+  always @(posedge clk_dst or negedge rst_dst_n)
+    if (!rst_dst_n) req_sync <= 0;
+    else            req_sync <= {req_sync[0], req_src};
+
+  // Destination: capture data, assert ACK
+  reg ack_dst;
+  always @(posedge clk_dst or negedge rst_dst_n)
+    if (!rst_dst_n) begin ack_dst <= 0; data_out <= 0; end
+    else if (req_sync[1] & ~ack_dst) begin
+      data_out <= data_in; // safe: data_in stable during handshake
+      ack_dst  <= 1;
+    end else if (~req_sync[1]) ack_dst <= 0;
+
+  assign data_valid = ack_dst;
+
+  // 2-FF sync ACK back to source
+  (* ASYNC_REG = "TRUE" *) reg [1:0] ack_sync;
+  always @(posedge clk_src or negedge rst_src_n)
+    if (!rst_src_n) ack_sync <= 0;
+    else            ack_sync <= {ack_sync[0], ack_dst};
+
+  assign ack_out = ack_sync[1];
+endmodule</pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== FAQs ===== -->
+<div class="faq-wrap">
+  <div class="faq-title">Frequently Asked Questions</div>
+
+  <details>
+    <summary>What is clock domain crossing (CDC)?</summary>
+    <p>CDC occurs when a signal generated in one clock domain is sampled by logic clocked by a different, asynchronous clock. Because the two clocks have no fixed phase relationship, the signal can change at any time relative to the capturing clock's setup-hold window, potentially causing metastability — one of the leading sources of silicon bugs.</p>
+  </details>
+
+  <details>
+    <summary>What is metastability and why is it dangerous?</summary>
+    <p>Metastability occurs when a flip-flop's D input changes within its setup-hold window. The FF output enters an indeterminate state — neither 0 nor 1 — and resolves exponentially over time (P ∝ e<sup>−t/τ</sup>, where τ ≈ 50–200 ps for modern CMOS). If the output is still undefined when sampled by downstream logic, the result is unpredictable chip behavior that cannot be caught by simulation.</p>
+  </details>
+
+  <details>
+    <summary>Why does a 2-FF synchronizer work?</summary>
+    <p>A 2-FF synchronizer gives the metastable signal a full clock period of resolution time before it is sampled by the second FF. Since metastability probability decays as e<sup>−Tr/τ</sup>, doubling Tr reduces failure probability by e<sup>Tclk/τ</sup> — typically hundreds of millions to billions. The second FF then captures a fully resolved 0 or 1 with extremely high probability, pushing MTBF to billions of years.</p>
+  </details>
+
+  <details>
+    <summary>What is a pulse synchronizer and when should I use it?</summary>
+    <p>A pulse synchronizer transfers a single-cycle pulse across clock domains using a toggle-based approach. The source domain toggles a FF on each input pulse; the toggle signal is synchronized to the destination domain via 2-FF; an XOR gate detects the edge and regenerates the pulse. Use it when the source clock is faster than the destination clock (where a simple 2-FF sync might miss the pulse) or when you need guaranteed transfer of single-cycle events.</p>
+  </details>
+
+  <details>
+    <summary>When should I use a handshake synchronizer instead of a 2-FF sync?</summary>
+    <p>Use a handshake synchronizer when you need to: (1) transfer multi-bit control signals where atomic capture matters, (2) ensure the destination has acknowledged receipt before the source sends the next transaction, or (3) transfer data that must remain stable for multiple cycles. The cost is latency (≈ 4 destination clock cycles). For bulk data, use a gray-coded async FIFO instead.</p>
+  </details>
+
+  <details>
+    <summary>Can I use a 2-FF synchronizer on a multi-bit bus?</summary>
+    <p>No — this is a common CDC bug. Each bit of the bus might be metastable independently and resolve to a different value than intended, creating an invalid combination that never existed in the source domain. For multi-bit signals use: gray code encoding (only 1 bit changes per transition — as in async FIFOs), handshake synchronizers, or fully asynchronous FIFOs.</p>
+  </details>
+</div>
+
+<footer>
+  <p>© 2025 <a href="/">EcrioniX</a> · VLSI &amp; Semiconductor Engineering Hub ·
+  <a href="/tools/async-fifo-lab/">Async FIFO Lab</a> ·
+  <a href="/tools/axi4-handshake-lab/">AXI4 Lab</a> ·
+  <a href="/tools/fsm-lab/">FSM Lab</a></p>
+</footer>
+
+<a href="#" id="btt" aria-label="Back to top">↑</a>
+
+<script>
+// ===== TAB SWITCHING =====
+function switchTab(t) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + t).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    if (b.textContent.toLowerCase().includes(t === 'meta' ? 'meta' : t === 'sync' ? 'sync' : 'pulse'))
+      b.classList.add('active');
+  });
+}
+
+function switchSubTab(t) {
+  document.querySelectorAll('.sub-tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sub-' + t).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ===== BACK TO TOP =====
+window.addEventListener('scroll', () => {
+  document.getElementById('btt').classList.toggle('visible', window.scrollY > 300);
+});
+
+// ===== COPY CODE =====
+function copyCode(id) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+    const btn = event.target; btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+// ===== TAB 1: METASTABILITY SVG =====
+function updateMetaSvg() {
+  const pos = parseInt(document.getElementById('sl-pos').value);
+  const dataWave = document.getElementById('data-wave');
+  const ffqWave  = document.getElementById('ffq-wave');
+  const metaRegion = document.getElementById('meta-region');
+  const metaSquiggle = document.getElementById('meta-squiggle');
+  const dataEdge = document.getElementById('data-edge');
+  const statusDot = document.querySelector('#meta-status .dot');
+  const statusTxt = document.getElementById('meta-status-txt');
+  const posLabel  = document.getElementById('pos-label');
+
+  // Danger zone: x = 230..310 (clock edge at 270)
+  const inDanger = pos >= 230 && pos <= 310;
+  const nearEdge = pos >= 215 && pos <= 325;
+
+  dataWave.setAttribute('points', `50,120 ${pos},120 ${pos},97 600,97`);
+  dataEdge.setAttribute('x1', pos); dataEdge.setAttribute('x2', pos);
+
+  if (inDanger) {
+    // Metastable
+    ffqWave.setAttribute('points', `50,180 285,180`);
+    ffqWave.setAttribute('stroke', '#f87171');
+    metaRegion.style.opacity = '1';
+    // Generate squiggle
+    let pts = '';
+    for (let x = 282; x < 370; x += 4) {
+      const y = 167 + (Math.random() - 0.5) * 22;
+      pts += `${x},${y} `;
+    }
+    pts += '370,157';
+    metaSquiggle.setAttribute('points', pts);
+    statusDot.className = 'dot dot-red';
+    statusTxt.textContent = 'Data in setup-hold window — FF1 is METASTABLE!';
+    statusTxt.style.color = 'var(--red)';
+    posLabel.textContent = 'DANGER — inside setup/hold window';
+    posLabel.style.color = 'var(--red)';
+  } else {
+    // Clean
+    const qY = pos < 270 ? 180 : 157;
+    ffqWave.setAttribute('points', `50,180 ${Math.min(pos + 30, 580)},180 ${Math.min(pos+30,580)},157 600,157`);
+    ffqWave.setAttribute('stroke', '#2dd4bf');
+    metaRegion.style.opacity = '0';
+    statusDot.className = 'dot dot-teal';
+    if (pos < 230) {
+      statusTxt.textContent = 'Data stable before setup window — FF captures cleanly';
+      statusTxt.style.color = 'var(--teal)';
+      posLabel.textContent = 'Safe (before setup window)';
+      posLabel.style.color = 'var(--teal)';
+    } else {
+      statusTxt.textContent = 'Data stable after hold window — FF captures cleanly';
+      statusTxt.style.color = 'var(--teal)';
+      posLabel.textContent = 'Safe (after hold window)';
+      posLabel.style.color = 'var(--teal)';
+    }
+  }
+}
+
+// ===== TAB 1: MTBF CALCULATOR =====
+function fmtMTBF(s) {
+  if (s > 3.15e9) return (s / 3.15e7 / 100).toFixed(0) + ' centuries';
+  if (s > 3.15e7) return (s / 3.15e7).toFixed(1) + ' years';
+  if (s > 86400)  return (s / 86400).toFixed(1) + ' days';
+  if (s > 3600)   return (s / 3600).toFixed(1) + ' hours';
+  if (s > 60)     return (s / 60).toFixed(1) + ' minutes';
+  return s.toFixed(2) + ' seconds';
+}
+
+function mtbfClass(s) {
+  if (s > 3.15e9)  return 'mtbf-good'; // > 100 years
+  if (s > 3.15e7)  return 'mtbf-good'; // > 1 year
+  if (s > 86400)   return 'mtbf-warn'; // > 1 day
+  return 'mtbf-bad';
+}
+
+function updateMTBF() {
+  const fc  = parseFloat(document.getElementById('sl-fc').value) * 1e6;
+  const fd  = parseFloat(document.getElementById('sl-fd').value) * 1e6;
+  const tr  = parseFloat(document.getElementById('sl-tr').value) * 1e-9;
+  const tau = parseFloat(document.getElementById('sl-tau').value) * 1e-12;
+  const tw  = 100e-12; // fixed 100ps window
+
+  document.getElementById('v-fc').textContent  = Math.round(fc/1e6);
+  document.getElementById('v-fd').textContent  = Math.round(fd/1e6);
+  document.getElementById('v-tr').textContent  = (tr*1e9).toFixed(1);
+  document.getElementById('v-tau').textContent = Math.round(tau*1e12);
+
+  const m1 = Math.exp(tr / tau) / (fc * fd * tw);
+  const m2 = Math.exp(2 * tr / tau) / (fc * fd * tw);
+
+  const el1 = document.getElementById('mtbf1');
+  const el2 = document.getElementById('mtbf2');
+  el1.textContent = fmtMTBF(m1);
+  el1.className   = 'mtbf-value ' + mtbfClass(m1);
+  el2.textContent = fmtMTBF(m2);
+  el2.className   = 'mtbf-value ' + mtbfClass(m2);
+
+  document.getElementById('mtbf1-raw').textContent = m1.toExponential(2) + ' s';
+  document.getElementById('mtbf2-raw').textContent = m2.toExponential(2) + ' s';
+}
+
+// ===== TAB 2: SYNCHRONIZER SIMULATION =====
+const HIST = 28;
+
+class SyncSim {
+  constructor() {
+    this.tick = 0;
+    this.dataA = 0;
+    this.dataAPrev = 0;
+    this.ff1 = 0;
+    this.ff1Prev = 0;
+    this.ff2 = 0;
+    this.cycleCnt = 0;
+    this.metaCnt = 0;
+    this.failCnt = 0;
+    this.ff2OkCnt = 0;
+    this.forceNext = false;
+    this.hists = {};
+    ['CLK_A','DATA_A','CLK_B','FF1_Q','FF2_Q'].forEach(n =>
+      this.hists[n] = new Array(HIST).fill(0));
+  }
+
+  step() {
+    this.tick++;
+    const clkBRising = (this.tick % 4 === 0);
+
+    // DATA_A: random toggle in CLK_A domain
+    if (this.tick % 2 === 0 && Math.random() < 0.06) {
+      this.dataAPrev = this.dataA;
+      this.dataA ^= 1;
+    }
+
+    if (clkBRising) {
+      this.cycleCnt++;
+      const changed = (this.dataA !== this.dataAPrev);
+      const isMeta  = this.forceNext || (changed && Math.random() < 0.7);
+
+      if (isMeta) {
+        this.ff1 = 0.5;
+        this.metaCnt++;
+        if (Math.random() < 0.5) this.failCnt++; // 50% chance it propagates badly
+        this.forceNext = false;
+      } else {
+        this.ff1 = this.dataA;
+      }
+
+      // FF2 always resolves cleanly
+      if (this.ff1Prev === 0.5) {
+        this.ff2 = this.dataA; // resolved to correct value
+        this.ff2OkCnt++;
+      } else {
+        this.ff2 = this.ff1Prev;
+      }
+      this.ff1Prev = this.ff1;
+      this.dataAPrev = this.dataA;
+    }
+
+    const clkA = this.tick % 2 < 1 ? 1 : 0;
+    const clkB = (this.tick % 4 < 2) ? 1 : 0;
+    const vals = { CLK_A: clkA, DATA_A: this.dataA, CLK_B: clkB, FF1_Q: this.ff1, FF2_Q: this.ff2 };
+    for (const [k, v] of Object.entries(vals)) {
+      this.hists[k].shift();
+      this.hists[k].push(v);
+    }
+  }
+
+  force() { this.forceNext = true; }
+}
+
+const syncSim = new SyncSim();
+let syncPaused = false;
+let syncRaf;
+
+function drawSyncWave() {
+  const canvas = document.getElementById('sync-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.clientWidth || 700;
+  const H = canvas.height = 260;
+
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, W, H);
+
+  const names  = ['CLK_A','DATA_A','CLK_B','FF1_Q','FF2_Q'];
+  const colors = { CLK_A:'#94a3b8', DATA_A:'#6366f1', CLK_B:'#94a3b8', FF1_Q:'#f87171', FF2_Q:'#2dd4bf' };
+  const LABEL_W = 58;
+  const rowH = H / names.length;
+  const stepW = (W - LABEL_W) / HIST;
+
+  names.forEach((name, i) => {
+    const yMid = (i + 0.5) * rowH;
+    const hi   = yMid - rowH * 0.28;
+    const lo   = yMid + rowH * 0.28;
+
+    ctx.fillStyle = colors[name];
+    ctx.font = '10px Outfit, sans-serif';
+    ctx.fillText(name, 4, yMid + 4);
+
+    const hist = syncSim.hists[name];
+    ctx.strokeStyle = colors[name];
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    let started = false;
+
+    for (let j = 0; j < HIST; j++) {
+      const x = LABEL_W + j * stepW;
+      const v = hist[j];
+      const yv = v === 0.5 ? yMid : (v === 1 ? hi : lo);
+
+      if (!started) { ctx.moveTo(x, yv); started = true; }
+      else {
+        const pv = hist[j - 1];
+        if (pv !== v) {
+          ctx.lineTo(x, pv === 0.5 ? yMid : (pv === 1 ? hi : lo));
+          ctx.lineTo(x, yv);
+        } else ctx.lineTo(x, yv);
+      }
+    }
+    ctx.stroke();
+
+    // Metastable regions
+    if (name === 'FF1_Q' || name === 'FF2_Q') {
+      hist.forEach((v, j) => {
+        if (v === 0.5) {
+          const x = LABEL_W + j * stepW;
+          ctx.fillStyle = 'rgba(248,113,113,0.12)';
+          ctx.fillRect(x, hi - 2, stepW, lo - hi + 4);
+          ctx.strokeStyle = '#f87171';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let px = x; px < x + stepW; px += 3) {
+            const wy = yMid + (Math.random() - 0.5) * (lo - hi) * 0.85;
+            px === x ? ctx.moveTo(px, wy) : ctx.lineTo(px, wy);
+          }
+          ctx.stroke();
+          ctx.strokeStyle = colors[name];
+          ctx.lineWidth = 1.8;
+        }
+      });
+    }
+  });
+
+  // Legend
+  ctx.fillStyle = '#f87171'; ctx.fillRect(LABEL_W, H - 18, 8, 8);
+  ctx.fillStyle = '#94a3b8'; ctx.font = '9px Outfit,sans-serif';
+  ctx.fillText('FF1_Q (1-FF, can be metastable)', LABEL_W + 12, H - 11);
+  ctx.fillStyle = '#2dd4bf'; ctx.fillRect(W / 2, H - 18, 8, 8);
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('FF2_Q (2-FF, always resolves)', W / 2 + 12, H - 11);
+}
+
+function syncLoop() {
+  if (!syncPaused) {
+    syncSim.step();
+    drawSyncWave();
+    document.getElementById('cnt-cycles').textContent = syncSim.cycleCnt;
+    document.getElementById('cnt-meta').textContent   = syncSim.metaCnt;
+    document.getElementById('cnt-fail').textContent   = syncSim.failCnt;
+    document.getElementById('cnt-ff2ok').textContent  = syncSim.ff2OkCnt;
+  }
+  syncRaf = setTimeout(syncLoop, 120);
+}
+
+function triggerMetastable() { syncSim.force(); }
+function toggleSyncPause() {
+  syncPaused = !syncPaused;
+  document.getElementById('bp-btn').textContent = syncPaused ? '▶ Resume' : '⏸ Pause';
+}
+
+// ===== TAB 3: PULSE SYNCHRONIZER SIMULATION =====
+class PulseSim {
+  constructor() {
+    this.tick = 0;
+    this.toggle = 0;
+    this.sync1 = 0;
+    this.sync2 = 0;
+    this.sync2Prev = 0;
+    this.pulseIn = 0;
+    this.pulseOut = 0;
+    this.pulseSent = 0;
+    this.pulseRx = 0;
+    this.sendNext = false;
+    this.hists = {};
+    ['CLK_A','PULSE_IN','TOGGLE','SYNC1','SYNC2','PULSE_OUT'].forEach(n =>
+      this.hists[n] = new Array(HIST).fill(0));
+  }
+
+  step() {
+    this.tick++;
+    const clkARising = this.tick % 2 === 0;
+    const clkBRising = this.tick % 4 === 0;
+
+    // PULSE_IN: single cycle in CLK_A
+    this.pulseIn = 0;
+    if (clkARising && this.sendNext) {
+      this.pulseIn = 1;
+      this.sendNext = false;
+      this.pulseSent++;
+    }
+
+    // Toggle FF in CLK_A
+    if (clkARising && this.pulseIn) this.toggle ^= 1;
+
+    // 2-FF sync in CLK_B
+    if (clkBRising) {
+      this.sync2Prev = this.sync2;
+      this.sync1 = this.toggle;
+      this.sync2 = this.sync1;
+    }
+
+    // Edge detect
+    this.pulseOut = (this.sync2 !== this.sync2Prev) ? 1 : 0;
+    if (this.pulseOut) this.pulseRx++;
+
+    const clkA = this.tick % 2 < 1 ? 1 : 0;
+    const clkB = (this.tick % 4 < 2) ? 1 : 0;
+    const vals = {
+      CLK_A: clkA, PULSE_IN: this.pulseIn, TOGGLE: this.toggle,
+      SYNC1: this.sync1, SYNC2: this.sync2, PULSE_OUT: this.pulseOut
+    };
+    for (const [k, v] of Object.entries(vals)) {
+      this.hists[k].shift(); this.hists[k].push(v);
+    }
+  }
+
+  send() { this.sendNext = true; }
+}
+
+const pulseSim = new PulseSim();
+let pulsePaused = false;
+
+function drawPulseWave() {
+  const canvas = document.getElementById('pulse-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.clientWidth || 700;
+  const H = canvas.height = 220;
+  ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, W, H);
+
+  const names  = ['CLK_A','PULSE_IN','TOGGLE','SYNC2','PULSE_OUT'];
+  const colors = { CLK_A:'#94a3b8', PULSE_IN:'#6366f1', TOGGLE:'#a78bfa', SYNC2:'#2dd4bf', PULSE_OUT:'#fbbf24' };
+  const LABEL_W = 70;
+  const rowH = H / names.length;
+  const stepW = (W - LABEL_W) / HIST;
+
+  names.forEach((name, i) => {
+    const yMid = (i + 0.5) * rowH;
+    const hi   = yMid - rowH * 0.28;
+    const lo   = yMid + rowH * 0.28;
+
+    ctx.fillStyle = colors[name]; ctx.font = '10px Outfit,sans-serif';
+    ctx.fillText(name, 4, yMid + 4);
+
+    const hist = pulseSim.hists[name];
+    ctx.strokeStyle = colors[name]; ctx.lineWidth = 1.8;
+    ctx.beginPath(); let started = false;
+    for (let j = 0; j < HIST; j++) {
+      const x = LABEL_W + j * stepW;
+      const v = hist[j]; const yv = v === 1 ? hi : lo;
+      if (!started) { ctx.moveTo(x, yv); started = true; }
+      else {
+        const pv = hist[j-1];
+        if (pv !== v) { ctx.lineTo(x, v===1?lo:hi); ctx.lineTo(x, yv); }
+        else ctx.lineTo(x, yv);
+      }
+    }
+    ctx.stroke();
+  });
+}
+
+function pulseLoop() {
+  if (!pulsePaused) {
+    pulseSim.step(); drawPulseWave();
+    document.getElementById('pulse-count').textContent = pulseSim.pulseSent;
+    document.getElementById('pulse-rx').textContent    = pulseSim.pulseRx;
+  }
+  setTimeout(pulseLoop, 120);
+}
+
+function sendPulse() { pulseSim.send(); }
+function togglePulsePause() {
+  pulsePaused = !pulsePaused;
+  event.target.textContent = pulsePaused ? '▶ Resume' : '⏸ Pause';
+}
+
+// ===== TAB 3: HANDSHAKE SIMULATION =====
+class HsSim {
+  constructor() {
+    this.tick = 0;
+    this.reqA = 0; this.reqSync1 = 0; this.reqSync2 = 0;
+    this.ackB = 0; this.ackSync1 = 0; this.ackSync2 = 0;
+    this.state = 'IDLE'; this.sendNext = false;
+    this.hists = {};
+    ['CLK_A','REQ_A','REQ_B','ACK_B','ACK_A'].forEach(n =>
+      this.hists[n] = new Array(HIST).fill(0));
+  }
+
+  step() {
+    this.tick++;
+    const clkBRising = this.tick % 4 === 0;
+    const clkARising = this.tick % 2 === 0;
+
+    if (clkARising) {
+      if (this.sendNext && this.state === 'IDLE') {
+        this.reqA = 1; this.state = 'WAIT_ACK'; this.sendNext = false;
+      }
+      if (this.ackSync2 && this.state === 'WAIT_ACK') {
+        this.reqA = 0; this.state = 'DE_ACK';
+      }
+      if (!this.ackSync2 && this.state === 'DE_ACK') this.state = 'IDLE';
+      // sync ACK to CLK_A
+      this.ackSync2 = this.ackSync1; this.ackSync1 = this.ackB;
+    }
+
+    if (clkBRising) {
+      // sync REQ to CLK_B
+      this.reqSync2 = this.reqSync1; this.reqSync1 = this.reqA;
+      if (this.reqSync2 && !this.ackB) this.ackB = 1;
+      if (!this.reqSync2) this.ackB = 0;
+    }
+
+    const clkA = this.tick % 2 < 1 ? 1 : 0;
+    const vals = {
+      CLK_A: clkA, REQ_A: this.reqA, REQ_B: this.reqSync2,
+      ACK_B: this.ackB, ACK_A: this.ackSync2
+    };
+    for (const [k, v] of Object.entries(vals)) {
+      this.hists[k].shift(); this.hists[k].push(v);
+    }
+  }
+
+  send() { if (this.state === 'IDLE') this.sendNext = true; }
+}
+
+const hsSim = new HsSim();
+let hsPaused = false;
+
+function drawHsWave() {
+  const canvas = document.getElementById('hs-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.clientWidth || 700;
+  const H = canvas.height = 220;
+  ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, W, H);
+
+  const names  = ['CLK_A','REQ_A','REQ_B','ACK_B','ACK_A'];
+  const colors = { CLK_A:'#94a3b8', REQ_A:'#6366f1', REQ_B:'#2dd4bf', ACK_B:'#a78bfa', ACK_A:'#fbbf24' };
+  const LABEL_W = 58;
+  const rowH = H / names.length;
+  const stepW = (W - LABEL_W) / HIST;
+
+  names.forEach((name, i) => {
+    const yMid = (i + 0.5) * rowH;
+    const hi   = yMid - rowH * 0.28;
+    const lo   = yMid + rowH * 0.28;
+
+    ctx.fillStyle = colors[name]; ctx.font = '10px Outfit,sans-serif';
+    ctx.fillText(name, 4, yMid + 4);
+
+    const hist = hsSim.hists[name];
+    ctx.strokeStyle = colors[name]; ctx.lineWidth = 1.8;
+    ctx.beginPath(); let started = false;
+    for (let j = 0; j < HIST; j++) {
+      const x = LABEL_W + j * stepW;
+      const v = hist[j]; const yv = v === 1 ? hi : lo;
+      if (!started) { ctx.moveTo(x, yv); started = true; }
+      else {
+        const pv = hist[j-1];
+        if (pv !== v) { ctx.lineTo(x, v===1?lo:hi); ctx.lineTo(x, yv); }
+        else ctx.lineTo(x, yv);
+      }
+    }
+    ctx.stroke();
+  });
+}
+
+function hsLoop() {
+  if (!hsPaused) {
+    hsSim.step(); drawHsWave();
+    document.getElementById('hs-state-label').textContent = 'State: ' + hsSim.state;
+  }
+  setTimeout(hsLoop, 120);
+}
+
+function sendRequest() { hsSim.send(); }
+function toggleHsPause() {
+  hsPaused = !hsPaused;
+  event.target.textContent = hsPaused ? '▶ Resume' : '⏸ Pause';
+}
+
+// ===== INIT =====
+window.addEventListener('load', () => {
+  updateMetaSvg();
+  updateMTBF();
+  syncLoop();
+  pulseLoop();
+  hsLoop();
+});
+window.addEventListener('resize', () => { drawSyncWave(); drawPulseWave(); drawHsWave(); });
+</script>
+</body>
+</html>
