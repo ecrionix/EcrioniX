@@ -194,7 +194,8 @@
 
     <!-- 1. The Problem -->
     <h2><span class="dot" style="background:#fbbf24;"></span>1. The Reset-Release Problem</h2>
-    <p>Reset ensures every flip-flop in the design starts from a known state. The assertion of reset is straightforward — when the reset signal goes active, all FFs immediately capture their reset state. The danger is in the <strong>release</strong>.</p>
+    <p>Reset ensures every flip-flop in the design starts from a known, deterministic state at power-on and after any fault condition. The <strong>assertion</strong> of reset is straightforward — when the reset signal goes active, all downstream flip-flops immediately latch their reset value regardless of the clock. The danger is entirely in the <strong>release</strong>: when reset is removed, every flip-flop in the chip must exit reset on the <em>same</em> clock edge. If even one flip-flop exits a cycle earlier or later than the others, the FSM controlling the entire data path will be in an inconsistent state — and that inconsistency can propagate into data corruption, bus protocol violations, or a deadlocked system.</p>
+    <p>The root cause is metastability. When any signal — including reset — transitions within the setup or hold window of a flip-flop's clock edge, the flip-flop may enter a metastable state and resolve to either 0 or 1 non-deterministically. For synchronous signals, the solution is simply to register them before use. But reset is special: it is often driven from an asynchronous source (a power-on circuit, an external pin, or a watchdog timer) that has no timing relationship with the chip's clock. A purely synchronous reset cannot work here because it requires the clock to already be running — which defeats the purpose of power-on reset. A purely asynchronous reset can assert correctly but cannot release safely. The ARSR pattern solves both halves of this contradiction.</p>
     <div class="code-pair">
       <div>
         <div class="code-pair-label" style="color:var(--rose);">&#10005; Purely Async Reset — dangerous release</div>
@@ -265,6 +266,7 @@
 
     <!-- 3. Comparison -->
     <h2><span class="dot" style="background:#38bdf8;"></span>3. Reset Strategy Comparison</h2>
+    <p>Three reset strategies are commonly discussed in VLSI design: purely synchronous, purely asynchronous, and ARSR (the hybrid). Each has a specific failure mode that disqualifies it from being the universal answer. The table below captures the trade-offs. In practice, ARSR is the standard for any design that must work at power-on with an asynchronous reset source — which covers the vast majority of ASIC and FPGA designs. The 3-FF variant is used when MTBF (Mean Time Between Failures from metastability) requirements are extreme, such as in high-frequency designs or safety-critical automotive applications where a longer resolution time is budgeted into the FMEA analysis.</p>
     <div class="tbl-wrap">
       <table>
         <thead><tr><th>Strategy</th><th>Assert</th><th>De-assert</th><th>Works if clock absent?</th><th>Metastability-safe?</th></tr></thead>
@@ -279,7 +281,8 @@
 
     <!-- 4. Multi-Domain -->
     <h2><span class="dot" style="background:#a78bfa;"></span>4. Multi-Clock-Domain Reset Distribution</h2>
-    <p>A real SoC has many clock domains — each needs its own reset synchronizer. Sharing a single un-synchronized reset across multiple domains is a common and dangerous mistake.</p>
+    <p>A real SoC has many clock domains — CPU, DSP, memory controller, USB PHY, PCIe, each running at different frequencies and phases. Each domain needs its own reset synchronizer, because the 2-FF synchronizer is clocked by the domain's local clock and can only guarantee synchronous de-assertion relative to <em>that</em> clock. Sharing a single, un-synchronized reset signal across multiple clock domains is a common and dangerous mistake: the single shared reset has no timing guarantee with respect to most of the domains it feeds.</p>
+    <p>When each domain gets its own synchronizer, they will exit reset at slightly different absolute times — the CPU domain exits reset 2 CPU cycles after de-assertion, the USB domain exits 2 USB cycles later. The domain that exits reset last must set a global "all-domains-ready" signal before any inter-domain transactions are allowed. Tools like Mentor Questa RDC, Synopsys SpyGlass RDC, and Cadence JasperGold RDC perform formal verification of reset domain crossings to catch cases where inter-domain logic is driven before all domains have properly exited reset.</p>
     <div class="code-block">
 <span class="cm">// Each clock domain gets its own rst_sync instance</span>
 <span class="kw">module</span> <span class="fn">top</span> (
@@ -305,7 +308,7 @@
 
     <!-- 5. Power-on Reset -->
     <h2><span class="dot" style="background:#fb7185;"></span>5. Power-On Reset (POR)</h2>
-    <p>Power-on reset generates the initial reset pulse when VDD first ramps up. The POR circuit must keep the chip in reset until:</p>
+    <p>Power-on reset generates the initial reset pulse when VDD first ramps up from zero. On many ASIC platforms, the POR circuit is implemented in analog cells in the standard cell library — it uses a voltage comparator or RC filter to detect when the supply has crossed a safe threshold and the PLL has locked. The POR output feeds the async_rst_n input of every domain's ARSR synchronizer, ensuring that reset stays asserted through the entire supply ramp until digital logic can operate correctly. The POR circuit must keep the chip in reset until all of the following conditions are met:</p>
     <div class="card-grid">
       <div class="card">
         <div class="card-label" style="color:var(--amber);">VDD Stable</div>
@@ -320,6 +323,12 @@
         <p>If VDD drops below a threshold during operation (brown-out), the POR circuit re-asserts reset to prevent data corruption.</p>
       </div>
     </div>
+
+    <!-- RTL coding guidelines -->
+    <h2><span class="dot" style="background:#34d399;"></span>6. RTL Coding Rules and Common Mistakes</h2>
+    <p>Following consistent coding conventions for reset prevents whole categories of bugs. The most important rule: <strong>every synchronous module should have exactly one reset input, and that reset should be the synchronized output of an ARSR synchronizer</strong>, never the raw asynchronous reset wire. Propagating the raw async_rst_n directly into flip-flops that also have a synchronous clock connection bypasses the synchronizer entirely — a common error in systems where the synchronizer lives at the top level but sub-module engineers connect the wrong net.</p>
+    <p>A second common mistake is using <code>if (!rst_n) ... else if (rst_n) ...</code> with both async and sync branches in the same <code>always_ff</code> block, which some synthesis tools interpret as a hybrid reset — asserting asynchronously but only releasing on a clock edge driven by the conditional. This creates synthesis-versus-simulation mismatches and should be avoided. Use separate <code>always_ff</code> blocks for async-assert and synchronous logic, or use the ARSR synchronizer to create a clean synchronous reset and use <code>always_ff @(posedge clk)</code> with a simple <code>if (!rst_sync_n)</code> throughout the design.</p>
+    <p>A third mistake is using reset inside combinational <code>always_comb</code> blocks. Reset is a state-initialization mechanism and belongs only in sequential always blocks. Checking reset in combinational logic creates a level-sensitive behavior that will not be synthesized correctly and cannot be properly analyzed by STA tools.</p>
 
     <!-- Interactive Simulator -->
     <div class="sim-section">
