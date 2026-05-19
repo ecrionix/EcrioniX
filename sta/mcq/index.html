@@ -223,6 +223,19 @@
     .scroll-top.visible{display:flex}
     .scroll-top:hover{background:var(--teal);transform:scale(1.1)}
     @media(max-width:768px){.quiz-wrap,.related-section{padding:0 1rem 4rem}.hero{padding:2rem 1rem 1.5rem}.result-breakdown{grid-template-columns:repeat(5,1fr)}.result-actions{flex-direction:column;align-items:center}.score-badge{top:70px;right:.75rem}}
+
+    /* STA Explainer section */
+    .sta-explainer{max-width:900px;margin:0 auto;padding:0 1.25rem 2rem}
+    .sta-explainer h2{font-size:1.1rem;font-weight:700;color:#fff;margin:2rem 0 .7rem;padding-bottom:.4rem;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:.5rem}
+    .sta-explainer h2::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0}
+    .sta-explainer p{color:var(--muted);font-size:.9rem;line-height:1.85;margin-bottom:.85rem}
+    .sta-explainer strong{color:#fff}
+    .sta-explainer code{font-family:'JetBrains Mono',monospace;font-size:.82rem;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.15);border-radius:5px;padding:.1rem .4rem;color:var(--teal-l)}
+    .sta-concept-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;margin:1rem 0 .5rem}
+    .sta-concept-card{background:var(--bg-card);border:1px solid var(--bdr);border-radius:14px;padding:1.1rem 1.2rem}
+    .sta-concept-card h3{font-size:.85rem;font-weight:700;color:var(--teal-l);margin-bottom:.5rem}
+    .sta-concept-card p{font-size:.82rem;color:var(--muted);line-height:1.7;margin:0}
+    @media(max-width:600px){.sta-concept-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -282,6 +295,42 @@
     </div>
   </div>
 </header>
+
+<!-- STA Concepts Explainer — substantive text visible to crawlers and readers -->
+<div class="sta-explainer">
+  <h2>What This Quiz Tests</h2>
+  <p>Static Timing Analysis (STA) is the formal verification method used to confirm that every data path in a chip meets its timing constraints before fabrication. Unlike dynamic simulation, STA checks all paths simultaneously without test vectors — making it the industry-standard sign-off method for every digital ASIC and FPGA design. This quiz targets the concepts that trip up experienced engineers in interviews and on real tapeouts: not the definitions, but the consequences — what happens to hold timing when you fix a setup violation, which PVT corner applies to the capture clock versus the launch path, and how CPPR removes an artifact that STA tools would otherwise double-count.</p>
+
+  <h2>Setup Slack and the Timing Equation</h2>
+  <p><strong>Setup slack = Required time − Arrival time.</strong> The required time is the capture clock edge minus the flip-flop's setup time. The arrival time is how long the data takes to travel from the launch flip-flop through combinational logic to the capture flip-flop's D input. Negative slack means the data arrives too late: the path fails timing and the chip will not work at the target frequency.</p>
+  <p>Clock skew — the difference in clock arrival times between launch and capture flip-flops — directly shifts the required time. When the capture clock arrives earlier than the launch clock (negative skew), the capture edge moves earlier, closing the setup window by exactly the skew amount. This is one of the most common traps in STA calculations: engineers who add the skew instead of subtracting it will predict false positive slack and miss a real silicon violation. On a 5 ns clock with 0.4 ns early capture skew and 0.3 ns setup time, the required time is (5.0 − 0.4) − 0.3 = 4.3 ns, not 5.0 − 0.3 = 4.7 ns.</p>
+
+  <h2>Hold Timing: The Seesaw Relationship</h2>
+  <p><strong>Hold slack = Minimum data arrival − Capture edge arrival − Hold time.</strong> Hold is a same-launch-edge check: data that launches on cycle N must stay stable long enough for the capture flip-flop to sample it on the same clock edge. This makes hold <strong>independent of clock period</strong> — increasing the clock period does not help a hold violation at all.</p>
+  <p>Positive skew (capture clock arriving later) helps setup timing because data has more time to travel before the capture edge. But that same late capture edge extends the hold window — data must remain stable until a later edge. This is the fundamental seesaw: anything that loosens setup tightens hold. Fixing setup violations by adding delay to the capture clock path will worsen hold violations on that same path. The correct fix for a hold violation is adding delay buffers on the <strong>data path</strong>, which increases minimum data arrival time without affecting the clock edge timing.</p>
+
+  <h2>PVT Corners: Why the Capture Clock Uses a Different Corner</h2>
+  <p>Process, voltage, and temperature variation means manufactured chips have a range of delays across their specified operating conditions. STA uses worst-case corner combinations to guarantee correctness across the entire range. For setup sign-off, the data (launch) path uses a <strong>Slow-Slow</strong> corner — maximising data delay — while the capture clock path uses a <strong>Fast-Fast</strong> corner — minimising clock insertion delay and pulling the capture edge earlier. Applying Slow-Slow to both sides is a common mistake that produces an optimistically relaxed required time and can miss real setup failures in manufactured silicon. For hold sign-off, the corners reverse: Fast-Fast on the data path (data arrives as early as possible) and Slow-Slow on the capture clock path (capture edge arrives as late as possible).</p>
+
+  <h2>OCV Derating and CPPR</h2>
+  <p>On-Chip Variation (OCV) analysis applies separate derating multipliers to the launch and capture paths within the same timing check to model spatial variation on the die — cells in different locations may have different delays due to local process gradients, IR drop, or thermal gradients. For a setup check under OCV, the launch path is derated slow (maximum delay) and the capture clock path is derated fast (minimum delay), creating the most pessimistic setup scenario.</p>
+  <p><strong>Common Path Pessimism Removal (CPPR)</strong> corrects a double-counting artifact that OCV introduces. The launch and capture clock paths share a common trunk from the PLL to the branch point where they diverge. OCV simultaneously derate this shared trunk as slow on the launch side and fast on the capture side — but the physical cells in the common trunk cannot actually be both slow and fast at the same time. CPPR adds back the removed pessimism from the shared segment, producing a more realistic slack result without hiding the real variation that exists on the unique post-branch segments.</p>
+
+  <div class="sta-concept-grid">
+    <div class="sta-concept-card">
+      <h3>Clock Uncertainty</h3>
+      <p>Pre-CTS uncertainty covers unknown skew (200–300 ps). Post-CTS, actual skew is measured and uncertainty drops to skew + PLL jitter (~130–160 ps). Leaving pre-CTS values in post-CTS runs wastes timing margin and generates false violations that burn ECO cycles.</p>
+    </div>
+    <div class="sta-concept-card">
+      <h3>Async CDC Constraints</h3>
+      <p>Use <code>set_clock_groups -asynchronous</code> for truly asynchronous domains — it removes all cross-domain setup and hold checks while preserving within-domain analysis. <code>set_false_path</code> works per-path but may miss derived clocks and doesn't scale across large designs.</p>
+    </div>
+    <div class="sta-concept-card">
+      <h3>Hold Fix vs Setup Fix</h3>
+      <p>Fix hold violations by adding delay buffers to the data path — this increases minimum data arrival without touching clock timing. Fix setup violations by reducing combinational logic depth, retiming, or adding pipeline stages. Confusing the fix direction makes timing worse.</p>
+    </div>
+  </div>
+</div>
 
 <!-- Progress bar -->
 <div class="progress-wrap">
