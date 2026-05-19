@@ -994,6 +994,45 @@
   </div>
 </div>
 
+<!-- ═══ RTL BEST PRACTICES ═══ -->
+<div style="max-width:1200px;margin:0 auto;padding:0 1.25rem 4rem;">
+  <div class="section-label">In Depth</div>
+  <h2 class="section-title">What Separates Good RTL From Bad RTL</h2>
+  <p class="section-sub" style="max-width:760px;margin-bottom:2rem;">RTL code that passes simulation can still fail synthesis, fail timing, cause silicon bugs, or produce untestable circuits. These are the distinctions that matter in real chip design.</p>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+    <div style="background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:16px;padding:1.75rem;">
+      <h3 style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:0.65rem;">The Non-Blocking Assignment Rule — and Why It Exists</h3>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;margin-bottom:0.65rem;">
+        Verilog has two assignment operators: <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">=</code> (blocking) and <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">&lt;=</code> (non-blocking). The difference is not stylistic — it reflects how the Verilog simulation scheduler works. Blocking assignments execute immediately, in sequence, within the active region of the simulation time step. Non-blocking assignments evaluate their right-hand sides first (active region), then schedule all the assignments to happen simultaneously in the NBA (Non-Blocking Assignment) region, after all active events are processed.
+      </p>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;">
+        In a flip-flop modeled with <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">always @(posedge clk)</code>, all registers must use <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">&lt;=</code>. If you use <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">=</code>, a 4-stage shift register written as <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">a=d; b=a; c=b; q=c;</code> will simulate as a 1-stage register — data propagates through all four in a single clock edge. Switch to <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">&lt;=</code> and it works correctly. This is not a simulation artifact — the synthesis tool will also generate different logic. Simulation/synthesis mismatch caused by mixing = and &lt;= is one of the most common RTL bugs.
+      </p>
+    </div>
+
+    <div style="background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:16px;padding:1.75rem;">
+      <h3 style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:0.65rem;">Latch Inference — The Silent Silicon Killer</h3>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;margin-bottom:0.65rem;">
+        A latch is not a flip-flop. A flip-flop is clocked — it captures data on a clock edge and holds it until the next. A latch is level-sensitive — it is transparent while its enable is high and holds when enable is low. Latches are notoriously difficult to time in STA because they do not have a clear launch edge, and they create timing paths that can borrow time from adjacent cycles.
+      </p>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;">
+        Latches are inferred unintentionally when a combinational <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">always @(*)</code> block does not assign every output in every branch. An <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">if</code> without an <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">else</code>, a <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">case</code> without a <code style="background:rgba(56,189,248,0.1);color:#38bdf8;padding:0 4px;border-radius:3px;">default</code>: the synthesis tool sees "what does this output hold when none of the branches match?" and generates a latch to hold the last value. Simulation may never expose this because typical testbenches don't exercise every case. The fix is always the same: assign a default value at the top of every combinational block, before the if/case, so every output is always assigned.
+      </p>
+    </div>
+
+    <div style="background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:16px;padding:1.75rem;">
+      <h3 style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:0.65rem;">Clock Domain Crossing — Why Simulation Can't Catch This</h3>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;margin-bottom:0.65rem;">
+        When a signal generated in one clock domain is sampled by a flip-flop in another asynchronous domain, there is a non-zero probability of metastability — the sampling flip-flop resolves to an indeterminate state. In simulation, clock phases are usually fixed at a nice ratio (e.g., 1:2), so the setup/hold window is rarely violated. In silicon, the two clocks have no fixed phase relationship and will eventually hit the worst-case phase alignment. This is why CDC bugs pass simulation and fail in silicon.
+      </p>
+      <p style="color:var(--muted);font-size:0.88rem;line-height:1.8;">
+        The solution is a 2-FF synchronizer: two flip-flops in series, both clocked by the destination clock. The first FF may go metastable, but is given a full clock period to resolve before the second FF samples it. The MTBF (mean time between failures) with a 2-FF synchronizer is typically in the millions of years for practical clock frequencies and data rates. Without the synchronizer, MTBF in silicon may be measured in hours. For multi-bit signals (buses), a 2-FF synchronizer on each bit independently is wrong — the bits can resolve to different values, creating an invalid encoding. Multi-bit CDC requires Gray coding (for counters), handshake protocols, or asynchronous FIFOs.
+      </p>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ ABOUT ═══ -->
 <section>
   <div class="about-section">
