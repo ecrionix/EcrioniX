@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Synchronizer – Async Assert, Sync Deassert | EcrioniX</title>
+  <meta name="description" content="Master the reset synchronizer pattern for ASIC design. Learn why async assert is safe but sync deassert is critical, how glitches get filtered, multi-domain reset trees, brown-out scenarios, and complete Verilog RTL — with an interactive waveform lab.">
+  <meta name="keywords" content="reset synchronizer, async assert sync deassert, reset glitch, brown-out reset, reset domain crossing, reset tree ASIC, reset synchronizer verilog, RTL design reset, VLSI reset, ASIC interview reset">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/reset-sync/">
+  <meta property="og:title" content="Reset Synchronizer – Async Assert, Sync Deassert | EcrioniX">
+  <meta property="og:description" content="The complete reset synchronizer guide — why sync deassert matters, glitch filtering, brown-out, multi-domain trees, and interactive waveform demo.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/reset-sync/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Reset Synchronizer – Async Assert, Sync Deassert | EcrioniX">
+  <meta name="twitter:description" content="Async assert, sync deassert — why it matters, how glitches get filtered, multi-domain trees, Verilog RTL and interactive lab.">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle",
+     "headline":"Reset Synchronizer – Async Assert, Sync Deassert",
+     "description":"The complete guide to reset synchronization in ASIC RTL design. Covers the async-assert sync-deassert pattern, glitch filtering, brown-out scenarios, multi-domain reset trees, and Verilog implementation.",
+     "url":"https://ecrionix.org/rtl_design/reset-sync/",
+     "dateModified":"2026-05-19",
+     "author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},
+     "inLanguage":"en"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},
+      {"@type":"ListItem","position":3,"name":"Reset Synchronizer","item":"https://ecrionix.org/rtl_design/reset-sync/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"Why is async assert safe but sync deassert critical?",
+       "acceptedAnswer":{"@type":"Answer","text":"Reset assertion (going active) must be immediate — waiting for a clock edge during a fault or power event is dangerous. However, reset deassertion (going inactive) releases all flip-flops from reset state simultaneously. If deassertion happens near a clock edge, some FFs may exit reset one cycle before or after their neighbors, creating inconsistent initial state. The 2-FF synchronizer guarantees all FFs in a domain see deassertion on the exact same clock edge."}},
+      {"@type":"Question","name":"What breaks if reset deasserts near a clock edge?",
+       "acceptedAnswer":{"@type":"Answer","text":"Any flip-flop that directly samples the unsynchronized reset near a clock edge may go metastable, or may capture the new value (Q=1) one cycle before adjacent FFs. Two state machines that must start in the same reset state may now be out of sync with each other from the very first cycle, causing hard-to-debug corruption that only appears at full speed."}},
+      {"@type":"Question","name":"How many flip-flop stages does a reset synchronizer need?",
+       "acceptedAnswer":{"@type":"Answer","text":"Two stages is the standard minimum. At 1 GHz with typical cell tau of 40 ps, a 2-FF synchronizer gives MTBF exceeding 10^6 years — effectively infinite. Some high-reliability designs at advanced nodes (below 7nm) use 3 stages for additional margin. The synchronizer FFs must have no combinational logic between stages and must use the ungated destination clock."}},
+      {"@type":"Question","name":"How does the reset synchronizer filter glitches?",
+       "acceptedAnswer":{"@type":"Answer","text":"The 2-FF synchronizer only propagates reset deassertion on clock edges. A glitch shorter than one clock period that arrives and disappears between two clock edges will not be captured by FF1 — it is effectively filtered. This is a major benefit of sync deassert: the synchronizer acts as a minimum-pulse-width filter, passing only reset releases that hold high for at least one full clock period."}},
+      {"@type":"Question","name":"What is a brown-out and why does it affect reset design?",
+       "acceptedAnswer":{"@type":"Answer","text":"A brown-out is a temporary VDD dip below the flip-flop's minimum operating voltage. FFs may lose state unpredictably. A Power-On Reset (POR) analog circuit monitors VDD and asserts rst_n whenever VDD drops below threshold. The reset synchronizer must process this POR signal. Critically, the synchronizer FFs must use an ungated, free-running clock — if the clock is gated off during a brown-out, the synchronizer can never propagate the reset deassert when power recovers."}},
+      {"@type":"Question","name":"Can I share one synchronized reset across two clock domains?",
+       "acceptedAnswer":{"@type":"Answer","text":"No. Each clock domain must have its own reset synchronizer instance clocked by that domain's clock. A reset synchronized to CLK_A and then used directly by logic in CLK_B is no better than an unsynchronized reset in CLK_B. The synchronizer's function is to align the reset deassertion edge to a specific clock domain's edges — this alignment is lost the moment the signal crosses to a different clock."}},
+      {"@type":"Question","name":"What synthesis attributes prevent reset synchronizer optimization?",
+       "acceptedAnswer":{"@type":"Answer","text":"In Synopsys tools, annotate the synchronizer FFs with (* DONT_TOUCH = true *) or set_dont_touch to prevent the synthesis tool from merging, retiming, or clock-gating the chain. In Vivado (FPGA), use (* ASYNC_REG = true *) on the register declaration — this also ensures the two FFs are placed in adjacent slices to minimize routing delay between them and prevent hold violations within the sync chain."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.7);
+      --bdr:rgba(148,163,184,0.1);--bdr-h:rgba(56,189,248,0.4);
+      --sky:#38bdf8;--sky-l:#7dd3fc;--sky-dim:rgba(56,189,248,0.12);
+      --amber:#fbbf24;--indigo:#6366f1;--indigo-l:#818cf8;
+      --rose:#fb7185;--green:#4ade80;--teal:#2dd4bf;--violet:#a78bfa;
+      --txt:#f8fafc;--muted:#94a3b8;--dim:#64748b;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none}
+
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--bdr)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--txt);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--bdr);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--bdr)}
+    .mobile-menu a:last-child{border-bottom:none}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    .breadcrumb{max-width:1200px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;font-size:.8rem;color:var(--dim)}
+    .breadcrumb a{color:var(--dim);text-decoration:none;transition:color .2s}
+    .breadcrumb a:hover{color:var(--sky-l)}
+    .breadcrumb span{color:var(--muted)}
+
+    .hero{max-width:1200px;margin:0 auto;padding:3rem 1.25rem 2rem}
+    .hero-tag{display:inline-block;background:var(--sky-dim);border:1px solid rgba(56,189,248,0.3);color:var(--sky);font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:1rem}
+    .hero h1 span{background:linear-gradient(135deg,var(--sky),var(--sky-l));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:1rem;color:var(--muted);max-width:720px;margin-bottom:2rem}
+    .hero-meta{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+    .meta-pill{display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--muted);background:rgba(15,23,42,0.6);border:1px solid var(--bdr);padding:.4rem .9rem;border-radius:100px}
+    .meta-pill svg{width:14px;height:14px;color:var(--sky);flex-shrink:0}
+
+    .content{max-width:1200px;margin:0 auto;padding:0 1.25rem 5rem}
+    .section{margin-bottom:4rem}
+    .section-label{font-size:.75rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--sky);margin-bottom:.4rem}
+    .section-title{font-size:clamp(1.3rem,2.5vw,1.75rem);font-weight:700;color:#fff;margin-bottom:.75rem}
+    .section-body{font-size:.95rem;color:var(--muted);line-height:1.8;margin-bottom:1rem}
+
+    /* Card grid */
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-top:1.25rem}
+    .info-card{background:var(--bg-card);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+    .info-card:hover{border-color:var(--bdr-h)}
+    .info-card h4{font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .info-card p{font-size:.85rem;color:var(--muted);line-height:1.65}
+    .info-card .tag{display:inline-block;font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--sky);margin-bottom:.5rem}
+
+    /* Code */
+    .code-block{background:#0a0f1e;border:1px solid rgba(56,189,248,0.2);border-radius:12px;overflow:hidden;margin:1.25rem 0}
+    .code-header{background:rgba(56,189,248,0.07);border-bottom:1px solid rgba(56,189,248,0.15);padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between}
+    .code-label{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--sky);font-weight:600;letter-spacing:.06em}
+    .copy-btn{background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);color:var(--sky);font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
+    .copy-btn:hover{background:rgba(56,189,248,0.2)}
+    .copy-btn.copied{background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.3);color:var(--green)}
+    pre,code{font-family:'JetBrains Mono',monospace;font-variant-ligatures:none}
+    .code-block pre{padding:1.25rem 1rem;overflow-x:auto;font-size:.82rem;line-height:1.75;color:#e2e8f0;white-space:pre}
+    .kw{color:#38bdf8}.cm{color:#64748b;font-style:italic}.mod{color:#67e8f9}
+    .sig{color:#c084fc}.num{color:#fbbf24}.str{color:#86efac}.err{color:#fb7185}.att{color:#34d399}
+
+    /* Callouts */
+    .callout{background:rgba(56,189,248,0.06);border-left:3px solid var(--sky);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0}
+    .callout strong{color:var(--sky)}
+    .callout p{font-size:.88rem;color:var(--muted);margin:0}
+    .callout-warn{border-left-color:var(--amber);background:rgba(251,191,36,0.06)}
+    .callout-warn strong{color:var(--amber)}
+    .callout-danger{border-left-color:var(--rose);background:rgba(251,113,133,0.06)}
+    .callout-danger strong{color:var(--rose)}
+    .callout-success{border-left-color:var(--green);background:rgba(74,222,128,0.06)}
+    .callout-success strong{color:var(--green)}
+
+    /* Lab section */
+    .lab-section{background:rgba(15,23,42,0.5);border:1px solid var(--bdr);border-radius:20px;padding:2rem;margin-bottom:4rem}
+    .lab-title{font-family:'Orbitron',sans-serif;font-size:1rem;color:#fff;margin-bottom:.3rem}
+    .lab-sub{font-size:.85rem;color:var(--muted);margin-bottom:1.75rem}
+
+    /* Canvas wrapper */
+    .wave-wrap{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1rem;margin-bottom:1.25rem;overflow-x:auto}
+    #labCanvas{display:block;min-width:540px;width:100%;height:auto}
+
+    /* Slider controls */
+    .lab-controls{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
+    @media(max-width:600px){.lab-controls{grid-template-columns:1fr}}
+    .ctrl{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:12px;padding:1rem 1.1rem}
+    .ctrl-label{font-size:.75rem;color:var(--sky);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center}
+    .ctrl-val{color:#fff;font-family:'JetBrains Mono',monospace;font-size:.85rem}
+    input[type=range]{width:100%;accent-color:var(--sky);cursor:pointer;height:4px;margin-top:.4rem}
+
+    /* Status + buttons */
+    .lab-status{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-bottom:1rem}
+    .status-pill{font-size:.8rem;font-weight:600;padding:.35rem .85rem;border-radius:100px;display:flex;align-items:center;gap:.4rem}
+    .status-safe{background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);color:var(--green)}
+    .status-danger{background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.3);color:var(--rose)}
+    .lab-btn{background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);color:var(--sky);font-family:'Outfit',sans-serif;font-size:.82rem;font-weight:600;padding:.4rem 1rem;border-radius:8px;cursor:pointer;transition:all .2s}
+    .lab-btn:hover{background:rgba(56,189,248,0.2)}
+    .lab-btn.active{background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.35);color:var(--amber)}
+
+    /* Legend */
+    .legend{display:flex;flex-wrap:wrap;gap:1rem;margin-top:.75rem}
+    .leg-item{display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:var(--muted)}
+    .leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+    /* SVG circuit */
+    .circuit-wrap{background:#060d1a;border:1px solid rgba(56,189,248,0.15);border-radius:14px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto}
+    svg.circuit{display:block;width:100%;max-width:680px;margin:0 auto;height:auto}
+
+    /* Compare table */
+    .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.5rem 0}
+    @media(max-width:600px){.compare-grid{grid-template-columns:1fr}}
+    .cmp-card{background:rgba(15,23,42,0.5);border:1px solid var(--bdr);border-radius:14px;padding:1.25rem}
+    .cmp-card.bad{border-top:3px solid var(--rose)}
+    .cmp-card.good{border-top:3px solid var(--green)}
+    .cmp-head{font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.65rem}
+    .cmp-card.bad .cmp-head{color:var(--rose)}
+    .cmp-card.good .cmp-head{color:var(--green)}
+    .cmp-body{font-size:.85rem;color:var(--muted);line-height:1.7}
+
+    /* FAQ */
+    .faq-list{margin-top:1.5rem}
+    .faq-item{border:1px solid var(--bdr);border-radius:12px;margin-bottom:.75rem;overflow:hidden;transition:border-color .2s}
+    .faq-item.open{border-color:rgba(56,189,248,0.3)}
+    .faq-q{width:100%;background:none;border:none;text-align:left;padding:1rem 1.25rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;color:#fff;font-family:'Outfit',sans-serif;font-size:.92rem;font-weight:600}
+    .faq-q:hover{background:rgba(56,189,248,0.04)}
+    .faq-arrow{width:18px;height:18px;flex-shrink:0;color:var(--sky);transition:transform .3s}
+    .faq-item.open .faq-arrow{transform:rotate(180deg)}
+    .faq-a{display:none;padding:0 1.25rem 1rem;font-size:.88rem;color:var(--muted);line-height:1.8;border-top:1px solid var(--bdr)}
+    .faq-item.open .faq-a{display:block}
+    .faq-a strong{color:var(--txt)}
+
+    /* Related */
+    .related-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;margin-top:1.25rem}
+    .rel-card{background:var(--bg-card);border:1px solid var(--bdr);border-radius:14px;padding:1.25rem;text-decoration:none;transition:border-color .3s,transform .2s}
+    .rel-card:hover{border-color:var(--bdr-h);transform:translateY(-3px)}
+    .rel-tag{font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--sky);margin-bottom:.4rem}
+    .rel-title{font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.3rem}
+    .rel-desc{font-size:.82rem;color:var(--muted);line-height:1.6}
+
+    .divider{height:1px;background:var(--bdr);max-width:1200px;margin:0 auto 4rem}
+    .footer{background:var(--bg-2);border-top:1px solid var(--bdr);padding:2.5rem 1.25rem;text-align:center}
+    .footer-logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .footer-logo span{color:var(--indigo)}
+    .footer p{font-size:.82rem;color:var(--dim);margin-bottom:1.25rem}
+    .footer-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:1.5rem;margin-bottom:1.5rem}
+    .footer-nav a{font-size:.82rem;color:var(--dim);text-decoration:none;transition:color .2s}
+    .footer-nav a:hover{color:var(--indigo-l)}
+    .footer-copy{font-size:.78rem;color:var(--dim);border-top:1px solid var(--bdr);padding-top:1.25rem}
+    .scroll-top{position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;border-radius:50%;background:rgba(56,189,248,0.75);border:none;color:#020617;cursor:pointer;display:none;align-items:center;justify-content:center;transition:all .2s;z-index:50}
+    .scroll-top.visible{display:flex}
+    .scroll-top:hover{background:var(--sky);transform:scale(1.1)}
+    @media(max-width:768px){.content{padding:0 1rem 4rem}.hero{padding:2rem 1rem 1.5rem}}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/sta/">STA</a></li>
+      <li><a href="/rtl_design/" class="active">RTL Design</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/vlsi/">VLSI Design</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">EcrioniX</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <a href="/rtl_design/">RTL Design</a>
+  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  <span>Reset Synchronizer</span>
+</div>
+
+<header class="hero">
+  <div class="hero-tag">RTL Design — Reset</div>
+  <h1>Reset Synchronizer<br><span>Async Assert, Sync Deassert</span></h1>
+  <p>The most interviewed reset topic in ASIC design — and the one most engineers get subtly wrong. Reset assertion must be immediate; reset deassertion must be synchronised. Here's why, with an interactive lab and complete Verilog RTL.</p>
+  <div class="hero-meta">
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>Async Assert</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Sync Deassert</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>Glitch Filter</div>
+    <div class="meta-pill"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>Multi-Domain Trees</div>
+  </div>
+</header>
+
+<main class="content">
+
+<!-- ══ SECTION 1: THE PROBLEM ══ -->
+<section class="section">
+  <div class="section-label">The Problem</div>
+  <h2 class="section-title">What Happens Without a Reset Synchronizer</h2>
+  <p class="section-body">A large RTL design has thousands of flip-flops, all sharing the same active-low reset net <code>rst_n</code>. When power comes on — or when a fault triggers reset — the POR cell asserts <code>rst_n=0</code> asynchronously. So far, so good.</p>
+  <p class="section-body">The danger is on the way <em>out</em> of reset. When <code>rst_n</code> goes back to 1, every flip-flop in the design samples this transition. If the transition happens near a clock rising edge — within the setup or hold window of any FF — some FFs may capture the new value one clock cycle before or after their neighbours. A design that was supposed to start with all registers at zero instead starts with a mix of 0s and Xs, and the bugs that follow are intermittent, temperature-sensitive, and nearly impossible to reproduce in simulation.</p>
+
+  <div class="card-grid">
+    <div class="info-card">
+      <div class="tag">Root Cause</div>
+      <h4>Reset Deassertion Near a Clock Edge</h4>
+      <p>If <code>rst_n</code> rises within the setup window of a clock edge, the FF may go metastable — neither 0 nor 1. Its neighbour, whose setup window opens a few picoseconds later, samples a clean 1. The two FFs now disagree on the initial state.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Symptom</div>
+      <h4>Inconsistent Initial State</h4>
+      <p>State machines with multiple FFs may enter an illegal encoded state. Counters start at non-zero values. Handshake logic that requires both sides to begin in "idle" state finds one side already in "active" — protocol violation from cycle 1.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Simulation Blindness</div>
+      <h4>Invisible in RTL Simulation</h4>
+      <p>RTL simulation assigns reset synchronously and deterministically — no FF ever samples reset near a clock edge unless you explicitly force it. The bug only appears at speed, in real silicon, when process variation shifts the exact edge alignment into the danger zone.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ SECTION 2: THE CIRCUIT ══ -->
+<section class="section">
+  <div class="section-label">The Solution</div>
+  <h2 class="section-title">The 2-FF Reset Synchronizer Circuit</h2>
+  <p class="section-body">The fix is elegant: pass reset through two flip-flops clocked by the destination domain. Both FFs have <em>asynchronous</em> reset from the raw input — so assertion is still immediate. But deassertion can only propagate through the chain on clock edges — two cycles after the raw reset releases.</p>
+
+  <div class="circuit-wrap">
+    <svg class="circuit" viewBox="0 0 680 160" xmlns="http://www.w3.org/2000/svg" font-family="JetBrains Mono, monospace" font-size="11">
+      <!-- VDD tie -->
+      <line x1="100" y1="30" x2="100" y2="60" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="100" y="22" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="bold">VDD</text>
+      <line x1="90" y1="28" x2="110" y2="28" stroke="#38bdf8" stroke-width="1.5"/>
+
+      <!-- FF1 box -->
+      <rect x="130" y="50" width="90" height="80" rx="8" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+      <text x="175" y="68" text-anchor="middle" fill="#38bdf8" font-weight="bold" font-size="11">FF1</text>
+      <text x="138" y="88" fill="#94a3b8" font-size="9">D</text>
+      <text x="209" y="88" fill="#94a3b8" font-size="9" text-anchor="end">Q</text>
+      <text x="175" y="120" text-anchor="middle" fill="#94a3b8" font-size="9">CLK</text>
+      <text x="175" y="136" text-anchor="middle" fill="#fb7185" font-size="9">rst_n</text>
+
+      <!-- FF2 box -->
+      <rect x="330" y="50" width="90" height="80" rx="8" fill="rgba(56,189,248,0.08)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+      <text x="375" y="68" text-anchor="middle" fill="#38bdf8" font-weight="bold" font-size="11">FF2</text>
+      <text x="338" y="88" fill="#94a3b8" font-size="9">D</text>
+      <text x="409" y="88" fill="#94a3b8" font-size="9" text-anchor="end">Q</text>
+      <text x="375" y="120" text-anchor="middle" fill="#94a3b8" font-size="9">CLK</text>
+      <text x="375" y="136" text-anchor="middle" fill="#fb7185" font-size="9">rst_n</text>
+
+      <!-- VDD → FF1 D -->
+      <line x1="100" y1="60" x2="100" y2="85" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="100" y1="85" x2="130" y2="85" stroke="#38bdf8" stroke-width="1.5"/>
+
+      <!-- FF1 Q → FF2 D -->
+      <line x1="220" y1="85" x2="330" y2="85" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="275" y="78" text-anchor="middle" fill="#4ade80" font-size="9">FF1_Q</text>
+
+      <!-- FF2 Q → output -->
+      <line x1="420" y1="85" x2="530" y2="85" stroke="#2dd4bf" stroke-width="2"/>
+      <rect x="530" y="68" width="120" height="34" rx="6" fill="rgba(45,212,191,0.1)" stroke="rgba(45,212,191,0.35)" stroke-width="1.5"/>
+      <text x="590" y="89" text-anchor="middle" fill="#2dd4bf" font-weight="bold" font-size="10">RST_N_SYNC</text>
+
+      <!-- CLK lines (shared) -->
+      <line x1="175" y1="125" x2="175" y2="143" stroke="#7dd3fc" stroke-width="1"/>
+      <line x1="175" y1="143" x2="375" y2="143" stroke="#7dd3fc" stroke-width="1"/>
+      <line x1="375" y1="143" x2="375" y2="125" stroke="#7dd3fc" stroke-width="1"/>
+      <text x="275" y="157" text-anchor="middle" fill="#7dd3fc" font-size="9">CLK (shared, ungated)</text>
+
+      <!-- RST_N input label -->
+      <text x="18" y="148" fill="#fb7185" font-size="10" font-weight="bold">RST_N_IN</text>
+      <line x1="70" y1="145" x2="175" y2="145" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <line x1="375" y1="145" x2="480" y2="145" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <!-- Branch dots -->
+      <circle cx="175" cy="145" r="3" fill="#fb7185"/>
+      <circle cx="375" cy="145" r="3" fill="#fb7185"/>
+
+      <!-- Annotations -->
+      <text x="100" y="48" text-anchor="middle" fill="#fbbf24" font-size="9">D tied HIGH</text>
+      <rect x="50" y="36" width="102" height="16" rx="4" fill="rgba(251,191,36,0.08)" stroke="rgba(251,191,36,0.2)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div class="callout-success callout">
+    <p><strong>Key insight:</strong> Both FFs have their async reset connected to <code>RST_N_IN</code>. When reset asserts (0), both FFs reset <em>immediately</em> — no waiting for a clock edge. When reset deasserts (1), FF1's D input is tied to VDD, so on the first clock edge after release, FF1_Q=1. On the second clock edge, FF2 captures FF1_Q=1, and RST_N_SYNC goes high. Clean, glitch-free, two cycles of latency.</p>
+  </div>
+</section>
+
+<!-- ══ INTERACTIVE LAB ══ -->
+<section class="section">
+  <div class="lab-section" id="lab">
+    <div class="lab-title">Interactive Reset Sync Lab</div>
+    <div class="lab-sub">Drag the slider to move reset deassertion relative to the clock edge. Watch FF1 go metastable in the danger zone — RST_SYNC stays clean.</div>
+
+    <div class="lab-status">
+      <span class="status-pill" id="statusPill">
+        <svg width="10" height="10" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>
+        <span id="statusText">Safe Zone</span>
+      </span>
+      <button class="lab-btn" id="glitchBtn" onclick="toggleGlitch()">⚡ Inject Glitch</button>
+      <button class="lab-btn" onclick="resetDemo()">↺ Reset Demo</button>
+    </div>
+
+    <div class="wave-wrap">
+      <canvas id="labCanvas" height="220"></canvas>
+    </div>
+
+    <div class="lab-controls">
+      <div class="ctrl">
+        <div class="ctrl-label">Reset Release Timing <span class="ctrl-val" id="offsetLabel">—</span></div>
+        <input type="range" id="offsetSlider" min="0" max="100" value="20" oninput="onSlider(this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--dim);margin-top:.3rem">
+          <span>Early (safe)</span><span>← Danger →</span><span>Late (safe)</span>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label">Simulation Speed <span class="ctrl-val" id="speedLabel">Live</span></div>
+        <input type="range" id="speedSlider" min="1" max="3" value="2" oninput="onSpeed(this.value)">
+        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--dim);margin-top:.3rem">
+          <span>Slow</span><span>Normal</span><span>Fast</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:#38bdf8"></div>CLK</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#fb7185"></div>RST_N_IN (raw)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#fbbf24"></div>FF1_Q (intermediate)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#4ade80"></div>RST_SYNC (output)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:rgba(251,113,133,0.35);border-radius:2px"></div>Setup/Hold danger zone</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ SECTION 3: WHY ASYNC ASSERT ══ -->
+<section class="section">
+  <div class="section-label">Theory — Part 1</div>
+  <h2 class="section-title">Why Async Assert Is Safe</h2>
+  <p class="section-body">Reset assertion (driving reset active) is safe to do asynchronously because it only drives flip-flops <em>into</em> their known reset state. There is no ambiguity: every FF responds identically to a low RST_N — output goes to 0, regardless of the clock.</p>
+  <p class="section-body">More importantly, reset assertion <strong>must</strong> be asynchronous. Consider a chip experiencing a power fault or brownout. The clock may itself be unreliable or stopped. Waiting for a clock edge to propagate reset would mean the chip stays in an unknown state until a clock arrives — exactly when it is most dangerous. Async assert gives you guaranteed, immediate protection.</p>
+
+  <div class="callout">
+    <p><strong>Rule:</strong> Assert reset asynchronously. Always. The clock cannot be trusted during fault events.</p>
+  </div>
+</section>
+
+<!-- ══ SECTION 4: WHY SYNC DEASSERT ══ -->
+<section class="section">
+  <div class="section-label">Theory — Part 2</div>
+  <h2 class="section-title">Why Sync Deassert Is Critical</h2>
+  <p class="section-body">Reset deassertion is the mirror image — and the dangerous one. When <code>rst_n</code> goes from 0 to 1, every flip-flop in the design is released from reset on the next sampling event. If different FFs sample this release at different clock edges — because the release edge landed in some FFs' setup window but not others' — the chip wakes up with inconsistent register contents.</p>
+
+  <div class="compare-grid">
+    <div class="cmp-card bad">
+      <div class="cmp-head">❌ Without Synchronizer</div>
+      <div class="cmp-body">
+        • <code>rst_n</code> releases near clock edge N<br>
+        • FF_A (setup window open): samples at edge N, Q=0→1<br>
+        • FF_B (setup window closed): samples at edge N+1, Q=0→1<br>
+        • One cycle skew between two "synchronous" registers<br>
+        • State machine may enter illegal encoded state<br>
+        • Handshake may fire prematurely
+      </div>
+    </div>
+    <div class="cmp-card good">
+      <div class="cmp-head">✅ With 2-FF Synchronizer</div>
+      <div class="cmp-body">
+        • <code>rst_n</code> releases at any time<br>
+        • FF1 samples release on clock edge N or N+1<br>
+        • FF2 samples FF1_Q=1 on edge N+1 or N+2<br>
+        • <strong>RST_SYNC</strong> goes high cleanly on one specific edge<br>
+        • ALL downstream FFs using RST_SYNC deassert on the same edge<br>
+        • Consistent, deterministic initial state guaranteed
+      </div>
+    </div>
+  </div>
+
+  <div class="callout-warn callout">
+    <p><strong>The latency tradeoff:</strong> Sync deassert adds 2 clock cycles of latency to reset release. For most designs this is negligible. At 1 GHz that is 2 ns — the chip spent milliseconds in assertion already. Only designs with sub-nanosecond reset requirements (rare) would need a different approach.</p>
+  </div>
+</section>
+
+<!-- ══ SECTION 5: GLITCH FILTERING ══ -->
+<section class="section">
+  <div class="section-label">Theory — Part 3</div>
+  <h2 class="section-title">Glitch Filtering — A Free Bonus</h2>
+  <p class="section-body">A reset glitch is an unintended brief pulse on the reset line — from power supply noise, an ESD event, a board-level ringing, or a metastable reset controller output. Without synchronization, a glitch as short as one gate delay can momentarily reset flip-flops and corrupt state mid-operation.</p>
+  <p class="section-body">The 2-FF synchronizer filters glitches automatically. Because FF1 only captures its input on clock edges, a glitch that arrives and disappears between two clock edges is never sampled. The synchronizer behaves like a minimum-pulse-width filter: only a reset deassertion that stays high for at least one full clock period — long enough to be captured at a clock edge — propagates through.</p>
+
+  <div class="callout-success callout">
+    <p><strong>Minimum capturable pulse width</strong> ≈ one full clock period. At 500 MHz (2 ns period), glitches shorter than ~2 ns are filtered. At 100 MHz (10 ns period), glitches shorter than ~10 ns are filtered. Higher frequency = tighter glitch filter. Use the "Inject Glitch" button in the lab above to see this in action.</p>
+  </div>
+</section>
+
+<!-- ══ SECTION 6: VERILOG ══ -->
+<section class="section">
+  <div class="section-label">RTL Implementation</div>
+  <h2 class="section-title">Verilog — From Wrong to Right</h2>
+
+  <p class="section-body">The wrong pattern fans out raw <code>rst_n</code> directly to every flip-flop. The correct pattern puts a synchronizer at the entry point of each clock domain.</p>
+
+  <div class="code-block">
+    <div class="code-header">
+      <span class="code-label">verilog — ❌ WRONG: raw reset fan-out</span>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <pre><span class="cm">// WRONG: rst_n_in fans out directly to thousands of flip-flops.
+// If rst_n_in deasserts near a clock edge, some FFs exit reset
+// one cycle before others → inconsistent initial state.</span>
+
+<span class="kw">module</span> <span class="mod">bad_design</span> (
+  <span class="kw">input</span>  clk, rst_n_in,
+  <span class="kw">output</span> [<span class="num">7</span>:<span class="num">0</span>] data_out
+);
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>] counter;
+  <span class="kw">reg</span>       fsm_idle;
+
+  <span class="err">// ← rst_n_in used raw — no synchronizer!</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk <span class="kw">or</span> <span class="kw">negedge</span> rst_n_in)
+    <span class="kw">if</span> (!rst_n_in) counter &lt;= <span class="num">8'h00</span>;
+    <span class="kw">else</span>           counter &lt;= counter + <span class="num">1</span>;
+
+  <span class="err">// ← same raw rst_n_in — may deassert one cycle earlier than counter</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk <span class="kw">or</span> <span class="kw">negedge</span> rst_n_in)
+    <span class="kw">if</span> (!rst_n_in) fsm_idle &lt;= <span class="num">1'b1</span>;
+    <span class="kw">else</span>           fsm_idle &lt;= (counter == <span class="num">8'hFF</span>);
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <span class="code-label">verilog — ✅ CORRECT: 2-FF reset synchronizer module</span>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <pre><span class="cm">// 2-FF reset synchronizer: async assert, sync deassert.
+// Instantiate once per clock domain at the domain entry point.
+// DONT_TOUCH prevents synthesis from optimising away the chain.</span>
+
+<span class="kw">module</span> <span class="mod">rst_sync</span> #(<span class="kw">parameter</span> STAGES = <span class="num">2</span>) (
+  <span class="kw">input</span>  clk,         <span class="cm">// destination domain clock — must be UNGATED</span>
+  <span class="kw">input</span>  rst_n_in,    <span class="cm">// raw async reset (active-low)</span>
+  <span class="kw">output</span> rst_n_sync   <span class="cm">// synchronized reset for all logic in this domain</span>
+);
+  <span class="att">(* DONT_TOUCH = "true", ASYNC_REG = "true" *)</span>
+  <span class="kw">reg</span> [STAGES<span class="num">-1</span>:<span class="num">0</span>] chain;
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk <span class="kw">or</span> <span class="kw">negedge</span> rst_n_in)
+    <span class="kw">if</span> (!rst_n_in) chain &lt;= {STAGES{<span class="num">1'b0</span>}};         <span class="cm">// async assert: all 0</span>
+    <span class="kw">else</span>           chain &lt;= {chain[STAGES<span class="num">-2</span>:<span class="num">0</span>], <span class="num">1'b1</span>}; <span class="cm">// sync deassert: shift in 1s</span>
+
+  <span class="kw">assign</span> rst_n_sync = chain[STAGES<span class="num">-1</span>];
+
+<span class="kw">endmodule</span>
+
+<span class="cm">// Usage — top-level wires one synchronizer per domain:</span>
+<span class="kw">wire</span> rst_n_core;
+<span class="mod">rst_sync</span> #(.STAGES(<span class="num">2</span>)) u_rst_core (
+  .clk       (clk_core),
+  .rst_n_in  (por_rst_n),   <span class="cm">// from POR cell or pin</span>
+  .rst_n_sync(rst_n_core)
+);
+<span class="cm">// All flip-flops in clk_core domain use rst_n_core — never por_rst_n directly.</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <span class="code-label">verilog — Multi-domain reset distribution</span>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <pre><span class="cm">// Each clock domain gets its own rst_sync instance.
+// NEVER share a synchronized reset across two different clock domains.</span>
+
+<span class="kw">module</span> <span class="mod">reset_dist</span> (
+  <span class="kw">input</span>  por_rst_n,     <span class="cm">// raw power-on reset from POR cell</span>
+  <span class="kw">input</span>  clk_core,      <span class="cm">// 1 GHz core domain</span>
+  <span class="kw">input</span>  clk_io,        <span class="cm">// 200 MHz IO domain</span>
+  <span class="kw">input</span>  clk_usb,       <span class="cm">// 480 MHz USB domain</span>
+  <span class="kw">output</span> rst_n_core,
+  <span class="kw">output</span> rst_n_io,
+  <span class="kw">output</span> rst_n_usb
+);
+  <span class="cm">// Each domain: independent sync chain, independent clock</span>
+  <span class="mod">rst_sync</span> #(<span class="num">2</span>) u_core (.clk(clk_core), .rst_n_in(por_rst_n), .rst_n_sync(rst_n_core));
+  <span class="mod">rst_sync</span> #(<span class="num">2</span>) u_io   (.clk(clk_io),   .rst_n_in(por_rst_n), .rst_n_sync(rst_n_io));
+  <span class="mod">rst_sync</span> #(<span class="num">3</span>) u_usb  (.clk(clk_usb),  .rst_n_in(por_rst_n), .rst_n_sync(rst_n_usb));
+  <span class="cm">// USB uses 3 stages: 480 MHz leaves only 2 ns per stage — extra margin helps</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-header">
+      <span class="code-label">verilog — Brown-out aware reset (POR integration)</span>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <pre><span class="cm">// Brown-out: VDD dips below FF min operating voltage.
+// POR cell asserts rst_n whenever VDD < threshold.
+// Synchronizer FFs MUST use the free-running (ungated) clock.
+// If clock is gated off during brown-out, sync chain never propagates release.</span>
+
+<span class="kw">module</span> <span class="mod">por_reset_sync</span> (
+  <span class="kw">input</span>  clk_free,     <span class="cm">// ungated oscillator — always running</span>
+  <span class="kw">input</span>  vdd_good,     <span class="cm">// from analog POR: 1 when VDD &gt; threshold</span>
+  <span class="kw">output</span> rst_n_sync
+);
+  <span class="att">(* DONT_TOUCH = "true", ASYNC_REG = "true" *)</span>
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] ff;
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk_free <span class="kw">or</span> <span class="kw">negedge</span> vdd_good)
+    <span class="kw">if</span> (!vdd_good) ff &lt;= <span class="num">2'b00</span>;        <span class="cm">// VDD dip → instant assert</span>
+    <span class="kw">else</span>           ff &lt;= {ff[<span class="num">0</span>], <span class="num">1'b1</span>}; <span class="cm">// VDD OK → sync release</span>
+
+  <span class="kw">assign</span> rst_n_sync = ff[<span class="num">1</span>];
+
+<span class="kw">endmodule</span>
+
+<span class="cm">// ⚠  Constraint required — tell STA the sync chain is intentional:
+//   set_false_path -from [get_ports vdd_good] -to [get_pins ff_reg[0]/D]
+//   set_max_delay  -datapath_only 2 -from [get_pins ff_reg[0]/Q] \
+//                                   -to   [get_pins ff_reg[1]/D]</span></pre>
+  </div>
+</section>
+
+<!-- ══ SECTION 7: RULES ══ -->
+<section class="section">
+  <div class="section-label">Design Rules</div>
+  <h2 class="section-title">The Five Reset Synchronizer Rules</h2>
+
+  <div class="card-grid">
+    <div class="info-card">
+      <div class="tag">Rule 1</div>
+      <h4>One Synchronizer Per Domain</h4>
+      <p>Never share a synchronized reset across two clock domains. Each domain must synchronize reset independently using its own clock. A reset synchronized to CLK_A is not safe in CLK_B.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Rule 2</div>
+      <h4>Use the Ungated Clock</h4>
+      <p>The synchronizer FFs must connect to the free-running (ungated) clock. If the clock is gated off — which can happen during power-down or debug — the synchronizer can never propagate reset deassertion.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Rule 3</div>
+      <h4>No Logic Between Stages</h4>
+      <p>Insert zero combinational logic between the flip-flop stages. Any gate introduces delay that can cause a hold violation within the sync chain itself — defeating the purpose of the synchronizer.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Rule 4</div>
+      <h4>DONT_TOUCH Attribute</h4>
+      <p>Mark the synchronizer with <code>(* DONT_TOUCH = "true" *)</code> or <code>set_dont_touch</code>. Without this, synthesis may merge, retime, or remove stages it considers redundant.</p>
+    </div>
+    <div class="info-card">
+      <div class="tag">Rule 5</div>
+      <h4>False Path on Input</h4>
+      <p>Constrain the crossing from <code>rst_n_in</code> to FF1's D-pin as a false path in SDC. The raw reset is asynchronous — STA cannot meaningfully analyse a timing path from it to a synchronous FF.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ FAQ ══ -->
+<section class="section">
+  <div class="section-label">Interview Prep</div>
+  <h2 class="section-title">Questions Engineers Actually Get Asked</h2>
+  <div class="faq-list">
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Why is async assert considered safe but sync deassert is critical?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        <strong>Assert (going active):</strong> drives every FF into its known reset state (Q=0). There is no ambiguity — the outcome is always the same regardless of when the clock edge arrives relative to the assertion. More importantly, faults and power events require immediate reset; waiting for a clock edge would leave the chip in an unknown state during the most dangerous window.<br><br>
+        <strong>Deassert (going inactive):</strong> releases FFs to capture new data on the next clock edge. If deassertion happens within the setup or hold window of a clock edge, some FFs may capture the released value one cycle before their neighbours — creating inconsistent initial conditions that corrupt state machine encoding, counter values, and handshake logic from the first operational cycle.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        What exactly breaks if reset deasserts near a clock edge?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        The destination flip-flop violates its setup time. It may go metastable — its output is neither a clean 0 nor a clean 1. Adjacent FFs whose setup windows open slightly later may capture a clean 1 on the same edge, or may miss this edge entirely and capture at the next one.<br><br>
+        The result: two FFs that were both in reset (Q=0) one cycle ago now have Q=0 and Q=1 — one cycle out of sync with each other. A 4-bit encoded state machine that needs to start in state <code>4'b0000</code> may start in <code>4'b0001</code> or <code>4'b0010</code>, which may be an illegal encoding. The corruption is deterministic given a specific silicon die and operating conditions, but varies die-to-die — making it appear random in production.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        How many flip-flop stages does a reset synchronizer need?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        Two stages is the standard minimum. At 1 GHz with a typical cell metastability time constant τ ≈ 40 ps, two FF stages give MTBF exceeding 10⁶ years — effectively infinite for any practical chip lifetime.<br><br>
+        Three stages are sometimes used for high-reliability applications (automotive, space), at advanced nodes below 7 nm where τ is smaller (less resolution time per stage), or at very high clock rates (&gt;2 GHz) where the resolution window per stage narrows. The reset synchronizer's MTBF calculation follows the same formula as any 2-FF CDC synchronizer: <code>MTBF = exp(T_res/τ) / (f_clk × f_change × T_w)</code>.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Can I use a gated clock for the reset synchronizer?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        <strong>No — this is one of the most common reset synchronizer mistakes.</strong> If the synchronizer FF is clocked by a gated clock and the gate is off (clock stopped), no clock edges arrive and the synchronizer can never propagate the reset deassertion. The downstream domain stays in reset forever — or until the gate turns on, at which point the release may happen without the POR being properly re-evaluated.<br><br>
+        Always connect the synchronizer to the free-running root clock of the domain — the clock that runs continuously, before any ICG (Integrated Clock Gate) cells. In clock-gating-heavy designs this usually means connecting to the clock buffer output before the first gate in the clock tree.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        What SDC constraints are needed for a reset synchronizer?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        <strong>Three constraints are needed:</strong><br><br>
+        1. <code>set_false_path -from [get_ports rst_n_in]</code> — the raw async reset is not a synchronous signal; STA should not analyze a timing path from it to FF1's D-pin.<br><br>
+        2. <code>set_max_delay -datapath_only [period] -from [get_pins chain_reg[0]/Q] -to [get_pins chain_reg[1]/D]</code> — within the synchronizer chain, ensure the inter-stage path meets hold without being over-constrained by clock uncertainty.<br><br>
+        3. Mark the synchronizer with <code>set_dont_touch</code> or the <code>(* DONT_TOUCH = "true" *)</code> attribute to prevent synthesis from optimizing or merging the chain stages.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        How does SpyGlass detect reset synchronization problems?
+        <svg class="faq-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="faq-a">
+        SpyGlass CDC identifies clock domain boundaries and checks every reset net that crosses domains. Key violations it flags:<br><br>
+        • <strong>ResetSync:</strong> a reset signal that reaches a flip-flop in a different clock domain without a proper synchronizer<br>
+        • <strong>GatedClockReset:</strong> a synchronizer FF detected on a gated (non-free-running) clock path<br>
+        • <strong>ResetDivergence:</strong> a reset that is synchronized into domain A and then directly used in domain B without re-synchronization — the same structural bug as CDC divergence, applied to resets<br><br>
+        These checks require the user to define clock domain intent via <code>define_domain</code> and <code>define_reset</code> pragmas or via a domain intent file (DIF). Without domain intent, SpyGlass cannot distinguish intentional from unintentional crossings.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ RELATED ══ -->
+<section class="section">
+  <div class="section-label">Keep Learning</div>
+  <h2 class="section-title">Related Topics</h2>
+  <div class="related-grid">
+    <a href="/rtl_design/cdc/" class="rel-card">
+      <div class="rel-tag">RTL Design</div>
+      <div class="rel-title">Clock Domain Crossing</div>
+      <div class="rel-desc">2-FF data synchronizers, MTBF, pulse sync, handshake — the same physics as reset synchronization, applied to data.</div>
+    </a>
+    <a href="/rtl_design/cdc-conv-div/" class="rel-card">
+      <div class="rel-tag">RTL Design</div>
+      <div class="rel-title">CDC Convergence &amp; Divergence</div>
+      <div class="rel-desc">The structural CDC bugs that are invisible in simulation — one signal to two domains, two signals to one domain.</div>
+    </a>
+    <a href="/tools/cdc-lab/" class="rel-card">
+      <div class="rel-tag">Interactive Lab</div>
+      <div class="rel-title">CDC Simulation Lab</div>
+      <div class="rel-desc">Animate metastability windows, compare 1-FF vs 2-FF MTBF, and watch synchronizers work live.</div>
+    </a>
+    <a href="/vlsi/rst_sync/" class="rel-card">
+      <div class="rel-tag">VLSI Deep-Dive</div>
+      <div class="rel-title">Reset in VLSI Design</div>
+      <div class="rel-desc">POR cells, power domains, reset sequencing in multi-voltage designs, and UPF reset intent.</div>
+    </a>
+  </div>
+</section>
+
+</main>
+
+<div class="divider"></div>
+<footer class="footer">
+  <div class="footer-logo">Ecrioni<span>X</span></div>
+  <p>VLSI &amp; RTL Design education for the next generation of chip designers.</p>
+  <nav class="footer-nav">
+    <a href="/">Home</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/rtl_design/cdc/">CDC</a>
+    <a href="/tools/cdc-lab/">CDC Lab</a>
+    <a href="/sta/">STA</a>
+    <a href="/vlsi/">VLSI</a>
+  </nav>
+  <div class="footer-copy">&copy; 2026 EcrioniX. All rights reserved.</div>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">
+  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+</button>
+
+<script>
+/* ══ Background ══ */
+const bgC=document.getElementById('bg-canvas'),bgX=bgC.getContext('2d');
+let BW,BH,pts=[];
+function rBg(){BW=bgC.width=window.innerWidth;BH=bgC.height=window.innerHeight;}
+rBg();window.addEventListener('resize',rBg);
+for(let i=0;i<55;i++)pts.push({x:Math.random()*1200,y:Math.random()*800,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,r:Math.random()*1.5+.4,a:Math.random()*.25+.05});
+(function anim(){bgX.clearRect(0,0,BW,BH);pts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=BW;if(p.x>BW)p.x=0;if(p.y<0)p.y=BH;if(p.y>BH)p.y=0;bgX.beginPath();bgX.arc(p.x,p.y,p.r,0,Math.PI*2);bgX.fillStyle=`rgba(56,189,248,${p.a})`;bgX.fill();});requestAnimationFrame(anim);})();
+
+/* ══ Nav ══ */
+document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+const st=document.getElementById('scrollTop');
+window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>400));
+st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+
+/* ══ Copy buttons ══ */
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied');},2000);
+  });
+}
+
+/* ══ FAQ ══ */
+function toggleFaq(btn){btn.closest('.faq-item').classList.toggle('open');}
+
+/* ══════════════════════════════════════════
+   INTERACTIVE LAB
+══════════════════════════════════════════ */
+const C = document.getElementById('labCanvas');
+const ctx = C.getContext('2d');
+
+const CLKP   = 70;   // clock period (px)
+const NCYC   = 9;    // cycles to display
+const LW     = 92;   // label area width
+const TPAD   = 14;   // top padding
+const RH     = 48;   // row height
+const SH     = 20;   // signal amplitude (px)
+const SETUP  = 0.27; // setup window fraction of CLKP
+const HOLD   = 0.11; // hold window fraction
+
+// logical width
+const LGW = LW + NCYC * CLKP + 10;
+C.width  = LGW;
+C.height = TPAD + 4 * RH + 14;
+
+// Lab state
+let sliderV  = 0.22;   // 0=early safe, 0.5=danger centre, 1=late safe
+let glitchOn = false;
+let animTick = 0;
+
+function rowY(r){ return TPAD + r * RH + RH / 2; }
+function edgeX(cycle){ return LW + cycle * CLKP; }
+
+// The reference edge where reset release is positioned
+const REF_CYCLE = 4;
+const ASSERT_X  = LW + 0.3 * CLKP; // reset asserts here
+
+function releaseX(){
+  return edgeX(REF_CYCLE) + (sliderV - 0.5) * 0.88 * CLKP;
+}
+
+function dzLeft()  { return edgeX(REF_CYCLE) - SETUP * CLKP; }
+function dzRight() { return edgeX(REF_CYCLE) + HOLD  * CLKP; }
+
+function inDanger(){
+  const rx = releaseX();
+  return rx >= dzLeft() && rx <= dzRight();
+}
+
+/* Drawing helpers */
+function hline(x0,x1,y,col,lw,dash){
+  ctx.strokeStyle=col;ctx.lineWidth=lw||1.5;ctx.setLineDash(dash||[]);
+  ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();
+}
+function vline(x,y0,y1,col,lw,dash){
+  ctx.strokeStyle=col;ctx.lineWidth=lw||1.5;ctx.setLineDash(dash||[]);
+  ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y1);ctx.stroke();
+}
+function transition(x,y_lo,y_hi,col,lw){
+  ctx.strokeStyle=col;ctx.lineWidth=lw||2;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(x,y_lo);ctx.lineTo(x,y_hi);ctx.stroke();
+}
+
+function drawLabel(text,ry,col){
+  ctx.fillStyle=col;
+  ctx.font='bold 9.5px "JetBrains Mono", monospace';
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  ctx.fillText(text, LW-6, ry);
+}
+
+function drawCLK(){
+  const ry=rowY(0), hi=ry-SH/2, lo=ry+SH/2;
+  ctx.strokeStyle='#38bdf8';ctx.lineWidth=1.5;ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(LW,lo);
+  for(let c=0;c<NCYC;c++){
+    const rx=edgeX(c), fx=LW+(c+.5)*CLKP, nx=edgeX(c+1);
+    ctx.lineTo(rx,lo);ctx.lineTo(rx,hi);ctx.lineTo(fx,hi);ctx.lineTo(fx,lo);ctx.lineTo(nx,lo);
+  }
+  ctx.stroke();
+}
+
+function drawRSTIN(ax, rx, danger, glitch){
+  const ry=rowY(1), hi=ry-SH/2, lo=ry+SH/2;
+  ctx.strokeStyle='#fb7185';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(LW,hi);
+  ctx.lineTo(ax,hi); ctx.lineTo(ax,lo);  // assert
+  // optional glitch before main release
+  if(glitch){
+    const gx = ax + CLKP * 0.6;
+    const gw = CLKP * 0.18;
+    ctx.lineTo(gx,lo); ctx.lineTo(gx,hi); ctx.lineTo(gx+gw,hi); ctx.lineTo(gx+gw,lo);
+  }
+  ctx.lineTo(rx,lo); ctx.lineTo(rx,hi);  // deassert
+  ctx.lineTo(LW+NCYC*CLKP,hi);
+  ctx.stroke();
+  // release marker dot
+  ctx.fillStyle = danger ? '#fb7185' : '#4ade80';
+  ctx.beginPath(); ctx.arc(rx,ry,4.5,0,Math.PI*2); ctx.fill();
+  if(glitch){
+    ctx.fillStyle='#fbbf24';
+    ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillText('glitch',ax+CLKP*0.69,ry-SH/2-3);
+  }
+}
+
+function drawFF1(ax, danger, tick){
+  const ry=rowY(2), hi=ry-SH/2, lo=ry+SH/2;
+  const rx=releaseX();
+  const dz_l=dzLeft(), dz_r=dzRight();
+  // FF1 deasserts at edge REF_CYCLE if release was before dz_right, else REF_CYCLE+1
+  const ff1Edge = (rx <= dz_r) ? REF_CYCLE : REF_CYCLE + 1;
+  const ff1X = edgeX(ff1Edge);
+
+  ctx.strokeStyle='#fbbf24';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(LW,hi);
+  ctx.lineTo(ax,hi); ctx.lineTo(ax,lo);  // async assert
+
+  if(danger){
+    // stays low until ff1X, then metastable squiggle across one cycle
+    ctx.lineTo(ff1X,lo);
+    ctx.stroke();
+    // squiggle
+    ctx.beginPath();ctx.strokeStyle='#fb7185';ctx.lineWidth=1.5;
+    ctx.moveTo(ff1X,lo);
+    const steps=28, sqW=CLKP*0.75;
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      const sx=ff1X+t*sqW;
+      const decay=Math.exp(-t*3.5);
+      const sy=ry + (SH/2)*Math.sin(t*Math.PI*9)*decay*(Math.sin(tick*0.08+t*5)*0.3+0.7);
+      ctx.lineTo(sx,sy);
+    }
+    ctx.stroke();
+    // resolves high after squiggle
+    ctx.strokeStyle='#fbbf24';ctx.lineWidth=2;ctx.setLineDash([]);
+    ctx.beginPath();
+    const resolveX=ff1X+sqW;
+    ctx.moveTo(resolveX,ry-2);
+    ctx.lineTo(ff1X+CLKP,ry-2);
+    ctx.lineTo(ff1X+CLKP,hi);
+    ctx.lineTo(LW+NCYC*CLKP,hi);
+    ctx.stroke();
+    // label
+    ctx.fillStyle='#fb7185';ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillText('metastable',ff1X+sqW/2,ry-SH/2-3);
+  } else {
+    ctx.lineTo(ff1X,lo); ctx.lineTo(ff1X,hi);
+    ctx.lineTo(LW+NCYC*CLKP,hi);
+    ctx.stroke();
+    // "clean" label
+    ctx.fillStyle='#fbbf24';ctx.font='bold 8px monospace';ctx.textAlign='left';ctx.textBaseline='bottom';
+    ctx.fillText('✓',ff1X+4,ry-SH/2-2);
+  }
+}
+
+function drawRSTSYNC(ax, danger){
+  const ry=rowY(3), hi=ry-SH/2, lo=ry+SH/2;
+  const rx=releaseX();
+  const dz_r=dzRight();
+  const ff1Edge = (rx <= dz_r) ? REF_CYCLE : REF_CYCLE + 1;
+  const ff2X = edgeX(ff1Edge + 1); // always one cycle after ff1
+
+  ctx.strokeStyle='#4ade80';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(LW,hi);
+  ctx.lineTo(ax,hi); ctx.lineTo(ax,lo);
+  ctx.lineTo(ff2X,lo); ctx.lineTo(ff2X,hi); // ALWAYS clean
+  ctx.lineTo(LW+NCYC*CLKP,hi);
+  ctx.stroke();
+  ctx.fillStyle='#4ade80';ctx.font='bold 8px monospace';ctx.textAlign='left';ctx.textBaseline='bottom';
+  ctx.fillText('✓ always clean',ff2X+5,ry-SH/2-2);
+
+  // Latency annotation
+  const latW=ff2X-ax;
+  if(latW>20){
+    ctx.strokeStyle='rgba(74,222,128,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    hline(ax,ff2X,ry+SH/2+6,'rgba(74,222,128,0.3)',1,[3,2]);
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(74,222,128,0.6)';ctx.font='8px monospace';ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.fillText('2 clk latency',ax+latW/2,ry+SH/2+8);
+  }
+}
+
+function drawDangerZone(){
+  const x0=dzLeft(), x1=dzRight();
+  ctx.fillStyle='rgba(251,113,133,0.06)';
+  ctx.fillRect(x0,0,x1-x0,C.height);
+  ctx.strokeStyle='rgba(251,113,133,0.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  vline(x0,0,C.height,'rgba(251,113,133,0.4)',1,[4,3]);
+  vline(x1,0,C.height,'rgba(251,113,133,0.4)',1,[4,3]);
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(251,113,133,0.7)';ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.textBaseline='top';
+  ctx.fillText('⚠ Setup/Hold',  (x0+x1)/2, 2);
+  ctx.fillText('Danger Zone',   (x0+x1)/2, 12);
+}
+
+function drawGrid(){
+  ctx.strokeStyle='rgba(148,163,184,0.05)';ctx.lineWidth=1;ctx.setLineDash([]);
+  for(let c=0;c<=NCYC;c++){
+    const x=edgeX(c);
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,C.height);ctx.stroke();
+  }
+}
+
+function draw(tick){
+  const W=C.width, H=C.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#060d1a';ctx.fillRect(0,0,W,H);
+
+  drawGrid();
+  drawDangerZone();
+
+  const danger=inDanger();
+  drawCLK();
+  drawRSTIN(ASSERT_X, releaseX(), danger, glitchOn);
+  drawFF1(ASSERT_X, danger, tick);
+  drawRSTSYNC(ASSERT_X, danger);
+
+  // Labels
+  drawLabel('CLK',      rowY(0), '#38bdf8');
+  drawLabel('RST_N_IN', rowY(1), '#fb7185');
+  drawLabel('FF1_Q',    rowY(2), '#fbbf24');
+  drawLabel('RST_SYNC', rowY(3), '#4ade80');
+}
+
+// Animation for metastable squiggle
+let af;
+function animate(){
+  animTick++;
+  draw(animTick);
+  af=requestAnimationFrame(animate);
+}
+animate();
+
+/* ── Controls ── */
+function onSlider(v){
+  sliderV = v / 100;
+  updateStatus();
+}
+
+function updateStatus(){
+  const danger=inDanger();
+  const pill=document.getElementById('statusPill');
+  const txt=document.getElementById('statusText');
+  const label=document.getElementById('offsetLabel');
+  const rx=releaseX();
+  const offset=rx-edgeX(REF_CYCLE);
+  label.textContent=(offset>=0?'+':'')+Math.round(offset)+'px';
+  if(danger){
+    pill.className='status-pill status-danger';
+    txt.textContent='⚠ Danger Zone — FF1 may go metastable';
+  } else {
+    pill.className='status-pill status-safe';
+    txt.textContent='✓ Safe Zone — clean deassert';
+  }
+}
+
+function toggleGlitch(){
+  glitchOn=!glitchOn;
+  const btn=document.getElementById('glitchBtn');
+  btn.classList.toggle('active',glitchOn);
+  btn.textContent=glitchOn?'⚡ Glitch ON — filtered by sync':'⚡ Inject Glitch';
+}
+
+function resetDemo(){
+  sliderV=0.22;glitchOn=false;
+  document.getElementById('offsetSlider').value=22;
+  document.getElementById('glitchBtn').classList.remove('active');
+  document.getElementById('glitchBtn').textContent='⚡ Inject Glitch';
+  updateStatus();
+}
+
+function onSpeed(v){ /* no-op — animation already runs */ }
+updateStatus();
+</script>
+</body>
+</html>
