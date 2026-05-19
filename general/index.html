@@ -88,6 +88,21 @@
     .footer-nav a{font-size:.82rem;color:var(--dim);transition:color .2s}
     .footer-nav a:hover{color:var(--indigo-l)}
     .footer-copy{font-size:.78rem;color:var(--dim);border-top:1px solid var(--border);padding-top:1.25rem}
+    .prose-section{max-width:1200px;margin:0 auto;padding:2.5rem 1.25rem}
+    .prose-section h2{font-family:'Orbitron',sans-serif;font-size:clamp(1.1rem,2.5vw,1.5rem);font-weight:700;color:#fff;margin-bottom:.9rem}
+    .prose-section h3{font-size:1rem;font-weight:700;color:var(--indigo-l);margin:1.5rem 0 .5rem}
+    .prose-section p{color:var(--muted);font-size:.9rem;line-height:1.85;margin-bottom:.9rem;max-width:880px}
+    .prose-section ul{color:var(--muted);font-size:.9rem;line-height:1.85;margin:.5rem 0 .9rem 1.5rem}
+    .prose-section ul li{margin-bottom:.3rem}
+    .concept-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0}
+    .concept-card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.4rem}
+    .concept-card h4{font-size:.92rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .concept-card p{color:var(--muted);font-size:.83rem;line-height:1.75;margin:0}
+    .faq-block{margin-top:2rem}
+    .faq-entry{border-bottom:1px solid var(--border);padding:1rem 0}
+    .faq-entry:last-child{border-bottom:none}
+    .faq-entry h4{font-size:.93rem;font-weight:700;color:#fff;margin-bottom:.4rem}
+    .faq-entry p{color:var(--muted);font-size:.87rem;line-height:1.8;margin:0}
   </style>
 </head>
 <body>
@@ -173,6 +188,62 @@
 
   </div>
 </div>
+
+<div class="divider"></div>
+
+<div class="prose-section">
+  <h2>Understanding the Hardware Stack: FPGA, GPU, CPU, and ASIC</h2>
+  <p>Modern chip design does not happen at a single level of abstraction. An RTL engineer writing SystemVerilog for an AXI4 DMA controller is working within a larger system that includes a host CPU, possibly an FPGA prototype platform, and downstream compute engines that may be GPUs or custom NPU accelerators. Understanding each layer — what it does, how it is architected, and where it sits in the data flow — is essential for making correct design decisions at the RTL level.</p>
+
+  <h3>FPGAs: How Reconfigurable Logic Works</h3>
+  <p>An FPGA (Field-Programmable Gate Array) implements digital logic through a matrix of configurable logic blocks (CLBs) connected by a programmable routing fabric. Each CLB contains lookup tables (LUTs) — small memory arrays that implement arbitrary Boolean functions — D flip-flops for sequential logic, carry chains for arithmetic, and multiplexers. The routing fabric consists of wire segments and programmable switch matrices that connect CLBs to each other and to I/O banks.</p>
+  <p>When you synthesize RTL for an FPGA, the EDA tool (Vivado, Quartus, Libero) maps your logic gates to LUTs, places CLBs on the physical fabric, and routes connections through the switch matrix. The final configuration is stored as a bitstream — typically several megabytes for a large device — that is loaded into SRAM cells at power-on. This is why FPGAs are volatile: they must be reconfigured from flash or a host processor every time power is applied.</p>
+  <p>FPGA designs face unique constraints that differ from ASIC design. LUT delays are fixed and not cell-sized optimized, so critical path optimization relies entirely on pipelining and logic restructuring. BRAM resources are finite and shared — a design that over-allocates BRAM may not fit. DSP slices handle 18×18 or 27×27 multiply-accumulate operations in a single clock cycle, and RTL written to use them explicitly (via instantiation or inference-friendly multiply patterns) runs orders of magnitude faster than an equivalent LUT-based multiplier.</p>
+
+  <h3>GPUs: SIMD Parallelism at Silicon Scale</h3>
+  <p>A GPU achieves its throughput by executing thousands of threads simultaneously using a SIMD (Single Instruction, Multiple Data) model. The fundamental execution unit is the <strong>warp</strong> (NVIDIA) or <strong>wavefront</strong> (AMD) — a group of 32 or 64 threads that execute the same instruction in lockstep across different data elements. A Streaming Multiprocessor (SM) on an NVIDIA H100 contains 128 CUDA cores, 4 tensor core units (for matrix multiplications), shared memory (192 KB), and register file storage for thousands of concurrent threads.</p>
+  <p>Memory bandwidth is the dominant performance limiter for most GPU workloads. Modern AI training GPUs (H100, MI300X) use HBM (High Bandwidth Memory) stacked directly on the package with through-silicon vias, delivering 3–5 TB/s of memory bandwidth — orders of magnitude beyond what a DDR5 DIMM provides. For RTL engineers designing AI accelerator SoCs, the key architectural lessons from GPU design are: keep data close to compute using large on-chip SRAM, pipeline deeply to hide memory latency, and structure the dataflow so that data reuse maximizes arithmetic intensity (compute operations per byte of memory traffic).</p>
+
+  <h3>The FPGA-to-ASIC Path in Production Chip Design</h3>
+  <p>Before any ASIC tapes out, its RTL almost always runs on FPGAs. A typical pre-tapeout flow uses 4–16 FPGAs (often Xilinx UltraScale+ or Intel Stratix 10) networked together to emulate the full chip at reduced speed (10–50 MHz versus the target 1–4 GHz on silicon). Software drivers, firmware, and application stacks run against this FPGA prototype, exposing software-visible bugs months before silicon is available.</p>
+  <p>This FPGA prototyping phase is where many RTL bugs are caught: CDC crossings that only fail at speed, FSM states that are never reached in RTL simulation, and interface protocol violations that the simulator abstracted away. RTL engineers who understand FPGA architecture write better RTL — they know which constructs synthesize efficiently, which clock structures require specific primitives, and how to partition a large design across multiple FPGAs using FPGA-to-FPGA serial links.</p>
+
+  <div class="concept-grid">
+    <div class="concept-card">
+      <h4>FPGA vs ASIC: When to Use Which</h4>
+      <p>FPGAs are preferred for low-to-medium volume (< 100K units), frequent field updates, prototyping, and time-sensitive projects that cannot wait 12–18 months for ASIC tapeout. ASICs win on unit cost (for volumes > 1M), power efficiency (3–5× better than FPGA at the same logic function), and performance (2–3 GHz clocks vs 300–600 MHz for FPGA). Most complex SoCs use ASICs with embedded FPGA (eFPGA) blocks for the programmable portions.</p>
+    </div>
+    <div class="concept-card">
+      <h4>CPU vs GPU: Serial vs Parallel Workloads</h4>
+      <p>CPUs minimize latency for a single thread: 4–64 large cores, deep out-of-order execution pipelines, and 30–100 MB of L3 cache that keeps frequently used data latency-close. GPUs maximize throughput: thousands of smaller cores, in-order execution within each warp, and high-bandwidth memory for streaming large datasets. Neural network inference maps naturally to GPUs because matrix-vector multiplications are data-parallel; OS scheduling and database queries do not, because they have irregular control flow and data dependencies that defeat SIMD execution.</p>
+    </div>
+    <div class="concept-card">
+      <h4>What RTL Engineers Should Know About GPU Architecture</h4>
+      <p>Designing AI accelerator chips requires understanding warp occupancy, shared memory bank conflicts, tensor core data formats (FP16, BF16, INT8, FP8), and how the memory hierarchy is organized. RTL for a custom NPU essentially reimplements these concepts in custom silicon: a systolic array for matrix multiply (like Google's TPU), scratchpad SRAM for reuse buffers, and DMA engines to feed compute from HBM. The GPU serves as the reference architecture from which custom accelerators borrow proven ideas.</p>
+    </div>
+  </div>
+
+  <div class="faq-block">
+    <h3>Common Questions on Hardware Architecture</h3>
+
+    <div class="faq-entry">
+      <h4>Why do ASIC engineers need to understand FPGA architecture?</h4>
+      <p>Because every production ASIC goes through an FPGA prototyping phase. RTL that doesn't synthesize cleanly on FPGA (due to latches, asynchronous logic, or non-standard clock structures) creates prototyping problems that delay software bring-up. Additionally, writing FPGA-friendly RTL from the start — synchronous resets, single-clock FSMs, inference-compatible multipliers — produces better ASIC RTL as a side effect. Many VLSI engineers spend 30–40% of their time on FPGA-related tasks even when their final target is a fully custom ASIC.</p>
+    </div>
+
+    <div class="faq-entry">
+      <h4>How does HBM (High Bandwidth Memory) differ from standard DRAM for SoC design?</h4>
+      <p>Standard DDR5 DRAM uses a 64-bit wide interface per DIMM at around 50–60 GB/s bandwidth. HBM2E and HBM3 use a 1024-bit wide bus with multiple stacked DRAM dies connected through silicon vias directly to the package substrate, delivering 400–900 GB/s per stack. For SoC designers, HBM integration requires a dedicated PHY that is co-designed with the package, strict die-to-die signal integrity constraints, and careful power delivery for hundreds of amperes at low voltage. LPDDR4/5 sits between the two — wider than DDR5 in total bandwidth but without the complexity of HBM TSV stacking — and is the standard choice for mobile and edge AI chips.</p>
+    </div>
+
+    <div class="faq-entry">
+      <h4>What is the FPGA lookup table (LUT) and how does it implement any logic function?</h4>
+      <p>A k-input LUT is a small 2^k × 1 SRAM array. For a 6-input LUT (the standard in modern FPGAs), the SRAM has 64 cells. Each cell corresponds to one row of the truth table — the 64 possible input combinations of A through F. The synthesis tool fills the 64 SRAM cells with the output values from the truth table of the target function. At runtime, the 6-bit input vector acts as an address into this SRAM, reading out the pre-programmed output value in one cycle. Because any Boolean function of up to 6 variables can be expressed as a 64-entry truth table, a single 6-LUT can implement any 6-input combinational logic function — an AND gate, an XOR chain, a multiplexer, or an arbitrary expression.</p>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
 
 <footer>
   <div class="footer-logo">Ecrioni<span>X</span></div>
