@@ -626,6 +626,27 @@
     <p>No. APB is a single-master bus. The AHB-to-APB or AXI-to-APB bridge acts as the sole master. Multiple AHB/AXI masters access APB only through the bridge.</p>
   </section>
 
+  <hr>
+
+  <!-- ═══ 11. DEEP DIVE ═══ -->
+  <section class="section">
+    <h2>11. APB in Real SoC Design — Practical Considerations</h2>
+
+    <h3>APB Register Map Design</h3>
+    <p>In practice, the most important design decision for an APB slave is the register map — how PADDR values map to internal configuration and status registers. A well-designed register map groups related controls together at aligned addresses, separates read-only status from read-write control, and leaves address gaps for future expansion. By convention, each register occupies 4 bytes (word-aligned), so PADDR[1:0] is typically ignored. The APB slave decodes PADDR[N:2] where N is the number of address bits needed to cover all registers.</p>
+    <p>A common pitfall is designing a register map with write-only registers (registers that can be written but where reading returns 0). While technically valid in the APB spec, write-only registers complicate software driver development because the CPU cannot read-back the current value to perform read-modify-write operations. Prefer registers that return their last written value on reads — this is called "read-back support" and is a strong design recommendation for all control registers.</p>
+
+    <h3>Timing Constraints for APB</h3>
+    <p>APB operates synchronously to PCLK. Because APB is a low-bandwidth peripheral bus, PCLK is typically derived from a divided-down version of the main system clock. A 1 GHz SoC might run AXI4 at 1 GHz, AHB at 500 MHz, and APB at 100–250 MHz. This means the APB bridge contains a clock domain crossing: the AHB or AXI side runs at high frequency, and the APB side at a lower frequency. The bridge must synchronize control signals across this boundary, adding latency to each APB transfer. This latency is acceptable because APB is only used for peripheral register accesses where timing is not critical.</p>
+    <p>STA (Static Timing Analysis) for APB slaves is straightforward compared to AXI4: all paths are synchronous to one clock (PCLK), there is no pipelining, and the maximum combinational depth is typically 2–3 gates (address decode + mux). The main timing concern is PREADY — if PREADY is generated combinationally from a memory or state machine, it must meet the setup time requirement of the master's PCLK edge. Most designers register PREADY to avoid this combinational path.</p>
+
+    <h3>APB in Power-Managed SoCs</h3>
+    <p>APB's simple, synchronous architecture makes it particularly well-suited for power-managed designs. Because APB has no pipeline and no outstanding transactions, the APB slave can be placed in a power island that is fully shut down when unused. The AHB-to-APB bridge simply stalls (holds PREADY low or asserts PSLVERR) if the APB domain is powered off. When the software driver needs to access the peripheral, it wakes the power domain, waits for the wake-up time (typically microseconds), and then proceeds with APB transfers. This coarse-grained power management is used extensively in mobile SoCs for peripherals like Bluetooth controllers, camera interfaces, and audio codecs.</p>
+
+    <h3>Verifying APB Compliance</h3>
+    <p>A complete APB verification environment checks the following properties: the slave never asserts PSLVERR without PREADY being simultaneously high; PRDATA is stable before PREADY goes high; the slave holds PREADY low for the correct number of wait states; PADDR, PWRITE, and PWDATA are stable throughout the SETUP and ACCESS phases; PSELx is not deasserted before PREADY; and the slave correctly resets all registers to their default values on PRESETn. A UVM-based APB VIP (Verification IP) generates constrained-random traffic and checks these properties using assertions. For most VLSI interview scenarios, demonstrating knowledge of these protocol rules — not just the waveform diagrams — separates candidates who understand the protocol from those who have memorized the timing diagram.</p>
+  </section>
+
   <!-- TOPIC NAV -->
   <nav class="topic-nav" aria-label="Topic navigation">
     <a href="/protocols/" class="tnav-btn">
