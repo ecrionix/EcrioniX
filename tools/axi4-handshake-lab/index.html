@@ -391,6 +391,30 @@ endmodule</div>
   </div>
 </section>
 
+<!-- DEEP PROSE SECTION -->
+<section class="section" style="margin-top:1.75rem">
+  <h2 class="sec-title">AXI4 in Real SoC Design — Beyond the Handshake</h2>
+
+  <div class="concept-grid">
+    <div class="concept-card">
+      <h3>Outstanding Transactions and ID Tagging</h3>
+      <p>Full AXI4 (not AXI4-Lite) supports multiple outstanding transactions through ID tagging. A master may issue 8 read requests before receiving a single response, each tagged with a unique ARID value. The slave may return responses out of order as long as it uses the matching RID. This out-of-order capability is what gives AXI4 its high memory bandwidth efficiency: the master keeps the bus busy issuing new requests rather than waiting idle for responses to return. The ordering rule is stricter within a single ID: responses for the same ARID must return in the same order the requests were issued. This constraint forces slaves with in-order completion (like most SRAM controllers) to serialize requests with the same ID, which is why master IDs are carefully partitioned in real interconnect designs — a DMA engine and a CPU core using the same ID would serialize their requests through a shared slave.</p>
+    </div>
+    <div class="concept-card">
+      <h3>AXI4 Burst Types: INCR, WRAP, FIXED</h3>
+      <p>AXI4 supports three burst types encoded in AWBURST/ARBURST. INCR (incrementing) is the most common: each beat's address increments by the transfer size. A 4-beat INCR burst to address 0x1000 with 32-bit transfers accesses 0x1000, 0x1004, 0x1008, 0x100C. WRAP (wrapping) is used primarily for cache line refills: the address increments but wraps at a power-of-2 boundary. A 4-beat WRAP burst starting at 0x1008 wraps at 0x1010, accessing 0x1008, 0x100C, 0x1000, 0x1004 — the cache refill returns the requested word first and fills the rest of the cache line in address-wrap order. FIXED repeats the same address every beat, useful for polling a status register or streaming to a FIFO. Understanding burst types is critical for memory controller RTL design: WRAP bursts require the controller to track a boundary and reset the address mid-burst, which adds a state to the burst FSM.</p>
+    </div>
+    <div class="concept-card">
+      <h3>Narrow Transfers and Byte Strobes</h3>
+      <p>AXI4 allows transfers narrower than the bus width through WSTRB (write strobe) — one bit per byte lane. A 32-bit AXI4 bus has a 4-bit WSTRB. Writing a single byte to address 0x1001 uses WSTRB = 4'b0010 to enable only byte lane 1. The slave must mask its write operation to update only the enabled byte lanes. This mechanism allows a 32-bit bus to serve 8-bit and 16-bit peripherals without requiring separate bus width adapters. For RTL engineers designing a slave register block, WSTRB handling is a common source of bugs: the write logic must apply the strobe on a per-byte basis, not a per-word basis. A common mistake is writing <code>if (wvalid &amp;&amp; wready) reg <= wdata;</code> which ignores WSTRB completely, corrupting bytes adjacent to the intended write target.</p>
+    </div>
+    <div class="concept-card">
+      <h3>Interconnect Deadlock Prevention</h3>
+      <p>In an AXI4 interconnect with multiple masters and slaves, circular dependencies can cause deadlock. The canonical deadlock scenario: master A holds write data buffer space waiting for a write response (B channel), while master B holds the address buffer space needed by master A's outstanding address transaction, and the slave's response cannot proceed because the return path is blocked by master A's stall. The AXI specification defines ordering rules and recommends that interconnect components always have capacity to accept the write response channel (B channel) independently of the write data channel (W channel). Interconnect implementations enforce this by sizing per-channel buffers independently rather than sharing a common pool. When designing AXI-connected subsystems, ensuring the B and R channels are never starved is as important as managing VALID/READY timing — a well-behaved handshake at the individual channel level does not prevent deadlock if channel arbitration creates circular dependencies.</p>
+    </div>
+  </div>
+</section>
+
 <!-- CROSS-LINKS -->
 <div class="cross-links">
   <h3>Related Topics</h3>
