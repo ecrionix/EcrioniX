@@ -400,6 +400,18 @@ footer p{color:#374151;font-size:.75rem;margin-top:.75rem}
     <div class="faq-a">The MSB stays the same. Then B[i] = G[i] XOR B[i+1] — iterative from MSB downward. In RTL: a for loop computes <code>bin[i] = ^(gray &gt;&gt; i)</code>, which XORs all Gray bits from MSB down to position i. This is purely combinational but requires a cascade of XOR gates.</div>
   </div>
 
+  <h2>Gray Code in Async FIFO Design — The Full Picture</h2>
+
+  <p>The asynchronous FIFO (First-In First-Out) is where Gray code matters most in professional RTL design. An async FIFO has two independent clock domains: the write domain (producer, drives wptr) and the read domain (consumer, drives rptr). The FULL flag is generated in the write domain by comparing wptr with rptr; the EMPTY flag is generated in the read domain by the reverse comparison. Since wptr must be readable in the read domain and rptr must be readable in the write domain, both pointers must cross clock domain boundaries.</p>
+
+  <p>If the pointers were standard binary, crossing them would be dangerous. Consider a 4-bit pointer transitioning from 0111 (7) to 1000 (8): all four bits change simultaneously. If the receiving domain samples this pointer mid-transition due to its own clock edge, it might see 1010, 0100, or any other intermediate value — none of which represent valid FIFO pointer states. The FIFO would compute incorrect fill level, generate spurious FULL or EMPTY flags, and potentially overflow or underflow.</p>
+
+  <p>Gray code solves this cleanly. The 4-bit Gray code for 7 is 0100; for 8 it is 1100. Only one bit (the MSB) changes. When the receiving domain samples during this single-bit transition, it captures either 0100 (7) or 1100 (8) — both of which are valid pointer values. The off-by-one error is acceptable because FIFO margins are designed to tolerate it: the FULL flag is asserted one entry early (conservatively), and the EMPTY flag is asserted one entry late. This intentional conservatism prevents overflow and underflow while accommodating the inherent latency of the 2-FF synchronizer that crosses the pointer.</p>
+
+  <p>In RTL implementation, the write pointer and read pointer are maintained as binary counters (binary arithmetic is simpler) and converted to Gray code only at the CDC crossing point. The typical pattern: <code>wptr_gray = wptr ^ (wptr >> 1)</code> in the write domain, then synchronized into the read domain via a 2-FF synchronizer. The read domain uses the synchronized Gray-coded write pointer for EMPTY detection. The same process runs in the other direction for FULL detection. This "count in binary, cross in Gray, compare in Gray" pattern is the VLSI industry standard for async FIFO design and appears in virtually every production SoC with clock domain crossings.</p>
+
+  <p>An important subtlety: the Gray-to-binary conversion for comparison must also be done correctly. When comparing the synchronized write pointer (Gray code in the read domain) to the read pointer (also in Gray code in the read domain), the comparison can be done directly in Gray code — if wptr_gray_sync == rptr_gray, the FIFO is empty. This avoids the iterative Gray-to-binary conversion chain entirely, saving both area and critical path delay. The standard Clifford Cummings async FIFO design uses this direct Gray-code comparison, and understanding this optimization distinguishes candidates who have implemented async FIFOs from those who have only read about them.</p>
+
 </article>
 
 <!-- SIDEBAR -->
