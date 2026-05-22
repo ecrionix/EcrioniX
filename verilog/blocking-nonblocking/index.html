@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verilog Blocking vs Non-Blocking Assignment (= vs <=) | Tutorial 06 | EcrioniX</title>
+  <meta name="description" content="Master the most common Verilog mistake: blocking (=) vs non-blocking (<=) assignments. Understand the Verilog event scheduler, race conditions, and the golden rule for RTL design.">
+  <meta name="keywords" content="verilog blocking non-blocking assignment, verilog = vs <=, verilog race condition, verilog event scheduler, verilog always block assignment, verilog RTL design rules, verilog tutorial">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/verilog/blocking-nonblocking/">
+  <meta property="og:title" content="Verilog Blocking vs Non-Blocking Assignment (= vs <=) | EcrioniX">
+  <meta property="og:description" content="The most important rule in Verilog RTL: use = in combinational always blocks and <= in sequential always blocks. Learn why with simulation examples.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verilog/blocking-nonblocking/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"TechArticle","headline":"Verilog Blocking vs Non-Blocking Assignment","url":"https://ecrionix.org/verilog/blocking-nonblocking/","description":"Complete guide to Verilog blocking and non-blocking assignments with race condition examples and the golden RTL rules.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"isPartOf":{"@type":"Course","name":"Verilog Tutorial Series","url":"https://ecrionix.org/verilog/"}},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the golden rule for blocking vs non-blocking in Verilog?","acceptedAnswer":{"@type":"Answer","text":"The golden rule is: use blocking (=) in combinational always @(*) blocks, and use non-blocking (<=) in sequential always @(posedge clk) blocks. Never mix them in the same always block. This rule prevents race conditions and ensures synthesis and simulation match."}},
+      {"@type":"Question","name":"What is the difference between blocking and non-blocking assignments in Verilog?","acceptedAnswer":{"@type":"Answer","text":"Blocking (=) executes and updates immediately — the next statement in the block sees the new value. Non-blocking (<=) schedules an update to happen at the end of the current simulation time step — all non-blocking updates happen simultaneously after the block finishes. This models the behavior of real flip-flops that all capture their inputs at the same clock edge."}},
+      {"@type":"Question","name":"What is a race condition in Verilog?","acceptedAnswer":{"@type":"Answer","text":"A race condition occurs when two always blocks write and read the same signal in the same simulation time step, and the result depends on the order in which the simulator executes them. Non-blocking assignments eliminate clock-edge races by scheduling all updates together at end-of-timeslot, so order of execution doesn't matter."}},
+      {"@type":"Question","name":"Why does using blocking assignment in a clocked always block cause problems?","acceptedAnswer":{"@type":"Answer","text":"Using = in always @(posedge clk) causes race conditions. If two flip-flops share a signal and use blocking assignment, the second flop may read an already-updated value from the first flop in the same clock edge, simulating one more clock cycle than intended. This creates a simulation/synthesis mismatch — the synthesized circuit has flip-flops but the simulation acts like they don't exist."}},
+      {"@type":"Question","name":"Can you use non-blocking assignment in a combinational always block?","acceptedAnswer":{"@type":"Answer","text":"Technically the simulator allows it, but it is incorrect RTL practice. Using <= in always @(*) delays the update to end-of-timeslot and can cause simulation loops, glitches, or mismatches with synthesis. Combinational logic has no memory of clock edges, so it must use blocking assignments to get immediate results."}},
+      {"@type":"Question","name":"What is the Verilog event scheduler and how does it relate to non-blocking?","acceptedAnswer":{"@type":"Answer","text":"Verilog simulates time in timesteps. At each timestep, active events (including blocking = assignments) execute first. Non-blocking <= assignments go into a separate NBA (non-blocking assignment update) queue and are applied after all active events in the current timestep complete. This ensures all flip-flops in a clocked block update simultaneously, matching real hardware."}},
+      {"@type":"Question","name":"What is a shift register race condition in Verilog?","acceptedAnswer":{"@type":"Answer","text":"A classic race condition: three D flip-flops in series (a→b→c) using blocking = in a single always @(posedge clk). Because = updates immediately, b reads a's NEW value and c reads b's NEW value — all three shift in the same cycle instead of one stage per cycle. Using <= makes each flip-flop read the OLD value from the previous cycle, which is the correct behavior."}}
+    ]},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Verilog","item":"https://ecrionix.org/verilog/"},
+      {"@type":"ListItem","position":3,"name":"Blocking vs Non-Blocking","item":"https://ecrionix.org/verilog/blocking-nonblocking/"}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    :root{--bg:#020617;--bg-2:#0f172a;--bg-card:rgba(15,23,42,0.75);--border:rgba(148,163,184,0.1);--border-hover:rgba(99,102,241,0.4);--indigo:#6366f1;--indigo-l:#818cf8;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b;--code-bg:#0d1117;--green:#22c55e;--red:#f43f5e;}
+    html{scroll-behavior:smooth;}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7;}
+    #bg-canvas{position:fixed;inset:0;z-index:-1;pointer-events:none;}
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between;}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.25rem;font-weight:700;color:#fff;text-decoration:none;}
+    .nav-logo span{color:var(--indigo);}
+    .nav-links{display:flex;gap:1.75rem;list-style:none;}
+    .nav-links a{color:var(--muted);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s;}
+    .nav-links a:hover,.nav-links a.active{color:#fff;}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px;}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px;}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg-2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem;}
+    .mobile-menu.open{display:flex;}
+    .mobile-menu a{color:var(--muted);text-decoration:none;font-size:.95rem;padding:.6rem 0;border-bottom:1px solid var(--border);}
+    .mobile-menu a:last-child{border-bottom:none;}
+    .mobile-menu a:hover{color:#fff;}
+    @media(max-width:768px){.nav-links{display:none;}.hamburger{display:flex;}}
+    .breadcrumb{max-width:1100px;margin:0 auto;padding:1rem 1.25rem 0;display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--dim);flex-wrap:wrap;}
+    .breadcrumb a{color:var(--dim);text-decoration:none;}
+    .breadcrumb a:hover{color:var(--indigo-l);}
+    .breadcrumb span{color:var(--muted);}
+    .content{max-width:1100px;margin:0 auto;padding:2.5rem 1.25rem 5rem;}
+    .tut-header{margin-bottom:2.5rem;}
+    .tut-tag{display:inline-flex;align-items:center;gap:.5rem;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:var(--indigo-l);font-size:.75rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1rem;}
+    .tut-title{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:700;line-height:1.2;color:#fff;margin-bottom:.75rem;}
+    .tut-title span{background:linear-gradient(135deg,#f43f5e,#fb923c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .tut-lead{font-size:1.05rem;color:var(--muted);max-width:700px;margin-bottom:1.5rem;}
+    .toc{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:2.5rem;max-width:480px;}
+    .toc-title{font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.75rem;}
+    .toc ol{padding-left:1.2rem;}
+    .toc li{margin:.3rem 0;}
+    .toc a{color:var(--indigo-l);text-decoration:none;font-size:.88rem;}
+    .toc a:hover{text-decoration:underline;}
+    h2{font-size:1.55rem;font-weight:700;color:#fff;margin:2.5rem 0 .75rem;padding-top:.5rem;}
+    h3{font-size:1.15rem;font-weight:600;color:#e2e8f0;margin:1.75rem 0 .5rem;}
+    p{color:var(--muted);margin-bottom:1rem;font-size:.97rem;}
+    ul,ol{color:var(--muted);padding-left:1.4rem;margin-bottom:1rem;}
+    li{margin:.3rem 0;font-size:.95rem;}
+    strong{color:#e2e8f0;}
+    .code-block{position:relative;margin:1.25rem 0;}
+    .code-block pre{background:var(--code-bg);border:1px solid rgba(148,163,184,0.12);border-radius:10px;padding:1.25rem 1.5rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#e2e8f0;}
+    .code-block .copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);color:var(--indigo-l);font-size:.72rem;padding:.25rem .65rem;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .2s;}
+    .code-block .copy-btn:hover{background:rgba(99,102,241,.3);}
+    .code-block .lang-label{position:absolute;top:.6rem;left:1rem;font-size:.68rem;color:var(--dim);font-family:'JetBrains Mono',monospace;letter-spacing:.05em;}
+    .bad-label{position:absolute;top:.6rem;left:1rem;font-size:.68rem;color:#f43f5e;font-family:'Outfit',sans-serif;font-weight:700;letter-spacing:.05em;}
+    .good-label{position:absolute;top:.6rem;left:1rem;font-size:.68rem;color:#22c55e;font-family:'Outfit',sans-serif;font-weight:700;letter-spacing:.05em;}
+    .kw{color:#c084fc;} .cm{color:#6b7280;font-style:italic;} .str{color:#86efac;} .num{color:#fb923c;} .id{color:#93c5fd;} .op{color:#fbbf24;font-weight:600;} .fn{color:#fde68a;} .nb{color:#f43f5e;font-weight:700;} .bl{color:#38bdf8;font-weight:700;}
+    .info-box{background:rgba(99,102,241,.08);border-left:3px solid var(--indigo);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted);}
+    .info-box strong{color:var(--indigo-l);}
+    .warn-box{background:rgba(244,63,94,.08);border-left:3px solid var(--red);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted);}
+    .warn-box strong{color:var(--red);}
+    .tip-box{background:rgba(34,197,94,.08);border-left:3px solid var(--green);border-radius:0 10px 10px 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.9rem;color:var(--muted);}
+    .tip-box strong{color:var(--green);}
+    table{width:100%;border-collapse:collapse;margin:1.25rem 0;font-size:.88rem;}
+    th{background:rgba(99,102,241,.12);color:#e2e8f0;font-weight:600;padding:.7rem 1rem;text-align:left;border-bottom:1px solid var(--border);}
+    td{padding:.6rem 1rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top;}
+    tr:last-child td{border-bottom:none;}
+    tr:hover td{background:rgba(99,102,241,.04);}
+    .svg-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin:1.5rem 0;display:flex;flex-direction:column;align-items:center;gap:.75rem;}
+    .svg-wrap figcaption{font-size:.8rem;color:var(--dim);text-align:center;}
+    .compare-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0;}
+    @media(max-width:680px){.compare-2{grid-template-columns:1fr;}}
+    .golden-rule{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.3);border-radius:14px;padding:1.5rem 2rem;margin:1.75rem 0;text-align:center;}
+    .golden-rule h3{color:var(--red);font-size:1.15rem;margin-bottom:.75rem;}
+    .golden-rule p{margin:0;font-size:.95rem;color:#e2e8f0;}
+    .golden-rule code{font-family:'JetBrains Mono',monospace;font-size:.9em;background:rgba(244,63,94,.12);color:#f87171;padding:.15em .4em;border-radius:4px;}
+    .nav-tut{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);flex-wrap:wrap;}
+    .nav-tut a{display:flex;align-items:center;gap:.5rem;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:.7rem 1.25rem;text-decoration:none;color:var(--indigo-l);font-size:.88rem;font-weight:600;transition:border-color .2s,background .2s;}
+    .nav-tut a:hover{border-color:var(--border-hover);background:rgba(99,102,241,.08);}
+    .nav-tut .prev::before{content:'← ';}
+    .nav-tut .next::after{content:' →';}
+    #back-to-top{position:fixed;bottom:2rem;right:1.5rem;z-index:200;background:var(--indigo);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(99,102,241,.4);}
+    #back-to-top.show{display:flex;}
+    .tag-chip{display:inline-block;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);color:var(--indigo-l);font-size:.72rem;padding:.2rem .6rem;border-radius:5px;margin:.15rem;}
+    code{font-family:'JetBrains Mono',monospace;font-size:.83em;background:rgba(99,102,241,.1);color:var(--indigo-l);padding:.1em .35em;border-radius:4px;}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/digital-electronics/">Digital Electronics</a></li>
+      <li><a href="/verilog/" class="active">Verilog</a></li>
+      <li><a href="/rtl_design/">RTL Design</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu">
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/verilog/">Verilog</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+<div class="breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/verilog/">Verilog</a><span>›</span>
+  <span>Blocking vs Non-Blocking</span>
+</div>
+<div class="content">
+  <div class="tut-header">
+    <div class="tut-tag">Tutorial 06 · Verilog Series</div>
+    <h1 class="tut-title">Blocking vs <span>Non-Blocking</span> Assignment</h1>
+    <p class="tut-lead">The <code>=</code> vs <code>&lt;=</code> distinction is the most common source of bugs for Verilog beginners and a frequent interview topic. Understanding the Verilog event scheduler and the golden rule will save you hours of debugging race conditions.</p>
+    <div>
+      <span class="tag-chip">= (blocking)</span>
+      <span class="tag-chip">&lt;= (non-blocking)</span>
+      <span class="tag-chip">Race Condition</span>
+      <span class="tag-chip">Event Scheduler</span>
+      <span class="tag-chip">Shift Register Bug</span>
+      <span class="tag-chip">NBA Queue</span>
+    </div>
+  </div>
+
+  <nav class="toc" aria-label="Table of contents">
+    <div class="toc-title">On This Page</div>
+    <ol>
+      <li><a href="#golden-rule">The Golden Rule</a></li>
+      <li><a href="#blocking">Blocking Assignment (=)</a></li>
+      <li><a href="#nonblocking">Non-Blocking Assignment (&lt;=)</a></li>
+      <li><a href="#scheduler">The Verilog Event Scheduler</a></li>
+      <li><a href="#race-example">Race Condition Example</a></li>
+      <li><a href="#shift-reg">Shift Register Bug (Classic)</a></li>
+      <li><a href="#swap">Variable Swap Example</a></li>
+      <li><a href="#summary-table">Summary Table</a></li>
+      <li><a href="#rules">Complete Rule Set</a></li>
+    </ol>
+  </nav>
+
+  <!-- SVG: blocking (sequential) vs non-blocking (parallel updates) -->
+  <div class="svg-wrap">
+    <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;height:auto;" aria-label="Blocking vs non-blocking timeline diagram">
+      <rect width="700" height="240" fill="#0d1117" rx="10"/>
+      <!-- BLOCKING side -->
+      <text x="175" y="28" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="13" text-anchor="middle" font-weight="700">Blocking  =</text>
+      <text x="175" y="44" fill="#64748b" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">executes sequentially</text>
+      <!-- steps -->
+      <rect x="20" y="58" width="310" height="38" rx="6" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.25)" stroke-width="1"/>
+      <text x="30" y="73" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="10">a = b;</text>
+      <text x="30" y="88" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">→ a updates NOW. Next statement sees new a.</text>
+      <rect x="20" y="104" width="310" height="38" rx="6" fill="rgba(56,189,248,.06)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="30" y="119" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="10">c = a + 1;</text>
+      <text x="30" y="134" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">→ uses UPDATED value of a (the old b)</text>
+      <!-- arrow down -->
+      <line x1="175" y1="142" x2="175" y2="160" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arr-b)"/>
+      <rect x="20" y="161" width="310" height="38" rx="6" fill="rgba(56,189,248,.04)" stroke="rgba(56,189,248,.15)" stroke-width="1"/>
+      <text x="175" y="178" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">Result: a has new value during block</text>
+      <text x="175" y="192" fill="#4ade80" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">✓ Use in combinational always @(*)</text>
+
+      <!-- NON-BLOCKING side -->
+      <text x="525" y="28" fill="#4ade80" font-family="Outfit,sans-serif" font-size="13" text-anchor="middle" font-weight="700">Non-Blocking  &lt;=</text>
+      <text x="525" y="44" fill="#64748b" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">schedules updates in NBA queue</text>
+      <rect x="370" y="58" width="310" height="38" rx="6" fill="rgba(74,222,128,.08)" stroke="rgba(74,222,128,.25)" stroke-width="1"/>
+      <text x="380" y="73" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="10">a &lt;= b;</text>
+      <text x="380" y="88" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">→ schedules update. a still holds OLD value.</text>
+      <rect x="370" y="104" width="310" height="38" rx="6" fill="rgba(74,222,128,.06)" stroke="rgba(74,222,128,.2)" stroke-width="1"/>
+      <text x="380" y="119" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="10">c &lt;= a + 1;</text>
+      <text x="380" y="134" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">→ uses OLD value of a (correct!)</text>
+      <line x1="525" y1="142" x2="525" y2="160" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr-g)"/>
+      <rect x="370" y="161" width="310" height="38" rx="6" fill="rgba(74,222,128,.04)" stroke="rgba(74,222,128,.15)" stroke-width="1"/>
+      <text x="525" y="178" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">All updates applied simultaneously at end</text>
+      <text x="525" y="192" fill="#4ade80" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">✓ Use in sequential always @(posedge clk)</text>
+
+      <!-- divider -->
+      <line x1="348" y1="50" x2="348" y2="215" stroke="rgba(148,163,184,.15)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="350" y="225" fill="#64748b" font-family="Outfit,sans-serif" font-size="10" text-anchor="middle">Verilog Event Scheduler handles both — they differ in WHEN the update is applied</text>
+
+      <defs>
+        <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#38bdf8"/></marker>
+        <marker id="arr-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4ade80"/></marker>
+      </defs>
+    </svg>
+    <figcaption>Blocking (=) updates immediately; non-blocking (&lt;=) schedules updates to the end of the timestep — all flip-flops update simultaneously.</figcaption>
+  </div>
+
+  <!-- GOLDEN RULE -->
+  <div class="golden-rule" id="golden-rule">
+    <h3>⚡ The Golden Rule</h3>
+    <p>Use <code>=</code> in <code>always @(*)</code> combinational blocks &nbsp;·&nbsp; Use <code>&lt;=</code> in <code>always @(posedge clk)</code> sequential blocks<br>Never mix them in the same <code>always</code> block.</p>
+  </div>
+
+  <!-- 1. BLOCKING -->
+  <h2 id="blocking">1. Blocking Assignment (=)</h2>
+  <p>Blocking assignments execute <strong>in order</strong>, like C code. The next statement in the block sees the updated value.</p>
+  <div class="code-block">
+    <span class="lang-label">verilog — blocking in combinational block (correct)</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">always</span> @(<span class="op">*</span>) <span class="kw">begin</span>
+    <span class="id">temp</span> <span class="bl">=</span> <span class="id">a</span> <span class="op">&</span> <span class="id">b</span>;     <span class="cm">// temp updates immediately</span>
+    <span class="id">out</span>  <span class="bl">=</span> <span class="id">temp</span> <span class="op">|</span> <span class="id">c</span>;  <span class="cm">// out sees the new temp — correct</span>
+<span class="kw">end</span></pre>
+  </div>
+  <p>The sequential execution of blocking assignments in <code>@(*)</code> is intentional and useful — it lets you use intermediate variables without ambiguity. The final combinational output is purely a function of current inputs.</p>
+
+  <!-- 2. NON-BLOCKING -->
+  <h2 id="nonblocking">2. Non-Blocking Assignment (&lt;=)</h2>
+  <p>Non-blocking assignments schedule an update to the NBA (non-blocking assignment update) queue. The RHS is evaluated immediately, but the LHS is not updated until all active events for the current timestep are done.</p>
+  <div class="code-block">
+    <span class="lang-label">verilog — non-blocking in sequential block (correct)</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="kw">begin</span>
+    <span class="id">b</span> <span class="nb">&lt;=</span> <span class="id">a</span>;    <span class="cm">// RHS evaluated: captures current a</span>
+    <span class="id">c</span> <span class="nb">&lt;=</span> <span class="id">b</span>;    <span class="cm">// RHS evaluated: captures current b (OLD value)</span>
+    <span class="cm">// At end of timestep: b gets old a, c gets old b simultaneously</span>
+<span class="kw">end</span></pre>
+  </div>
+
+  <!-- 3. SCHEDULER -->
+  <h2 id="scheduler">3. The Verilog Event Scheduler</h2>
+  <p>Understanding the simulation scheduler explains <em>why</em> non-blocking works. Within each simulation timestep:</p>
+  <ol>
+    <li><strong>Active region:</strong> all blocking = assignments execute; <code>always</code> blocks triggered by events run</li>
+    <li><strong>NBA region:</strong> all pending <code>&lt;=</code> updates are applied simultaneously</li>
+    <li><strong>Postponed region:</strong> <code>$strobe</code> and final monitoring</li>
+  </ol>
+  <p>Because all <code>&lt;=</code> updates happen in the NBA region (after all active events), every flip-flop in a clocked block reads the <strong>pre-update values</strong> of other flip-flops — exactly how real hardware works. All flip-flops clock simultaneously.</p>
+
+  <!-- 4. RACE EXAMPLE -->
+  <h2 id="race-example">4. Race Condition Example</h2>
+  <p>Two always blocks that share a signal and use blocking assignment can race against each other:</p>
+  <div class="code-block">
+    <span class="bad-label">⚠️ RACE CONDITION — blocking in clocked blocks</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Two separate always blocks — order of execution is undefined!</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="id">a</span> <span class="bl">=</span> <span class="id">b</span>;   <span class="cm">// blocking</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="id">b</span> <span class="bl">=</span> <span class="id">a</span>;   <span class="cm">// blocking</span>
+<span class="cm">// Depending on simulator execution order:</span>
+<span class="cm">// Option A: a gets old b, b gets new a (already updated)</span>
+<span class="cm">// Option B: b gets old a, a gets new b (already updated)</span>
+<span class="cm">// → Simulation result is UNDEFINED and tool-dependent!</span></pre>
+  </div>
+  <div class="code-block">
+    <span class="good-label">✓ CORRECT — non-blocking eliminates the race</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="id">a</span> <span class="nb">&lt;=</span> <span class="id">b</span>;  <span class="cm">// schedule: a ← old b</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="id">b</span> <span class="nb">&lt;=</span> <span class="id">a</span>;  <span class="cm">// schedule: b ← old a</span>
+<span class="cm">// NBA region applies both simultaneously:</span>
+<span class="cm">// a gets old b, b gets old a → correct swap, order-independent</span></pre>
+  </div>
+
+  <!-- 5. SHIFT REG BUG -->
+  <h2 id="shift-reg">5. Shift Register Bug (Classic Interview Question)</h2>
+  <p>This is the most famous Verilog pitfall. Three flip-flops in series — a 3-stage shift register:</p>
+  <div class="code-block">
+    <span class="bad-label">⚠️ BUG: blocking = in clocked block</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="kw">begin</span>
+    <span class="id">b</span> <span class="bl">=</span> <span class="id">a</span>;   <span class="cm">// b gets new a immediately</span>
+    <span class="id">c</span> <span class="bl">=</span> <span class="id">b</span>;   <span class="cm">// c gets NEW b (which is already new a!)</span>
+    <span class="cm">// Result: both b and c get value of a in ONE clock</span>
+    <span class="cm">// Simulates as a 1-stage shift, not 3-stage!</span>
+<span class="kw">end</span>
+
+<span class="cm">// Starting: a=1, b=0, c=0</span>
+<span class="cm">// After clk↑: b=1, c=1 — WRONG! (should be b=1, c=0)</span></pre>
+  </div>
+  <div class="code-block">
+    <span class="good-label">✓ CORRECT: non-blocking <=</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="kw">begin</span>
+    <span class="id">b</span> <span class="nb">&lt;=</span> <span class="id">a</span>;  <span class="cm">// schedule: b ← old a</span>
+    <span class="id">c</span> <span class="nb">&lt;=</span> <span class="id">b</span>;  <span class="cm">// schedule: c ← old b (not the new b!)</span>
+    <span class="cm">// NBA region: b gets old a, c gets old b → correct 3-stage shift</span>
+<span class="kw">end</span>
+
+<span class="cm">// Starting: a=1, b=0, c=0</span>
+<span class="cm">// After clk↑: b=1, c=0 — CORRECT!</span></pre>
+  </div>
+  <div class="info-box"><strong>Why this matters:</strong> The buggy version will pass simple directed tests that only check a few clock cycles, but fail in pipelined designs where the exact delay of each stage matters. It causes simulation/synthesis mismatch — the synthesized circuit is 3 flip-flops, but simulation acts like 1.</div>
+
+  <!-- 6. SWAP -->
+  <h2 id="swap">6. Variable Swap</h2>
+  <p>Non-blocking makes swapping two flip-flop values elegant — no temporary variable needed:</p>
+  <div class="code-block">
+    <span class="lang-label">verilog — swap two registers</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Swap a and b every clock (ping-pong)</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> <span class="id">clk</span>) <span class="kw">begin</span>
+    <span class="id">a</span> <span class="nb">&lt;=</span> <span class="id">b</span>;  <span class="cm">// a gets old b</span>
+    <span class="id">b</span> <span class="nb">&lt;=</span> <span class="id">a</span>;  <span class="cm">// b gets old a → clean swap</span>
+<span class="kw">end</span>
+
+<span class="cm">// With blocking =, you'd need a temp:</span>
+<span class="cm">// always @(posedge clk) begin</span>
+<span class="cm">//     temp = a;   // can't do this cleanly with = in seq block</span>
+<span class="cm">// end</span></pre>
+  </div>
+
+  <!-- 7. SUMMARY -->
+  <h2 id="summary-table">7. Summary Table</h2>
+  <table>
+    <thead><tr><th>Feature</th><th>Blocking =</th><th>Non-Blocking &lt;=</th></tr></thead>
+    <tbody>
+      <tr><td>Execution</td><td>Immediate, sequential</td><td>Scheduled, simultaneous at end of timestep</td></tr>
+      <tr><td>Next statement sees</td><td>Updated value</td><td>Old value (from before the always block fired)</td></tr>
+      <tr><td>Use in combinational @(*)</td><td>✅ Correct</td><td>❌ Incorrect (causes simulation issues)</td></tr>
+      <tr><td>Use in sequential @(posedge clk)</td><td>❌ Race condition risk</td><td>✅ Correct</td></tr>
+      <tr><td>Mix in same always block</td><td colspan="2">❌ Never mix = and &lt;= in the same block</td></tr>
+      <tr><td>Models</td><td>Combinational logic / intermediate vars</td><td>Flip-flop behavior</td></tr>
+      <tr><td>Synthesizes to</td><td>Combinational (in @(*))</td><td>Flip-flop (in @(posedge clk))</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 8. FULL RULES -->
+  <h2 id="rules">8. Complete Rule Set</h2>
+  <ol>
+    <li>Use <code>&lt;=</code> for all assignments in <code>always @(posedge clk)</code> or <code>always @(negedge clk)</code></li>
+    <li>Use <code>=</code> for all assignments in <code>always @(*)</code></li>
+    <li>Never drive the same signal from two different <code>always</code> blocks</li>
+    <li>Never mix <code>=</code> and <code>&lt;=</code> in the same <code>always</code> block</li>
+    <li>Use <code>=</code> freely in <code>initial</code> blocks (simulation-only testbench code)</li>
+    <li>RHS of <code>&lt;=</code> is always evaluated with the <em>old</em> values — use this to your advantage for clean pipeline and shift register code</li>
+  </ol>
+
+  <div class="tip-box"><strong>Interview tip:</strong> If asked "what is the difference between = and &lt;= in Verilog?", describe the shift register example. Then state the golden rule. This demonstrates you understand the hardware semantics, not just the syntax.</div>
+
+  <div class="nav-tut">
+    <a href="/verilog/always-assign/" class="prev">always &amp; assign Blocks</a>
+    <a href="/verilog/if-case-statement/" class="next">if, case, casex Statements</a>
+  </div>
+</div>
+
+<button id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+<script>
+(function(){const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');function resize(){c.width=innerWidth;c.height=innerHeight;}resize();window.addEventListener('resize',resize);const pts=Array.from({length:40},()=>({x:Math.random()*innerWidth,y:Math.random()*innerHeight,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25}));function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1.5,0,Math.PI*2);ctx.fillStyle='rgba(99,102,241,0.25)';ctx.fill();});pts.forEach((a,i)=>pts.slice(i+1).forEach(b=>{const d=Math.hypot(a.x-b.x,a.y-b.y);if(d<100){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=`rgba(99,102,241,${.05*(1-d/100)})`;ctx.lineWidth=.5;ctx.stroke();}}));requestAnimationFrame(draw);}draw();})();
+window.addEventListener('scroll',()=>{document.getElementById('back-to-top').classList.toggle('show',scrollY>400);});
+function copyCode(btn){const pre=btn.parentElement.querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}
+</script>
+</body>
+</html>
