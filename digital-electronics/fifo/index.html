@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8134040890165530" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5YPH6WHZNQ"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-5YPH6WHZNQ');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synchronous FIFO Design – Pointer Logic, Full/Empty, Verilog | EcrioniX</title>
+<meta name="description" content="Complete guide to synchronous FIFO design: write/read pointer arithmetic, MSB trick for full and empty detection, parameterized Verilog implementation, and self-checking testbench.">
+<meta name="keywords" content="synchronous FIFO design verilog write read pointer MSB trick full empty detection parameterized FIFO digital electronics VLSI RTL">
+<link rel="canonical" href="https://ecrionix.org/digital-electronics/fifo/">
+<meta property="og:title" content="Synchronous FIFO Design – Pointer Logic, Full/Empty, Verilog | EcrioniX">
+<meta property="og:description" content="Learn synchronous FIFO design from scratch: pointer arithmetic, MSB full/empty trick, parameterized Verilog, and testbench.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://ecrionix.org/digital-electronics/fifo/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type":"TechArticle","headline":"Synchronous FIFO Design – Pointer Logic, Full/Empty, Verilog","url":"https://ecrionix.org/digital-electronics/fifo/","author":{"@type":"Organization","name":"EcrioniX"},"dateModified":"2026-05-22"},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Digital Electronics","item":"https://ecrionix.org/digital-electronics/"},
+      {"@type":"ListItem","position":3,"name":"Synchronous FIFO","item":"https://ecrionix.org/digital-electronics/fifo/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a synchronous FIFO?","acceptedAnswer":{"@type":"Answer","text":"A synchronous FIFO (First-In First-Out) is a fixed-depth queue where all read and write operations share a single clock. Data written first is read first. It uses a circular buffer in memory with separate write and read pointers. When the write pointer catches the read pointer, the FIFO is full; when they are equal, the FIFO is empty."}},
+      {"@type":"Question","name":"How does the MSB pointer trick detect full and empty in a FIFO?","acceptedAnswer":{"@type":"Answer","text":"Allocate one extra bit (the MSB) on both pointers beyond what is needed to address the memory. Empty is detected when wr_ptr == rd_ptr (all bits equal). Full is detected when the MSBs differ but all lower address bits are equal — meaning the write pointer has lapped the read pointer exactly once. This avoids the ambiguity of a simple modulo comparison."}},
+      {"@type":"Question","name":"What is the difference between a synchronous and asynchronous FIFO?","acceptedAnswer":{"@type":"Answer","text":"A synchronous FIFO uses a single clock for both the write and read sides, making full/empty detection straightforward using a simple binary counter comparison. An asynchronous (dual-clock) FIFO uses separate write and read clocks — the pointers must be converted to Gray code and synchronized across clock domains before being compared, making the design significantly more complex."}},
+      {"@type":"Question","name":"How do you calculate FIFO depth for a burst design?","acceptedAnswer":{"@type":"Answer","text":"The minimum FIFO depth equals the maximum burst size minus what can be drained during the burst: Depth ≥ burst_length × (1 - drain_rate/fill_rate). For example, a 256-byte burst arriving at 200 MB/s while draining at 150 MB/s needs at least 256 × (1 - 150/200) = 64 entries to prevent overflow."}}
+    ]}
+  ]
+}
+</script>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+<link rel="shortcut icon" href="/favicon1.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;line-height:1.7;min-height:100vh}
+a{color:#34d399;text-decoration:none}a:hover{text-decoration:underline}.accent{color:#34d399}
+header{background:linear-gradient(135deg,#1a1d2e 0%,#0f1117 100%);border-bottom:1px solid #1e2235;padding:16px 0}
+.nav-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-weight:700;font-size:1.3rem;color:#e2e8f0}.logo span{color:#34d399}
+nav a{color:#94a3b8;font-size:.9rem;margin-left:20px}nav a:hover{color:#e2e8f0}
+.breadcrumb{max-width:1100px;margin:16px auto 0;padding:0 20px;display:flex;align-items:center;gap:8px;font-size:.85rem;color:#64748b}
+.breadcrumb a{color:#64748b}.breadcrumb span{color:#374151}
+main{max-width:1100px;margin:0 auto;padding:32px 20px 80px}
+.hero{text-align:center;padding:48px 0 40px}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:20px;padding:6px 16px;font-size:.8rem;color:#6ee7b7;margin-bottom:20px}
+h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;line-height:1.15;letter-spacing:-1px;margin-bottom:16px}
+.hero p{font-size:1.1rem;color:#94a3b8;max-width:680px;margin:0 auto 32px}
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:32px}
+.chip{background:#1e2235;border:1px solid #2d3348;border-radius:20px;padding:5px 14px;font-size:.8rem;color:#94a3b8}
+section{margin-bottom:48px}
+h2{font-size:1.5rem;font-weight:700;margin-bottom:20px;color:#f1f5f9}
+h3{font-size:1.1rem;font-weight:600;margin:24px 0 12px;color:#cbd5e1}
+.card-box{background:#13161f;border:1px solid #1e2235;border-radius:16px;padding:28px;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{background:#1a1d2e;color:#94a3b8;font-weight:600;padding:10px 14px;text-align:left;border-bottom:1px solid #1e2235}
+td{padding:9px 14px;border-bottom:1px solid #1a1d2e;color:#cbd5e1;vertical-align:top}
+td.label{color:#94a3b8}
+tr:last-child td{border-bottom:none}tr:nth-child(even) td{background:rgba(30,34,53,0.4)}
+pre{background:#0a0c14;border:1px solid #1e2235;border-radius:10px;padding:20px;overflow-x:auto;font-size:.83rem;line-height:1.6;position:relative;margin:16px 0}
+code{font-family:'Cascadia Code','Fira Code',monospace}
+.copy-btn{position:absolute;top:10px;right:10px;background:#1e2235;border:1px solid #2d3348;color:#94a3b8;padding:4px 12px;border-radius:6px;font-size:.75rem;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:#34d399;color:#0f1117;border-color:#34d399}
+.kw{color:#c678dd}.fn{color:#61afef}.str{color:#98c379}.cm{color:#5c6370;font-style:italic}.num{color:#d19a66}.tp{color:#e5c07b}
+.info-box{background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#6ee7b7}
+.warn-box{background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#fde68a}
+.err-box{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#fca5a5}
+.toc{background:#13161f;border:1px solid #1e2235;border-radius:12px;padding:20px 24px;margin-bottom:40px}
+.toc h3{margin:0 0 12px;font-size:.9rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b}
+.toc ol{padding-left:1.2rem;color:#94a3b8;font-size:.88rem;line-height:2}
+.toc a{color:#94a3b8}.toc a:hover{color:#34d399;text-decoration:none}
+#back-top{position:fixed;bottom:28px;right:28px;background:#34d399;color:#0f1117;border:none;border-radius:50%;width:44px;height:44px;font-size:1.3rem;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(52,211,153,0.4);z-index:999}
+footer{background:#13161f;border-top:1px solid #1e2235;padding:32px 20px;text-align:center;color:#4b5563;font-size:.85rem;margin-top:40px}
+.nav-tut{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem;flex-wrap:wrap}
+.nav-tut a{flex:1;min-width:180px;background:#13161f;border:1px solid #1e2235;border-radius:12px;padding:14px 18px;font-size:.85rem;color:#94a3b8;transition:border-color .2s,color .2s}
+.nav-tut a:hover{border-color:#34d399;color:#34d399;text-decoration:none}
+.nav-tut .label{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav-inner">
+    <div class="logo">Ecrioni<span>X</span></div>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/digital-electronics/">Digital Electronics</a>
+      <a href="/verilog/">Verilog</a>
+      <a href="/tools/">Tools</a>
+    </nav>
+  </div>
+</header>
+
+<div class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/digital-electronics/">Digital Electronics</a><span>›</span>
+  <span style="color:#94a3b8">Synchronous FIFO</span>
+</div>
+
+<main>
+  <div class="hero">
+    <div class="hero-badge">
+      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+      Topic 25 · Digital Electronics
+    </div>
+    <h1>Synchronous FIFO Design<br><span class="accent">Pointer Logic · Full/Empty · Verilog</span></h1>
+    <p>The fundamental data buffer behind every bus protocol, memory controller, and streaming interface — learn to build one from scratch with correct full and empty detection.</p>
+    <div class="chip-row">
+      <span class="chip">Write Pointer</span>
+      <span class="chip">Read Pointer</span>
+      <span class="chip">MSB Trick</span>
+      <span class="chip">Circular Buffer</span>
+      <span class="chip">Parameterized</span>
+      <span class="chip">Verilog</span>
+    </div>
+  </div>
+
+  <!-- SVG Block Diagram -->
+  <section>
+    <svg viewBox="0 0 780 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:780px;display:block;margin:0 auto 32px;font-family:'Segoe UI',sans-serif">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#34d399"/>
+        </marker>
+      </defs>
+      <!-- Background -->
+      <rect width="780" height="220" rx="16" fill="#13161f" stroke="#1e2235"/>
+
+      <!-- Writer side -->
+      <rect x="20" y="60" width="130" height="100" rx="10" fill="#1a1d2e" stroke="rgba(52,211,153,0.4)"/>
+      <text x="85" y="90" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="600">PRODUCER</text>
+      <text x="85" y="108" text-anchor="middle" fill="#64748b" font-size="10">wr_en</text>
+      <text x="85" y="124" text-anchor="middle" fill="#64748b" font-size="10">wr_data[W-1:0]</text>
+      <text x="85" y="140" text-anchor="middle" fill="#64748b" font-size="10">← full</text>
+
+      <!-- Arrow: writer → memory -->
+      <line x1="150" y1="110" x2="220" y2="110" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="185" y="104" text-anchor="middle" fill="#64748b" font-size="9">write</text>
+
+      <!-- Memory array -->
+      <rect x="220" y="30" width="340" height="160" rx="12" fill="#0a0c14" stroke="rgba(52,211,153,0.3)" stroke-width="1.5"/>
+      <text x="390" y="55" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">CIRCULAR BUFFER</text>
+      <text x="390" y="72" text-anchor="middle" fill="#64748b" font-size="10">mem[DEPTH-1:0][WIDTH-1:0]</text>
+
+      <!-- Memory slots -->
+      <rect x="250" y="82" width="280" height="24" rx="4" fill="#13161f" stroke="#1e2235"/>
+      <text x="390" y="98" text-anchor="middle" fill="#94a3b8" font-size="10">addr[0] · addr[1] · addr[2] · … · addr[DEPTH-1]</text>
+      <rect x="250" y="112" width="280" height="24" rx="4" fill="rgba(52,211,153,0.06)" stroke="rgba(52,211,153,0.25)"/>
+      <text x="390" y="128" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600">wr_ptr → [slot X]     [slot Y] ← rd_ptr</text>
+      <rect x="250" y="142" width="280" height="24" rx="4" fill="#13161f" stroke="#1e2235"/>
+      <text x="390" y="158" text-anchor="middle" fill="#94a3b8" font-size="10">empty: wr_ptr == rd_ptr   |   full: MSBs differ, addr equal</text>
+
+      <!-- Arrow: memory → reader -->
+      <line x1="560" y1="110" x2="628" y2="110" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="594" y="104" text-anchor="middle" fill="#64748b" font-size="9">read</text>
+
+      <!-- Reader side -->
+      <rect x="630" y="60" width="130" height="100" rx="10" fill="#1a1d2e" stroke="rgba(52,211,153,0.4)"/>
+      <text x="695" y="90" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="600">CONSUMER</text>
+      <text x="695" y="108" text-anchor="middle" fill="#64748b" font-size="10">rd_en</text>
+      <text x="695" y="124" text-anchor="middle" fill="#64748b" font-size="10">rd_data[W-1:0]</text>
+      <text x="695" y="140" text-anchor="middle" fill="#64748b" font-size="10">← empty</text>
+
+      <!-- Clock line at bottom -->
+      <text x="390" y="205" text-anchor="middle" fill="#475569" font-size="10">↑ clk (single clock domain) · rst_n (active-low sync reset)</text>
+    </svg>
+  </section>
+
+  <nav class="toc">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#what-is-fifo">What is a FIFO?</a></li>
+      <li><a href="#architecture">Synchronous FIFO Architecture</a></li>
+      <li><a href="#pointer-logic">Pointer Logic &amp; Full/Empty Detection</a></li>
+      <li><a href="#msb-trick">The MSB Pointer Trick</a></li>
+      <li><a href="#verilog">Parameterized Verilog Implementation</a></li>
+      <li><a href="#testbench">Self-Checking Testbench</a></li>
+      <li><a href="#timing">Timing &amp; Waveform Behaviour</a></li>
+      <li><a href="#depth-calc">FIFO Depth Calculation</a></li>
+      <li><a href="#variants">Variants &amp; Extensions</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1. What is a FIFO -->
+  <section id="what-is-fifo">
+    <h2>1. What is a FIFO?</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;margin-bottom:12px">A FIFO (First-In First-Out) buffer is a queue: the first word written is the first word read out. It decouples a producer that writes data from a consumer that reads it, absorbing mismatches in rate or timing.</p>
+      <table>
+        <tr><th>Application</th><th>Why a FIFO?</th></tr>
+        <tr><td class="label">AXI / APB bus bridges</td><td>Decouple fast master from slow peripheral</td></tr>
+        <tr><td class="label">UART TX buffer</td><td>CPU writes bytes; serializer drains them at baud rate</td></tr>
+        <tr><td class="label">DDR write buffer</td><td>Burst writes absorb latency of memory controller</td></tr>
+        <tr><td class="label">Video line buffer</td><td>Pixel pipeline: one line written, next line read</td></tr>
+        <tr><td class="label">CDC (dual-clock)</td><td>Async FIFO passes data between clock domains safely</td></tr>
+      </table>
+    </div>
+    <div class="info-box"><strong>Synchronous vs Async:</strong> A <em>synchronous</em> FIFO has one shared clock — simpler logic, trivial full/empty. An <em>async</em> FIFO has two independent clocks (write clock + read clock) and needs Gray-code pointers synchronized across clock domains. This page covers the synchronous case.</div>
+  </section>
+
+  <!-- 2. Architecture -->
+  <section id="architecture">
+    <h2>2. Synchronous FIFO Architecture</h2>
+    <p style="color:#94a3b8;margin-bottom:16px">Three components: a register array (the storage), a write pointer (<code>wr_ptr</code>), and a read pointer (<code>rd_ptr</code>). On each clock:</p>
+    <div class="card-box">
+      <table>
+        <tr><th>Signal</th><th>Direction</th><th>Description</th></tr>
+        <tr><td class="label">clk</td><td>Input</td><td>Single clock for all operations</td></tr>
+        <tr><td class="label">rst_n</td><td>Input</td><td>Active-low synchronous reset — zeros both pointers</td></tr>
+        <tr><td class="label">wr_en</td><td>Input</td><td>Write enable — write <code>wr_data</code> when asserted and not full</td></tr>
+        <tr><td class="label">wr_data[W-1:0]</td><td>Input</td><td>Data to write (W = WIDTH parameter)</td></tr>
+        <tr><td class="label">rd_en</td><td>Input</td><td>Read enable — advance <code>rd_ptr</code> when asserted and not empty</td></tr>
+        <tr><td class="label">rd_data[W-1:0]</td><td>Output</td><td>Data at read pointer (registered or combinational)</td></tr>
+        <tr><td class="label">full</td><td>Output</td><td>Asserted when no more writes can be accepted</td></tr>
+        <tr><td class="label">empty</td><td>Output</td><td>Asserted when no data is available to read</td></tr>
+        <tr><td class="label">count[$clog2(DEPTH):0]</td><td>Output</td><td>Number of valid entries currently in the FIFO</td></tr>
+      </table>
+    </div>
+    <div class="warn-box"><strong>Write-when-full / read-when-empty:</strong> Guard every write with <code>!full</code> and every read with <code>!empty</code>. Violating this causes pointer corruption — data is lost or corrupted silently.</div>
+  </section>
+
+  <!-- 3. Pointer Logic -->
+  <section id="pointer-logic">
+    <h2>3. Pointer Logic &amp; Full/Empty Detection</h2>
+    <p style="color:#94a3b8;margin-bottom:16px">Both pointers start at zero. Each write increments <code>wr_ptr</code>; each read increments <code>rd_ptr</code>. Both wrap modulo DEPTH. The count is simply <code>wr_ptr − rd_ptr</code>.</p>
+
+    <h3>Naive approach — and the problem</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;margin-bottom:10px">With N-bit pointers that wrap at DEPTH (a power of 2):</p>
+      <pre><code><span class="cm">// Naive — BROKEN when DEPTH is not a power of 2, or ambiguous</span>
+<span class="kw">assign</span> empty = (wr_ptr == rd_ptr);
+<span class="kw">assign</span> full  = (wr_ptr == rd_ptr);  <span class="cm">// same condition! ambiguous</span></code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+      <p style="color:#94a3b8;font-size:.88rem">When both pointers are equal the FIFO could be completely empty <em>or</em> completely full — we've gone all the way around. A simple <code>==</code> comparison cannot tell these cases apart.</p>
+    </div>
+
+    <h3>One common fix — separate count register</h3>
+    <div class="card-box">
+      <pre><code><span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+  <span class="kw">if</span> (!rst_n)        count <= <span class="num">0</span>;
+  <span class="kw">else if</span> (wr &amp;&amp; !rd) count <= count + <span class="num">1</span>;
+  <span class="kw">else if</span> (rd &amp;&amp; !wr) count <= count - <span class="num">1</span>;
+<span class="kw">end</span>
+<span class="kw">assign</span> full  = (count == DEPTH);
+<span class="kw">assign</span> empty = (count == <span class="num">0</span>);</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+      <p style="color:#94a3b8;font-size:.88rem">Works but requires an extra adder. The MSB trick below gives the same result using only pointer comparison — no counter logic at all.</p>
+    </div>
+  </section>
+
+  <!-- 4. MSB Trick -->
+  <section id="msb-trick">
+    <h2>4. The MSB Pointer Trick</h2>
+    <div class="info-box"><strong>Key insight:</strong> Use ($clog2(DEPTH) + 1)-bit pointers — one extra bit beyond what is needed to address the memory. The lower bits address the circular buffer; the upper MSB acts as a "lap counter" — it flips every time a pointer wraps around.</div>
+
+    <div class="card-box">
+      <h3 style="margin-top:0">Full and empty rules</h3>
+      <table>
+        <tr><th>Condition</th><th>Expression</th><th>Meaning</th></tr>
+        <tr><td class="label">Empty</td><td><code>wr_ptr == rd_ptr</code></td><td>All bits equal — same lap, same position</td></tr>
+        <tr><td class="label">Full</td><td><code>wr_ptr[MSB] != rd_ptr[MSB]<br>&amp;&amp; wr_ptr[ADDR] == rd_ptr[ADDR]</code></td><td>MSBs differ (write lapped read once) but address bits are equal</td></tr>
+        <tr><td class="label">Count</td><td><code>wr_ptr - rd_ptr</code></td><td>Subtraction works correctly across the wrap due to two's complement</td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:.85rem;margin-top:12px">Example: DEPTH=4, pointer width=3 bits (2 address bits + 1 MSB). Pointers 3'b100 and 3'b000 — MSBs differ (1 vs 0), address bits equal (00 vs 00) → FULL.</p>
+    </div>
+
+    <h3>Walking example — DEPTH=4</h3>
+    <div class="card-box">
+      <table>
+        <tr><th>Action</th><th>wr_ptr (3-bit)</th><th>rd_ptr (3-bit)</th><th>Count</th><th>Status</th></tr>
+        <tr><td>Reset</td><td>000</td><td>000</td><td>0</td><td>EMPTY</td></tr>
+        <tr><td>Write A</td><td>001</td><td>000</td><td>1</td><td>—</td></tr>
+        <tr><td>Write B</td><td>010</td><td>000</td><td>2</td><td>—</td></tr>
+        <tr><td>Write C</td><td>011</td><td>000</td><td>3</td><td>—</td></tr>
+        <tr><td>Write D</td><td>100</td><td>000</td><td>4</td><td style="color:#fca5a5">FULL — MSBs 1≠0, addr 00=00</td></tr>
+        <tr><td>Read A</td><td>100</td><td>001</td><td>3</td><td>—</td></tr>
+        <tr><td>Read B,C,D</td><td>100</td><td>100</td><td>0</td><td style="color:#6ee7b7">EMPTY — all bits equal</td></tr>
+      </table>
+    </div>
+    <div class="warn-box"><strong>DEPTH must be a power of 2</strong> for this trick to work correctly (so the lower-bit wrap-around is exact). If you need a non-power-of-2 depth, use a separate count register instead.</div>
+  </section>
+
+  <!-- 5. Verilog Implementation -->
+  <section id="verilog">
+    <h2>5. Parameterized Verilog Implementation</h2>
+    <pre><code><span class="kw">module</span> <span class="fn">sync_fifo</span> #(
+  <span class="kw">parameter</span> WIDTH = <span class="num">8</span>,
+  <span class="kw">parameter</span> DEPTH = <span class="num">16</span>   <span class="cm">// must be a power of 2</span>
+)(
+  <span class="kw">input</span>                    clk,
+  <span class="kw">input</span>                    rst_n,
+  <span class="kw">input</span>                    wr_en,
+  <span class="kw">input</span>  [WIDTH-<span class="num">1</span>:<span class="num">0</span>]       wr_data,
+  <span class="kw">input</span>                    rd_en,
+  <span class="kw">output</span> <span class="kw">reg</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>]  rd_data,
+  <span class="kw">output</span>                   full,
+  <span class="kw">output</span>                   empty,
+  <span class="kw">output</span> [$clog2(DEPTH):<span class="num">0</span>] count
+);
+  <span class="cm">// ── Storage ──────────────────────────────────────────────────</span>
+  <span class="kw">reg</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>] mem [<span class="num">0</span>:DEPTH-<span class="num">1</span>];
+
+  <span class="cm">// ── Pointers: clog2(DEPTH)+1 bits (MSB = lap bit) ─────────</span>
+  <span class="kw">reg</span> [$clog2(DEPTH):<span class="num">0</span>] wr_ptr, rd_ptr;
+
+  <span class="cm">// ── Write ─────────────────────────────────────────────────────</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_n)
+      wr_ptr <= <span class="num">0</span>;
+    <span class="kw">else if</span> (wr_en &amp;&amp; !full) <span class="kw">begin</span>
+      mem[wr_ptr[$clog2(DEPTH)-<span class="num">1</span>:<span class="num">0</span>]] <= wr_data;
+      wr_ptr <= wr_ptr + <span class="num">1</span>;
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+
+  <span class="cm">// ── Read ──────────────────────────────────────────────────────</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_n)
+      rd_ptr <= <span class="num">0</span>;
+    <span class="kw">else if</span> (rd_en &amp;&amp; !empty) <span class="kw">begin</span>
+      rd_data <= mem[rd_ptr[$clog2(DEPTH)-<span class="num">1</span>:<span class="num">0</span>]];
+      rd_ptr  <= rd_ptr + <span class="num">1</span>;
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+
+  <span class="cm">// ── Status flags ──────────────────────────────────────────────</span>
+  <span class="kw">localparam</span> ADDR_W = $clog2(DEPTH);
+
+  <span class="kw">assign</span> empty = (wr_ptr == rd_ptr);
+  <span class="kw">assign</span> full  = (wr_ptr[ADDR_W] != rd_ptr[ADDR_W]) &amp;&amp;
+                 (wr_ptr[ADDR_W-<span class="num">1</span>:<span class="num">0</span>] == rd_ptr[ADDR_W-<span class="num">1</span>:<span class="num">0</span>]);
+  <span class="kw">assign</span> count = wr_ptr - rd_ptr;
+
+<span class="kw">endmodule</span></code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+    <div class="info-box"><strong>Simultaneous read and write:</strong> This implementation allows a write and a read in the same cycle (when neither full nor empty). The count falls through correctly because the subtraction is evaluated after both pointers update.</div>
+
+    <h3>Registered vs combinational read data</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;margin-bottom:10px">The implementation above registers <code>rd_data</code> — it appears one cycle after <code>rd_en</code>. For fall-through / lookahead behaviour (data valid the same cycle <code>rd_en</code> is asserted):</p>
+      <pre><code><span class="cm">// Combinational (fall-through) read — replace the rd always block:</span>
+<span class="kw">assign</span> rd_data = mem[rd_ptr[$clog2(DEPTH)-<span class="num">1</span>:<span class="num">0</span>]];
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+  <span class="kw">if</span> (!rst_n)          rd_ptr <= <span class="num">0</span>;
+  <span class="kw">else if</span> (rd_en &amp;&amp; !empty) rd_ptr <= rd_ptr + <span class="num">1</span>;
+<span class="kw">end</span></code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+      <p style="color:#94a3b8;font-size:.85rem;margin-top:8px">Trade-off: combinational read creates a longer timing path from <code>mem</code> through <code>rd_ptr</code> mux to the output. Registered read adds one cycle latency but is easier to meet timing.</p>
+    </div>
+  </section>
+
+  <!-- 6. Testbench -->
+  <section id="testbench">
+    <h2>6. Self-Checking Testbench</h2>
+    <pre><code><span class="kw">module</span> <span class="fn">tb_sync_fifo</span>;
+  <span class="kw">parameter</span> WIDTH = <span class="num">8</span>;
+  <span class="kw">parameter</span> DEPTH = <span class="num">8</span>;
+
+  <span class="kw">reg</span>            clk, rst_n, wr_en, rd_en;
+  <span class="kw">reg</span>  [WIDTH-<span class="num">1</span>:<span class="num">0</span>] wr_data;
+  <span class="kw">wire</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>] rd_data;
+  <span class="kw">wire</span>           full, empty;
+  <span class="kw">wire</span> [$clog2(DEPTH):<span class="num">0</span>] count;
+
+  <span class="fn">sync_fifo</span> #(.WIDTH(WIDTH), .DEPTH(DEPTH)) dut (.*);
+
+  <span class="kw">initial</span> clk = <span class="num">0</span>;
+  <span class="kw">always</span> #<span class="num">5</span> clk = ~clk;
+
+  integer i; reg [WIDTH-<span class="num">1</span>:<span class="num">0</span>] exp_q [<span class="num">0</span>:DEPTH-<span class="num">1</span>]; integer head, tail, qcnt;
+
+  <span class="kw">task automatic</span> <span class="fn">fifo_write</span>(<span class="kw">input</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>] d);
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>;
+    <span class="kw">if</span> (full) <span class="kw">begin</span> $display(<span class="str">"ERROR: write to full FIFO"</span>); $finish; <span class="kw">end</span>
+    wr_en = <span class="num">1</span>; wr_data = d;
+    exp_q[tail % DEPTH] = d; tail++; qcnt++;
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>; wr_en = <span class="num">0</span>;
+  <span class="kw">endtask</span>
+
+  <span class="kw">task automatic</span> <span class="fn">fifo_read</span>(<span class="kw">input</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>] expected);
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>;
+    <span class="kw">if</span> (empty) <span class="kw">begin</span> $display(<span class="str">"ERROR: read from empty FIFO"</span>); $finish; <span class="kw">end</span>
+    rd_en = <span class="num">1</span>;
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>; rd_en = <span class="num">0</span>;
+    <span class="kw">if</span> (rd_data !== expected)
+      $display(<span class="str">"FAIL: got %0h, expected %0h"</span>, rd_data, expected);
+    <span class="kw">else</span>
+      $display(<span class="str">"PASS: read %0h"</span>, rd_data);
+  <span class="kw">endtask</span>
+
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    $dumpfile(<span class="str">"wave.vcd"</span>); $dumpvars(<span class="num">0</span>, tb_sync_fifo);
+    {clk,rst_n,wr_en,rd_en,wr_data} = <span class="num">0</span>;
+    repeat(<span class="num">2</span>) @(<span class="kw">posedge</span> clk);
+    rst_n = <span class="num">1</span>;
+
+    <span class="cm">// Fill to full</span>
+    <span class="kw">for</span> (i=<span class="num">0</span>; i&lt;DEPTH; i++) <span class="fn">fifo_write</span>(i * <span class="num">8'h11</span>);
+    $display(<span class="str">"full=%b (expect 1)"</span>, full);
+
+    <span class="cm">// Drain all — check order</span>
+    <span class="kw">for</span> (i=<span class="num">0</span>; i&lt;DEPTH; i++) <span class="fn">fifo_read</span>(i * <span class="num">8'h11</span>);
+    $display(<span class="str">"empty=%b (expect 1)"</span>, empty);
+
+    <span class="cm">// Simultaneous read+write</span>
+    <span class="fn">fifo_write</span>(<span class="num">8'hAB</span>); <span class="fn">fifo_write</span>(<span class="num">8'hCD</span>);
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>;
+    wr_en=<span class="num">1</span>; rd_en=<span class="num">1</span>; wr_data=<span class="num">8'hEF</span>;
+    @(<span class="kw">posedge</span> clk); #<span class="num">1</span>; wr_en=<span class="num">0</span>; rd_en=<span class="num">0</span>;
+    <span class="fn">fifo_read</span>(<span class="num">8'hCD</span>); <span class="fn">fifo_read</span>(<span class="num">8'hEF</span>);
+
+    $display(<span class="str">"All tests done."</span>); $finish;
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+
+    <h3>Simulate with Icarus Verilog</h3>
+    <pre><code>iverilog -o fifo_sim sync_fifo.v tb_sync_fifo.v
+vvp fifo_sim
+gtkwave wave.vcd</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></pre>
+  </section>
+
+  <!-- 7. Timing -->
+  <section id="timing">
+    <h2>7. Timing &amp; Waveform Behaviour</h2>
+    <div class="card-box">
+      <table>
+        <tr><th>Cycle</th><th>wr_en</th><th>wr_data</th><th>rd_en</th><th>rd_data</th><th>count</th><th>Flags</th></tr>
+        <tr><td>0</td><td>0</td><td>—</td><td>0</td><td>—</td><td>0</td><td style="color:#6ee7b7">empty</td></tr>
+        <tr><td>1</td><td>1</td><td>A</td><td>0</td><td>—</td><td>1</td><td>—</td></tr>
+        <tr><td>2</td><td>1</td><td>B</td><td>0</td><td>—</td><td>2</td><td>—</td></tr>
+        <tr><td>3</td><td>0</td><td>—</td><td>1</td><td>A</td><td>1</td><td>—</td></tr>
+        <tr><td>4</td><td>1</td><td>C</td><td>1</td><td>B</td><td>1</td><td>simultaneous read+write</td></tr>
+        <tr><td>5</td><td>0</td><td>—</td><td>1</td><td>C</td><td>0</td><td style="color:#6ee7b7">empty after this cycle</td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:.85rem;margin-top:12px">Note: <code>rd_data</code> reflects the registered output — it is valid on the cycle after <code>rd_en</code>. Row 3 shows data A appearing the cycle after the read at cycle 3 (using registered read path).</p>
+    </div>
+    <div class="warn-box"><strong>Don't read on the same cycle you assert rd_en:</strong> With a registered read path, <code>rd_data</code> is one cycle late. If your consumer needs fall-through behaviour, switch to the combinational read variant shown in Section 5.</div>
+  </section>
+
+  <!-- 8. Depth Calculation -->
+  <section id="depth-calc">
+    <h2>8. FIFO Depth Calculation</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;margin-bottom:12px">The minimum FIFO depth needed to prevent overflow during a burst:</p>
+      <div style="background:#0a0c14;border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:12px;font-family:monospace;font-size:.9rem;color:#6ee7b7;text-align:center;margin-bottom:12px">
+        Depth ≥ Burst_Length × (1 − Drain_Rate / Fill_Rate)
+      </div>
+      <table>
+        <tr><th>Scenario</th><th>Fill</th><th>Drain</th><th>Burst</th><th>Min Depth</th></tr>
+        <tr><td class="label">USB FS → slow SPI</td><td>12 Mb/s</td><td>1 Mb/s</td><td>64 B</td><td>59 bytes</td></tr>
+        <tr><td class="label">DDR burst to APB</td><td>3200 MT/s</td><td>200 MT/s</td><td>16</td><td>15 entries</td></tr>
+        <tr><td class="label">UART TX (CPU writes)</td><td>CPU speed</td><td>baud rate</td><td>256 B</td><td>~256 bytes</td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:.85rem;margin-top:10px">Always round up to the next power of 2 to use the MSB trick. Add 20–50% margin for real designs.</p>
+    </div>
+  </section>
+
+  <!-- 9. Variants -->
+  <section id="variants">
+    <h2>9. Variants &amp; Extensions</h2>
+    <div class="card-box">
+      <table>
+        <tr><th>Variant</th><th>Key change</th><th>Use case</th></tr>
+        <tr><td class="label">Asynchronous (dual-clock) FIFO</td><td>Gray-code pointers + 2-FF sync per bit</td><td>Crossing clock domains (see CDC page)</td></tr>
+        <tr><td class="label">Show-ahead / Fall-through FIFO</td><td>Combinational rd_data</td><td>Zero-latency consumer interfaces</td></tr>
+        <tr><td class="label">FWFT FIFO (First Word Fall-Through)</td><td>Pre-read first word after write</td><td>AXI-Stream source</td></tr>
+        <tr><td class="label">Almost-full / Almost-empty</td><td>Extra threshold comparators on count</td><td>Flow control with lookahead</td></tr>
+        <tr><td class="label">Programmable depth</td><td>Run-time DEPTH register</td><td>DMA channel rings</td></tr>
+        <tr><td class="label">ECC-protected FIFO</td><td>SECDED on each word in <code>mem</code></td><td>Safety-critical / radiation hardened</td></tr>
+        <tr><td class="label">Skid buffer</td><td>Depth=2, valid-ready handshake wrapper</td><td>AXI-Stream pipeline stage (see RTL patterns)</td></tr>
+      </table>
+    </div>
+    <div class="info-box">The <a href="/verilog/rtl-design-patterns/" style="color:#6ee7b7;text-decoration:underline">RTL Design Patterns</a> tutorial includes a complete synchronous FIFO and a skid buffer with valid-ready handshake in the context of a full pipeline design.</div>
+  </section>
+
+  <!-- Nav -->
+  <nav class="nav-tut">
+    <a href="/digital-electronics/clock-domain-crossing/">
+      <div class="label">← Previous Topic</div>
+      Clock Domain Crossing
+    </a>
+    <a href="/digital-electronics/" style="text-align:right">
+      <div class="label">Up to Hub →</div>
+      Digital Electronics
+    </a>
+  </nav>
+</main>
+
+<button id="back-top" title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<footer>
+  <p>© 2026 EcrioniX · <a href="/legal/privacy.html">Privacy</a> · <a href="/legal/terms.html">Terms</a></p>
+</footer>
+
+<script>
+const bt = document.getElementById('back-top');
+window.addEventListener('scroll', () => { bt.style.display = window.scrollY > 300 ? 'flex' : 'none'; });
+function copyCode(btn) {
+  const code = btn.previousSibling.textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+</script>
+</body>
+</html>
