@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8134040890165530" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5YPH6WHZNQ"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-5YPH6WHZNQ');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UART Protocol – Universal Asynchronous Receiver-Transmitter Guide | EcrioniX</title>
+<meta name="description" content="Complete UART protocol guide: frame format, baud rates, oversampling, RS-232 vs TTL levels, Verilog TX and RX modules, common bugs, and flow control. Includes full synthesizable Verilog code.">
+<meta name="keywords" content="UART protocol universal asynchronous receiver transmitter baud rate start bit stop bit parity bit 8N1 RS-232 TTL MAX232 oversampling CLK_PER_BIT Verilog TX RX FIFO serial communication FPGA ASIC debug">
+<link rel="canonical" href="https://ecrionix.org/serial-protocols/uart/">
+<meta property="og:title" content="UART Protocol – Universal Asynchronous Receiver-Transmitter Guide | EcrioniX">
+<meta property="og:description" content="Master the UART protocol: frame format, baud rate, RS-232 vs TTL, Verilog TX/RX with oversampling, common bugs, and flow control.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://ecrionix.org/serial-protocols/uart/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="UART Protocol – Universal Asynchronous Receiver-Transmitter Guide | EcrioniX">
+<meta name="twitter:description" content="Complete UART guide with Verilog TX/RX, baud rate calculation, RS-232 vs TTL comparison, and debug tips.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+<link rel="shortcut icon" href="/favicon1.png">
+<link rel="apple-touch-icon" href="/favicon1.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "headline": "UART Protocol – Universal Asynchronous Receiver-Transmitter Guide",
+      "url": "https://ecrionix.org/serial-protocols/uart/",
+      "author": {"@type": "Organization", "name": "EcrioniX"},
+      "dateModified": "2026-05-22",
+      "description": "Complete UART protocol guide covering frame format, baud rates, oversampling, RS-232 vs TTL levels, Verilog TX and RX implementations, common bugs, and flow control.",
+      "keywords": "UART, serial protocol, baud rate, RS-232, TTL, Verilog, FPGA, ASIC"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home",             "item": "https://ecrionix.org/"},
+        {"@type": "ListItem", "position": 2, "name": "Serial Protocols", "item": "https://ecrionix.org/serial-protocols/"},
+        {"@type": "ListItem", "position": 3, "name": "UART",             "item": "https://ecrionix.org/serial-protocols/uart/"}
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is UART and how does it work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "UART (Universal Asynchronous Receiver-Transmitter) is a serial communication protocol that transmits data one bit at a time without a shared clock signal — hence 'asynchronous'. Both sides must be pre-configured to the same baud rate (bits per second). Each byte is framed with a start bit (always LOW) that tells the receiver a byte is arriving, 5–8 data bits (LSB first), an optional parity bit, and one or two stop bits (always HIGH). The receiver detects the falling edge of the start bit to synchronize itself, then samples each subsequent bit at the center of its bit period. This self-clocking framing scheme allows point-to-point data transfer using just two wires: TX (transmit) and RX (receive)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What baud rates are supported by UART?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Standard UART baud rates are: 110, 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, and 921600 baud. The most common rates in modern embedded systems are 9600 and 115200. Both sides must be configured to the identical baud rate — even a 2% mismatch can cause framing errors and garbage data over long frames. Custom baud rates are possible if both endpoints use the same oscillator or can be configured identically. The maximum practical baud rate depends on the quality of the UART hardware and cable length."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the difference between UART and RS-232?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "UART describes the protocol and framing (start/stop bits, baud rate, data bits). RS-232 is a physical layer standard that defines voltage levels — but with inverted polarity compared to TTL UART: in RS-232, logic 0 is +3V to +15V and logic 1 is -3V to -15V. TTL UART uses 0V for logic 0 and 3.3V or 5V for logic 1 — the opposite polarity and much lower voltages. To connect a 3.3V TTL UART to an RS-232 port, you must use a level-shifter IC such as the MAX232 (for 5V systems) or MAX3232 (for 3.3V systems). Modern USB-to-UART bridges like the CP2102, CH340G, and FTDI FT232RL convert between USB and 3.3V TTL UART directly, bypassing RS-232 entirely."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you calculate the baud rate divisor for a Verilog UART?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The baud rate divisor (CLK_PER_BIT) tells the UART how many system clock cycles correspond to one bit period. The formula is: CLK_PER_BIT = clk_frequency / baud_rate. For example, with a 50 MHz system clock and 115200 baud: CLK_PER_BIT = 50,000,000 / 115,200 ≈ 434. The transmitter counts to CLK_PER_BIT before transitioning to the next bit. The receiver uses 16× oversampling by default — it counts to CLK_PER_BIT/2 after detecting the start bit to sample at the center of the first data bit, then counts CLK_PER_BIT between subsequent samples. Sampling at the bit center maximizes the timing margin and tolerates small baud rate mismatches up to about ±2%."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;line-height:1.7;min-height:100vh}
+a{color:#f59e0b;text-decoration:none}a:hover{text-decoration:underline}.accent{color:#f59e0b}
+header{background:linear-gradient(135deg,#1a1d2e 0%,#0f1117 100%);border-bottom:1px solid #1e2235;padding:16px 0}
+.nav-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-weight:700;font-size:1.3rem;color:#e2e8f0}.logo span{color:#f59e0b}
+nav a{color:#94a3b8;font-size:.9rem;margin-left:20px}nav a:hover{color:#e2e8f0}
+.breadcrumb{max-width:1100px;margin:16px auto 0;padding:0 20px;display:flex;align-items:center;gap:8px;font-size:.85rem;color:#64748b;flex-wrap:wrap}
+.breadcrumb a{color:#64748b}.breadcrumb span{color:#374151}
+main{max-width:1100px;margin:0 auto;padding:32px 20px 80px}
+.hero{text-align:center;padding:48px 0 40px}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:6px 16px;font-size:.8rem;color:#fbbf24;margin-bottom:20px}
+h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;line-height:1.15;letter-spacing:-1px;margin-bottom:16px}
+.hero p{font-size:1.1rem;color:#94a3b8;max-width:680px;margin:0 auto 32px}
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:32px}
+.chip{background:#1e2235;border:1px solid #2d3348;border-radius:20px;padding:5px 14px;font-size:.8rem;color:#94a3b8}
+section{margin-bottom:48px}
+h2{font-size:1.5rem;font-weight:700;margin-bottom:20px;color:#f1f5f9}
+h3{font-size:1.1rem;font-weight:600;margin:24px 0 12px;color:#cbd5e1}
+.card-box{background:#13161f;border:1px solid #1e2235;border-radius:16px;padding:28px;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{background:#1a1d2e;color:#94a3b8;font-weight:600;padding:10px 14px;text-align:left;border-bottom:1px solid #1e2235}
+td{padding:9px 14px;border-bottom:1px solid #1a1d2e;color:#cbd5e1;vertical-align:top}
+td.label{font-family:'Segoe UI',sans-serif;color:#94a3b8}
+tr:last-child td{border-bottom:none}tr:nth-child(even) td{background:rgba(30,34,53,0.4)}
+pre{background:#0a0c14;border:1px solid #1e2235;border-radius:10px;padding:20px;overflow-x:auto;font-size:.83rem;line-height:1.6;position:relative;margin:16px 0}
+code{font-family:'Cascadia Code','Fira Code',monospace}
+.copy-btn{position:absolute;top:10px;right:10px;background:#1e2235;border:1px solid #2d3348;color:#94a3b8;padding:4px 12px;border-radius:6px;font-size:.75rem;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:#f59e0b;color:#0f1117;border-color:#f59e0b}
+.kw{color:#c678dd}.fn{color:#61afef}.str{color:#98c379}.cm{color:#5c6370;font-style:italic}.num{color:#d19a66}.tp{color:#e5c07b}
+.info-box{background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#fbbf24}
+.warn-box{background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#fde68a}
+.err-box{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:16px 20px;margin:16px 0;font-size:.9rem;color:#fca5a5}
+.toc{background:#13161f;border:1px solid #1e2235;border-radius:12px;padding:20px 28px;margin-bottom:40px}
+.toc h3{margin:0 0 12px;color:#f59e0b;font-size:1rem}
+.toc ol{padding-left:20px;font-size:.9rem}
+.toc li{margin:6px 0}.toc a{color:#94a3b8}.toc a:hover{color:#f59e0b}
+.svg-wrap{background:#13161f;border:1px solid #1e2235;border-radius:12px;padding:20px;margin:24px 0;overflow-x:auto}
+.svg-caption{text-align:center;font-size:.8rem;color:#64748b;margin-top:10px}
+.prev-next{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:48px;padding-top:32px;border-top:1px solid #1e2235}
+.prev-next a{display:inline-flex;align-items:center;gap:8px;background:#13161f;border:1px solid #1e2235;border-radius:10px;padding:12px 20px;font-size:.9rem;color:#94a3b8;transition:all .2s}
+.prev-next a:hover{border-color:#f59e0b;color:#f59e0b;text-decoration:none}
+.crosslinks{background:#13161f;border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:20px 28px;margin:32px 0}
+.crosslinks h3{color:#f59e0b;font-size:.95rem;margin-bottom:12px}
+.crosslinks a{color:#94a3b8;font-size:.88rem;margin-right:16px;display:inline-block;margin-bottom:6px}
+.crosslinks a:hover{color:#f59e0b}
+#back-top{position:fixed;bottom:28px;right:28px;background:#f59e0b;color:#0f1117;border:none;border-radius:50%;width:44px;height:44px;font-size:1.3rem;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(245,158,11,0.4);z-index:999;font-weight:700}
+footer{background:#13161f;border-top:1px solid #1e2235;padding:32px 20px;text-align:center;color:#4b5563;font-size:.85rem;margin-top:40px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-inner">
+    <div class="logo">Ecrioni<span>X</span></div>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/serial-protocols/">Serial Protocols</a>
+      <a href="/verilog/">Verilog</a>
+      <a href="/tools/">Tools</a>
+    </nav>
+  </div>
+</header>
+
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/serial-protocols/">Serial Protocols</a><span>›</span>
+  <span style="color:#94a3b8">UART</span>
+</nav>
+
+<main>
+  <!-- ═══════════════════════ HERO ═══════════════════════ -->
+  <div class="hero">
+    <div class="hero-badge">
+      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      Protocol 03 · Serial Protocols
+    </div>
+    <h1>UART Protocol<br><span class="accent">Asynchronous Serial · Baud Rate · TX &amp; RX Verilog</span></h1>
+    <p>The simplest serial protocol — two wires, no shared clock, and a baud rate agreement. Used in every debug console, GPS module, and Bluetooth adapter you've ever touched.</p>
+    <div class="chip-row">
+      <span class="chip">Start/Stop Bits</span>
+      <span class="chip">8N1 Frame</span>
+      <span class="chip">Baud Rate</span>
+      <span class="chip">Oversampling</span>
+      <span class="chip">RS-232</span>
+      <span class="chip">TTL UART</span>
+      <span class="chip">Verilog TX/RX</span>
+      <span class="chip">Flow Control</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ TABLE OF CONTENTS ═══════════════════════ -->
+  <nav class="toc" aria-label="Table of Contents">
+    <h3>Table of Contents</h3>
+    <ol>
+      <li><a href="#what-is-uart">What is UART?</a></li>
+      <li><a href="#frame-format">UART Frame Format</a></li>
+      <li><a href="#baud-rate">Baud Rate and Oversampling</a></li>
+      <li><a href="#rs232-vs-ttl">RS-232 vs TTL Levels</a></li>
+      <li><a href="#verilog-tx">Verilog UART Transmitter</a></li>
+      <li><a href="#verilog-rx">Verilog UART Receiver</a></li>
+      <li><a href="#bugs-debug">Common UART Bugs and Debug Tips</a></li>
+      <li><a href="#flow-control">UART Flow Control</a></li>
+    </ol>
+  </nav>
+
+  <!-- ═══════════════════════ FRAME SVG DIAGRAM ═══════════════════════ -->
+  <div class="svg-wrap">
+    <svg viewBox="0 0 780 160" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:780px;display:block;margin:0 auto" aria-label="UART frame waveform diagram">
+      <rect width="780" height="160" fill="#13161f" rx="8"/>
+
+      <!-- Grid background lines -->
+      <line x1="0"   y1="55"  x2="780" y2="55"  stroke="#1e2235" stroke-width="1"/>
+      <line x1="0"   y1="115" x2="780" y2="115" stroke="#1e2235" stroke-width="1"/>
+
+      <!-- Idle HIGH left -->
+      <line x1="10"  y1="55"  x2="70"  y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- Start bit: fall to LOW -->
+      <line x1="70"  y1="55"  x2="70"  y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="70"  y1="115" x2="120" y2="115" stroke="#ef4444" stroke-width="2.5"/>
+      <!-- D0 LOW -->
+      <line x1="120" y1="115" x2="120" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="120" y1="115" x2="170" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D1 HIGH -->
+      <line x1="170" y1="115" x2="170" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="170" y1="55"  x2="220" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D2 HIGH -->
+      <line x1="220" y1="55"  x2="270" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D3 LOW -->
+      <line x1="270" y1="55"  x2="270" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="270" y1="115" x2="320" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D4 HIGH -->
+      <line x1="320" y1="115" x2="320" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="320" y1="55"  x2="370" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D5 LOW -->
+      <line x1="370" y1="55"  x2="370" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="370" y1="115" x2="420" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D6 HIGH -->
+      <line x1="420" y1="115" x2="420" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="420" y1="55"  x2="470" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- D7 LOW -->
+      <line x1="470" y1="55"  x2="470" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="470" y1="115" x2="520" y2="115" stroke="#f59e0b" stroke-width="2.5"/>
+      <!-- Parity HIGH (optional) -->
+      <line x1="520" y1="115" x2="520" y2="55"  stroke="#a78bfa" stroke-width="2.5" stroke-dasharray="4,3"/>
+      <line x1="520" y1="55"  x2="570" y2="55"  stroke="#a78bfa" stroke-width="2.5" stroke-dasharray="4,3"/>
+      <!-- STOP HIGH -->
+      <line x1="570" y1="55"  x2="570" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+      <line x1="570" y1="55"  x2="640" y2="55"  stroke="#22c55e" stroke-width="2.5"/>
+      <!-- Idle HIGH right -->
+      <line x1="640" y1="55"  x2="770" y2="55"  stroke="#f59e0b" stroke-width="2.5"/>
+
+      <!-- TX label -->
+      <text x="15" y="44" font-family="'Cascadia Code','Fira Code',monospace" font-size="12" fill="#64748b">TX</text>
+
+      <!-- Bit period arrow -->
+      <line x1="120" y1="140" x2="170" y2="140" stroke="#64748b" stroke-width="1" marker-end="url(#arr)" marker-start="url(#arrl)"/>
+      <text x="122" y="155" font-family="'Segoe UI',sans-serif" font-size="10" fill="#64748b">1/baud</text>
+      <defs>
+        <marker id="arr"  markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker>
+        <marker id="arrl" markerWidth="6" markerHeight="6" refX="0" refY="3" orient="auto"><path d="M6,0 L0,3 L6,6 Z" fill="#64748b"/></marker>
+      </defs>
+
+      <!-- Section labels at top -->
+      <text x="76"  y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#ef4444"  text-anchor="middle">START</text>
+      <text x="145" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D0</text>
+      <text x="195" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D1</text>
+      <text x="245" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D2</text>
+      <text x="295" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D3</text>
+      <text x="345" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D4</text>
+      <text x="395" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D5</text>
+      <text x="445" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D6</text>
+      <text x="495" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">D7</text>
+      <text x="545" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#a78bfa"  text-anchor="middle">PAR</text>
+      <text x="605" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#22c55e"  text-anchor="middle">STOP</text>
+      <text x="705" y="22" font-family="'Segoe UI',sans-serif" font-size="10" fill="#f59e0b"  text-anchor="middle">IDLE</text>
+
+      <!-- Tick marks for each bit -->
+      <line x1="70"  y1="30" x2="70"  y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="120" y1="30" x2="120" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="170" y1="30" x2="170" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="220" y1="30" x2="220" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="270" y1="30" x2="270" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="320" y1="30" x2="320" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="370" y1="30" x2="370" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="420" y1="30" x2="420" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="470" y1="30" x2="470" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="520" y1="30" x2="520" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="570" y1="30" x2="570" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+      <line x1="640" y1="30" x2="640" y2="120" stroke="#1e2235" stroke-width="1" stroke-dasharray="2,3"/>
+
+      <!-- HIGH / LOW labels -->
+      <text x="755" y="59"  font-family="'Segoe UI',sans-serif" font-size="10" fill="#64748b" text-anchor="end">HIGH</text>
+      <text x="755" y="119" font-family="'Segoe UI',sans-serif" font-size="10" fill="#64748b" text-anchor="end">LOW</text>
+    </svg>
+    <p class="svg-caption">UART frame waveform — idle HIGH → START (low) → 8 data bits LSB-first → optional parity → STOP (high) → idle. Amber = data, red = start, green = stop, purple = parity.</p>
+  </div>
+
+  <!-- ═══════════════════════ SECTION 1: WHAT IS UART ═══════════════════════ -->
+  <section id="what-is-uart">
+    <h2>1. What is UART?</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">UART — Universal Asynchronous Receiver-Transmitter — is the oldest and simplest serial communication protocol still in widespread use. It requires just two signal wires:</p>
+      <ul style="color:#94a3b8;font-size:.9rem;margin-left:20px;margin-bottom:14px;line-height:2">
+        <li><strong style="color:#f59e0b">TX</strong> — Transmit: data sent from this device</li>
+        <li><strong style="color:#f59e0b">RX</strong> — Receive: data arriving at this device (connect to the other side's TX)</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The "asynchronous" part means there is <strong style="color:#f1f5f9">no shared clock signal</strong>. Instead, both sides agree in advance on a baud rate (bits per second). Each byte is wrapped in a framing sequence — a start bit and stop bit — that lets the receiver synchronize itself on every byte.</p>
+      <p style="color:#94a3b8;font-size:.9rem">UART is strictly <strong style="color:#f1f5f9">point-to-point</strong>: one transmitter, one receiver, one link. It does not support multiple devices on a single bus the way I2C or SPI do. For multi-device communication you need a higher-level protocol on top of UART, or a different physical layer like RS-485.</p>
+    </div>
+    <h3>Where UART Is Used</h3>
+    <table>
+      <tr><th>Application</th><th>Typical Baud Rate</th><th>Notes</th></tr>
+      <tr><td>Debug console / JTAG UART</td><td>115200</td><td>Most common for printf-style debugging on FPGAs and microcontrollers</td></tr>
+      <tr><td>GPS modules (NMEA sentences)</td><td>9600</td><td>Default for most GPS receivers; configurable to 115200</td></tr>
+      <tr><td>Bluetooth serial (HC-05, HC-06)</td><td>9600 / 38400</td><td>Transparent bridge — UART on the MCU side, BT on the RF side</td></tr>
+      <tr><td>WiFi modules (ESP8266, ESP32)</td><td>115200</td><td>AT command interface over UART</td></tr>
+      <tr><td>Cellular modems (SIM800, SIM7600)</td><td>9600–921600</td><td>AT commands + data mode</td></tr>
+      <tr><td>USB-UART bridges (FTDI, CP2102)</td><td>Up to 12 Mbaud</td><td>Convert USB to 3.3 V TTL UART for host PC communication</td></tr>
+      <tr><td>LIDAR sensors (RPLidar, TFMini)</td><td>115200</td><td>Binary distance data stream</td></tr>
+    </table>
+    <div class="info-box" style="margin-top:20px"><strong>Key takeaway:</strong> UART is everywhere. If a chip or module has a "TX/RX" pin or "Serial" interface, it almost certainly speaks UART. It is the universal "last resort" debug port on nearly every SoC and microcontroller ever made.</div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 2: FRAME FORMAT ═══════════════════════ -->
+  <section id="frame-format">
+    <h2>2. UART Frame Format</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:18px">Every byte transmitted over UART is wrapped in a <strong style="color:#f1f5f9">frame</strong>. The frame tells the receiver when a byte starts, carries the data bits, optionally checks for errors, and signals that the transmission is complete.</p>
+
+      <h3 style="margin-top:0">Idle State</h3>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">When no data is being sent, the TX line sits <strong style="color:#22c55e">HIGH</strong> (logic 1). This is the idle or "mark" state. A receiver uses this to confirm the line is connected and powered — a persistently LOW line means the transmitter is broken, unpowered, or the baud rate is catastrophically wrong.</p>
+
+      <h3>Start Bit</h3>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The transmitter pulls TX <strong style="color:#ef4444">LOW</strong> for exactly one bit period to signal the beginning of a frame. The receiver detects this <em>falling edge</em> and starts its internal bit counter. Because idle is always HIGH and the start bit is always LOW, this transition is unambiguous.</p>
+
+      <h3>Data Bits</h3>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The actual payload follows the start bit, transmitted <strong style="color:#f1f5f9">LSB first</strong> (Least Significant Bit first — D0, then D1, … D7). The number of data bits is configurable: 5, 6, 7, or 8 bits. <strong style="color:#f59e0b">8 bits is overwhelmingly the modern standard.</strong> 7-bit was common for ASCII-only teletype systems; 5-bit was used in Baudot (telex) encoding.</p>
+
+      <h3>Parity Bit (Optional)</h3>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">An optional single bit used for rudimentary error detection. Three choices:</p>
+      <ul style="color:#94a3b8;font-size:.9rem;margin-left:20px;margin-bottom:14px;line-height:2">
+        <li><strong style="color:#f1f5f9">None (N)</strong> — No parity bit. Most common in modern use.</li>
+        <li><strong style="color:#f1f5f9">Even (E)</strong> — Parity bit makes the total count of 1s in the data + parity even.</li>
+        <li><strong style="color:#f1f5f9">Odd (O)</strong> — Parity bit makes the total count of 1s odd.</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">Parity only detects odd numbers of bit errors (misses 2-bit errors), so most protocols either omit it entirely or use CRC instead.</p>
+
+      <h3>Stop Bit(s)</h3>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">TX returns <strong style="color:#22c55e">HIGH</strong> for one or two bit periods after the data (and parity) bits. The stop bit(s) guarantee a minimum idle time between frames so the receiver can reset its state machine before the next start bit. One stop bit is standard; two stop bits are used with slower receivers or to reduce framing errors at lower baud rates.</p>
+    </div>
+
+    <h3>Notation Table — Common UART Configurations</h3>
+    <table>
+      <tr><th>Config</th><th>Data Bits</th><th>Parity</th><th>Stop Bits</th><th>Bits per Frame</th><th>Use Case</th></tr>
+      <tr><td class="label"><strong style="color:#f59e0b">8N1</strong></td><td>8</td><td>None</td><td>1</td><td>10</td><td>Standard — used by virtually everything modern</td></tr>
+      <tr><td class="label">8N2</td><td>8</td><td>None</td><td>2</td><td>11</td><td>Older / slower receivers needing extra stop time</td></tr>
+      <tr><td class="label">8E1</td><td>8</td><td>Even</td><td>1</td><td>11</td><td>Industrial / modbus devices</td></tr>
+      <tr><td class="label">8O1</td><td>8</td><td>Odd</td><td>1</td><td>11</td><td>Some legacy modems</td></tr>
+      <tr><td class="label">7E1</td><td>7</td><td>Even</td><td>1</td><td>10</td><td>7-bit ASCII with parity; older terminal equipment</td></tr>
+      <tr><td class="label">7O1</td><td>7</td><td>Odd</td><td>1</td><td>10</td><td>Variant of 7-bit ASCII with parity</td></tr>
+    </table>
+    <div class="warn-box" style="margin-top:16px"><strong>8N1 at 115200 baud</strong> is the de facto default for modern UART. When in doubt, start here — it works with 99% of devices.</div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 3: BAUD RATE ═══════════════════════ -->
+  <section id="baud-rate">
+    <h2>3. Baud Rate and Oversampling</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px"><strong style="color:#f1f5f9">Baud rate</strong> is the number of symbol transitions per second. For UART, each symbol is one bit, so baud rate equals bits per second (bps). A baud rate of 115200 means 115,200 bits are sent every second, giving a bit period of 1/115200 ≈ 8.68 µs.</p>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">Both sides must be configured to <em>exactly</em> the same baud rate. A mismatch causes the receiver to sample bits at the wrong point in time. As frames get longer the accumulated error grows until a stop bit is sampled as LOW, triggering a <strong style="color:#ef4444">framing error</strong>. The maximum tolerable mismatch is approximately ±2% before errors become frequent.</p>
+    </div>
+
+    <h3>Standard Baud Rates</h3>
+    <table>
+      <tr><th>Baud Rate</th><th>Bit Period</th><th>Byte Time (8N1)</th><th>Typical Use</th></tr>
+      <tr><td class="label">110</td>      <td>9.09 ms</td>  <td>90.9 ms</td>  <td>Teletype terminals (historic)</td></tr>
+      <tr><td class="label">300</td>      <td>3.33 ms</td>  <td>33.3 ms</td>  <td>Acoustic modem (300 bps modem era)</td></tr>
+      <tr><td class="label">1200</td>     <td>833 µs</td>   <td>8.33 ms</td>  <td>Older modems, some metering equipment</td></tr>
+      <tr><td class="label">9600</td>     <td>104 µs</td>   <td>1.04 ms</td>  <td>GPS (NMEA), Bluetooth modules, slow sensors</td></tr>
+      <tr><td class="label">38400</td>    <td>26.0 µs</td>  <td>260 µs</td>   <td>Bluetooth (HC-05 default), some bootloaders</td></tr>
+      <tr><td class="label">57600</td>    <td>17.4 µs</td>  <td>174 µs</td>   <td>Some legacy modem standards</td></tr>
+      <tr><td class="label"><strong style="color:#f59e0b">115200</strong></td><td>8.68 µs</td><td>86.8 µs</td><td><strong>Most common — debug console, ESP8266/32, FTDI</strong></td></tr>
+      <tr><td class="label">230400</td>   <td>4.34 µs</td>  <td>43.4 µs</td>  <td>High-speed sensor links, some WiFi modules</td></tr>
+      <tr><td class="label">921600</td>   <td>1.09 µs</td>  <td>10.9 µs</td>  <td>High-speed bootloaders, FTDI FT232H</td></tr>
+    </table>
+
+    <h3>Oversampling — How the Receiver Finds the Bit Center</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The UART receiver does not know exactly when the transmitter's bit transitions occur — it only knows the nominal baud rate. To sample each bit reliably, it uses <strong style="color:#f1f5f9">oversampling</strong>: the system clock runs much faster than the baud rate, and the receiver counts clock cycles to estimate the center of each bit period.</p>
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The standard oversampling ratio is <strong style="color:#f59e0b">16×</strong> (some implementations use 8×). The key parameter is:</p>
+
+      <div style="background:#0a0c14;border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:.9rem;color:#fbbf24;text-align:center;margin-bottom:14px">
+        CLK_PER_BIT = clk_frequency / baud_rate
+      </div>
+
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px"><strong style="color:#f1f5f9">Example:</strong> 50 MHz system clock, 115200 baud:</p>
+      <div style="background:#0a0c14;border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:.88rem;color:#94a3b8;margin-bottom:14px">
+        CLK_PER_BIT = 50,000,000 / 115,200 = <span style="color:#f59e0b">434</span> clock cycles per bit
+      </div>
+
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px"><strong style="color:#f1f5f9">Half-period centering trick:</strong> When the receiver detects the falling edge of the start bit, it waits <strong style="color:#f59e0b">CLK_PER_BIT / 2</strong> cycles, which places the first sample exactly in the center of the start bit. It then samples once every CLK_PER_BIT cycles for each data bit. This centering maximizes the timing margin — the sample point is as far from both edges of the bit as possible.</p>
+
+      <table>
+        <tr><th>Clock Freq</th><th>Baud Rate</th><th>CLK_PER_BIT</th><th>Error</th></tr>
+        <tr><td>50 MHz</td>  <td>115200</td><td>434</td><td>0.08%</td></tr>
+        <tr><td>50 MHz</td>  <td>9600</td>  <td>5208</td><td>0.002%</td></tr>
+        <tr><td>100 MHz</td> <td>115200</td><td>868</td><td>0.04%</td></tr>
+        <tr><td>25 MHz</td>  <td>115200</td><td>217</td><td>0.16%</td></tr>
+        <tr><td>12 MHz</td>  <td>115200</td><td>104</td><td>0.16%</td></tr>
+      </table>
+    </div>
+    <div class="warn-box"><strong>Baud error rule:</strong> Keep the error (|(CLK_PER_BIT_actual − CLK_PER_BIT_ideal)| / CLK_PER_BIT_ideal × 100%) below <strong>2%</strong>. Beyond that, the accumulated timing error over a 10-bit 8N1 frame causes the stop bit to be missampled, generating framing errors.</div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 4: RS-232 vs TTL ═══════════════════════ -->
+  <section id="rs232-vs-ttl">
+    <h2>4. RS-232 vs TTL UART Levels</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">The UART framing protocol is independent of the physical voltage levels used. The two most common physical layer standards are <strong style="color:#f59e0b">TTL UART</strong> (what microcontrollers and FPGAs use natively) and <strong style="color:#f59e0b">RS-232</strong> (the classic PC serial port standard). They are <em>not</em> directly compatible — the voltages are different and the polarity is <em>inverted</em>.</p>
+    </div>
+
+    <h3>Comparison Table</h3>
+    <table>
+      <tr><th>Property</th><th>TTL UART (3.3V)</th><th>TTL UART (5V)</th><th>RS-232</th></tr>
+      <tr><td class="label">Logic 0 voltage</td><td>0 V</td><td>0 V</td><td>+3 V to +15 V</td></tr>
+      <tr><td class="label">Logic 1 voltage</td><td>3.3 V</td><td>5 V</td><td>−3 V to −15 V</td></tr>
+      <tr><td class="label">Idle line level</td><td>3.3 V (HIGH)</td><td>5 V (HIGH)</td><td>−3 V to −15 V (Mark)</td></tr>
+      <tr><td class="label">Polarity</td><td>Non-inverted</td><td>Non-inverted</td><td>Inverted vs TTL</td></tr>
+      <tr><td class="label">Max cable length</td><td>~30 cm (PCB traces)</td><td>~1 m</td><td>~15 m @ 9600 baud</td></tr>
+      <tr><td class="label">Noise immunity</td><td>Low</td><td>Medium</td><td>High (large voltage swing)</td></tr>
+      <tr><td class="label">Connector</td><td>Dupont / JST pins</td><td>Dupont / JST pins</td><td>DB-9 (DE-9), DB-25</td></tr>
+    </table>
+
+    <h3>Level Conversion</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">To connect TTL UART to an RS-232 port, you need a level-shifting IC that converts voltages and inverts polarity:</p>
+      <ul style="color:#94a3b8;font-size:.9rem;margin-left:20px;line-height:2.2">
+        <li><strong style="color:#f59e0b">MAX232</strong> — Classic 5V TTL ↔ RS-232. Uses charge pump capacitors to generate ±12V internally. Still widely used in industrial equipment.</li>
+        <li><strong style="color:#f59e0b">MAX3232</strong> — Same as MAX232 but operates at 3.3V supply. Pin-compatible replacement for 3.3V systems.</li>
+        <li><strong style="color:#f59e0b">SP3232E / ADM3202</strong> — Lower-power alternatives to MAX3232 with similar functionality.</li>
+      </ul>
+    </div>
+
+    <h3>USB-to-UART Bridges</h3>
+    <table>
+      <tr><th>IC</th><th>Supply</th><th>Max Baud</th><th>Notes</th></tr>
+      <tr><td class="label">FTDI FT232RL</td><td>3.3V / 5V</td><td>3 Mbaud</td><td>Highest compatibility, genuine chip required (counterfeit issue). Driver: VCP or D2XX.</td></tr>
+      <tr><td class="label">CP2102</td><td>3.3V</td><td>1 Mbaud</td><td>Common in ESP8266 devboards. Silicon Labs driver. Very reliable.</td></tr>
+      <tr><td class="label">CH340G / CH340C</td><td>3.3V / 5V</td><td>2 Mbaud</td><td>Cheap Chinese alternative. Requires separate driver installation on Windows. Works well at 115200.</td></tr>
+      <tr><td class="label">PL2303</td><td>3.3V / 5V</td><td>115200</td><td>Older Prolific chip. Driver support issues on modern Windows.</td></tr>
+    </table>
+    <div class="info-box" style="margin-top:16px"><strong>Modern workflow:</strong> Most engineers use a CP2102 or CH340G USB-UART module to connect their FPGA/MCU UART to a PC terminal (PuTTY, minicom, screen). RS-232 is rarely used in new designs — only for long-cable industrial links or legacy equipment.</div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 5: VERILOG TX ═══════════════════════ -->
+  <section id="verilog-tx">
+    <h2>5. Verilog UART Transmitter</h2>
+    <p style="color:#94a3b8;margin-bottom:20px">The transmitter shifts out one bit per bit-period (CLK_PER_BIT clock cycles). It uses a 4-state FSM: IDLE → START → DATA → STOP. The <code style="color:#f59e0b">tx_ready</code> signal is HIGH when the transmitter is idle and ready to accept a new byte.</p>
+
+    <div style="position:relative">
+      <pre><code><span class="cm">// ─────────────────────────────────────────────────────────────────────</span>
+<span class="cm">// uart_tx.v  —  Parameterized UART Transmitter</span>
+<span class="cm">// Parameter: CLK_PER_BIT = clk_freq / baud_rate</span>
+<span class="cm">//   Example: 50 MHz / 115200 = 434</span>
+<span class="cm">// Frame format: 8N1 (8 data bits, No parity, 1 stop bit)</span>
+<span class="cm">// ─────────────────────────────────────────────────────────────────────</span>
+<span class="kw">module</span> <span class="fn">uart_tx</span> #(
+  <span class="kw">parameter</span> CLK_PER_BIT = <span class="num">434</span>
+)(
+  <span class="kw">input</span>  <span class="kw">wire</span>       clk,       <span class="cm">// system clock</span>
+  <span class="kw">input</span>  <span class="kw">wire</span>       rst_n,     <span class="cm">// active-low synchronous reset</span>
+  <span class="kw">input</span>  <span class="kw">wire</span>       tx_valid,  <span class="cm">// pulse HIGH for 1 cycle to start TX</span>
+  <span class="kw">input</span>  <span class="kw">wire</span> [<span class="num">7</span>:<span class="num">0</span>]  tx_data,   <span class="cm">// byte to transmit (hold until tx_ready)</span>
+  <span class="kw">output</span> <span class="kw">reg</span>        tx,        <span class="cm">// UART TX line (idle HIGH)</span>
+  <span class="kw">output</span> <span class="kw">reg</span>        tx_ready   <span class="cm">// HIGH when transmitter is idle</span>
+);
+
+<span class="cm">  // ── State encoding ──</span>
+  <span class="kw">localparam</span> [<span class="num">1</span>:<span class="num">0</span>]
+    IDLE  = <span class="num">2'b00</span>,
+    START = <span class="num">2'b01</span>,
+    DATA  = <span class="num">2'b10</span>,
+    STOP  = <span class="num">2'b11</span>;
+
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>]  state;
+  <span class="kw">reg</span> [<span class="num">9</span>:<span class="num">0</span>]  baud_cnt;   <span class="cm">// counts clock cycles per bit</span>
+  <span class="kw">reg</span> [<span class="num">2</span>:<span class="num">0</span>]  bit_idx;   <span class="cm">// 0 to 7: which data bit is being sent</span>
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>]  tx_shift;  <span class="cm">// copy of tx_data, shifted out LSB first</span>
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_n) <span class="kw">begin</span>
+      state    &lt;= IDLE;
+      tx       &lt;= <span class="num">1'b1</span>;   <span class="cm">// idle HIGH</span>
+      tx_ready &lt;= <span class="num">1'b1</span>;
+      baud_cnt &lt;= <span class="num">0</span>;
+      bit_idx  &lt;= <span class="num">0</span>;
+      tx_shift &lt;= <span class="num">8'h00</span>;
+    <span class="kw">end else begin</span>
+      <span class="kw">case</span> (state)
+
+        IDLE: <span class="kw">begin</span>
+          tx       &lt;= <span class="num">1'b1</span>;
+          tx_ready &lt;= <span class="num">1'b1</span>;
+          baud_cnt &lt;= <span class="num">0</span>;
+          bit_idx  &lt;= <span class="num">0</span>;
+          <span class="kw">if</span> (tx_valid) <span class="kw">begin</span>
+            tx_shift &lt;= tx_data;   <span class="cm">// latch the byte</span>
+            tx_ready &lt;= <span class="num">1'b0</span>;
+            state    &lt;= START;
+          <span class="kw">end</span>
+        <span class="kw">end</span>
+
+        START: <span class="kw">begin</span>
+          tx &lt;= <span class="num">1'b0</span>;             <span class="cm">// drive start bit LOW</span>
+          <span class="kw">if</span> (baud_cnt == CLK_PER_BIT - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt &lt;= <span class="num">0</span>;
+            state    &lt;= DATA;
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        DATA: <span class="kw">begin</span>
+          tx &lt;= tx_shift[bit_idx];  <span class="cm">// LSB first</span>
+          <span class="kw">if</span> (baud_cnt == CLK_PER_BIT - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt &lt;= <span class="num">0</span>;
+            <span class="kw">if</span> (bit_idx == <span class="num">3'd7</span>) <span class="kw">begin</span>
+              bit_idx &lt;= <span class="num">0</span>;
+              state   &lt;= STOP;
+            <span class="kw">end else</span>
+              bit_idx &lt;= bit_idx + <span class="num">1</span>;
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        STOP: <span class="kw">begin</span>
+          tx &lt;= <span class="num">1'b1</span>;              <span class="cm">// stop bit HIGH</span>
+          <span class="kw">if</span> (baud_cnt == CLK_PER_BIT - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt &lt;= <span class="num">0</span>;
+            tx_ready &lt;= <span class="num">1'b1</span>;
+            state    &lt;= IDLE;
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        <span class="kw">default</span>: state &lt;= IDLE;
+      <span class="kw">endcase</span>
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="info-box"><strong>Usage:</strong> Assert <code>tx_valid</code> for exactly one clock cycle while <code>tx_ready</code> is HIGH and <code>tx_data</code> holds the byte to send. The module latches <code>tx_data</code> immediately. <code>tx_ready</code> goes LOW for the duration of the frame (~8680 cycles at 115200 baud with 50 MHz clock) and returns HIGH when the stop bit completes.</div>
+
+    <h3>Transmitter State Machine</h3>
+    <div class="card-box">
+      <table>
+        <tr><th>State</th><th>TX line</th><th>Duration</th><th>Next state condition</th></tr>
+        <tr><td class="label">IDLE</td><td>HIGH (1)</td><td>Until tx_valid asserted</td><td>tx_valid = 1 → START</td></tr>
+        <tr><td class="label">START</td><td>LOW (0)</td><td>CLK_PER_BIT cycles</td><td>baud_cnt reaches CLK_PER_BIT−1 → DATA</td></tr>
+        <tr><td class="label">DATA</td><td>tx_shift[bit_idx]</td><td>8 × CLK_PER_BIT cycles</td><td>bit_idx = 7 and baud_cnt done → STOP</td></tr>
+        <tr><td class="label">STOP</td><td>HIGH (1)</td><td>CLK_PER_BIT cycles</td><td>baud_cnt reaches CLK_PER_BIT−1 → IDLE</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 6: VERILOG RX ═══════════════════════ -->
+  <section id="verilog-rx">
+    <h2>6. Verilog UART Receiver</h2>
+    <p style="color:#94a3b8;margin-bottom:20px">The receiver is harder than the transmitter because it must synchronize itself to the transmitter on every byte using only the falling edge of the start bit. The key technique is the <strong style="color:#f59e0b">half-period wait</strong>: after detecting the start bit falling edge, the receiver waits CLK_PER_BIT/2 cycles before sampling — placing the sample point at the center of the start bit and all subsequent data bits.</p>
+
+    <div style="position:relative">
+      <pre><code><span class="cm">// ─────────────────────────────────────────────────────────────────────</span>
+<span class="cm">// uart_rx.v  —  Parameterized UART Receiver with oversampling centering</span>
+<span class="cm">// Parameter: CLK_PER_BIT = clk_freq / baud_rate  (e.g. 434 for 50MHz/115200)</span>
+<span class="cm">// Outputs rx_data when a valid 8N1 frame is received.</span>
+<span class="cm">// rx_valid pulses HIGH for 1 cycle when rx_data is ready.</span>
+<span class="cm">// ─────────────────────────────────────────────────────────────────────</span>
+<span class="kw">module</span> <span class="fn">uart_rx</span> #(
+  <span class="kw">parameter</span> CLK_PER_BIT = <span class="num">434</span>
+)(
+  <span class="kw">input</span>  <span class="kw">wire</span>        clk,      <span class="cm">// system clock</span>
+  <span class="kw">input</span>  <span class="kw">wire</span>        rst_n,    <span class="cm">// active-low synchronous reset</span>
+  <span class="kw">input</span>  <span class="kw">wire</span>        rx,       <span class="cm">// UART RX line (idle HIGH)</span>
+  <span class="kw">output</span> <span class="kw">reg</span>  [<span class="num">7</span>:<span class="num">0</span>]  rx_data,  <span class="cm">// received byte</span>
+  <span class="kw">output</span> <span class="kw">reg</span>         rx_valid  <span class="cm">// pulses HIGH for 1 cycle when byte ready</span>
+);
+
+<span class="cm">  // ── State encoding ──</span>
+  <span class="kw">localparam</span> [<span class="num">1</span>:<span class="num">0</span>]
+    IDLE  = <span class="num">2'b00</span>,
+    START = <span class="num">2'b01</span>,
+    DATA  = <span class="num">2'b10</span>,
+    STOP  = <span class="num">2'b11</span>;
+
+  <span class="cm">// ── 2-FF synchronizer for the RX input (async to clock domain) ──</span>
+  <span class="kw">reg</span>        rx_s1, rx_sync;
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+    rx_s1   &lt;= rx;
+    rx_sync &lt;= rx_s1;
+  <span class="kw">end</span>
+
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>]  state;
+  <span class="kw">reg</span> [<span class="num">9</span>:<span class="num">0</span>]  baud_cnt;
+  <span class="kw">reg</span> [<span class="num">2</span>:<span class="num">0</span>]  bit_idx;
+  <span class="kw">reg</span> [<span class="num">7</span>:<span class="num">0</span>]  rx_shift;  <span class="cm">// shift register, fills LSB first</span>
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_n) <span class="kw">begin</span>
+      state    &lt;= IDLE;
+      baud_cnt &lt;= <span class="num">0</span>;
+      bit_idx  &lt;= <span class="num">0</span>;
+      rx_shift &lt;= <span class="num">8'h00</span>;
+      rx_data  &lt;= <span class="num">8'h00</span>;
+      rx_valid &lt;= <span class="num">1'b0</span>;
+    <span class="kw">end else begin</span>
+      rx_valid &lt;= <span class="num">1'b0</span>;  <span class="cm">// default: not valid; set only in STOP</span>
+
+      <span class="kw">case</span> (state)
+
+        IDLE: <span class="kw">begin</span>
+          baud_cnt &lt;= <span class="num">0</span>;
+          bit_idx  &lt;= <span class="num">0</span>;
+          <span class="cm">// Detect falling edge of start bit</span>
+          <span class="kw">if</span> (rx_sync == <span class="num">1'b0</span>) state &lt;= START;
+        <span class="kw">end</span>
+
+        START: <span class="kw">begin</span>
+          <span class="cm">// Wait CLK_PER_BIT/2 to sample at bit center of START bit</span>
+          <span class="cm">// Verify it is still LOW (noise rejection)</span>
+          <span class="kw">if</span> (baud_cnt == (CLK_PER_BIT / <span class="num">2</span>) - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt &lt;= <span class="num">0</span>;
+            <span class="kw">if</span> (rx_sync == <span class="num">1'b0</span>)   <span class="cm">// confirmed start bit</span>
+              state &lt;= DATA;
+            <span class="kw">else</span>
+              state &lt;= IDLE;           <span class="cm">// glitch — abort</span>
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        DATA: <span class="kw">begin</span>
+          <span class="cm">// Sample each bit at center: count CLK_PER_BIT cycles between samples</span>
+          <span class="kw">if</span> (baud_cnt == CLK_PER_BIT - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt             &lt;= <span class="num">0</span>;
+            rx_shift[bit_idx]    &lt;= rx_sync;  <span class="cm">// capture bit into shift reg</span>
+            <span class="kw">if</span> (bit_idx == <span class="num">3'd7</span>) <span class="kw">begin</span>
+              bit_idx &lt;= <span class="num">0</span>;
+              state   &lt;= STOP;
+            <span class="kw">end else</span>
+              bit_idx &lt;= bit_idx + <span class="num">1</span>;
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        STOP: <span class="kw">begin</span>
+          <span class="cm">// Sample stop bit at its center</span>
+          <span class="kw">if</span> (baud_cnt == CLK_PER_BIT - <span class="num">1</span>) <span class="kw">begin</span>
+            baud_cnt &lt;= <span class="num">0</span>;
+            <span class="kw">if</span> (rx_sync == <span class="num">1'b1</span>) <span class="kw">begin</span>  <span class="cm">// valid stop bit?</span>
+              rx_data  &lt;= rx_shift;        <span class="cm">// latch complete byte</span>
+              rx_valid &lt;= <span class="num">1'b1</span>;           <span class="cm">// pulse valid for 1 cycle</span>
+            <span class="kw">end</span>
+            <span class="cm">// Go back to IDLE whether stop bit is valid or not</span>
+            <span class="cm">// (framing error: rx_valid stays 0, corrupted byte is discarded)</span>
+            state &lt;= IDLE;
+          <span class="kw">end else</span>
+            baud_cnt &lt;= baud_cnt + <span class="num">1</span>;
+        <span class="kw">end</span>
+
+        <span class="kw">default</span>: state &lt;= IDLE;
+      <span class="kw">endcase</span>
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <div class="info-box"><strong>The half-period trick explained:</strong> After detecting the falling edge of the start bit, the receiver waits exactly CLK_PER_BIT/2 cycles before its first sample. This places the sample at the <em>center</em> of the start bit. All subsequent data-bit samples are taken CLK_PER_BIT cycles apart — also centered. Sampling at the center gives maximum margin against jitter and baud rate mismatch.</div>
+
+    <div class="warn-box"><strong>Always include the 2-FF synchronizer</strong> on the RX input (rx_s1, rx_sync above). The UART RX line is an asynchronous input — it can transition at any time relative to the system clock. Without synchronization, the first FF can go metastable and corrupt the received data.</div>
+
+    <h3>Receiver State Machine</h3>
+    <div class="card-box">
+      <table>
+        <tr><th>State</th><th>Condition to exit</th><th>Action</th></tr>
+        <tr><td class="label">IDLE</td><td>rx_sync = 0 (start bit detected)</td><td>Reset baud_cnt, go to START</td></tr>
+        <tr><td class="label">START</td><td>baud_cnt = CLK_PER_BIT/2 − 1</td><td>If rx_sync still LOW → DATA; else noise → IDLE</td></tr>
+        <tr><td class="label">DATA</td><td>baud_cnt = CLK_PER_BIT − 1, 8 times</td><td>Sample rx_sync into rx_shift[bit_idx] LSB first</td></tr>
+        <tr><td class="label">STOP</td><td>baud_cnt = CLK_PER_BIT − 1</td><td>If rx_sync = 1: latch rx_shift → rx_data, pulse rx_valid; → IDLE</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 7: BUGS & DEBUG ═══════════════════════ -->
+  <section id="bugs-debug">
+    <h2>7. Common UART Bugs and Debug Tips</h2>
+    <div class="card-box">
+      <table>
+        <tr><th>Symptom</th><th>Root Cause</th><th>Fix</th></tr>
+        <tr>
+          <td class="label">Garbage / random characters</td>
+          <td><strong>Baud rate mismatch</strong> — the most common UART bug by far</td>
+          <td>Verify both sides are set to identical baud rate. Check CLK_PER_BIT calculation. Measure bit period on oscilloscope.</td>
+        </tr>
+        <tr>
+          <td class="label">Missing bytes / data loss</td>
+          <td>RX buffer overflow — receiver not reading fast enough</td>
+          <td>Add a FIFO between UART RX and your consumer logic. Use flow control (RTS/CTS or XON/XOFF) if available.</td>
+        </tr>
+        <tr>
+          <td class="label">Framing error flag</td>
+          <td>Stop bit sampled as LOW — caused by baud mismatch or wrong number of stop bits</td>
+          <td>Check baud rate. If stop bits = 2 on TX but receiver expects 1, the second stop bit is sampled as a new start bit.</td>
+        </tr>
+        <tr>
+          <td class="label">Inverted / mirror-image data</td>
+          <td>RS-232 ↔ TTL confusion — RS-232 polarity is inverted vs TTL</td>
+          <td>Add MAX232 / MAX3232 level shifter. Or check if your UART hardware has a polarity inversion option.</td>
+        </tr>
+        <tr>
+          <td class="label">Receives 0x00 for every byte</td>
+          <td>RX line is floating LOW — idle state is not being driven HIGH</td>
+          <td>Add a pull-up resistor (10kΩ) on the RX line to 3.3V (or 5V). Check TX side is powered and driving HIGH when idle.</td>
+        </tr>
+        <tr>
+          <td class="label">First byte after reset is wrong</td>
+          <td>Missing 2-FF synchronizer on RX — metastability at startup</td>
+          <td>Always add a 2-FF synchronizer (two cascaded D flip-flops) on the RX input in your Verilog design.</td>
+        </tr>
+        <tr>
+          <td class="label">Works at 9600 but not 115200</td>
+          <td>CLK_PER_BIT rounding error is proportionally larger at high baud rates</td>
+          <td>Recalculate CLK_PER_BIT. Use a higher system clock frequency to reduce the fractional truncation error.</td>
+        </tr>
+        <tr>
+          <td class="label">TX and RX swapped</td>
+          <td>TX of device A connected to TX of device B (should be TX → RX)</td>
+          <td>Remember: TX connects to RX on the other side. Cross the wires.</td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>Oscilloscope Debug</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">A digital oscilloscope is the fastest way to diagnose UART problems:</p>
+      <ol style="color:#94a3b8;font-size:.9rem;margin-left:20px;line-height:2.2">
+        <li><strong style="color:#f59e0b">Measure idle level</strong> — should be HIGH (3.3V or 5V for TTL, ~-12V for RS-232). A LOW idle means TX is broken or unpowered.</li>
+        <li><strong style="color:#f59e0b">Measure start bit width</strong> — should be 1/baud_rate. For 115200: 8.68 µs. If it's different, both sides need reconfiguring.</li>
+        <li><strong style="color:#f59e0b">Count data bits</strong> — after the start bit, count 8 data bits (LSB first), then the stop bit.</li>
+        <li><strong style="color:#f59e0b">Check stop bit is HIGH</strong> — a stop bit that is LOW indicates a framing error; the receiver will flag this.</li>
+        <li><strong style="color:#f59e0b">Use protocol decode</strong> — most modern oscilloscopes have built-in UART decode. Set the baud rate and it will decode hex bytes automatically.</li>
+      </ol>
+    </div>
+    <div class="err-box"><strong>The #1 UART debug rule:</strong> When something is broken, the very first thing to check is baud rate. Both ends must match to within ±2%. Measure it on a scope rather than assuming the configuration is correct.</div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 8: FLOW CONTROL ═══════════════════════ -->
+  <section id="flow-control">
+    <h2>8. UART Flow Control</h2>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">Basic UART has no mechanism to tell the transmitter to stop sending when the receiver's buffer is full. This leads to data loss if the receiver cannot keep up. Two flow control mechanisms solve this:</p>
+    </div>
+
+    <h3>Hardware Flow Control — RTS / CTS</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">Two additional wires are added to the link:</p>
+      <ul style="color:#94a3b8;font-size:.9rem;margin-left:20px;line-height:2.2">
+        <li><strong style="color:#f59e0b">RTS (Request To Send)</strong> — driven by the receiver. Asserted (LOW active) to tell the transmitter "I am ready to receive data."</li>
+        <li><strong style="color:#f59e0b">CTS (Clear To Send)</strong> — driven by the transmitter. The transmitter only sends when CTS is asserted (i.e., it samples the other side's RTS).</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:.9rem;margin-top:12px">When the receiver's buffer is nearly full, it deasserts RTS. The transmitter sees CTS go inactive and pauses mid-stream (it will always finish the current byte cleanly). When the receiver drains its buffer, it reasserts RTS and the transmitter resumes. Hardware flow control is transparent — the upper-level protocol does not need to be aware of it.</p>
+    </div>
+
+    <h3>Software Flow Control — XON / XOFF</h3>
+    <div class="card-box">
+      <p style="color:#94a3b8;font-size:.9rem;margin-bottom:14px">No extra wires needed. Instead, the receiver sends special ASCII control characters:</p>
+      <ul style="color:#94a3b8;font-size:.9rem;margin-left:20px;line-height:2.2">
+        <li><strong style="color:#f59e0b">XOFF (0x13, Ctrl+S)</strong> — sent by receiver to tell the transmitter "stop sending."</li>
+        <li><strong style="color:#f59e0b">XON (0x11, Ctrl+Q)</strong> — sent by receiver to resume data flow.</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:.9rem;margin-top:12px">The problem with XON/XOFF is that these control characters can appear in binary data streams, causing the transmitter to pause unexpectedly. It is only suitable for ASCII text protocols.</p>
+    </div>
+
+    <h3>Flow Control Comparison</h3>
+    <table>
+      <tr><th>Feature</th><th>Hardware (RTS/CTS)</th><th>Software (XON/XOFF)</th><th>None</th></tr>
+      <tr><td class="label">Extra wires</td><td>2 (RTS, CTS)</td><td>0</td><td>0</td></tr>
+      <tr><td class="label">Binary data safe</td><td>Yes</td><td>No</td><td>N/A</td></tr>
+      <tr><td class="label">Latency</td><td>Very low (hardware)</td><td>Higher (must send + process byte)</td><td>N/A</td></tr>
+      <tr><td class="label">Complexity</td><td>Low (hardware-managed)</td><td>Higher (software must handle)</td><td>None</td></tr>
+      <tr><td class="label">Typical use</td><td>Modems, high-speed links, RS-232</td><td>Simple terminal protocols</td><td>Most FPGA / embedded UART designs</td></tr>
+    </table>
+    <div class="info-box" style="margin-top:16px"><strong>In most FPGA and microcontroller designs</strong>, flow control is omitted entirely. Instead, a FIFO buffer deep enough to absorb burst data is placed after the UART RX, and the application is designed to read fast enough. For robust designs receiving continuous data at high baud rates, add a FIFO with a nearly-full flag connected back to RTS. See the <a href="/verilog/verilog-project/">Verilog UART+FIFO capstone project</a> for a complete implementation.</div>
+  </section>
+
+  <!-- ═══════════════════════ CROSS-LINKS ═══════════════════════ -->
+  <div class="crosslinks">
+    <h3>Related Topics on EcrioniX</h3>
+    <a href="/verilog/verilog-project/">Verilog Capstone: UART + FIFO Design</a>
+    <a href="/serial-protocols/i2c/">I2C Protocol</a>
+    <a href="/serial-protocols/spi/">SPI Protocol</a>
+    <a href="/serial-protocols/">Serial Protocols Hub</a>
+    <a href="/digital-electronics/fifo/">Synchronous FIFO Design</a>
+    <a href="/digital-electronics/clock-domain-crossing/">Clock Domain Crossing (CDC)</a>
+    <a href="/verilog/finite-state-machines/">Verilog FSM Design</a>
+  </div>
+
+  <!-- ═══════════════════════ PREV / NEXT ═══════════════════════ -->
+  <div class="prev-next">
+    <a href="/serial-protocols/i2c/">
+      ← I2C Protocol
+    </a>
+    <a href="/serial-protocols/">
+      Serial Protocols Hub →
+    </a>
+  </div>
+
+</main>
+
+<button id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">▲</button>
+
+<footer>
+  <p>© 2026 EcrioniX · <a href="/serial-protocols/">Serial Protocols</a> · <a href="/verilog/">Verilog</a> · <a href="/">Home</a></p>
+</footer>
+
+<script>
+function copyCode(btn) {
+  const code = btn.previousElementSibling.innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+window.addEventListener('scroll', () => {
+  document.getElementById('back-top').style.display = window.scrollY > 300 ? 'flex' : 'none';
+});
+</script>
+</body>
+</html>
