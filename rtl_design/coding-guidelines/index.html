@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTL Coding Guidelines — Synthesis-Ready Verilog Best Practices | EcrioniX</title>
+  <meta name="description" content="RTL coding guidelines for ASIC and FPGA engineers: reset style, naming conventions, latch-free code, clock enable pattern, synthesis pragmas, and synthesis-safe idioms in Verilog and SystemVerilog.">
+  <meta name="keywords" content="RTL coding guidelines, Verilog best practices, synthesis ready RTL, reset style, naming convention, latch-free coding, clock enable, synthesis pragma, always_ff, always_comb, ASIC RTL coding style">
+  <meta name="author" content="EcrioniX">
+  <link rel="canonical" href="https://ecrionix.org/rtl_design/coding-guidelines/">
+  <meta property="og:title" content="RTL Coding Guidelines — Synthesis-Ready Verilog Best Practices | EcrioniX">
+  <meta property="og:description" content="Complete RTL coding guidelines: naming conventions, reset style, latch-free code, clock enables, synthesis pragmas, and safe Verilog patterns.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/rtl_design/coding-guidelines/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="RTL Coding Guidelines — Synthesis-Ready Verilog | EcrioniX">
+  <meta name="twitter:description" content="Synthesis-ready RTL best practices: reset, naming, latch-free, clock enable, pragmas.">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","headline":"RTL Coding Guidelines — Synthesis-Ready Verilog Best Practices","description":"Complete RTL coding guidelines covering reset style, naming conventions, latch-free code, clock enable pattern, synthesis pragmas, and safe coding idioms.","url":"https://ecrionix.org/rtl_design/coding-guidelines/","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"}},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"RTL Design","item":"https://ecrionix.org/rtl_design/"},
+      {"@type":"ListItem","position":3,"name":"RTL Coding Guidelines","item":"https://ecrionix.org/rtl_design/coding-guidelines/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"Should I use synchronous or asynchronous reset in RTL?","acceptedAnswer":{"@type":"Answer","text":"In ASIC designs, async-assert/sync-deassert reset is the industry standard. The flip-flop uses an asynchronous reset pin (arst_n) for fast, clock-independent reset assertion, but the reset is deasserted synchronously — typically with a 2-stage reset synchronizer — to prevent metastability on the deassert edge. This guarantees the entire design comes out of reset at the same clock edge. FPGA designs often use synchronous reset because most FPGA flip-flops have only one reset pin (typically the synchronous SR pin). The key rule: never use purely asynchronous deassert reset in production ASIC design, as it causes all registers to deassert at unpredictable times relative to the clock."}},
+      {"@type":"Question","name":"How do I prevent latch inference in Verilog?","acceptedAnswer":{"@type":"Answer","text":"Latches are inferred when an always @(*) (combinational) block has an incomplete sensitivity list or does not assign all outputs in all branches. The three fixes: (1) Always assign every output at the beginning of a combinational block (default assignment), then override in the if/case. (2) Use unique case or casefull (all cases covered). (3) Use SystemVerilog always_comb — synthesis tools flag any inferred latches from an always_comb block as errors. The golden rule: every signal assigned inside always @(*) must receive a value in EVERY path through the block. If it cannot — because you need memory — use a flip-flop (always @(posedge clk)), not a latch."}},
+      {"@type":"Question","name":"What is the clock enable pattern in RTL?","acceptedAnswer":{"@type":"Answer","text":"The clock enable (CE) pattern gates the data path rather than the clock itself. Instead of gating the clock signal (clock gating mux before flip-flop), you write: always @(posedge clk) if (enable) q <= d; This infers a flip-flop with a clock enable (CE) pin, which synthesis maps to a dedicated CE input on the flip-flop standard cell. This is safe and timing-clean. Clock gating the actual clock signal requires ICG (Integrated Clock Gating) cells from the library — never gate clocks with combinational muxes in RTL, as this creates glitches. Use CE pattern in RTL; let synthesis and the power intent file (CPF/UPF) insert ICG cells."}},
+      {"@type":"Question","name":"What are synthesis pragmas and when should I use them?","acceptedAnswer":{"@type":"Answer","text":"Synthesis pragmas (also called synthesis directives) are comments that guide the synthesis tool without affecting simulation. Common ones: /* synthesis keep */ prevents a net from being optimized away (used for debug probes); (* dont_touch = \"true\" *) is the SystemVerilog attribute equivalent; /* synthesis full_case parallel_case */ on case statements tells the tool the case is exhaustive and mutually exclusive — but MUST match simulation behavior or causes RTL-gate simulation mismatches, so use with caution. For Synopsys DC: /* synopsys full_case */. For Xilinx: (* keep = \"true\" *). Prefer explicit coding (unique case, default:) over pragmas when possible."}},
+      {"@type":"Question","name":"Should I use blocking or non-blocking assignments in RTL?","acceptedAnswer":{"@type":"Answer","text":"Follow this absolute rule: use non-blocking (<=) for all sequential logic (always @(posedge clk) blocks), and use blocking (=) for all combinational logic (always @(*) / always_comb blocks). Never mix blocking and non-blocking in the same always block. The reason: non-blocking assignments schedule updates at the end of the timestep, modeling flip-flop behavior (read old value, write new value) correctly. Blocking assignments in sequential blocks cause race conditions between always blocks — the result is simulation-correct but synthesis generates unexpected flip-flop-chain topologies. This is one of the most common sources of RTL-gate simulation mismatches in production design."}},
+      {"@type":"Question","name":"What naming conventions should I follow for RTL signals?","acceptedAnswer":{"@type":"Answer","text":"Standard RTL naming conventions: (1) Clocks: clk for primary, use descriptive names for multiple clocks (clk_100m, clk_axi). (2) Active-low signals: suffix _n (rst_n, valid_n, cs_n). (3) Registers vs nets: suffix _r or _reg for registered signals (data_r, count_r). (4) Next-state logic: suffix _nxt or _next (state_nxt). (5) Buses: [MSB:LSB] range in brackets (data[7:0]). (6) Parameters: UPPER_SNAKE_CASE (DATA_WIDTH, FIFO_DEPTH). (7) Module ports: lowercase_snake_case. (8) Module names: match the file name exactly. Consistent naming reduces code review friction and makes lint checks more effective at catching bugs."}}
+    ]}
+  ]}
+  </script>
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link rel="shortcut icon" href="/favicon1.png">
+  <link rel="apple-touch-icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--bg-card:rgba(15,23,42,.7);--border:rgba(148,163,184,.1);--indigo:#6366f1;--indigo-l:#818cf8;--amber:#fbbf24;--sky:#38bdf8;--teal:#2dd4bf;--green:#34d399;--rose:#fb7185;--violet:#a78bfa;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    html{scroll-behavior:smooth}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+
+    /* NAV */
+    .navbar{position:sticky;top:0;z-index:100;background:rgba(2,6,23,.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 1.25rem;height:64px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:#fff;letter-spacing:.05em}
+    .nav-logo span{color:var(--indigo)}
+    .nav-links{display:flex;gap:2rem;list-style:none}
+    .nav-links a{color:var(--muted);font-size:.9rem;font-weight:500;transition:color .2s}
+    .nav-links a:hover,.nav-links a.active{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:24px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:1rem 1.25rem;gap:.25rem}
+    .mobile-menu.open{display:flex}
+    .mobile-menu a{color:var(--muted);font-size:.95rem;padding:.65rem 0;border-bottom:1px solid var(--border);transition:color .2s}
+    .mobile-menu a:hover{color:#fff}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+
+    /* BREADCRUMB */
+    .breadcrumb{max-width:860px;margin:0 auto;padding:.75rem 1.25rem 0;display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--dim);flex-wrap:wrap}
+    .breadcrumb a{color:var(--dim);transition:color .2s}.breadcrumb a:hover{color:var(--indigo-l)}
+
+    /* PAGE */
+    .page{max-width:860px;margin:0 auto;padding:2rem 1.25rem 4rem}
+    .tag{display:inline-block;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:var(--amber);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:.25rem .75rem;border-radius:100px;margin-bottom:.75rem}
+    h1{font-family:'Orbitron',sans-serif;font-size:clamp(1.6rem,5vw,2.5rem);font-weight:700;line-height:1.2;margin-bottom:.75rem}
+    .grad{background:linear-gradient(90deg,#fbbf24,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .meta{display:flex;gap:.75rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted);margin-bottom:2rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border)}
+    .lead{font-size:1.05rem;color:var(--muted);margin-bottom:2rem;line-height:1.75}
+
+    /* DIAGRAM */
+    .diagram{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.5rem;margin:2rem 0;overflow-x:auto}
+    .diagram svg{display:block;margin:0 auto;max-width:100%}
+
+    /* SECTION */
+    h2{font-family:'Orbitron',sans-serif;font-size:1.15rem;font-weight:700;color:#fff;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+    h3{font-size:1rem;font-weight:700;color:var(--amber);margin:1.75rem 0 .5rem}
+    p{color:var(--muted);margin-bottom:1rem;font-size:.93rem}
+
+    /* CODE */
+    .code-wrap{position:relative;margin:1rem 0}
+    pre{background:rgba(15,23,42,.9);border:1px solid var(--border);border-radius:10px;padding:1.25rem;overflow-x:auto;font-size:.82rem;line-height:1.65;font-family:'Courier New',monospace;color:#e2e8f0}
+    .copy-btn{position:absolute;top:8px;right:8px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.35);color:var(--indigo-l);padding:3px 10px;border-radius:6px;font-size:.72rem;cursor:pointer;transition:background .2s}
+    .copy-btn:hover{background:rgba(99,102,241,.3)}
+    .c-kw{color:#818cf8}
+    .c-type{color:#38bdf8}
+    .c-str{color:#34d399}
+    .c-cmt{color:#64748b;font-style:italic}
+    .c-sig{color:#fb923c}
+    .c-bad{color:#f87171}
+    .c-good{color:#34d399}
+
+    /* RULE CARDS */
+    .rule-grid{display:grid;gap:1rem;margin:1.5rem 0}
+    .rule{background:var(--bg2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;padding:1rem 1.25rem}
+    .rule.bad{border-color:#f87171}
+    .rule.good{border-color:#34d399}
+    .rule-label{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem}
+    .rule.bad .rule-label{color:#f87171}
+    .rule.good .rule-label{color:#34d399}
+    .rule.neutral .rule-label{color:var(--amber)}
+    .rule p{margin:0;font-size:.87rem}
+
+    /* NAMING TABLE */
+    .table-wrap{overflow-x:auto;margin:1.5rem 0;border-radius:12px;border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:.88rem}
+    thead th{background:rgba(245,158,11,.1);color:var(--amber);font-weight:700;padding:.75rem 1rem;text-align:left}
+    tbody tr{border-top:1px solid var(--border)}
+    tbody tr:hover{background:rgba(255,255,255,.02)}
+    tbody td{padding:.65rem 1rem;color:var(--muted);vertical-align:top}
+    tbody td:first-child{color:#fff;font-weight:600;font-family:'Courier New',monospace;font-size:.82rem}
+    .ok{color:#34d399;font-weight:700}
+    .no{color:#f87171;font-weight:700}
+
+    /* CHECKLIST */
+    .checklist{background:var(--bg2);border:1px solid rgba(245,158,11,.2);border-radius:12px;padding:1.25rem 1.5rem;margin:1.5rem 0}
+    .checklist h4{font-size:.9rem;font-weight:700;color:var(--amber);margin-bottom:.75rem}
+    .checklist li{list-style:none;color:var(--muted);font-size:.88rem;padding:.3rem 0;padding-left:1.5rem;position:relative}
+    .checklist li::before{content:"✓";position:absolute;left:0;color:#34d399;font-weight:700}
+
+    /* FAQ */
+    .faq{margin:2rem 0}
+    .faq-item{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq-q{padding:1rem 1.25rem;font-weight:600;font-size:.93rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:#fff}
+    .faq-q:hover{background:rgba(255,255,255,.03)}
+    .faq-icon{color:var(--amber);font-size:1.2rem;flex-shrink:0;transition:transform .25s}
+    .faq-a{padding:0 1.25rem;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s}
+    .faq-item.open .faq-a{max-height:500px;padding:.25rem 1.25rem 1rem}
+    .faq-item.open .faq-icon{transform:rotate(45deg)}
+    .faq-a p{color:var(--muted);font-size:.88rem;line-height:1.7}
+
+    /* BACK TO TOP */
+    #btt{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--indigo);color:#fff;border:none;border-radius:50%;width:44px;height:44px;cursor:pointer;font-size:1.2rem;display:none;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(99,102,241,.4);z-index:200;transition:opacity .3s}
+    #btt.show{display:flex}
+    #btt:hover{opacity:.85}
+
+    /* RELATED */
+    .related{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin:2.5rem 0}
+    .related h3{font-size:.85rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:1rem}
+    .related-links{display:flex;flex-wrap:wrap;gap:.75rem}
+    .related-links a{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--amber);padding:.4rem .9rem;border-radius:8px;font-size:.84rem;transition:all .2s}
+    .related-links a:hover{background:rgba(245,158,11,.15)}
+
+    .page-nav{display:flex;justify-content:space-between;gap:1rem;margin:2.5rem 0;flex-wrap:wrap}
+    .page-nav a{flex:1;min-width:200px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;transition:border-color .2s}
+    .page-nav a:hover{border-color:var(--amber)}
+    .page-nav .dir{font-size:.72rem;color:var(--dim);margin-bottom:.25rem;text-transform:uppercase;letter-spacing:.1em}
+    .page-nav .ttl{font-size:.9rem;font-weight:600;color:#fff}
+    .page-nav .next{text-align:right}
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/digital-electronics/">Topics</a></li>
+      <li><a href="/verilog/">Verilog</a></li>
+      <li><a href="/sta/" style="color:#2dd4bf;font-weight:600;">STA</a></li>
+      <li><a href="/rtl_design/" class="active" style="color:#fbbf24;font-weight:600;">RTL Design</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+      <li><a href="/interview/">Interview</a></li>
+      <li><a href="/about.html">About</a></li>
+      <li><a href="/contact.html">Contact</a></li>
+    </ul>
+    <button class="hamburger" onclick="document.getElementById('mob').classList.toggle('open')" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-menu" id="mob">
+    <a href="/">Home</a>
+    <a href="/digital-electronics/">Digital Electronics</a>
+    <a href="/verilog/">Verilog HDL</a>
+    <a href="/sta/">Static Timing Analysis</a>
+    <a href="/rtl_design/">RTL Design</a>
+    <a href="/protocols/">AMBA Protocols</a>
+    <a href="/serial-protocols/">Serial Protocols</a>
+    <a href="/systemverilog/">SystemVerilog</a>
+    <a href="/interview/">Interview Prep</a>
+    <a href="/about.html">About</a>
+    <a href="/contact.html">Contact</a>
+  </div>
+</nav>
+
+<!-- BREADCRUMB -->
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/">Home</a> ›
+  <a href="/rtl_design/">RTL Design</a> ›
+  <span>Coding Guidelines</span>
+</nav>
+
+<main class="page">
+
+  <div class="tag">RTL Design · Best Practices</div>
+  <h1>RTL Coding Guidelines —<br><span class="grad">Synthesis-Ready Verilog &amp; SystemVerilog</span></h1>
+  <div class="meta">
+    <span>EcrioniX · RTL Design</span><span>·</span>
+    <span>~18 min read</span><span>·</span>
+    <span>Naming · Reset · Latches · Clock Enable · Pragmas</span>
+  </div>
+  <p class="lead">Bad RTL passes simulation and still burns hours in synthesis, fails timing, or produces silicon bugs that cost a respin. These guidelines represent what professional ASIC teams enforce at code review to prevent the most common synthesis-simulation mismatches and lint failures.</p>
+
+  <!-- DIAGRAM: RTL → Synthesis → Silicon flow with warning points -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 200" width="700" height="200" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <rect width="700" height="200" fill="#0f172a" rx="12"/>
+      <text x="350" y="26" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">RTL to Silicon — Where Coding Mistakes Hide</text>
+
+      <!-- Flow boxes -->
+      <rect x="30" y="50" width="110" height="50" rx="8" fill="rgba(245,158,11,0.12)" stroke="rgba(245,158,11,0.4)" stroke-width="1.5"/>
+      <text x="85" y="72" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">RTL Code</text>
+      <text x="85" y="88" text-anchor="middle" fill="#94a3b8" font-size="9">Verilog / SV</text>
+
+      <rect x="175" y="50" width="110" height="50" rx="8" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.4)" stroke-width="1.5"/>
+      <text x="230" y="72" text-anchor="middle" fill="#818cf8" font-size="11" font-weight="700">Simulation</text>
+      <text x="230" y="88" text-anchor="middle" fill="#94a3b8" font-size="9">Passes? ✓</text>
+
+      <rect x="320" y="50" width="110" height="50" rx="8" fill="rgba(56,189,248,0.12)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+      <text x="375" y="72" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">Synthesis</text>
+      <text x="375" y="88" text-anchor="middle" fill="#94a3b8" font-size="9">Netlist</text>
+
+      <rect x="465" y="50" width="110" height="50" rx="8" fill="rgba(248,113,113,0.12)" stroke="rgba(248,113,113,0.4)" stroke-width="1.5"/>
+      <text x="520" y="72" text-anchor="middle" fill="#f87171" font-size="11" font-weight="700">Gate Sim</text>
+      <text x="520" y="88" text-anchor="middle" fill="#94a3b8" font-size="9">SDF timing</text>
+
+      <rect x="610" y="50" width="68" height="50" rx="8" fill="rgba(52,211,153,0.12)" stroke="rgba(52,211,153,0.4)" stroke-width="1.5"/>
+      <text x="644" y="72" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700">Silicon</text>
+      <text x="644" y="88" text-anchor="middle" fill="#94a3b8" font-size="9">Tapeout</text>
+
+      <!-- Arrows -->
+      <line x1="140" y1="75" x2="175" y2="75" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="285" y1="75" x2="320" y2="75" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="430" y1="75" x2="465" y2="75" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="575" y1="75" x2="610" y2="75" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#334155"/>
+        </marker>
+      </defs>
+
+      <!-- Bug indicators -->
+      <text x="230" y="130" text-anchor="middle" fill="#f87171" font-size="10">⚠ Race conditions</text>
+      <text x="230" y="144" text-anchor="middle" fill="#f87171" font-size="10">hidden in sim</text>
+      <line x1="230" y1="100" x2="230" y2="120" stroke="#f87171" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <text x="375" y="130" text-anchor="middle" fill="#f87171" font-size="10">⚠ Latch inference</text>
+      <text x="375" y="144" text-anchor="middle" fill="#f87171" font-size="10">wrong topology</text>
+      <line x1="375" y1="100" x2="375" y2="120" stroke="#f87171" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <text x="520" y="130" text-anchor="middle" fill="#f87171" font-size="10">⚠ RTL-gate mismatch</text>
+      <text x="520" y="144" text-anchor="middle" fill="#f87171" font-size="10">timing violations</text>
+      <line x1="520" y1="100" x2="520" y2="120" stroke="#f87171" stroke-width="1" stroke-dasharray="3,2"/>
+    </svg>
+  </div>
+
+  <!-- ═══ 1. NAMING CONVENTIONS ═══ -->
+  <h2>1. Naming Conventions</h2>
+  <p>Consistent naming makes code review faster and lint tools more effective. These conventions are used across most professional ASIC and FPGA teams:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Signal Type</th><th>Convention</th><th>Example</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Clock</td><td>clk or clk_*</td><td>clk, clk_axi, clk_100m</td><td>One per clock domain; never rename mid-hierarchy</td></tr>
+        <tr><td>Active-low reset</td><td>*_n</td><td>rst_n, arst_n, rstn</td><td>_n suffix is universal; never use _b (confusing in formal)</td></tr>
+        <tr><td>Active-high reset</td><td>rst or *_rst</td><td>rst, sys_rst</td><td>Less common in ASIC; document clearly</td></tr>
+        <tr><td>Registered signal</td><td>*_r or *_reg</td><td>data_r, count_reg</td><td>Distinguishes FF output from combinational wire</td></tr>
+        <tr><td>Next-state</td><td>*_nxt or *_next</td><td>state_nxt, addr_next</td><td>Combinational input to the DFF</td></tr>
+        <tr><td>Module parameter</td><td>UPPER_SNAKE_CASE</td><td>DATA_WIDTH, FIFO_DEPTH</td><td>Parameters and defines always uppercase</td></tr>
+        <tr><td>Local variable</td><td>lowercase_snake_case</td><td>byte_count, wr_ptr</td><td>Consistent for all ports and internal signals</td></tr>
+        <tr><td>Module name</td><td>Match filename</td><td>axi_master (file: axi_master.v)</td><td>Mismatch breaks tool flows and version control</td></tr>
+        <tr><td>Instantiation</td><td>u_* or i_* prefix</td><td>u_fifo, u_clk_gen</td><td>Makes hierarchy visible in waveform tools</td></tr>
+        <tr><td>Generate block</td><td>gen_*</td><td>gen_pipeline_stage</td><td>Avoids tool-generated cryptic hierarchy names</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 2. RESET STYLE ═══ -->
+  <h2>2. Reset Style</h2>
+  <h3>The Industry Standard: Async-Assert, Sync-Deassert</h3>
+  <p>This pattern gives you fast reset assertion (no clock needed) and glitch-free, metastability-safe deassert. Every flip-flop in the design uses the same pattern:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✓ CORRECT — async assert, sync deassert via reset synchronizer</span>
+<span class="c-cmt">// Reset synchronizer (place once per clock domain)</span>
+<span class="c-kw">module</span> <span class="c-type">rst_sync</span> #(<span class="c-kw">parameter</span> STAGES = 2) (
+  <span class="c-kw">input</span>  <span class="c-type">logic</span> clk, arst_n,   <span class="c-cmt">// arst_n: asynchronous, active-low</span>
+  <span class="c-kw">output</span> <span class="c-type">logic</span> srst_n         <span class="c-cmt">// srst_n: synchronous, active-low</span>
+);
+  <span class="c-type">logic</span> [STAGES-1:0] sync_r;
+  <span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> arst_n)
+    <span class="c-kw">if</span> (!arst_n) sync_r <= '0;
+    <span class="c-kw">else</span>         sync_r <= {sync_r[STAGES-2:0], 1'b1};
+  <span class="c-kw">assign</span> srst_n = sync_r[STAGES-1];
+<span class="c-kw">endmodule</span>
+
+<span class="c-cmt">// Design flip-flop — use srst_n from the synchronizer above</span>
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> srst_n)
+  <span class="c-kw">if</span> (!srst_n) q <= '0;   <span class="c-cmt">// resets on either arst_n assertion or sync deassert</span>
+  <span class="c-kw">else</span>         q <= d;</pre>
+  </div>
+
+  <div class="rule-grid">
+    <div class="rule bad">
+      <div class="rule-label">Never — Purely Async Deassert</div>
+      <p>All FFs deassert at unpredictable times relative to the clock. Different FFs wake up at different clock edges — causing functional corruption in FSMs and counters.</p>
+    </div>
+    <div class="rule bad">
+      <div class="rule-label">Never — Gated Clock for Reset</div>
+      <p>Generating reset by ANDing the clock is a clock gating error that creates glitches. Resets must be routed separately through the reset network.</p>
+    </div>
+    <div class="rule good">
+      <div class="rule-label">Correct — Synchronous-Only (FPGA)</div>
+      <p>For FPGA, pure synchronous reset is acceptable: <code style="color:#34d399">always_ff @(posedge clk) if (rst) q &lt;= '0;</code> FPGA FFs typically have only one reset pin (SR).</p>
+    </div>
+  </div>
+
+  <!-- ═══ 3. SEQUENTIAL vs COMBINATIONAL ═══ -->
+  <h2>3. Sequential vs Combinational Blocks</h2>
+  <p>Use the SystemVerilog procedural keywords — they enforce correct behavior at the tool level:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✓ Sequential: always_ff — tool flags any non-FF inference as error</span>
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> rst_n) <span class="c-kw">begin</span>
+  <span class="c-kw">if</span> (!rst_n)  count <= '0;
+  <span class="c-kw">else</span>         count <= count_nxt;
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ✓ Combinational: always_comb — auto sensitivity, tool flags latch inference</span>
+<span class="c-kw">always_comb</span> <span class="c-kw">begin</span>
+  count_nxt = count;          <span class="c-cmt">// default assignment prevents latch</span>
+  <span class="c-kw">if</span> (enable) count_nxt = count + 1'b1;
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ✓ Continuous: assign for simple combinational</span>
+<span class="c-kw">assign</span> overflow = (count == MAX_COUNT);
+
+<span class="c-cmt">// ✗ AVOID: Verilog always @(*) — no tool enforcement</span>
+<span class="c-bad">always @(*) begin  // latch can appear here without warning</span>
+  <span class="c-bad">if (enable) out = in;  // missing else: LATCH INFERRED</span>
+<span class="c-bad">end</span></pre>
+  </div>
+
+  <h3>Blocking vs Non-Blocking — The Absolute Rule</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✓ Sequential block: ALWAYS use non-blocking (<=)</span>
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk) <span class="c-kw">begin</span>
+  a <= b;    <span class="c-cmt">// reads OLD b, writes new a at end of timestep</span>
+  c <= a;    <span class="c-cmt">// reads OLD a (correct flip-flop chain behavior)</span>
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ✗ WRONG — blocking in sequential: race condition</span>
+<span class="c-bad">always @(posedge clk) begin</span>
+<span class="c-bad">  a = b;     // writes a immediately</span>
+<span class="c-bad">  c = a;     // reads NEW a — simulates wrong AND synthesizes differently!</span>
+<span class="c-bad">end</span>
+
+<span class="c-cmt">// ✓ Combinational block: ALWAYS use blocking (=)</span>
+<span class="c-kw">always_comb</span> <span class="c-kw">begin</span>
+  tmp = a & b;   <span class="c-cmt">// blocking: immediate, models wire/gate behavior</span>
+  out = tmp | c;
+<span class="c-kw">end</span></pre>
+  </div>
+
+  <!-- ═══ 4. LATCH-FREE CODING ═══ -->
+  <h2>4. Latch-Free Coding</h2>
+  <p>Unintended latches are one of the most common RTL bugs. They cause timing issues (latches are level-sensitive, not edge-triggered) and are harder to test with scan-based DFT.</p>
+
+  <h3>The Default Assignment Pattern</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✗ LATCH INFERRED — output not assigned in every path</span>
+<span class="c-bad">always_comb begin</span>
+<span class="c-bad">  if (sel == 2'b00) out = a;  // what is out when sel == 2'b01, 10, 11?</span>
+<span class="c-bad">  if (sel == 2'b01) out = b;  // missing else → latch holds last value</span>
+<span class="c-bad">end</span>
+
+<span class="c-cmt">// ✓ FIX 1 — default assignment at top</span>
+<span class="c-kw">always_comb</span> <span class="c-kw">begin</span>
+  out = '0;            <span class="c-cmt">// default: covers all unspecified paths</span>
+  <span class="c-kw">case</span> (sel)
+    2'b00: out = a;
+    2'b01: out = b;
+    2'b10: out = c;
+    2'b11: out = d;
+  <span class="c-kw">endcase</span>
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ✓ FIX 2 — unique case (SV): all cases covered, mutually exclusive</span>
+<span class="c-kw">always_comb</span> <span class="c-kw">begin</span>
+  <span class="c-kw">unique case</span> (sel)
+    2'b00: out = a;
+    2'b01: out = b;
+    2'b10: out = c;
+    2'b11: out = d;
+  <span class="c-kw">endcase</span>
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ✓ FIX 3 — priority case (SV): overlapping OK, priority given to first match</span>
+<span class="c-kw">always_comb</span> <span class="c-kw">begin</span>
+  <span class="c-kw">priority case</span> (1'b1)
+    req[0]: grant = 3'b001;
+    req[1]: grant = 3'b010;
+    req[2]: grant = 3'b100;
+    <span class="c-kw">default</span>: grant = 3'b000;
+  <span class="c-kw">endcase</span>
+<span class="c-kw">end</span></pre>
+  </div>
+
+  <!-- ═══ 5. CLOCK ENABLE PATTERN ═══ -->
+  <h2>5. Clock Enable Pattern</h2>
+  <p>Never gate the clock signal directly with combinational logic in RTL — this creates glitches that corrupt flip-flop state. Use the clock enable (CE) pattern instead:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✗ WRONG — gated clock: glitch if cond changes while clk=1</span>
+<span class="c-bad">wire gated_clk = clk & cond;        // NEVER do this in RTL</span>
+<span class="c-bad">always @(posedge gated_clk) q <= d;</span>
+
+<span class="c-cmt">// ✓ CORRECT — clock enable: synthesizes to FF with CE pin</span>
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> rst_n) <span class="c-kw">begin</span>
+  <span class="c-kw">if</span> (!rst_n)       q <= '0;
+  <span class="c-kw">else if</span> (enable)  q <= d;  <span class="c-cmt">// enable maps to flip-flop CE pin</span>
+<span class="c-kw">end</span>
+
+<span class="c-cmt">// ICG (Integrated Clock Gate) — inserted by synthesis/power intent</span>
+<span class="c-cmt">// Power-intent file (UPF/CPF) specifies ICG insertion globally.</span>
+<span class="c-cmt">// You write CE pattern; tool inserts ICG library cell automatically.</span>
+
+<span class="c-cmt">// ✓ Parameterized register bank with CE — common pattern</span>
+<span class="c-kw">module</span> <span class="c-type">reg_bank</span> #(<span class="c-kw">parameter</span> W=32, D=8) (
+  <span class="c-kw">input</span>  <span class="c-type">logic</span>       clk, rst_n,
+  <span class="c-kw">input</span>  <span class="c-type">logic</span> [2:0] wr_addr, rd_addr,
+  <span class="c-kw">input</span>  <span class="c-type">logic</span> [W-1:0] wr_data,
+  <span class="c-kw">input</span>  <span class="c-type">logic</span>       wr_en,
+  <span class="c-kw">output</span> <span class="c-type">logic</span> [W-1:0] rd_data
+);
+  <span class="c-type">logic</span> [W-1:0] mem [D];
+  <span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk)
+    <span class="c-kw">if</span> (wr_en) mem[wr_addr] <= wr_data;  <span class="c-cmt">// CE pattern on each write</span>
+  <span class="c-kw">assign</span> rd_data = mem[rd_addr];
+<span class="c-kw">endmodule</span></pre>
+  </div>
+
+  <!-- ═══ 6. PARAMETERIZATION ═══ -->
+  <h2>6. Parameterization &amp; Portability</h2>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✓ Parameterize widths and depths — never hardcode magic numbers</span>
+<span class="c-kw">module</span> <span class="c-type">fifo</span> #(
+  <span class="c-kw">parameter</span> <span class="c-kw">int</span> DATA_WIDTH = 8,
+  <span class="c-kw">parameter</span> <span class="c-kw">int</span> DEPTH      = 16,
+  <span class="c-kw">parameter</span> <span class="c-kw">int</span> PTR_W      = $clog2(DEPTH) + 1  <span class="c-cmt">// auto-computed</span>
+)(
+  <span class="c-kw">input</span>  <span class="c-type">logic</span>             clk, rst_n, wr_en, rd_en,
+  <span class="c-kw">input</span>  <span class="c-type">logic</span> [DATA_WIDTH-1:0] wr_data,
+  <span class="c-kw">output</span> <span class="c-type">logic</span> [DATA_WIDTH-1:0] rd_data,
+  <span class="c-kw">output</span> <span class="c-type">logic</span>             full, empty
+);
+  <span class="c-type">logic</span> [DATA_WIDTH-1:0] mem [DEPTH];
+  <span class="c-type">logic</span> [PTR_W-1:0] wr_ptr, rd_ptr;
+  <span class="c-cmt">// ... MSB trick for full/empty detection ...</span>
+<span class="c-kw">endmodule</span>
+
+<span class="c-cmt">// ✓ Use localparam for derived constants inside modules</span>
+<span class="c-kw">localparam</span> ADDR_W = $clog2(DEPTH);  <span class="c-cmt">// avoids magic number in bit slices</span>
+
+<span class="c-cmt">// ✗ AVOID — hardcoded widths break on parameter changes</span>
+<span class="c-bad">logic [3:0] ptr;  // breaks when DEPTH changes from 16 to 32</span></pre>
+  </div>
+
+  <!-- ═══ 7. SYNTHESIS PRAGMAS ═══ -->
+  <h2>7. Synthesis Pragmas &amp; Attributes</h2>
+  <p>Pragmas guide the synthesis tool without affecting RTL simulation. Use sparingly — prefer explicit coding over pragma workarounds.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Pragma / Attribute</th><th>Tool</th><th>Effect</th><th>When to Use</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>/* synthesis keep */</td><td>Generic</td><td>Prevents net from being optimized away</td><td>Debug probe signals you need in waveforms</td></tr>
+        <tr><td>(* dont_touch="true" *)</td><td>Vivado / DC</td><td>Prevents logic optimization on cell/net</td><td>Timing-critical cells, reset synchronizers</td></tr>
+        <tr><td>/* synopsys full_case */</td><td>Synopsys DC</td><td>Treats case as exhaustive (no else-branch logic)</td><td>Only when you are certain and want smaller area</td></tr>
+        <tr><td>/* synopsys parallel_case */</td><td>Synopsys DC</td><td>Synthesizes case as mux-tree not priority mux</td><td>When all branches truly mutually exclusive — RISKY if wrong</td></tr>
+        <tr><td>(* max_fanout=16 *)</td><td>Vivado / DC</td><td>Limits fanout, forces buffer insertion</td><td>High-fanout control signals in FPGA</td></tr>
+        <tr><td>(* shreg_extract="no" *)</td><td>Vivado</td><td>Prevents shift register → SRL inference</td><td>When you need full FF chain for timing control</td></tr>
+        <tr><td>/* pragma translate_off */</td><td>Generic</td><td>Excludes code block from synthesis</td><td>Simulation-only checkers, $display, initial blocks</td></tr>
+        <tr><td>(* ram_style="block" *)</td><td>Vivado</td><td>Forces BRAM inference for memory</td><td>Large memories that should use dedicated BRAM</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="c-cmt">// ✓ Reset synchronizer — mark dont_touch so optimizer leaves it alone</span>
+<span class="c-sig">(* dont_touch = "true" *)</span>
+<span class="c-kw">logic</span> [1:0] rst_sync_r;
+<span class="c-kw">always_ff</span> @(<span class="c-kw">posedge</span> clk <span class="c-kw">or negedge</span> arst_n)
+  <span class="c-kw">if</span> (!arst_n) rst_sync_r <= 2'b00;
+  <span class="c-kw">else</span>         rst_sync_r <= {rst_sync_r[0], 1'b1};
+
+<span class="c-cmt">// ✓ Simulation-only block excluded from synthesis</span>
+<span class="c-sig">/* pragma translate_off */</span>
+<span class="c-kw">initial</span> <span class="c-kw">begin</span>
+  $display("FIFO depth = %0d, width = %0d", DEPTH, DATA_WIDTH);
+<span class="c-kw">end</span>
+<span class="c-sig">/* pragma translate_on */</span>
+
+<span class="c-cmt">// ✗ RISKY — full_case/parallel_case: must match simulation exactly</span>
+<span class="c-cmt">// If the case IS NOT exhaustive, synthesis ignores branches, simulation doesn't.</span>
+<span class="c-cmt">// RTL-gate mismatch results. Prefer explicit default: instead.</span></pre>
+  </div>
+
+  <!-- ═══ 8. COMMON PITFALLS ═══ -->
+  <h2>8. Common Pitfalls &amp; RTL Anti-Patterns</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Anti-Pattern</th><th>What Goes Wrong</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Incomplete sensitivity list<br><code style="color:#f87171">always @(a)</code> but reads b</td>
+          <td>Simulation event-driven mismatch with synthesis (always_comb behavior)</td>
+          <td>Use <code style="color:#34d399">always_comb</code> (auto-complete sensitivity)</td>
+        </tr>
+        <tr>
+          <td>Initial blocks in RTL</td>
+          <td>Ignored by synthesis — signals start undefined in silicon</td>
+          <td>Use reset to initialize all state. <code>initial</code> only in testbenches</td>
+        </tr>
+        <tr>
+          <td>Integer in port declarations</td>
+          <td><code style="color:#f87171">integer</code> synthesizes as 32-bit signed — unexpected width</td>
+          <td>Use <code style="color:#34d399">logic [N-1:0]</code> with explicit width everywhere</td>
+        </tr>
+        <tr>
+          <td>Implicit wire declarations</td>
+          <td>A typo creates a new implicit 1-bit wire instead of an error</td>
+          <td>Add <code style="color:#34d399">`default_nettype none</code> at top of every file</td>
+        </tr>
+        <tr>
+          <td>posedge clk in two always blocks driving the same signal</td>
+          <td>Multi-driven nets — synthesis may silently pick one driver; formal detects it</td>
+          <td>Each signal has exactly one always block driver. Use mux logic, not multiple drivers</td>
+        </tr>
+        <tr>
+          <td>Comparing different widths without cast</td>
+          <td>Verilog auto-extends narrower operand — can mask bugs in equality checks</td>
+          <td>Always explicitly size constants: <code style="color:#34d399">8'hFF</code> not <code style="color:#f87171">8'hFF</code> (oh wait, same) — and cast in SV: <code style="color:#34d399">8'(expr)</code></td>
+        </tr>
+        <tr>
+          <td>for loops with variable bound</td>
+          <td>Some synthesis tools cannot unroll a loop with non-constant upper bound</td>
+          <td>Loop bounds must resolve to constants at elaboration. Use parameters.</td>
+        </tr>
+        <tr>
+          <td>X-propagation: <code>x ? a : b</code></td>
+          <td>Ternary with X condition simulates X; synthesis picks 0 or 1 — mismatch</td>
+          <td>Avoid X as condition. Initialize all state. Use 4-state simulation with Xprop mode.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 9. QUICK CHECKLIST ═══ -->
+  <h2>9. Pre-Synthesis RTL Checklist</h2>
+
+  <div class="checklist">
+    <h4>Run through this before every lint / synthesis run</h4>
+    <ul>
+      <li>All signals initialized by reset (no reliance on <code>initial</code> blocks)</li>
+      <li>Every <code>always_comb</code> block has a default assignment for all outputs</li>
+      <li>No blocking assignments (<code>=</code>) in <code>always_ff</code> blocks</li>
+      <li>No non-blocking assignments (<code><=</code>) in <code>always_comb</code> blocks</li>
+      <li>All <code>case</code> statements have a <code>default:</code> branch or use <code>unique case</code></li>
+      <li>Active-low resets use <code>_n</code> suffix; active-high explicitly documented</li>
+      <li>No gated clocks (no <code>clk &amp; enable</code> in RTL); use CE pattern</li>
+      <li>All module parameters have explicit widths and defaults</li>
+      <li><code>`default_nettype none</code> at top of every RTL file</li>
+      <li>Module name matches filename exactly</li>
+      <li>No <code>integer</code> in synthesizable port or internal signal declarations</li>
+      <li>All <code>for</code> loop bounds resolve to constants at elaboration time</li>
+      <li>Lint clean: no multiple drivers, no width mismatches, no unused ports</li>
+      <li>Simulation-only code guarded by <code>/* pragma translate_off/on */</code></li>
+    </ul>
+  </div>
+
+  <!-- FAQ -->
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq">
+    <div class="faq-item">
+      <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Should I use synchronous or asynchronous reset?<span class="faq-icon">+</span></div>
+      <div class="faq-a"><p>ASIC: async-assert / sync-deassert is the standard. Fast, glitch-free assertion; metastability-safe deassert. Requires a 2-stage reset synchronizer per clock domain. FPGA: synchronous reset preferred because FPGA FFs have a single SR/CE pin and async reset can complicate timing in the routing fabric. The cardinal rule either way: never gate the reset signal with logic in RTL — reset must come from a properly synchronized source.</p></div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">How do I prevent latch inference in RTL?<span class="faq-icon">+</span></div>
+      <div class="faq-a"><p>Three techniques: (1) Always write a default assignment at the top of every always_comb block before any if/case. (2) Ensure every output is assigned in every branch of every if/case. (3) Use unique case or priority case in SystemVerilog — the compiler will flag unintended latches from always_comb blocks as errors. If you need to hold a value across cycles, use a flip-flop (always_ff), not a latch — latches are intentional only for ICG (Integrated Clock Gate) cells and are never coded directly in RTL.</p></div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What is the clock enable pattern and why use it instead of gated clocks?<span class="faq-icon">+</span></div>
+      <div class="faq-a"><p>The CE pattern writes always_ff with an if(enable) condition, which synthesis maps to the flip-flop's dedicated CE input. This is glitch-free because the CE pin samples before the clock edge — it cannot create a runt pulse. Gating the clock signal with combinational logic (clk AND cond) creates glitches whenever cond changes while clk=1. These glitches are hard to detect in simulation (which uses unit delay) and can corrupt flip-flop state in silicon. Clock gating for power reduction is done by synthesis inserting ICG (Integrated Clock Gating) library cells — never by the RTL designer directly.</p></div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What does "`default_nettype none" do?<span class="faq-icon">+</span></div>
+      <div class="faq-a"><p>By default, Verilog implicitly declares any undeclared identifier as a 1-bit wire. This means a typo in a signal name silently creates a new net rather than producing an error. `default_nettype none disables this — any undeclared identifier becomes a compile error. This catches typos, missing port connections, and copy-paste errors that would otherwise silently propagate. Put it at the top of every RTL file before the module declaration. Pair it with `resetall at the top to ensure it applies even when files are included.</p></div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">When is it safe to use full_case and parallel_case pragmas?<span class="faq-icon">+</span></div>
+      <div class="faq-a"><p>full_case tells synthesis the case is exhaustive — it can omit the default branch logic. parallel_case tells synthesis all branches are mutually exclusive — it can implement a mux-tree instead of priority mux. Both are SAFE only when the assertion is true in silicon (not just in simulation). If the case is not actually full/parallel and you add the pragma, synthesis generates smaller logic, but simulation still evaluates the unreachable branches — causing an RTL-gate mismatch that will fail gate-level simulation. Best practice: prefer explicit coding (unique case, default: branch) over pragmas. Reserve pragmas for legacy Verilog where SV keywords aren't available, and always verify with gate-level sim.</p></div>
+    </div>
+  </div>
+
+  <div class="related">
+    <h3>Related Topics</h3>
+    <div class="related-links">
+      <a href="/rtl_design/latch-inference/">Latch Inference Deep-Dive</a>
+      <a href="/rtl_design/blocking-nonblocking/">Blocking vs Non-Blocking</a>
+      <a href="/rtl_design/always-blocks/">always @(*) vs always_ff</a>
+      <a href="/rtl_design/reset-sync/">Reset Synchronizer</a>
+      <a href="/rtl_design/cdc/">Clock Domain Crossing</a>
+      <a href="/rtl_design/fsm-design/">FSM Design</a>
+      <a href="/systemverilog/">SystemVerilog Verification</a>
+      <a href="/sta/">Static Timing Analysis</a>
+    </div>
+  </div>
+
+  <div class="page-nav">
+    <a href="/rtl_design/latch-inference/">
+      <div class="dir">← Previous</div>
+      <div class="ttl">Latch Inference &amp; RTL Guidelines</div>
+    </a>
+    <a href="/rtl_design/fsm-design/" class="next">
+      <div class="dir">Next →</div>
+      <div class="ttl">FSM Design in Verilog</div>
+    </a>
+  </div>
+
+</main>
+
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+
+<footer style="text-align:center;padding:2rem 1rem;color:#475569;font-size:.82rem;border-top:1px solid rgba(148,163,184,.1)">
+  © 2025 EcrioniX · <a href="/about.html" style="color:#6366f1">About</a> · <a href="/contact.html" style="color:#6366f1">Contact</a>
+</footer>
+
+<script>
+  window.addEventListener('scroll',()=>{
+    document.getElementById('btt').classList.toggle('show',window.scrollY>400);
+  });
+
+  function copyCode(btn){
+    const pre=btn.parentElement.querySelector('pre');
+    const txt=pre.innerText.replace(/^Copy\n/,'');
+    navigator.clipboard.writeText(txt);
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',1500);
+  }
+</script>
+</body>
+</html>
