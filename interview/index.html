@@ -3808,6 +3808,148 @@ always @(posedge clk or negedge rst_n)
     <div class="tip"><strong>Interview tip:</strong> CORDIC gain: each iteration multiplies the vector by sqrt(1 + 2^−2i). Total gain ≈ 1.6468 — must be compensated by a scaling factor or pre-scaling the input.</div>
   </div>
 </div>
+
+<!-- Marvell -->
+<div class="q-card" data-co="marvell" data-cat="phyd">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">01</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-phyd">PHY/Analog</span></div>
+      <div class="q-text">Explain 112G PAM4 SerDes architecture and the key challenges vs NRZ.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>PAM4 (4-level Pulse Amplitude Modulation) encodes 2 bits per symbol. At 56 Gbaud, PAM4 achieves 112 Gbps vs. NRZ's 56 Gbps at the same baud rate. Trade-off: PAM4 voltage levels are 1/3 the spacing of NRZ → 9.5 dB worse SNR margin → much stricter EQ requirements.</p>
+    <p>SerDes blocks: (1) TX: DSP pre-emphasis (FFE — Feed Forward Equalization, 3–7 taps) to compensate channel loss; (2) RX: CTLE (Continuous Time Linear Equalizer) + DFE (Decision Feedback Equalizer, 6–10 taps) + CDR (Clock Data Recovery, Mueller-Müller or Alexander PD); (3) FEC: Reed-Solomon FEC (RS-528,514 for 112G-LR) mandatory due to higher raw BER. JTOL (jitter tolerance) spec: must tolerate 0.15 UI random jitter at 112 Gbaud.</p>
+    <div class="tip"><strong>Interview tip:</strong> Marvell's Alaska SerDes are industry-leading 112G PAM4 — know that RS-FEC reduces BER from 10^-5 to 10^-15, and that DFE tap adaptation uses LMS algorithm.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">02</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">Why is 8b10b encoding used in SerDes links and what are its trade-offs?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>8b10b maps each 8-bit data byte to a 10-bit code word ensuring: (1) DC balance (equal 0s and 1s → no low-frequency content → AC-coupled links work); (2) Sufficient transitions for CDR clock recovery (running disparity control); (3) K-codes (special characters) for comma, idle, and flow control.</p>
+    <p>Trade-off: 20% bandwidth overhead (8 bits → 10 bits). At 10 Gbps, effective data rate is 8 Gbps. Used in PCIe Gen1/2, SATA, USB 3.0, Gigabit Ethernet. Replaced by 128b130b in PCIe Gen3+ and USB 3.1+ for lower overhead (1.5%). 128b130b does not guarantee DC balance — requires scrambler for sufficient transitions.</p>
+    <div class="tip"><strong>Interview tip:</strong> Marvell PHY interviews often ask about running disparity — a 10-bit symbol has two valid encodings (+ and − disparity); the encoder alternates to maintain DC balance.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">03</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">How does a TCAM implement longest-prefix match for IP routing at line rate?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>TCAM (Ternary CAM) stores entries with don't-care bits (X) in addition to 0 and 1. Each cell has two storage nodes: one for data, one for mask. A lookup word is broadcast to all rows simultaneously; each row compares bit-by-bit with its mask applied. All matching rows assert a match signal. A priority encoder selects the highest-priority (longest prefix = most specific) match in O(1) time.</p>
+    <p>Implementation: TCAM arrays operate in parallel — the lookup takes 1–2 clock cycles regardless of table size (vs. O(log N) for SRAM binary search). Drawback: 4–10× area and power vs. SRAM. Marvell Prestera ASICs pair TCAM with SRAM: TCAM finds the match index, SRAM retrieves the action/next-hop. Power saving: narrow search (TCAM search key = 80/160/320 bits selectable) reduces active cells.</p>
+    <div class="tip"><strong>Interview tip:</strong> Know that TCAM power is dominated by the broadcast compare operation — Marvell uses pipelined TCAM with selective power-down of unused segments.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">04</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">Describe PCIe Gen4/5 link training sequence (LTSSM) and what can cause link training failures.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>LTSSM (Link Training and Status State Machine): Detect → Polling → Configuration → L0. Key phases: (1) Detect: both sides detect electrical idle exit (EIEOS); (2) Polling: exchange TS1/TS2 ordered sets to establish bit lock and symbol lock; (3) Configuration: negotiate lane width, link number, speed; (4) Recovery (Gen2→Gen5 speed transition): retrain at new speed with equalization.</p>
+    <p>Gen4/5 Equalization: mandatory 3-phase EQ handshake (Preset exchange, coefficient request, coefficient set). Each direction negotiates TX pre-set and coefficients via TS2s. Failure causes: (1) Signal integrity issues (insufficient EQ at high speed); (2) Compliance pattern errors; (3) PLL lock failure at high baud rate; (4) Receiver detection failure (termination mismatch). Debug via LTSSM state capture and eye diagram.</p>
+    <div class="tip"><strong>Interview tip:</strong> Gen5 (32 GT/s) requires PAM4 on some implementations — same EQ challenges as 112G Ethernet. Know that PCIe uses 128b130b encoding (not 8b10b) from Gen3 onwards.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">05</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">Compare NVMe vs SATA from a storage controller ASIC perspective.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>SATA: 6 Gbps max (SATA III), single command queue depth (NCQ: 32 commands), HBA-based arbitration, legacy ATA command set. Simple controller, low CPU overhead for HDDs. Bottleneck at ~600 MB/s for SSDs.</p>
+    <p>NVMe over PCIe: PCIe Gen4 ×4 = 8 GB/s effective; up to 64K queues × 64K depth — parallelism matches NAND flash internal parallelism. NVMe command set is streamlined (2 doorbell register writes to submit/complete a command vs. SATA's 7 register writes). Controller ASIC: needs PCIe MAC, NVMe controller (queue management, completion), FTL (Flash Translation Layer) for NAND, ECC engine (LDPC). Marvell's 88SS9187 is a mainstream NVMe SSD controller.</p>
+    <div class="tip"><strong>Interview tip:</strong> NVMe's deep queue parallelism is what enables high IOPS for SSDs — SATA's 32-command NCQ was designed for rotational HDD latency characteristics.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">06</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">How does a hardware hash table handle collisions in a networking ASIC?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Hardware hash tables are used for MAC address lookup, flow tables, and ARP caches in switch ASICs. Collision handling: (1) Open addressing (linear or quadratic probing): deterministic, bad worst-case; (2) Chaining: overflow list in a separate SRAM — requires pointer following (extra latency); (3) Cuckoo hashing: two hash functions, two tables — if primary bucket full, displace existing entry to alternate bucket. Lookup always checks both locations in parallel → O(1) guaranteed lookup, insertion O(1) amortized; (4) Perfect hashing: pre-compute collision-free table offline — feasible for static tables (e.g., VLAN tables).</p>
+    <p>Marvell uses cuckoo hashing in Prestera switches for the FDB (Forwarding Database). Two 512K-entry SRAM banks, each checked in parallel per lookup cycle. Guaranteed 2-cycle lookup at 400 MHz → under 5 ns, fast enough for 400GbE line rate.</p>
+    <div class="tip"><strong>Interview tip:</strong> Cuckoo hashing is the networking ASIC standard — mention that worst-case insertion requires a chain of displacements (bounded to ~500 operations before rehash).</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">07</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">Explain weighted round-robin (WRR) scheduling in a switch ASIC output port.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>WRR assigns a weight Wi to each priority queue i. The scheduler services queues in round-robin order but proportional to weight: queue i gets Wi/(sum of weights) fraction of bandwidth. Example: 3 queues, weights 4:2:1 → high priority gets 4/7 = 57% bandwidth.</p>
+    <p>Implementation: credit counter per queue. Each queue starts with Wi credits per round. Dequeue one packet per credit; when credits reach 0, skip to next queue. After full round, refill all credits. Strict priority queues (SP) for latency-sensitive flows (e.g., RoCE, voice) preempt WRR queues. Marvell Prestera uses SP+WRR hierarchy: top 2 queues strict priority, lower 6 queues WRR.</p>
+    <div class="tip"><strong>Interview tip:</strong> Deficit WRR (DWRR) handles variable-size packets: deficit counter tracks unused bytes from previous round, preventing large-packet queues from stealing bandwidth.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">08</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">How does Reed-Solomon FEC (RS-FEC) work in 100G/400G Ethernet and what does it correct?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>RS-FEC (RS(544,514) for 100G-LR): systematic block code — 514 data symbols + 30 parity symbols per codeword (each symbol = 10 bits). Can correct up to 15 symbol errors per codeword (t = 15). Key property: corrects burst errors within a codeword window — ideal for SerDes where PAM4 lane errors tend to cluster.</p>
+    <p>Hardware implementation: RS encoder is a shift register with GF(2^10) polynomial multiplications. Decoder: syndrome computation → Berlekamp-Massey algorithm (find error locator polynomial) → Chien search (find error locations) → Forney algorithm (find error values) → correct. Throughput: must process one FEC codeword every 80 ns at 100Gbps. Requires highly parallel pipelined GF arithmetic. Pre-FEC BER target: 2.4×10^-4; post-FEC BER target: 10^-15.</p>
+    <div class="tip"><strong>Interview tip:</strong> Marvell implements RS-FEC in both the SerDes PHY and the MAC layer — know that FEC latency (~100 ns) is part of the link budget for 400G optical specs.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="dft">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">09</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-dft">DFT</span></div>
+      <div class="q-text">How is a high-speed SerDes PHY tested using BIST and loopback modes?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>SerDes BIST (Built-In Self-Test): (1) PRBS generator (PRBS-7, PRBS-15, PRBS-31) generates pseudo-random bit stream in TX; RX checks against locally generated PRBS to count bit errors — BER measurement without external tester; (2) Loopback modes: (a) near-end analog loopback (TX analog out → RX input on same die — tests TX+RX path); (b) far-end loopback (loop at remote end — tests full channel); (c) digital loopback (TX digital data → RX digital input — tests only digital portion); (3) Eye diagram capture: built-in eye monitor samples RX at different phase/voltage offsets to map eye opening — reports horizontal/vertical eye margins.</p>
+    <p>Production test: ATE uses SerDes BIST + loopback for rapid go/no-go without expensive external high-speed stimulus. At-speed PRBS test catches SerDes-specific defects (CDR failure, EQ misadaptation, PLL phase noise).</p>
+    <div class="tip"><strong>Interview tip:</strong> Know PRBS-31 is preferred for long-haul links (longer period → better randomness) and that PRBS requires sync before BER counting starts.</div>
+  </div>
+</div>
+<div class="q-card" data-co="marvell" data-cat="sta">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">10</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-sta">STA</span></div>
+      <div class="q-text">How do you allocate a jitter budget for a 112G SerDes link across TX, channel, and RX?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Total jitter budget for 112G (56 Gbaud): IEEE 802.3ck specifies JTOL (jitter tolerance) and Jitter Generation limits. Budget allocation: Total Jitter (TJ) = Deterministic Jitter (DJ) + Random Jitter (RJ) × Q_factor. At BER=10^-12, Q≈7 → TJ = DJ + 14·σRJ.</p>
+    <p>Typical 112G-CR4 budget (0.5m copper cable): TX jitter generation ≤ 0.2 UI DJ + 0.03 UI RJ; channel ISI + crosstalk adds 0.15 UI DJ; RX must tolerate 0.5 UI DJ + 0.07 UI RJ at its CDR input. RX JTOL spec (from IEEE): 0.65 UI total at low frequency. Equalization (FFE+CTLE+DFE) reduces ISI-induced DJ at RX. CDR bandwidth determines RJ filtering. FEC reclaims 0.1 UI effective margin by correcting residual errors.</p>
+    <div class="tip"><strong>Interview tip:</strong> Marvell SerDes validation teams use this budget to allocate which component (TX EQ, FEC, DFE taps) to optimize when a link misses margin.</div>
+  </div>
+</div>
 </div><!-- end qList -->
 
   <div class="no-results" id="noResults">No questions match your search. Try a different keyword or select "All".</div>
@@ -3855,7 +3997,8 @@ always @(posedge clk or negedge rst_n)
     apple:    {all:16, rtl:3, sta:5, cdc:2, power:4, dft:0, proto:0, arch:0, phyd:2, gpu:0},
     samsung:  {all:10, rtl:3, sta:1, cdc:0, power:2, dft:1, proto:0, arch:3, phyd:1, gpu:0},
     mediatek: {all:10, rtl:1, sta:0, cdc:0, power:4, dft:0, proto:2, arch:3, phyd:0, gpu:0},
-    ti:       {all:10, rtl:3, sta:0, cdc:0, power:2, dft:1, proto:2, arch:2, phyd:0, gpu:0}
+    ti:       {all:10, rtl:3, sta:0, cdc:0, power:2, dft:1, proto:2, arch:2, phyd:0, gpu:0},
+    marvell:  {all:10, rtl:0, sta:1, cdc:0, power:0, dft:1, proto:4, arch:3, phyd:1, gpu:0}
   };
 
   function updatePillCounts() {
