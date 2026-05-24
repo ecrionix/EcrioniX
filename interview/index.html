@@ -4091,6 +4091,146 @@ always @(posedge clk or negedge rst_n)
     <div class="tip"><strong>Interview tip:</strong> Unlike mobile, automotive cannot throttle aggressively (safety functions must always run) — power budgets are allocated with guaranteed minimums for perception-critical paths.</div>
   </div>
 </div>
+
+<!-- Broadcom -->
+<div class="q-card" data-co="broadcom" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">01</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">Compare cut-through vs store-and-forward switching and when each is preferred.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Store-and-forward: receive entire frame, check FCS (CRC), then forward. Latency = full frame transmission time (e.g., 64-byte frame at 100G = 5.12 ns; 1500-byte frame = 120 ns). Eliminates corrupt frames. Required when ingress and egress speeds differ (speed adaptation).</p>
+    <p>Cut-through: begin forwarding after reading the destination MAC (first 14 bytes = 112 ns at 1G, 1.12 ns at 100G). Dramatically lower latency for small frames. Cannot check FCS — corrupt frames propagate. Fragment-free mode (512-bit minimum) filters collision fragments (legacy Ethernet). Broadcom's Tomahawk series supports cut-through for low-latency HPC interconnects (RDMA/RoCE where latency matters more than error checking).</p>
+    <div class="tip"><strong>Interview tip:</strong> Broadcom switches support configurable cut-through/store-forward per port. Know that cut-through increases in-flight corrupted frames if any upstream link has high BER.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">02</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">What is Head-of-Line (HOL) blocking and how do Virtual Output Queues solve it?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>HOL blocking: in a shared input queue switch, if the head packet is destined for a busy output port, it blocks all packets behind it — even those destined for idle output ports. Efficiency degrades to ~58% under uniform random traffic (Karol-Hluchyj-Morgan theorem for FIFO input queuing).</p>
+    <p>VOQ (Virtual Output Queue): maintain one queue per (input, output) pair. Packet at head of VOQ for output X only blocks if output X is busy — it does not block packets destined for output Y. VOQ requires a central scheduler (crossbar arbiter) that grants one input per output per slot (matching problem). iSLIP algorithm (iterative round-robin matching) solves this in O(N) time converging to maximum weight matching. Broadcom's StrataXGS architecture uses VOQs for large-scale Clos fabric switches.</p>
+    <div class="tip"><strong>Interview tip:</strong> VOQ requires N² queues (N inputs × N outputs) — memory scales as N², which is why VOQ is used in high-radix switch chips (N=256 ports), not cheaper edge switches.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="phyd">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">03</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-phyd">PHY/Analog</span></div>
+      <div class="q-text">What DSP techniques are required to implement a PAM4 SerDes receiver at 112 Gbps?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>112G PAM4 (56 Gbaud) receiver DSP chain: (1) CTLE (Continuous Time Linear Equalizer): analog high-pass filter compensates cable/PCB loss (frequency-dependent attenuation); (2) VGA (Variable Gain Amplifier): normalize signal amplitude; (3) ADC (4-bit, ~3× oversampled): digitize signal for DSP; (4) Digital FFE (Feed-Forward Equalizer, 5–11 taps): linear FIR filter, compensates remaining ISI; (5) DFE (Decision Feedback Equalizer, 6–15 taps): uses previous decisions to cancel post-cursor ISI (non-linear, avoids noise amplification); (6) CDR (Clock Data Recovery): Mueller-Müller or baud-rate phase detector adapts sampling phase; (7) PAM4 slicer: compare against 3 thresholds (−2/3Vmax, 0, +2/3Vmax) to decode 2 bits per symbol; (8) FEC: RS(544,514) corrects residual errors.</p>
+    <div class="tip"><strong>Interview tip:</strong> DFE cannot fully equalize in the presence of precursor ISI (which DFE cannot cancel) — FFE handles precursors; DFE handles post-cursors. Both required at 112G.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">04</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">How does PFC (Priority Flow Control) enable lossless Ethernet for RoCE/RDMA?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Standard Ethernet is lossy — tail-drop when buffers fill. RDMA (and RoCE v2 over UDP) requires lossless transport (packet loss triggers expensive retransmission or connection reset). PFC (IEEE 802.1Qbb) adds per-priority flow control: when a switch ingress buffer nears full for priority class X, it sends a PAUSE frame to the upstream sender for class X only — other priorities continue unaffected.</p>
+    <p>Implementation in Broadcom ASIC: per-port, per-priority threshold triggers XOFF PAUSE generation. Sender hardware responds to PAUSE frame by halting class-X transmission within 100 ns (hardware-enforced, not software). The backpressure propagates hop-by-hop through the fabric. Headroom buffer per port-priority is sized to absorb in-flight packets while PAUSE propagates. ECN (Explicit Congestion Notification) is used end-to-end alongside PFC for congestion avoidance (DCQCN algorithm).</p>
+    <div class="tip"><strong>Interview tip:</strong> PFC deadlock is a real risk in large fabrics — circular PAUSE dependencies can freeze the fabric. Broadcom's switches implement PFC watchdog timers to detect and recover from deadlock.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">05</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">How does ECMP (Equal-Cost Multipath) forwarding work in a switching ASIC?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>ECMP: when multiple next-hops exist for a destination (equal routing metric), traffic is distributed across all of them. Hashing: a tuple (src IP, dst IP, src port, dst port, protocol) is hashed (CRC32 or Toeplitz hash) to select a next-hop index. Same flow always hashes to the same next-hop → consistent ordering within a flow (no reordering). Different flows hash to different next-hops → load balancing.</p>
+    <p>ASIC implementation: ECMP group table stores N next-hop entries. Hash output selects index 0..N-1. For N not a power of 2: modulo N or resilient hashing (Broadcom's Resilient ECMP) avoids remapping of surviving flows when one next-hop fails. Resilient ECMP: use a large bucket table (1024 entries) mapped to N next-hops; on failure, only reassign the failed next-hop's buckets, minimizing flow disruption.</p>
+    <div class="tip"><strong>Interview tip:</strong> Standard ECMP remaps ~50% of flows on any next-hop change. Resilient ECMP (Broadcom StrataXGS feature) limits remapping to 1/N of flows — critical for RDMA which cannot tolerate reordering.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">06</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">Explain DWRR scheduling and why it is preferred over strict WRR for networking ASICs.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>WRR (Weighted Round-Robin): service queues in proportion to weight. Works well for fixed-size packets. For variable-size packets: a queue with large packets gets more bytes than intended per round even if its packet count matches the weight — unfair.</p>
+    <p>DWRR (Deficit WRR): each queue maintains a deficit counter. Per round, each queue receives Wi bytes of credit (not packets). A packet is dequeued if (deficit ≥ packet_size). After dequeue, deficit -= packet_size. Unused deficit carries over to next round. Result: byte-accurate fairness regardless of packet size. Implementation: hardware maintains per-queue deficit register, updated each dequeue decision. Broadcom's Trident series implements DWRR for best-effort queues with SP (strict priority) queues for latency-critical traffic (RDMA, latency-critical apps).</p>
+    <div class="tip"><strong>Interview tip:</strong> DWRR is the standard for data center Ethernet — IEEE 802.1Q-2014 (Credit-Based Shaper for AVB) uses a similar mechanism. Know that Broadcom also supports CBS (Credit-Based Shaper) for TSN.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="proto">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">07</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-proto">Protocols</span></div>
+      <div class="q-text">How is RoCE v2 (RDMA over Converged Ethernet) implemented in hardware on a switching ASIC?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>RoCE v2 encapsulates InfiniBand transport packets in UDP/IP/Ethernet. Hardware offload on NIC: zero-copy DMA, QP (Queue Pair) management, CQ (Completion Queue) notifications — CPU is not involved per-packet. The switch ASIC is RoCE-unaware at packet level — it treats RoCE as UDP traffic. But the switch must support: (1) PFC for lossless delivery; (2) ECN marking (WRED/RED with ECN bit set) for DCQCN congestion control; (3) Low latency (cut-through forwarding); (4) RoCE v2 requires routable IP — switch does L3 routing same as any IP packet.</p>
+    <p>Broadcom StrataXGS implements hardware ECN marking: when queue depth exceeds a threshold, incoming RoCE packets get ECN CE (Congestion Experienced) bit set in IP header. The receiver NIC echoes this to the sender NIC, which reduces injection rate. This DCQCN loop runs entirely in hardware at 100ns timescales.</p>
+    <div class="tip"><strong>Interview tip:</strong> The key insight is that RoCE v2 losslessness is enforced by PFC in the switch, and congestion avoidance by ECN marking + DCQCN — two separate mechanisms working together.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="arch">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">08</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-arch">Architecture</span></div>
+      <div class="q-text">Walk through the forwarding pipeline of a 400GbE switching ASIC from packet ingress to egress.</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Broadcom Tomahawk 400G pipeline (simplified): (1) Ingress MAC: receive 400G signal, SerDes decode, RS-FEC decode, MAC framing, CRC check; (2) Ingress parser: extract packet headers (Ethernet, VLAN, IP, TCP/UDP) into header vector; (3) Ingress pipeline: VLAN lookup, ACL (TCAM), L2 FDB lookup, L3 LPM (ECMP), QoS marking, meter/policing — all in 1–2 ns pipeline stages; (4) Switching fabric: cell-based internal fabric (cells = 128-byte cells from packet segmentation) — crossbar or Clos; (5) Egress pipeline: rewrite (TTL decrement, MAC swap, VLAN push/pop), QoS queue selection, scheduler; (6) Egress MAC: RS-FEC encode, SerDes transmit.</p>
+    <p>Throughput requirement: 25.6 Tbps aggregate for 64×400G ports. Pipeline clock: 1.2 GHz, highly parallel. Packet rate: 64 bytes minimum → 3.2 Bpps — each pipeline stage processes one cell per clock.</p>
+    <div class="tip"><strong>Interview tip:</strong> Emphasize that TCAM (ACL/LPM) and SRAM (FDB/ARP) lookups are pipelined — Broadcom uses 4+ pipeline stages for L2/L3/ACL to run all lookups in parallel.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="dft">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">09</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-med">Medium</span><span class="cat-tag cat-dft">DFT</span></div>
+      <div class="q-text">How is a 112G SerDes PHY array tested in production using on-chip BIST at Broadcom?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>Production test strategy for 112G SerDes: (1) PRBS-31 loopback BER test: all SerDes lanes enabled simultaneously in near-end analog loopback, PRBS-31 pattern generated and checked. BER &lt; 10^-12 required for pass; (2) Eye monitor scan: hardware eye monitor sweeps phase (16 steps across UI) and voltage (16 levels), records error count per point — maps eye opening. Minimum eye height/width checked vs. spec; (3) EQ self-adaptation: CDR, CTLE, DFE adapt during PRBS run — verify adaptation convergence (final coefficient values within bounds); (4) Lane-to-lane crosstalk: run PRBS on all lanes simultaneously to stress worst-case crosstalk; (5) Clock jitter measurement: internal TDC (Time-to-Digital Converter) measures CDR recovered clock phase noise.</p>
+    <p>Test time: 64 lanes × PRBS run + eye scan ≈ 30–60 seconds per device. Parallel testing all lanes simultaneously cuts total time.</p>
+    <div class="tip"><strong>Interview tip:</strong> Broadcom tests SerDes PHY both at-speed (PRBS BER) and parametrically (eye scan, jitter) — both are needed because BER pass doesn't guarantee adequate margin for field reliability.</div>
+  </div>
+</div>
+<div class="q-card" data-co="broadcom" data-cat="sta">
+  <div class="q-header" onclick="toggle(this)">
+    <div class="q-num">10</div>
+    <div class="q-main">
+      <div class="q-meta"><span class="diff diff-hard">Hard</span><span class="cat-tag cat-sta">STA</span></div>
+      <div class="q-text">What makes the Ethernet MAC datapath a critical timing path in a 400G switch ASIC?</div>
+    </div><div class="q-chevron">&#8964;</div>
+  </div>
+  <div class="q-body">
+    <p>400G Ethernet MAC processes data at 400 Gbps. Using 256-bit internal datapath at 1.6 GHz: each cycle processes 256 bits = 32 bytes at 1.6 GHz = 51.2 GB/s per MAC. For 64 ports: 64×400G = 25.6 Tbps total. Critical paths: (1) FCS (CRC-32) computation: must compute CRC over 256-bit word in one cycle → requires parallel CRC algorithm (precomputed Galois field matrix); (2) Parser: extracting IP/TCP offsets from variable-length headers in one cycle → wide combinational mux tree; (3) Alignment FIFO: CDC between SerDes recovered clock and MAC core clock — synchronizer contributes latency; (4) Insertion of preamble/SFD and padding: modifies first/last cells — conditional logic on critical path; (5) Checksum offload: inner IP checksum calculation for tunnel traffic in the same cycle as outer MAC.</p>
+    <div class="tip"><strong>Interview tip:</strong> Broadcom's Tomahawk 4 MAC runs at ~1.2 GHz. Critical path closure requires retiming (adding pipeline flops), logic optimization, and physical awareness (placement-aware synthesis) for the CRC and header parser logic.</div>
+  </div>
+</div>
 </div><!-- end qList -->
 
   <div class="no-results" id="noResults">No questions match your search. Try a different keyword or select "All".</div>
@@ -4140,7 +4280,8 @@ always @(posedge clk or negedge rst_n)
     mediatek: {all:10, rtl:1, sta:0, cdc:0, power:4, dft:0, proto:2, arch:3, phyd:0, gpu:0},
     ti:       {all:10, rtl:3, sta:0, cdc:0, power:2, dft:1, proto:2, arch:2, phyd:0, gpu:0},
     marvell:  {all:10, rtl:0, sta:1, cdc:0, power:0, dft:1, proto:4, arch:3, phyd:1, gpu:0},
-    tesla:    {all:10, rtl:2, sta:0, cdc:1, power:1, dft:2, proto:0, arch:4, phyd:0, gpu:0}
+    tesla:    {all:10, rtl:2, sta:0, cdc:1, power:1, dft:2, proto:0, arch:4, phyd:0, gpu:0},
+    broadcom: {all:10, rtl:0, sta:1, cdc:0, power:0, dft:1, proto:3, arch:4, phyd:1, gpu:0}
   };
 
   function updatePillCounts() {
