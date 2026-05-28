@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Sequences and seq_item — Day 8 | EcrioniX Verification Series</title>
+  <meta name="description" content="UVM sequences and sequence items: uvm_sequence_item rand fields, do_copy/do_compare, `uvm_do macro, start_item/finish_item, virtual sequences, p_sequencer, sequencer arbitration, sequence library, and response handling.">
+  <meta name="keywords" content="UVM sequence, uvm_sequence_item, uvm_do macro, virtual sequence, p_sequencer, sequencer arbitration, UVM sequence library, start_item finish_item, get_response UVM">
+  <link rel="canonical" href="https://ecrionix.org/verification/08-uvm-sequences/">
+  <meta property="og:title" content="UVM Sequences and seq_item — Day 8 | EcrioniX Verification Series">
+  <meta property="og:description" content="uvm_sequence_item, `uvm_do, start_item/finish_item, virtual sequences, p_sequencer, arbitration — complete UVM sequence guide.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/08-uvm-sequences/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","headline":"UVM Sequences and seq_item","description":"Complete guide to UVM sequences: sequence item with rand fields and utility macros, sequence body task with uvm_do and start_item/finish_item, virtual sequences for multi-agent coordination, p_sequencer, sequencer arbitration modes, and response handling.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/08-uvm-sequences/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 8 — UVM Sequences","item":"https://ecrionix.org/verification/08-uvm-sequences/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a UVM sequence item?","acceptedAnswer":{"@type":"Answer","text":"A UVM sequence item (uvm_sequence_item) is a transaction object that represents a single unit of stimulus — for example, one bus write transaction or one packet. It contains rand fields that constrain-random solvers can randomize, utility macros for copy/compare/print (uvm_field_int, uvm_field_enum etc. inside uvm_object_utils_begin/end), and optionally convert2string for debug printing. The driver gets these items from the sequencer one at a time and drives them onto the DUT interface."}},
+      {"@type":"Question","name":"What is the difference between `uvm_do and start_item/finish_item?","acceptedAnswer":{"@type":"Answer","text":"`uvm_do(item) is a macro shorthand that: creates the item, calls start_item (sends it to the sequencer to wait for grant), randomizes it, calls finish_item (waits for driver to call item_done). start_item/finish_item is the lower-level explicit form — it lets you randomize the item yourself between start_item and finish_item, which means you can apply additional constraints or set fields manually before sending. `uvm_do_with(item, {constraints}) is a middle ground — it randomizes with inline constraints before calling finish_item."}},
+      {"@type":"Question","name":"What is a virtual sequence in UVM?","acceptedAnswer":{"@type":"Answer","text":"A virtual sequence is a sequence that orchestrates other sequences running on multiple sequencers. Instead of generating items directly, it holds handles to multiple sequencers and starts sub-sequences on each. It runs on a virtual sequencer (a placeholder with no driver) rather than on any real sequencer. This allows a single test-level sequence to coordinate, for example, an AXI master sequence and an interrupt stimulus sequence that need to run in a specific interleaved order."}},
+      {"@type":"Question","name":"How do you pass constraints to a sequence from outside?","acceptedAnswer":{"@type":"Answer","text":"There are two main ways: 1) Inline constraints using `uvm_do_with(item, {item.addr inside {[0:15]};}) — the constraints are applied only for that specific randomization call. 2) Public rand fields and constraint blocks in the sequence itself — the test creates the sequence, sets its fields or overrides constraints, then calls seq.start(). Alternatively, a configuration object stored in uvm_config_db can carry test parameters that the sequence reads in its body() task."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 08 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/07-uvm-testbench-architecture/" class="dnbtn dnbtn-prev">← Day 07</a>
+    <a href="/verification/09-uvm-driver-monitor/" class="dnbtn dnbtn-next">Day 09 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 8 — UVM Sequences &amp; seq_item</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM</div>
+  <h1>UVM Sequences and seq_item</h1>
+  <p class="hero-sub">Sequences are the stimulus generators of UVM — they define what transactions to send and in what order. The sequence item models a single transaction, while the sequence body() task orchestrates the flow. Together they decouple stimulus generation from the protocol-level driving.</p>
+  <div class="hero-meta"><span>⏱ 28 min read</span><span>📖 Day 8 of 25</span><span>🎯 Sequence · seq_item · Virtual Seq</span></div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#item">uvm_sequence_item</a></li>
+      <li><a href="#sequence">uvm_sequence and body()</a></li>
+      <li><a href="#starting">Starting a Sequence</a></li>
+      <li><a href="#psequencer">p_sequencer</a></li>
+      <li><a href="#virtual">Virtual Sequence</a></li>
+      <li><a href="#arbitration">Sequencer Arbitration</a></li>
+      <li><a href="#library">Sequence Library</a></li>
+      <li><a href="#response">Response Handling</a></li>
+    </ol>
+  </div>
+
+  <h2 id="item">1. uvm_sequence_item</h2>
+  <p>The sequence item is a <code>uvm_object</code> subclass. It models a single stimulus transaction — one bus write, one packet, one AXI burst. Rand fields allow constrained-random generation:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">bus_item</span> <span class="kw">extends</span> uvm_sequence_item;
+  <span class="cm">// Registration with field macros for auto copy/compare/print</span>
+  `<span class="fn">uvm_object_utils_begin</span>(bus_item)
+    `<span class="fn">uvm_field_int</span>(addr,  UVM_ALL_ON)
+    `<span class="fn">uvm_field_int</span>(data,  UVM_ALL_ON)
+    `<span class="fn">uvm_field_int</span>(write, UVM_ALL_ON)
+    `<span class="fn">uvm_field_int</span>(strobe,UVM_ALL_ON)
+  `<span class="fn">uvm_object_utils_end</span>
+
+  <span class="ty">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="ty">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] data;
+  <span class="ty">rand</span> <span class="ty">logic</span>        write;
+  <span class="ty">rand</span> <span class="ty">logic</span> [<span class="num">3</span>:<span class="num">0</span>]  strobe;
+
+  <span class="cm">// Constraints</span>
+  <span class="kw">constraint</span> c_addr_aligned {
+    addr[<span class="num">1</span>:<span class="num">0</span>] <span class="op">==</span> <span class="num">2'b00</span>;    <span class="cm">// word-aligned</span>
+  }
+  <span class="kw">constraint</span> c_strobe {
+    write <span class="op">-></span> (strobe <span class="op">!=</span> <span class="num">4'h0</span>);
+    !write <span class="op">-></span> (strobe <span class="op">==</span> <span class="num">4'hF</span>);
+  }
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"bus_item"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// convert2string — used by `uvm_info for debug printing</span>
+  <span class="kw">function</span> <span class="ty">string</span> <span class="fn">convert2string</span>();
+    <span class="kw">return</span> $sformatf(<span class="str">"addr=%0h data=%0h write=%0b strobe=%0b"</span>,
+                     addr, data, write, strobe);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+  <div class="callout info"><strong>Field macros:</strong> <code>`uvm_field_int</code>, <code>`uvm_field_enum</code>, <code>`uvm_field_string</code>, etc. automatically generate <code>do_copy</code>, <code>do_compare</code>, <code>do_print</code>, <code>do_pack</code>/<code>do_unpack</code> for you. This is the standard way — only override them manually when you need custom behavior.</div>
+
+  <h2 id="sequence">2. uvm_sequence and body()</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">write_seq</span> <span class="kw">extends</span> uvm_sequence #(bus_item);
+  `<span class="fn">uvm_object_utils</span>(write_seq)
+
+  <span class="kw">int</span> num_transactions = <span class="num">10</span>;   <span class="cm">// configurable</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"write_seq"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+    bus_item item;
+
+    <span class="kw">repeat</span>(num_transactions) <span class="kw">begin</span>
+      <span class="cm">// `uvm_do — create, randomize, start_item, finish_item in one macro</span>
+      `<span class="fn">uvm_do</span>(item)
+    <span class="kw">end</span>
+
+    <span class="cm">// Manual equivalent of `uvm_do — gives you control between steps</span>
+    item = bus_item::type_id::create(<span class="str">"item"</span>);
+    start_item(item);   <span class="cm">// request grant from sequencer</span>
+    <span class="kw">if</span> (!item.randomize() <span class="kw">with</span> { item.addr <span class="kw">inside</span> {[<span class="num">32'h0</span>:<span class="num">32'hFF</span>]}; })
+      `<span class="fn">uvm_fatal</span>(<span class="str">"SEQ"</span>, <span class="str">"Randomize failed"</span>)
+    finish_item(item);  <span class="cm">// send to driver, wait for item_done</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// `uvm_do_with — randomize with inline constraints</span>
+<span class="kw">class</span> <span class="fn">aligned_write_seq</span> <span class="kw">extends</span> uvm_sequence #(bus_item);
+  `<span class="fn">uvm_object_utils</span>(aligned_write_seq)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"aligned_write_seq"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+    bus_item item;
+    <span class="cm">// `uvm_do_with adds constraints to the randomization call</span>
+    `<span class="fn">uvm_do_with</span>(item, {
+      item.write <span class="op">==</span> <span class="num">1</span>;
+      item.addr <span class="kw">inside</span> {[<span class="num">32'h1000</span>:<span class="num">32'h1FFF</span>]};
+      item.strobe <span class="op">==</span> <span class="num">4'hF</span>;
+    })
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="starting">3. Starting a Sequence</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Method 1: from test run_phase</span>
+<span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+  write_seq seq;
+  phase.raise_objection(<span class="kw">this</span>);
+
+  seq = write_seq::type_id::create(<span class="str">"seq"</span>);
+  seq.num_transactions = <span class="num">50</span>;
+  seq.start(env.agent.sqr);   <span class="cm">// runs body() on this sequencer</span>
+
+  phase.drop_objection(<span class="kw">this</span>);
+<span class="kw">endtask</span>
+
+<span class="cm">// Method 2: using default_sequence (runs automatically)</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  <span class="kw">super</span>.build_phase(phase);
+  uvm_config_db #(uvm_object_wrapper)::set(
+    <span class="kw">this</span>, <span class="str">"env.agent.sqr.main_phase"</span>,
+    <span class="str">"default_sequence"</span>,
+    write_seq::type_id::get()
+  );
+<span class="kw">endfunction</span>
+
+<span class="cm">// Run multiple sequences in sequence (serial)</span>
+<span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+  reset_seq  r_seq;
+  write_seq  w_seq;
+  read_seq   rd_seq;
+  phase.raise_objection(<span class="kw">this</span>);
+
+  r_seq  = reset_seq::type_id::create(<span class="str">"r_seq"</span>);
+  w_seq  = write_seq::type_id::create(<span class="str">"w_seq"</span>);
+  rd_seq = read_seq::type_id::create(<span class="str">"rd_seq"</span>);
+
+  r_seq.start(env.agent.sqr);
+  w_seq.start(env.agent.sqr);
+  rd_seq.start(env.agent.sqr);
+
+  phase.drop_objection(<span class="kw">this</span>);
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <h2 id="psequencer">4. p_sequencer — Typed Sequencer Handle</h2>
+  <p><code>p_sequencer</code> is a typed handle to the sequencer the sequence is running on. Use it when the sequence needs to access configuration or other state stored in the sequencer:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Custom sequencer with config information</span>
+<span class="kw">class</span> <span class="fn">my_sequencer</span> <span class="kw">extends</span> uvm_sequencer #(bus_item);
+  `<span class="fn">uvm_component_utils</span>(my_sequencer)
+  <span class="ty">int</span> max_outstanding = <span class="num">4</span>;    <span class="cm">// config exposed to sequences</span>
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Sequence using p_sequencer</span>
+<span class="kw">class</span> <span class="fn">throttled_seq</span> <span class="kw">extends</span> uvm_sequence #(bus_item);
+  `<span class="fn">uvm_object_utils</span>(throttled_seq)
+  <span class="cm">// Declare typed p_sequencer — cast happens automatically</span>
+  `<span class="fn">uvm_declare_p_sequencer</span>(my_sequencer)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"throttled_seq"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+    bus_item item;
+    <span class="cm">// p_sequencer is now typed as my_sequencer — no cast needed</span>
+    `<span class="fn">uvm_info</span>(<span class="str">"SEQ"</span>,
+      $sformatf(<span class="str">"max_outstanding=%0d"</span>, p_sequencer.max_outstanding),
+      UVM_MEDIUM)
+    `<span class="fn">uvm_do</span>(item)
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="virtual">5. Virtual Sequence</h2>
+  <p>A virtual sequence coordinates multiple agents. It holds handles to all sequencers and starts sub-sequences on each in a controlled order:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Virtual sequencer — no driver attached, just handles</span>
+<span class="kw">class</span> <span class="fn">sys_virtual_seqr</span> <span class="kw">extends</span> uvm_sequencer;
+  `<span class="fn">uvm_component_utils</span>(sys_virtual_seqr)
+  axi_sequencer  axi_sqr;   <span class="cm">// handle to real AXI sequencer</span>
+  apb_sequencer  apb_sqr;   <span class="cm">// handle to real APB sequencer</span>
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Virtual sequence — runs on the virtual sequencer</span>
+<span class="kw">class</span> <span class="fn">sys_vseq</span> <span class="kw">extends</span> uvm_sequence;
+  `<span class="fn">uvm_object_utils</span>(sys_vseq)
+  `<span class="fn">uvm_declare_p_sequencer</span>(sys_virtual_seqr)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"sys_vseq"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+    axi_write_seq  axi_seq;
+    apb_config_seq apb_seq;
+
+    axi_seq = axi_write_seq::type_id::create(<span class="str">"axi_seq"</span>);
+    apb_seq = apb_config_seq::type_id::create(<span class="str">"apb_seq"</span>);
+
+    <span class="cm">// Run APB config first, then AXI traffic in parallel with more APB</span>
+    apb_seq.start(p_sequencer.apb_sqr);
+
+    <span class="kw">fork</span>
+      axi_seq.start(p_sequencer.axi_sqr);
+      apb_seq.start(p_sequencer.apb_sqr);
+    <span class="kw">join</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="arbitration">6. Sequencer Arbitration</h2>
+  <table>
+    <tr><th>Mode</th><th>Behavior</th></tr>
+    <tr><td><code>SEQ_ARB_FIFO</code></td><td>Default — round-robin FIFO order</td></tr>
+    <tr><td><code>SEQ_ARB_RANDOM</code></td><td>Random selection among waiting sequences</td></tr>
+    <tr><td><code>SEQ_ARB_STRICT_FIFO</code></td><td>Strict priority FIFO — lower priority waits</td></tr>
+    <tr><td><code>SEQ_ARB_STRICT_RANDOM</code></td><td>Strict priority random within same priority</td></tr>
+    <tr><td><code>SEQ_ARB_WEIGHTED</code></td><td>Weighted random — higher weight = more grants</td></tr>
+    <tr><td>lock()</td><td>Exclusive access — no other sequence gets grant</td></tr>
+    <tr><td>grab()</td><td>Like lock() but preempts current sequence</td></tr>
+  </table>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Set arbitration mode on a sequencer</span>
+env.agent.sqr.set_arbitration(SEQ_ARB_RANDOM);
+
+<span class="cm">// Lock/unlock for exclusive access</span>
+<span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+  bus_item item;
+  m_sequencer.lock(<span class="kw">this</span>);     <span class="cm">// wait for exclusive access</span>
+  `<span class="fn">uvm_do</span>(item)               <span class="cm">// no other sequence can interleave</span>
+  `<span class="fn">uvm_do</span>(item)
+  m_sequencer.unlock(<span class="kw">this</span>);   <span class="cm">// release exclusivity</span>
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <h2 id="library">7. Sequence Library</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Sequence library — randomly picks from registered sequences</span>
+<span class="kw">class</span> <span class="fn">bus_seq_lib</span> <span class="kw">extends</span> uvm_sequence_library #(bus_item);
+  `<span class="fn">uvm_object_utils</span>(bus_seq_lib)
+  `<span class="fn">uvm_sequence_library_utils</span>(bus_seq_lib)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"bus_seq_lib"</span>);
+    <span class="kw">super</span>.new(name);
+    <span class="fn">init_sequence_library</span>();
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Register sequences to library with type_id macro</span>
+<span class="cm">// In each sequence class body:</span>
+<span class="cm">// `uvm_add_to_seq_lib(write_seq, bus_seq_lib)</span>
+<span class="cm">// `uvm_add_to_seq_lib(read_seq,  bus_seq_lib)</span>
+
+<span class="cm">// Library config: how many sequences to run, min/max count</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  bus_seq_lib lib = bus_seq_lib::type_id::create(<span class="str">"lib"</span>);
+  lib.selection_mode = UVM_SEQ_LIB_RAND;
+  lib.min_random_count = <span class="num">10</span>;
+  lib.max_random_count = <span class="num">20</span>;
+  lib.start(env.agent.sqr);
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <h2 id="response">8. Response Handling</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Driver puts response when transaction completes</span>
+<span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+  bus_item req, rsp;
+  <span class="kw">forever</span> <span class="kw">begin</span>
+    seq_item_port.get_next_item(req);
+    <span class="fn">drive_bus</span>(req);
+
+    <span class="cm">// Clone the item, fill response fields, put it back</span>
+    $cast(rsp, req.clone());
+    rsp.set_id_info(req);         <span class="cm">// match sequence ID for routing</span>
+    rsp.data = bus_rdata;         <span class="cm">// fill read data from bus</span>
+    seq_item_port.item_done(rsp); <span class="cm">// item_done with response</span>
+  <span class="kw">end</span>
+<span class="kw">endtask</span>
+
+<span class="cm">// Sequence gets the response</span>
+<span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">body</span>();
+  bus_item req, rsp;
+  req = bus_item::type_id::create(<span class="str">"req"</span>);
+  start_item(req);
+  req.randomize() <span class="kw">with</span> { req.write <span class="op">==</span> <span class="num">0</span>; };  <span class="cm">// read</span>
+  finish_item(req);
+
+  <span class="cm">// Wait for driver response</span>
+  get_response(rsp);
+  `<span class="fn">uvm_info</span>(<span class="str">"SEQ"</span>, $sformatf(<span class="str">"Read data: %0h"</span>, rsp.data), UVM_MEDIUM)
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 8</h3>
+    <ul>
+      <li><strong>seq_item:</strong> uvm_object subclass with rand fields — models one transaction; use field macros for auto copy/compare</li>
+      <li><strong>`uvm_do:</strong> one-line shorthand for create+start_item+randomize+finish_item</li>
+      <li><strong>start_item/finish_item:</strong> explicit form — allows you to set fields between the two calls</li>
+      <li><strong>`uvm_do_with:</strong> adds inline constraints to the randomization inside `uvm_do</li>
+      <li><strong>p_sequencer:</strong> typed handle to the sequencer — use `uvm_declare_p_sequencer macro</li>
+      <li><strong>Virtual sequence:</strong> no driver, runs on virtual sequencer, coordinates sub-sequences across agents</li>
+      <li><strong>Response:</strong> driver calls item_done(rsp); sequence calls get_response(rsp) — set_id_info() required for routing</li>
+    </ul>
+  </div>
+
+  <a href="/verification/09-uvm-driver-monitor/" class="next-card">
+    <div>
+      <div class="next-label">Next → Day 09</div>
+      <div class="next-title">UVM Driver and Monitor</div>
+      <div class="next-desc">get_next_item/item_done cycle, clocking block in driver, monitor run_phase, analysis port write, AXI-lite examples.</div>
+    </div>
+    <div class="next-arrow">→</div>
+  </a>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+</body>
+</html>
