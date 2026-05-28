@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Driver &amp; Monitor — Day 9 | EcrioniX Verification Series</title>
+  <meta name="description" content="UVM Driver and Monitor in depth: run_phase, seq_item_port, get_next_item/item_done, virtual interface driving, uvm_monitor analysis_port, clocking block sampling, and complete SPI driver/monitor example.">
+  <meta name="keywords" content="UVM driver, uvm_driver, UVM monitor, uvm_monitor, seq_item_port, get_next_item, item_done, analysis_port write, virtual interface UVM, UVM run_phase, SPI UVM driver">
+  <link rel="canonical" href="https://ecrionix.org/verification/09-uvm-driver-monitor/">
+  <meta property="og:title" content="UVM Driver &amp; Monitor — Day 9 | EcrioniX Verification Series">
+  <meta property="og:description" content="seq_item_port, get_next_item/item_done, virtual interface driving, analysis_port sampling — complete UVM driver and monitor walkthrough.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/09-uvm-driver-monitor/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","headline":"UVM Driver and Monitor","description":"Complete guide to uvm_driver and uvm_monitor: run_phase body, seq_item_port handshake, virtual interface signal driving, analysis_port broadcasting, and a full SPI protocol driver/monitor example.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/09-uvm-driver-monitor/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 9 — UVM Driver & Monitor","item":"https://ecrionix.org/verification/09-uvm-driver-monitor/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the role of uvm_driver in UVM?","acceptedAnswer":{"@type":"Answer","text":"The uvm_driver is the component that translates abstract sequence items into pin-level signal activity on the DUT's interface. It gets sequence items one at a time from the sequencer via seq_item_port.get_next_item(), drives the corresponding waveform on the virtual interface, then calls item_done() to signal completion and allow the sequencer to send the next item. The driver runs in run_phase and loops forever, waiting for sequence items."}},
+      {"@type":"Question","name":"What does item_done() do in UVM?","acceptedAnswer":{"@type":"Answer","text":"item_done() is called by the driver after it has completely processed a sequence item — meaning all signal toggling for that transaction is finished. It signals the sequencer that the driver is ready to accept the next item. Forgetting to call item_done() causes the testbench to hang because the sequencer will wait indefinitely for the driver to become free. You can optionally pass a completed item back to the sequence via item_done(rsp) for response handling."}},
+      {"@type":"Question","name":"What is an analysis port in UVM?","acceptedAnswer":{"@type":"Answer","text":"An analysis_port is a broadcast port in UVM's TLM (Transaction-Level Modeling) library. When the monitor calls ap.write(item), the item is broadcast to all components that have connected a uvm_analysis_imp to that port — typically scoreboards and coverage collectors. Unlike regular TLM ports, analysis_port.write() is non-blocking and can have any number of subscribers. This decouples the monitor from the components that consume its observations."}},
+      {"@type":"Question","name":"How does the UVM driver access DUT signals?","acceptedAnswer":{"@type":"Answer","text":"The UVM driver accesses DUT signals through a virtual interface — a handle to a SystemVerilog interface that is physically connected to the DUT. The virtual interface is typically passed into the UVM component hierarchy using uvm_config_db#(virtual my_if)::set() in the testbench top module, and retrieved inside the driver's build_phase using uvm_config_db#(virtual my_if)::get(). The driver then drives signals through this handle in run_phase."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 09 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/08-uvm-sequences/" class="dnbtn dnbtn-prev">← Day 08</a>
+    <a href="/verification/10-uvm-scoreboard/" class="dnbtn dnbtn-next">Day 10 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 9 — UVM Driver & Monitor</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM Core</div>
+  <h1>UVM Driver &amp; Monitor</h1>
+  <p class="hero-sub">The driver and monitor are the two components that touch actual DUT signals. The driver translates abstract sequence items into pin wiggling; the monitor observes DUT pins and reconstructs transactions to broadcast to scoreboards and coverage collectors.</p>
+  <div class="hero-meta"><span>⏱ 27 min read</span><span>📖 Day 9 of 25</span><span>🎯 Driver · Monitor · Virtual IF</span></div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#driver-role">Driver Role in the UVM Testbench</a></li>
+      <li><a href="#seq-item-port">seq_item_port Handshake</a></li>
+      <li><a href="#vif-driver">Driving via Virtual Interface</a></li>
+      <li><a href="#monitor-role">Monitor Role &amp; analysis_port</a></li>
+      <li><a href="#monitor-impl">Monitor Implementation</a></li>
+      <li><a href="#config-db">Passing the Virtual Interface with config_db</a></li>
+      <li><a href="#spi-example">Complete SPI Driver &amp; Monitor Example</a></li>
+    </ol>
+  </div>
+
+  <h2 id="driver-role">1. Driver Role in the UVM Testbench</h2>
+  <p>The <strong>uvm_driver</strong> is the only component that writes to DUT inputs. It sits between the sequencer and the DUT interface. Its job is simple but precise: get a sequence item, convert it to timed signal activity, confirm completion, repeat:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Minimal uvm_driver skeleton</span>
+<span class="kw">class</span> <span class="fn">my_driver</span> <span class="kw">extends</span> uvm_driver #(<span class="ty">my_seq_item</span>);
+  <span class="fn">`uvm_component_utils</span>(my_driver)
+
+  <span class="kw">virtual</span> <span class="ty">my_if</span> vif;   <span class="cm">// handle to the DUT interface</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">my_seq_item</span> req;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      seq_item_port.get_next_item(req);   <span class="cm">// blocks until item available</span>
+      drive_item(req);                    <span class="cm">// do the actual pin toggling</span>
+      seq_item_port.item_done();          <span class="cm">// MUST call — releases sequencer</span>
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+
+  <span class="kw">task</span> <span class="fn">drive_item</span>(<span class="ty">my_seq_item</span> req);
+    <span class="cm">// Override in derived classes to drive specific protocol</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+  <div class="callout warn"><strong>Never forget item_done():</strong> If you omit the call to <code>seq_item_port.item_done()</code>, the sequencer hangs forever waiting for the driver to become free. The test will time out with no useful error message. Always call it as the last step after driving completes.</div>
+
+  <h2 id="seq-item-port">2. seq_item_port Handshake</h2>
+  <p>The sequencer-to-driver communication uses a TLM FIFO under the hood. The driver calls one of three methods depending on whether it needs a response path:</p>
+  <table>
+    <tr><th>Method</th><th>Behavior</th><th>When to use</th></tr>
+    <tr><td><code>get_next_item(req)</code></td><td>Blocks until item ready; item stays "in flight" until item_done()</td><td>Standard — most drivers</td></tr>
+    <tr><td><code>try_next_item(req)</code></td><td>Non-blocking; returns null if no item pending</td><td>When driver has idle-cycle work to do</td></tr>
+    <tr><td><code>get(req)</code></td><td>Blocks AND automatically calls item_done (no explicit call needed)</td><td>Simple drivers with no response</td></tr>
+    <tr><td><code>item_done()</code></td><td>Releases the item from the sequencer's view</td><td>After get_next_item, before next iteration</td></tr>
+    <tr><td><code>item_done(rsp)</code></td><td>Returns response item to the sequence</td><td>When sequence uses get_response()</td></tr>
+  </table>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// try_next_item pattern — useful for idle-bus maintenance</span>
+<span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+  <span class="ty">my_seq_item</span> req;
+  <span class="kw">forever</span> <span class="kw">begin</span>
+    seq_item_port.try_next_item(req);
+    <span class="kw">if</span> (req != <span class="kw">null</span>) <span class="kw">begin</span>
+      drive_item(req);
+      seq_item_port.item_done();
+    <span class="kw">end</span> <span class="kw">else</span> <span class="kw">begin</span>
+      drive_idle();   <span class="cm">// keep bus in idle state between transactions</span>
+      @(<span class="kw">posedge</span> vif.clk);
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endtask</span>
+
+<span class="cm">// Response-path pattern — driver returns rsp to sequence</span>
+<span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+  <span class="ty">my_seq_item</span> req, rsp;
+  <span class="kw">forever</span> <span class="kw">begin</span>
+    seq_item_port.get_next_item(req);
+    drive_item(req);
+    rsp = <span class="ty">my_seq_item</span>::type_id::create(<span class="str">"rsp"</span>);
+    rsp.set_id_info(req);   <span class="cm">// copy sequence_id and transaction_id</span>
+    rsp.status = get_dut_status();
+    seq_item_port.item_done(rsp);
+  <span class="kw">end</span>
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <h2 id="vif-driver">3. Driving via Virtual Interface</h2>
+  <p>The driver must never reference DUT ports directly. Instead it uses a <strong>virtual interface</strong> — a SystemVerilog reference to a physical interface instance that is wired to the DUT at the top level. This keeps the driver reusable and synthesizer-independent:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Interface definition (in a separate .sv file, not inside a module)</span>
+<span class="kw">interface</span> <span class="fn">apb_if</span> (<span class="kw">input</span> <span class="ty">logic</span> clk, rstn);
+  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] paddr;
+  <span class="ty">logic</span>        psel, penable, pwrite;
+  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] pwdata, prdata;
+  <span class="ty">logic</span>        pready, pslverr;
+
+  <span class="cm">// Clocking block for master (driver) — output skew 1ns, input sample 1ns before edge</span>
+  <span class="kw">clocking</span> <span class="fn">master_cb</span> @(<span class="kw">posedge</span> clk);
+    <span class="kw">output</span> #<span class="num">1</span> paddr, psel, penable, pwrite, pwdata;
+    <span class="kw">input</span>  #<span class="num">1</span> prdata, pready, pslverr;
+  <span class="kw">endclocking</span>
+<span class="kw">endinterface</span>
+
+<span class="cm">// Driver build_phase — get the virtual interface from config_db</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  <span class="kw">super</span>.build_phase(phase);
+  <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">apb_if</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+    <span class="fn">`uvm_fatal</span>(<span class="str">"NO_VIF"</span>, <span class="str">"APB virtual interface not found in config_db"</span>)
+<span class="kw">endfunction</span>
+
+<span class="cm">// Driving an APB write via clocking block</span>
+<span class="kw">task</span> <span class="fn">drive_write</span>(<span class="ty">apb_seq_item</span> req);
+  @(vif.master_cb);
+  vif.master_cb.psel    <= <span class="num">1</span>;
+  vif.master_cb.paddr   <= req.addr;
+  vif.master_cb.pwdata  <= req.data;
+  vif.master_cb.pwrite  <= <span class="num">1</span>;
+  vif.master_cb.penable <= <span class="num">0</span>;
+  @(vif.master_cb);
+  vif.master_cb.penable <= <span class="num">1</span>;    <span class="cm">// setup phase → access phase</span>
+  @(vif.master_cb iff vif.master_cb.pready);   <span class="cm">// wait for slave ready</span>
+  vif.master_cb.psel    <= <span class="num">0</span>;
+  vif.master_cb.penable <= <span class="num">0</span>;
+<span class="kw">endtask</span></pre>
+  </div>
+  <div class="callout tip"><strong>Clocking block skew:</strong> Always drive DUT inputs via a clocking block with an output skew (e.g., <code>#1</code>). This ensures the signal settles before the next clock edge and avoids race conditions in the simulator's active region.</div>
+
+  <h2 id="monitor-role">4. Monitor Role &amp; analysis_port</h2>
+  <p>The <strong>uvm_monitor</strong> is a passive observer — it never drives signals. It samples DUT outputs and/or internal signals through the virtual interface and reconstructs completed transactions. It then broadcasts them via <code>uvm_analysis_port</code> to any subscriber:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// uvm_monitor skeleton with analysis_port</span>
+<span class="kw">class</span> <span class="fn">apb_monitor</span> <span class="kw">extends</span> uvm_monitor;
+  <span class="fn">`uvm_component_utils</span>(apb_monitor)
+
+  <span class="kw">virtual</span> <span class="ty">apb_if</span>                         vif;
+  uvm_analysis_port #(<span class="ty">apb_seq_item</span>)      ap;   <span class="cm">// broadcast port</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+    <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">apb_if</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+      <span class="fn">`uvm_fatal</span>(<span class="str">"NO_VIF"</span>, <span class="str">"APB monitor: virtual interface not set"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">apb_seq_item</span> trans;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      collect_transaction(trans);   <span class="cm">// blocking — waits for next transaction</span>
+      ap.write(trans);              <span class="cm">// broadcast to scoreboard, coverage, etc.</span>
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+  <table>
+    <tr><th>Feature</th><th>analysis_port</th><th>Regular TLM port</th></tr>
+    <tr><td>Blocking</td><td>No — write() returns immediately</td><td>Can block if FIFO full</td></tr>
+    <tr><td>Subscribers</td><td>Any number (broadcast)</td><td>One-to-one</td></tr>
+    <tr><td>Direction</td><td>Output only (producer)</td><td>Bidirectional</td></tr>
+    <tr><td>Typical use</td><td>Monitor → scoreboard/coverage</td><td>Sequencer ↔ driver</td></tr>
+  </table>
+
+  <h2 id="monitor-impl">5. Monitor Implementation</h2>
+  <p>The monitor samples signals using the interface's clocking block to avoid glitches. It typically waits for a valid transaction indicator, samples the relevant fields, creates a sequence item, and writes it:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// APB monitor — collect_transaction task</span>
+<span class="kw">task</span> <span class="fn">collect_transaction</span>(<span class="kw">output</span> <span class="ty">apb_seq_item</span> trans);
+  <span class="cm">// Wait for APB access phase (psel=1, penable=1)</span>
+  @(<span class="kw">posedge</span> vif.clk iff (vif.psel && vif.penable && vif.pready));
+
+  trans = <span class="ty">apb_seq_item</span>::type_id::create(<span class="str">"trans"</span>);
+  trans.addr   = vif.paddr;
+  trans.write  = vif.pwrite;
+  trans.data   = vif.pwrite ? vif.pwdata : vif.prdata;
+  trans.slverr = vif.pslverr;
+
+  <span class="fn">`uvm_info</span>(<span class="str">"APB_MON"</span>,
+    $sformatf(<span class="str">"Captured %s @0x%0h = 0x%0h"</span>,
+              trans.write ? <span class="str">"WR"</span> : <span class="str">"RD"</span>, trans.addr, trans.data),
+    UVM_HIGH)
+<span class="kw">endtask</span>
+
+<span class="cm">// The monitor NEVER drives signals — it only reads</span>
+<span class="cm">// Using vif directly (not clocking block) for input sampling is fine</span>
+<span class="cm">// but add #1 delay to avoid sampling before combinational logic settles</span>
+<span class="kw">task</span> <span class="fn">collect_safe</span>(<span class="kw">output</span> <span class="ty">apb_seq_item</span> trans);
+  @(<span class="kw">posedge</span> vif.clk);
+  #<span class="num">1</span>;  <span class="cm">// let combinational logic settle after the clock edge</span>
+  <span class="kw">if</span> (vif.psel && vif.penable && vif.pready) <span class="kw">begin</span>
+    trans = <span class="ty">apb_seq_item</span>::type_id::create(<span class="str">"t"</span>);
+    trans.addr  = vif.paddr;
+    trans.write = vif.pwrite;
+    trans.data  = vif.pwrite ? vif.pwdata : vif.prdata;
+  <span class="kw">end</span>
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <h2 id="config-db">6. Passing the Virtual Interface with config_db</h2>
+  <p>The virtual interface is set once at the top level and retrieved by each component that needs it. The standard pattern uses the component's full hierarchical path as the context:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// tb_top.sv — set the virtual interface into the config_db</span>
+<span class="kw">module</span> <span class="fn">tb_top</span>;
+  <span class="kw">import</span> uvm_pkg::*;
+
+  <span class="ty">apb_if</span> apb_bus(.clk(clk), .rstn(rstn));
+
+  <span class="cm">// Wire interface to DUT</span>
+  <span class="fn">my_dut</span> dut(.pclk(clk), .presetn(rstn), .paddr(apb_bus.paddr), ...);
+
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    <span class="cm">// Set ONCE at top — all components in "uvm_test_top" can get it</span>
+    uvm_config_db#(<span class="kw">virtual</span> <span class="ty">apb_if</span>)::set(<span class="kw">null</span>, <span class="str">"uvm_test_top.*"</span>, <span class="str">"vif"</span>, apb_bus);
+    run_test(<span class="str">"my_test"</span>);
+  <span class="kw">end</span>
+<span class="kw">endmodule</span>
+
+<span class="cm">// Inside driver (or monitor) build_phase — get the interface</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  <span class="kw">super</span>.build_phase(phase);
+  <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">apb_if</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+    <span class="fn">`uvm_fatal</span>(<span class="str">"CFG"</span>, {get_full_name(), <span class="str">": virtual interface 'vif' not set"</span>})
+<span class="kw">endfunction</span></pre>
+  </div>
+  <div class="callout info"><strong>Path wildcard:</strong> Using <code>"uvm_test_top.*"</code> in the set() call makes the virtual interface available to all components underneath the test — driver, monitor, and any sub-agents. You can narrow the scope to a specific component by using its exact hierarchical path (e.g., <code>"uvm_test_top.env.agent.driver"</code>).</div>
+
+  <h2 id="spi-example">7. Complete SPI Driver &amp; Monitor Example</h2>
+  <p>A complete, working SPI master driver and monitor for a 4-wire SPI interface (SCLK, MOSI, MISO, CS_N):</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// spi_if.sv</span>
+<span class="kw">interface</span> <span class="fn">spi_if</span> (<span class="kw">input</span> <span class="ty">logic</span> clk);
+  <span class="ty">logic</span> sclk, mosi, miso, cs_n;
+<span class="kw">endinterface</span>
+
+<span class="cm">// spi_seq_item.sv</span>
+<span class="kw">class</span> <span class="fn">spi_seq_item</span> <span class="kw">extends</span> uvm_sequence_item;
+  <span class="fn">`uvm_object_utils_begin</span>(spi_seq_item)
+    <span class="fn">`uvm_field_int</span>(data_out, UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(data_in,  UVM_ALL_ON)
+  <span class="fn">`uvm_object_utils_end</span>
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] data_out;   <span class="cm">// sent by master (MOSI)</span>
+       <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] data_in;    <span class="cm">// captured from slave (MISO)</span>
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name=<span class="str">"spi_seq_item"</span>); <span class="kw">super</span>.new(name); <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// spi_driver.sv</span>
+<span class="kw">class</span> <span class="fn">spi_driver</span> <span class="kw">extends</span> uvm_driver #(<span class="ty">spi_seq_item</span>);
+  <span class="fn">`uvm_component_utils</span>(spi_driver)
+  <span class="kw">virtual</span> <span class="ty">spi_if</span> vif;
+  <span class="kw">parameter</span> HALF_PERIOD = <span class="num">4</span>;  <span class="cm">// SPI SCLK half-period in ns</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">spi_if</span>)::get(<span class="kw">this</span>,<span class="str">""</span>,<span class="str">"vif"</span>,vif))
+      <span class="fn">`uvm_fatal</span>(<span class="str">"VIF"</span>, <span class="str">"No SPI vif in config_db"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">spi_seq_item</span> req;
+    vif.cs_n = <span class="num">1</span>; vif.sclk = <span class="num">0</span>; vif.mosi = <span class="num">0</span>;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      seq_item_port.get_next_item(req);
+      drive_frame(req);
+      seq_item_port.item_done(req);   <span class="cm">// return captured data_in</span>
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+
+  <span class="kw">task</span> <span class="fn">drive_frame</span>(<span class="ty">spi_seq_item</span> req);
+    vif.cs_n = <span class="num">0</span>;                     <span class="cm">// assert chip select</span>
+    #HALF_PERIOD;
+    <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">7</span>; i >= <span class="num">0</span>; i--) <span class="kw">begin</span>
+      vif.mosi = req.data_out[i];    <span class="cm">// shift out MSB first</span>
+      #HALF_PERIOD; vif.sclk = <span class="num">1</span>;   <span class="cm">// rising edge — slave samples MOSI</span>
+      req.data_in[i] = vif.miso;    <span class="cm">// capture MISO on rising edge</span>
+      #HALF_PERIOD; vif.sclk = <span class="num">0</span>;   <span class="cm">// falling edge — master updates MOSI</span>
+    <span class="kw">end</span>
+    #HALF_PERIOD; vif.cs_n = <span class="num">1</span>;     <span class="cm">// deassert chip select</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// spi_monitor.sv</span>
+<span class="kw">class</span> <span class="fn">spi_monitor</span> <span class="kw">extends</span> uvm_monitor;
+  <span class="fn">`uvm_component_utils</span>(spi_monitor)
+  <span class="kw">virtual</span> <span class="ty">spi_if</span>                      vif;
+  uvm_analysis_port #(<span class="ty">spi_seq_item</span>)  ap;
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+    <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">spi_if</span>)::get(<span class="kw">this</span>,<span class="str">""</span>,<span class="str">"vif"</span>,vif))
+      <span class="fn">`uvm_fatal</span>(<span class="str">"VIF"</span>, <span class="str">"No SPI vif for monitor"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">spi_seq_item</span> trans;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      <span class="cm">// Wait for CS_N to assert (start of frame)</span>
+      @(<span class="kw">negedge</span> vif.cs_n);
+      trans = <span class="ty">spi_seq_item</span>::type_id::create(<span class="str">"trans"</span>);
+      <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">7</span>; i >= <span class="num">0</span>; i--) <span class="kw">begin</span>
+        @(<span class="kw">posedge</span> vif.sclk);          <span class="cm">// sample on rising edge</span>
+        trans.data_out[i] = vif.mosi;
+        trans.data_in[i]  = vif.miso;
+      <span class="kw">end</span>
+      @(<span class="kw">posedge</span> vif.cs_n);            <span class="cm">// wait for CS_N to deassert</span>
+      ap.write(trans);                <span class="cm">// broadcast completed frame</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"SPI_MON"</span>,
+        $sformatf(<span class="str">"Frame: MOSI=0x%02h MISO=0x%02h"</span>, trans.data_out, trans.data_in),
+        UVM_MEDIUM)
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 9</h3>
+    <ul>
+      <li><strong>uvm_driver:</strong> translate abstract seq items → pin-level signal waveforms; loops forever in run_phase</li>
+      <li><strong>get_next_item / item_done:</strong> mandatory handshake; forgetting item_done() hangs the simulation</li>
+      <li><strong>try_next_item:</strong> non-blocking; use when the driver has idle-cycle maintenance work</li>
+      <li><strong>Virtual interface:</strong> obtained via config_db in build_phase; the only path to DUT signals</li>
+      <li><strong>Clocking block output skew:</strong> prevents race conditions when driving DUT inputs</li>
+      <li><strong>uvm_monitor:</strong> passive-only; reconstructs transactions from observed pin activity</li>
+      <li><strong>analysis_port.write():</strong> broadcasts completed transactions to all subscribers (scoreboard, coverage)</li>
+    </ul>
+  </div>
+
+  <a href="/verification/10-uvm-scoreboard/" class="next-card">
+    <div>
+      <div class="next-label">Next → Day 10</div>
+      <div class="next-title">UVM Scoreboard &amp; Checker</div>
+      <div class="next-desc">uvm_scoreboard, uvm_analysis_imp, write() callbacks, reference model, in-order vs out-of-order checking, and complete APB scoreboard.</div>
+    </div>
+    <div class="next-arrow">→</div>
+  </a>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+</body>
+</html>
