@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Testbench Architecture — Agent, Driver, Monitor, Scoreboard — Day 7 | EcrioniX</title>
+  <meta name="description" content="UVM testbench architecture: uvm_agent (active vs passive), uvm_env, uvm_test, TLM analysis ports, analysis imp, TLM FIFO, seq_item port/export, monitor-to-scoreboard connections, and complete code examples.">
+  <meta name="keywords" content="UVM testbench architecture, uvm_agent, uvm_env, uvm_test, analysis port UVM, TLM FIFO UVM, uvm_driver, uvm_monitor, uvm_scoreboard, UVM connections">
+  <link rel="canonical" href="https://ecrionix.org/verification/07-uvm-testbench-architecture/">
+  <meta property="og:title" content="UVM Testbench Architecture — Agent, Driver, Monitor, Scoreboard — Day 7 | EcrioniX">
+  <meta property="og:description" content="Agent active vs passive, uvm_env, uvm_test, TLM analysis ports, seq_item port/export — wiring together a complete UVM environment.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/07-uvm-testbench-architecture/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","headline":"UVM Testbench Architecture — Agent, Driver, Monitor, Scoreboard","description":"Complete guide to UVM testbench architecture: active vs passive agent, environment container, test class, TLM analysis ports, analysis imp, TLM FIFO, and the monitor-to-scoreboard broadcast connection.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/07-uvm-testbench-architecture/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 7 — UVM Testbench Architecture","item":"https://ecrionix.org/verification/07-uvm-testbench-architecture/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a UVM agent?","acceptedAnswer":{"@type":"Answer","text":"A UVM agent (uvm_agent) is a container that groups the driver, sequencer, and monitor for a single interface protocol. In active mode (is_active=UVM_ACTIVE), it contains all three and drives stimulus to the DUT. In passive mode (is_active=UVM_PASSIVE), it contains only the monitor — used for observing interfaces you don't drive, like system buses or third-party IP interfaces. The env creates multiple agents for each interface the DUT has."}},
+      {"@type":"Question","name":"What is a UVM analysis port?","acceptedAnswer":{"@type":"Answer","text":"A uvm_analysis_port is a TLM 1.0 broadcast port. When a monitor calls ap.write(item), the infrastructure automatically calls write() on every connected subscriber — scoreboards, coverage models, log components. Unlike FIFO-based ports (which are point-to-point), an analysis port is one-to-many. The monitor does not need to know how many or which components are listening; it just calls write() and the infrastructure handles the fan-out."}},
+      {"@type":"Question","name":"What is the difference between a TLM port and a TLM export?","acceptedAnswer":{"@type":"Answer","text":"In TLM, a port is the initiating side (the one that calls the method, like get() or put()). An export is the receiving side (the one that implements the method). The connection rule is: port.connect(export). For analysis specifically, the analysis_port is the producer (write side) and analysis_imp is the consumer (implements the write() callback). An export provides an implementation; a port calls into that implementation."}},
+      {"@type":"Question","name":"What is the difference between uvm_test and uvm_env?","acceptedAnswer":{"@type":"Answer","text":"uvm_env is a container that assembles the testbench topology — it creates and connects agents, scoreboards, and coverage collectors. It is protocol-agnostic and reusable across tests. uvm_test extends uvm_test (itself an uvm_component) and represents a single test scenario. It creates the env, applies test-specific configuration (via uvm_config_db), and in run_phase starts the sequences that generate stimulus. There is typically one env class that is reused by many test classes."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .tb-svg{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:.75rem;margin:1rem 0 1.5rem;overflow-x:auto}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 07 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/06-uvm-introduction/" class="dnbtn dnbtn-prev">← Day 06</a>
+    <a href="/verification/08-uvm-sequences/" class="dnbtn dnbtn-next">Day 08 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 7 — UVM Testbench Architecture</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM</div>
+  <h1>UVM Testbench Architecture</h1>
+  <p class="hero-sub">A UVM environment is a hierarchy of components — test at the top, env below it containing agents, each agent wrapping a driver, sequencer, and monitor, with scoreboards and coverage tied in via analysis ports. Understanding how these pieces connect is the foundation of all UVM work.</p>
+  <div class="hero-meta"><span>⏱ 30 min read</span><span>📖 Day 7 of 25</span><span>🎯 Agent · TLM · Scoreboard</span></div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#diagram">TB Block Diagram</a></li>
+      <li><a href="#tlm">TLM Connections Overview</a></li>
+      <li><a href="#agent">uvm_agent — Active vs Passive</a></li>
+      <li><a href="#env">uvm_env</a></li>
+      <li><a href="#test">uvm_test</a></li>
+      <li><a href="#code">Complete Code Examples</a></li>
+      <li><a href="#broadcast">How Analysis Port Broadcasts</a></li>
+      <li><a href="#naming">File and Class Naming</a></li>
+    </ol>
+  </div>
+
+  <h2 id="diagram">1. UVM Testbench Block Diagram</h2>
+  <div class="tb-svg">
+    <svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:760px;font-family:'Outfit',sans-serif;font-size:11px">
+      <!-- Test -->
+      <rect x="300" y="8" width="160" height="34" rx="6" fill="#1e1e2e" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="380" y="30" text-anchor="middle" fill="#a78bfa" font-weight="700">uvm_test</text>
+      <line x1="380" y1="42" x2="380" y2="62" stroke="#475569" stroke-width="1.5"/>
+      <!-- Env -->
+      <rect x="60" y="62" width="640" height="240" rx="8" fill="rgba(15,23,42,0.5)" stroke="#38bdf8" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="85" y="82" fill="#38bdf8" font-size="10">uvm_env</text>
+      <!-- Agent box -->
+      <rect x="80" y="92" width="370" height="180" rx="7" fill="rgba(15,23,42,0.6)" stroke="#4ade80" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="100" y="110" fill="#4ade80" font-size="10">uvm_agent (active)</text>
+      <!-- Driver -->
+      <rect x="96" y="120" width="100" height="36" rx="5" fill="#0f172a" stroke="#82aaff" stroke-width="1"/>
+      <text x="146" y="142" text-anchor="middle" fill="#82aaff">uvm_driver</text>
+      <!-- Sequencer -->
+      <rect x="220" y="120" width="110" height="36" rx="5" fill="#0f172a" stroke="#82aaff" stroke-width="1"/>
+      <text x="275" y="142" text-anchor="middle" fill="#82aaff">uvm_sequencer</text>
+      <!-- Monitor -->
+      <rect x="96" y="188" width="100" height="36" rx="5" fill="#0f172a" stroke="#fbbf24" stroke-width="1"/>
+      <text x="146" y="210" text-anchor="middle" fill="#fbbf24">uvm_monitor</text>
+      <!-- seq→drv arrow -->
+      <line x1="220" y1="138" x2="196" y2="138" stroke="#89ddff" stroke-width="1.5" marker-end="url(#arr)"/>
+      <!-- analysis port -->
+      <line x1="196" y1="206" x2="460" y2="230" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr2)"/>
+      <text x="310" y="220" fill="#fbbf24" font-size="9">analysis port (ap.write)</text>
+      <!-- Scoreboard -->
+      <rect x="468" y="106" width="110" height="36" rx="5" fill="#0f172a" stroke="#f78c6c" stroke-width="1"/>
+      <text x="523" y="128" text-anchor="middle" fill="#f78c6c">uvm_scoreboard</text>
+      <!-- Coverage -->
+      <rect x="468" y="178" width="110" height="36" rx="5" fill="#0f172a" stroke="#c3e88d" stroke-width="1"/>
+      <text x="523" y="200" text-anchor="middle" fill="#c3e88d">Coverage Model</text>
+      <!-- analysis imp lines -->
+      <line x1="460" y1="230" x2="468" y2="128" stroke="#f78c6c" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="460" y1="230" x2="468" y2="196" stroke="#c3e88d" stroke-width="1" stroke-dasharray="3,2"/>
+      <!-- DUT -->
+      <rect x="86" y="272" width="580" height="20" rx="4" fill="#0f172a" stroke="#64748b" stroke-width="1"/>
+      <text x="376" y="286" text-anchor="middle" fill="#64748b">DUT (design under test)</text>
+      <!-- Interface line -->
+      <line x1="146" y1="156" x2="200" y2="272" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="146" y1="224" x2="200" y2="272" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="130" y="260" fill="#38bdf8" font-size="9">vif</text>
+      <!-- Arrows -->
+      <defs>
+        <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#89ddff"/>
+        </marker>
+        <marker id="arr2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#fbbf24"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <h2 id="tlm">2. TLM Connections Overview</h2>
+  <p>TLM (Transaction Level Modeling) ports provide type-safe, direction-enforced connections between components. The main TLM channels in UVM:</p>
+  <table>
+    <tr><th>Port Type</th><th>Direction</th><th>Use Case</th></tr>
+    <tr><td><code>uvm_analysis_port</code></td><td>Producer → 0..N consumers</td><td>Monitor broadcasts observed transactions</td></tr>
+    <tr><td><code>uvm_analysis_imp</code></td><td>Consumer side</td><td>Scoreboard/coverage receives from analysis_port</td></tr>
+    <tr><td><code>uvm_seq_item_pull_port</code></td><td>Driver → Sequencer</td><td>Driver pulls items from sequencer</td></tr>
+    <tr><td><code>uvm_seq_item_pull_export</code></td><td>Sequencer side</td><td>Sequencer export connected to driver port</td></tr>
+    <tr><td><code>uvm_tlm_analysis_fifo</code></td><td>Buffered FIFO</td><td>Decouples monitor write speed from scoreboard read speed</td></tr>
+  </table>
+
+  <h2 id="agent">3. uvm_agent — Active vs Passive</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">my_agent</span> <span class="kw">extends</span> uvm_agent;
+  `<span class="fn">uvm_component_utils</span>(my_agent)
+
+  <span class="cm">// Components — only created in active mode</span>
+  my_driver    drv;
+  my_sequencer sqr;
+  my_monitor   mon;
+
+  <span class="cm">// Analysis port — forwards monitor output to env</span>
+  uvm_analysis_port #(my_item) ap;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    <span class="cm">// Always create monitor (passive and active mode)</span>
+    mon = my_monitor::type_id::create(<span class="str">"mon"</span>, <span class="kw">this</span>);
+
+    <span class="cm">// Only create driver+sequencer in ACTIVE mode</span>
+    <span class="kw">if</span> (get_is_active() <span class="op">==</span> UVM_ACTIVE) <span class="kw">begin</span>
+      drv = my_driver::type_id::create(<span class="str">"drv"</span>, <span class="kw">this</span>);
+      sqr = my_sequencer::type_id::create(<span class="str">"sqr"</span>, <span class="kw">this</span>);
+    <span class="kw">end</span>
+
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+    <span class="cm">// Connect monitor ap to agent ap (agent re-exports it)</span>
+    mon.ap.connect(ap);
+
+    <span class="cm">// Connect driver pull port to sequencer export</span>
+    <span class="kw">if</span> (get_is_active() <span class="op">==</span> UVM_ACTIVE)
+      drv.seq_item_port.connect(sqr.seq_item_export);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="env">4. uvm_env</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">my_env</span> <span class="kw">extends</span> uvm_env;
+  `<span class="fn">uvm_component_utils</span>(my_env)
+
+  my_agent    agent;
+  my_scoreboard scb;
+  my_coverage   cov;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    agent = my_agent::type_id::create(<span class="str">"agent"</span>, <span class="kw">this</span>);
+    scb   = my_scoreboard::type_id::create(<span class="str">"scb"</span>,   <span class="kw">this</span>);
+    cov   = my_coverage::type_id::create(<span class="str">"cov"</span>,   <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+    <span class="cm">// Monitor's analysis port feeds scoreboard AND coverage</span>
+    agent.ap.connect(scb.analysis_export);
+    agent.ap.connect(cov.analysis_export);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="test">5. uvm_test</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">base_test</span> <span class="kw">extends</span> uvm_test;
+  `<span class="fn">uvm_component_utils</span>(base_test)
+  my_env env;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+
+    <span class="cm">// Pass virtual interface to agent driver and monitor</span>
+    uvm_config_db #(<span class="kw">virtual</span> my_if)::set(<span class="kw">this</span>, <span class="str">"env.agent.*"</span>, <span class="str">"vif"</span>, vif);
+
+    env = my_env::type_id::create(<span class="str">"env"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    my_sequence seq;
+    phase.raise_objection(<span class="kw">this</span>);
+
+    seq = my_sequence::type_id::create(<span class="str">"seq"</span>);
+    seq.start(env.agent.sqr);
+
+    phase.drop_objection(<span class="kw">this</span>);
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="code">6. Complete Component Code — Driver, Monitor, Scoreboard</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Minimal driver skeleton</span>
+<span class="kw">class</span> <span class="fn">my_driver</span> <span class="kw">extends</span> uvm_driver #(my_item);
+  `<span class="fn">uvm_component_utils</span>(my_driver)
+  <span class="kw">virtual</span> my_if vif;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    <span class="kw">if</span> (!uvm_config_db #(<span class="kw">virtual</span> my_if)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+      `<span class="fn">uvm_fatal</span>(<span class="str">"DRV"</span>, <span class="str">"No virtual interface found"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    my_item item;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      seq_item_port.get_next_item(item);
+      <span class="fn">drive_item</span>(item);
+      seq_item_port.item_done();
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+
+  <span class="kw">task</span> <span class="fn">drive_item</span>(my_item item);
+    @(vif.cb); vif.cb.valid &lt;= <span class="num">1</span>; vif.cb.addr &lt;= item.addr;
+    @(vif.cb); vif.cb.valid &lt;= <span class="num">0</span>;
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Minimal monitor skeleton</span>
+<span class="kw">class</span> <span class="fn">my_monitor</span> <span class="kw">extends</span> uvm_monitor;
+  `<span class="fn">uvm_component_utils</span>(my_monitor)
+  <span class="kw">virtual</span> my_if vif;
+  uvm_analysis_port #(my_item) ap;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+    <span class="kw">if</span> (!uvm_config_db #(<span class="kw">virtual</span> my_if)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+      `<span class="fn">uvm_fatal</span>(<span class="str">"MON"</span>, <span class="str">"No virtual interface found"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    my_item item;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      @(vif.cb);
+      <span class="kw">if</span> (vif.cb.valid) <span class="kw">begin</span>
+        item = my_item::type_id::create(<span class="str">"item"</span>);
+        item.addr = vif.cb.addr;
+        ap.write(item);   <span class="cm">// broadcast to all subscribers</span>
+      <span class="kw">end</span>
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="broadcast">7. How analysis_port Broadcasts</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// In scoreboard — implements uvm_analysis_imp</span>
+<span class="kw">class</span> <span class="fn">my_scoreboard</span> <span class="kw">extends</span> uvm_scoreboard;
+  `<span class="fn">uvm_component_utils</span>(my_scoreboard)
+
+  <span class="cm">// analysis_imp implements write() — called by analysis_port</span>
+  uvm_analysis_imp #(my_item, my_scoreboard) analysis_export;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    analysis_export = <span class="kw">new</span>(<span class="str">"analysis_export"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Called automatically each time monitor calls ap.write()</span>
+  <span class="kw">virtual</span> <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write</span>(my_item item);
+    `<span class="fn">uvm_info</span>(<span class="str">"SCB"</span>, $sformatf(<span class="str">"Received: addr=%0h"</span>, item.addr), UVM_HIGH)
+    <span class="cm">// compare against expected model here</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Using TLM FIFO to buffer between monitor and scoreboard</span>
+<span class="cm">// In env connect_phase:</span>
+uvm_tlm_analysis_fifo #(my_item) fifo;
+<span class="cm">// build:   fifo = new("fifo", this);</span>
+<span class="cm">// connect: agent.ap.connect(fifo.analysis_export);</span>
+<span class="cm">//          scb.get_port.connect(fifo.get_export);</span></pre>
+  </div>
+
+  <h2 id="naming">8. File and Class Naming Convention</h2>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// One class per file, file name matches class name:</span>
+<span class="cm">// my_item.sv          → class my_item extends uvm_sequence_item</span>
+<span class="cm">// my_sequence.sv      → class my_sequence extends uvm_sequence</span>
+<span class="cm">// my_sequencer.sv     → typedef uvm_sequencer #(my_item) my_sequencer;</span>
+<span class="cm">// my_driver.sv        → class my_driver extends uvm_driver</span>
+<span class="cm">// my_monitor.sv       → class my_monitor extends uvm_monitor</span>
+<span class="cm">// my_agent.sv         → class my_agent extends uvm_agent</span>
+<span class="cm">// my_scoreboard.sv    → class my_scoreboard extends uvm_scoreboard</span>
+<span class="cm">// my_env.sv           → class my_env extends uvm_env</span>
+<span class="cm">// my_test.sv          → class my_test extends uvm_test</span>
+
+<span class="cm">// Package file — include all in order (items before users):</span>
+<span class="kw">package</span> <span class="fn">my_tb_pkg</span>;
+  `<span class="fn">include</span> <span class="str">"uvm_macros.svh"</span>
+  <span class="kw">import</span> uvm_pkg::*;
+  `<span class="fn">include</span> <span class="str">"my_item.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_sequence.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_sequencer.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_driver.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_monitor.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_agent.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_scoreboard.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_env.sv"</span>
+  `<span class="fn">include</span> <span class="str">"my_test.sv"</span>
+<span class="kw">endpackage</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 7</h3>
+    <ul>
+      <li><strong>Test → Env → Agent → (Driver + Sequencer + Monitor)</strong> is the standard UVM hierarchy</li>
+      <li><strong>Active agent:</strong> has driver + sequencer + monitor; passive agent has only the monitor</li>
+      <li><strong>analysis_port:</strong> one-to-many broadcast — monitor writes once, all subscribers receive</li>
+      <li><strong>analysis_imp:</strong> the consumer side — implements write() callback in scoreboard/coverage</li>
+      <li><strong>connect_phase:</strong> wire all ports here — port.connect(export) is the direction rule</li>
+      <li><strong>uvm_config_db:</strong> use it in build_phase to pass vif — never store it in a global variable</li>
+      <li><strong>Package file:</strong> include order matters — items before sequences, sequences before drivers</li>
+    </ul>
+  </div>
+
+  <a href="/verification/08-uvm-sequences/" class="next-card">
+    <div>
+      <div class="next-label">Next → Day 08</div>
+      <div class="next-title">UVM Sequences and seq_item</div>
+      <div class="next-desc">uvm_sequence_item, uvm_sequence body, `uvm_do macros, virtual sequences, p_sequencer, sequencer arbitration.</div>
+    </div>
+    <div class="next-arrow">→</div>
+  </a>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+</body>
+</html>
