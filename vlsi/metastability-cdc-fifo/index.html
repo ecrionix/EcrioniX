@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4218140747629892" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-TMJQ8CNQKL"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-TMJQ8CNQKL');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Metastability in Clock Domain Crossing — Three-Stage FIFO & Synchronizer | EcrioniX</title>
+<meta name="description" content="Metastability in clock domain crossing (CDC) explained — two-stage and three-stage synchronizers, MTBF equation, asynchronous FIFO with Gray code pointers, three-stage FIFO design, and Verilog RTL implementation.">
+<meta name="keywords" content="metastability in clock domain crossing, metastability cdc, three stage synchronizer, metastability fifo, async fifo cdc, gray code pointer fifo, cdc fifo verilog, synchronizer fifo, two stage synchronizer, MTBF metastability, clock domain crossing fifo, three stage fifo">
+<meta property="og:title" content="Metastability in Clock Domain Crossing — Three-Stage FIFO | EcrioniX">
+<meta property="og:description" content="Metastability in CDC: two-stage vs three-stage synchronizers, MTBF, async FIFO with Gray code pointers, three-stage FIFO Verilog implementation.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/vlsi/metastability-cdc-fifo/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://ecrionix.org/vlsi/metastability-cdc-fifo/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+  {"@type":"BreadcrumbList","itemListElement":[
+    {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+    {"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},
+    {"@type":"ListItem","position":3,"name":"Metastability CDC FIFO","item":"https://ecrionix.org/vlsi/metastability-cdc-fifo/"}
+  ]},
+  {"@type":"FAQPage","mainEntity":[
+    {"@type":"Question","name":"What is metastability in clock domain crossing?","acceptedAnswer":{"@type":"Answer","text":"Metastability occurs when a flip-flop's input changes within its setup or hold window, causing the output to settle to an undefined voltage level (neither 0 nor 1) for an unpredictable amount of time. In clock domain crossing (CDC), signals crossing from one clock domain to another are asynchronous with respect to the receiving clock — making metastability a fundamental concern. The solution is to use synchronizers (2 or 3 flip-flop chains) that give the metastable output time to resolve before it propagates."}},
+    {"@type":"Question","name":"When should you use a three-stage synchronizer vs two-stage?","acceptedAnswer":{"@type":"Answer","text":"Use a three-stage synchronizer when: (1) The receiving clock frequency is very high (>500 MHz) — less time per cycle to resolve metastability. (2) MTBF requirement is extremely high (safety-critical, automotive ASIL-D, >10,000 years). (3) Process corners have poor flip-flop metastability resolution time (τ parameter). The extra stage adds one clock cycle of latency but exponentially improves MTBF: adding a third FF multiplies MTBF by e^(T/τ) which can be 1000× improvement at 1 GHz."}},
+    {"@type":"Question","name":"What is an asynchronous FIFO used for in CDC?","acceptedAnswer":{"@type":"Answer","text":"An asynchronous FIFO (async FIFO) is used for multi-bit clock domain crossing — transferring a bus of data between two clock domains safely. A simple synchronizer works for single-bit signals (enable, handshake), but for buses, you need an async FIFO. The FIFO uses Gray-coded pointers to safely cross the write pointer into the read clock domain and vice versa. Gray code ensures only one bit changes at a time, making it safe to synchronize with a 2-FF synchronizer."}},
+    {"@type":"Question","name":"Why are Gray code pointers used in async FIFOs?","acceptedAnswer":{"@type":"Answer","text":"Gray code pointers are used in async FIFOs because only one bit changes between consecutive Gray code values. When a binary pointer crosses a clock domain, multiple bits change simultaneously — which can cause glitches or incorrect empty/full detection if some bits are captured in the new domain and others are not. With Gray code, only 1 bit changes at a time — so even if the synchronizer captures a metastable value, the pointer is still at either the old or new value (off by 1 is safe), never at a completely wrong address."}},
+    {"@type":"Question","name":"What is the MTBF of a synchronizer?","acceptedAnswer":{"@type":"Answer","text":"MTBF (Mean Time Between Failures) of a synchronizer is the average time between metastability-caused failures. MTBF = e^(T_resolve/τ) / (f_clk × f_data × C), where T_resolve is the time available for resolution (clock period − setup time), τ is the flip-flop metastability resolution time constant (~30–80ps in 7nm), f_clk is the capture clock frequency, f_data is the data toggle rate, and C is the metastability window. For a 1GHz design with a two-stage synchronizer, MTBF is typically >10,000 years, which is acceptable for most designs."}}
+  ]}
+]}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#030712;--surface:#0f172a;--surface2:#1e293b;--border:#1e293b;--text:#e2e8f0;--muted:#94a3b8;--green:#34d399;--blue:#38bdf8;--purple:#c084fc;--yellow:#fbbf24;--red:#f87171;--orange:#fb923c}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:15px;line-height:1.7}
+a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
+.topbar{background:rgba(15,23,42,.95);border-bottom:1px solid var(--border);padding:.6rem 1.2rem;display:flex;align-items:center;gap:.5rem;font-size:.78rem;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.topbar a{color:var(--muted)}.topbar a:hover{color:var(--green)}.topbar span{color:var(--muted)}
+.container{max-width:900px;margin:0 auto;padding:2rem 1.2rem}
+.hero{text-align:center;padding:2.5rem 0 2rem}
+.topic-badge{display:inline-block;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:20px;padding:.3rem .9rem;font-size:.72rem;color:var(--red);font-weight:600;margin-bottom:1rem;font-family:'Orbitron',sans-serif}
+.hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(1.2rem,3.5vw,1.9rem);color:#fff;margin-bottom:.8rem;line-height:1.35}
+.hero h1 span{color:var(--red)}
+.hero-sub{font-size:1rem;color:var(--muted);max-width:660px;margin:0 auto 1.5rem}
+h2{font-family:'Orbitron',sans-serif;font-size:1.05rem;color:#fff;margin:2.5rem 0 .8rem;display:flex;align-items:center;gap:.6rem}
+h2 .badge{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:var(--red);font-size:.62rem;padding:.2rem .5rem;border-radius:6px;font-family:'Inter',sans-serif;font-weight:700}
+p{color:var(--muted);margin-bottom:.9rem}
+ul{color:var(--muted);padding-left:1.2rem;margin-bottom:1rem;line-height:2}
+.cmp-table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.84rem}
+.cmp-table th{background:rgba(248,113,113,.1);color:var(--red);font-weight:700;padding:.6rem .9rem;text-align:left;border-bottom:1px solid rgba(248,113,113,.2)}
+.cmp-table td{padding:.55rem .9rem;border-bottom:1px solid rgba(30,41,59,.6);color:var(--muted);vertical-align:top}
+.cmp-table tr:hover td{background:rgba(248,113,113,.03)}
+.cmp-table td strong{color:#e2e8f0}
+.eq-box{background:var(--surface);border:1px solid rgba(248,113,113,.2);border-radius:12px;padding:1.2rem;margin:1rem 0;text-align:center;font-family:'JetBrains Mono',monospace;color:var(--red);font-size:.88rem;font-weight:700;line-height:2}
+.code-wrap{position:relative;margin:1.2rem 0}
+.code-wrap pre{background:#0a0f1e;border:1px solid var(--border);border-radius:12px;padding:1.2rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.65;color:#e2e8f0}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);color:var(--green);font-size:.7rem;padding:.3rem .7rem;border-radius:8px;cursor:pointer;transition:.2s;font-family:'Inter',sans-serif}
+.copy-btn:hover{background:rgba(52,211,153,.25)}.copy-btn.copied{background:rgba(52,211,153,.3);color:#fff}
+.lang-tag{position:absolute;top:.6rem;left:1rem;font-size:.65rem;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.tip-box{background:rgba(52,211,153,.05);border:1px solid rgba(52,211,153,.2);border-left:3px solid var(--green);border-radius:10px;padding:1rem 1.2rem;margin:1rem 0}
+.tip-box p{margin:0;font-size:.85rem;color:var(--text)}
+.warn-box{background:rgba(248,113,113,.05);border:1px solid rgba(248,113,113,.2);border-left:3px solid var(--red);border-radius:10px;padding:1rem 1.2rem;margin:1rem 0}
+.warn-box p{margin:0;font-size:.85rem;color:var(--text)}
+.faq-item{border:1px solid var(--border);border-radius:12px;margin:.6rem 0;overflow:hidden}
+.faq-q{padding:.9rem 1.1rem;cursor:pointer;font-weight:600;font-size:.88rem;color:#e2e8f0;display:flex;justify-content:space-between;align-items:center;background:var(--surface);user-select:none}
+.faq-q:hover{background:var(--surface2)}
+.faq-a{padding:0 1.1rem;max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s}
+.faq-a.open{max-height:350px;padding:.9rem 1.1rem}
+.faq-a p{margin:0;font-size:.85rem;color:var(--muted)}
+.back-top{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--green);color:#000;border:none;border-radius:50%;width:42px;height:42px;cursor:pointer;font-size:1.1rem;font-weight:700;display:none;align-items:center;justify-content:center;z-index:999;transition:.2s}
+.back-top.show{display:flex}
+footer{text-align:center;padding:2rem 1rem;border-top:1px solid var(--border);color:var(--muted);font-size:.8rem;margin-top:3rem}
+footer a{color:var(--green)}
+.kw-tag{display:inline-block;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.2);border-radius:6px;padding:.2rem .55rem;font-size:.72rem;color:var(--green);margin:.2rem}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/">EcrioniX</a><span>/</span><a href="/vlsi/">VLSI</a><span>/</span>
+  <span style="color:#e2e8f0">Metastability CDC FIFO</span>
+</div>
+<div class="container">
+  <div class="hero">
+    <div class="topic-badge">CDC · Metastability</div>
+    <h1>Metastability in <span>Clock Domain Crossing</span><br>Three-Stage FIFO &amp; Synchronizer Design</h1>
+    <p class="hero-sub">Metastability causes, two-stage vs three-stage synchronizers, MTBF equation, async FIFO with Gray code pointers — with complete Verilog RTL.</p>
+  </div>
+
+  <!-- SVG: 3-stage synchronizer -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin:1.5rem 0;text-align:center">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;font-family:'Inter',sans-serif;font-size:10px">
+      <rect width="680" height="200" fill="#0f172a" rx="10"/>
+      <text x="340" y="22" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700" font-family="'Orbitron',sans-serif">TWO-STAGE vs THREE-STAGE SYNCHRONIZER</text>
+      <!-- 2-stage -->
+      <text x="10" y="52" fill="#38bdf8" font-size="9" font-weight="700">2-Stage Sync (standard)</text>
+      <text x="10" y="85" fill="#94a3b8" font-size="8">ASYNC_IN →</text>
+      <rect x="100" y="65" width="60" height="35" rx="6" fill="#1e293b" stroke="#f87171" stroke-width="1.5"/>
+      <text x="130" y="86" text-anchor="middle" fill="#f87171" font-size="8.5">FF1</text>
+      <text x="130" y="97" text-anchor="middle" fill="#94a3b8" font-size="7">may be meta</text>
+      <line x1="160" y1="82" x2="195" y2="82" stroke="#38bdf8" stroke-width="1.2"/>
+      <rect x="197" y="65" width="60" height="35" rx="6" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
+      <text x="227" y="86" text-anchor="middle" fill="#34d399" font-size="8.5">FF2</text>
+      <text x="227" y="97" text-anchor="middle" fill="#94a3b8" font-size="7">resolved</text>
+      <line x1="257" y1="82" x2="300" y2="82" stroke="#34d399" stroke-width="1.2"/>
+      <text x="310" y="86" fill="#34d399" font-size="8.5">→ SYNC_OUT</text>
+      <text x="100" y="115" fill="#94a3b8" font-size="7.5">1 cycle resolve time per FF — works for most &lt;500MHz designs</text>
+      <!-- 3-stage -->
+      <text x="10" y="145" fill="#38bdf8" font-size="9" font-weight="700">3-Stage Sync (high-speed / safety-critical)</text>
+      <text x="10" y="178" fill="#94a3b8" font-size="8">ASYNC_IN →</text>
+      <rect x="100" y="158" width="55" height="30" rx="6" fill="#1e293b" stroke="#f87171" stroke-width="1.5"/>
+      <text x="127" y="176" text-anchor="middle" fill="#f87171" font-size="8">FF1</text>
+      <line x1="155" y1="173" x2="185" y2="173" stroke="#38bdf8" stroke-width="1.2"/>
+      <rect x="187" y="158" width="55" height="30" rx="6" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="214" y="176" text-anchor="middle" fill="#fbbf24" font-size="8">FF2</text>
+      <line x1="242" y1="173" x2="272" y2="173" stroke="#38bdf8" stroke-width="1.2"/>
+      <rect x="274" y="158" width="55" height="30" rx="6" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
+      <text x="301" y="176" text-anchor="middle" fill="#34d399" font-size="8">FF3</text>
+      <line x1="329" y1="173" x2="380" y2="173" stroke="#34d399" stroke-width="1.2"/>
+      <text x="390" y="177" fill="#34d399" font-size="8">→ SYNC_OUT</text>
+      <text x="100" y="198" fill="#94a3b8" font-size="7.5">2 cycles resolve time — 1000× better MTBF at 1GHz, +1 cycle latency</text>
+      <!-- CLK label -->
+      <text x="570" y="80" fill="#94a3b8" font-size="8">CLK_DEST domain</text>
+      <text x="570" y="95" fill="#94a3b8" font-size="8">All FFs clocked by</text>
+      <text x="570" y="108" fill="#94a3b8" font-size="8">destination clock</text>
+    </svg>
+  </div>
+
+  <h2>What is Metastability? <span class="badge">DEFINITION</span></h2>
+  <p>When a flip-flop samples a signal that is changing within its <strong>setup or hold window</strong>, the output can enter a <em>metastable state</em> — neither logic 0 nor logic 1 — and remain there for an unpredictable amount of time before resolving to a valid level. This is a fundamental physical phenomenon (not a design bug) caused by the regenerative amplifier behavior of CMOS latches.</p>
+  <p>In <strong>clock domain crossing (CDC)</strong>, signals from a faster or asynchronous source clock arrive at the receiving flip-flop at an arbitrary phase — making setup/hold violations statistically unavoidable. The solution is synchronization, not elimination.</p>
+
+  <div class="warn-box">
+    <p><strong>Critical rule:</strong> You cannot prevent metastability from occurring. You can only give it time to resolve. A synchronizer adds one or more clock cycles of latency to allow the metastable flip-flop output to settle before it fans out to combinational logic.</p>
+  </div>
+
+  <h2>MTBF Equation <span class="badge">RELIABILITY</span></h2>
+  <div class="eq-box">
+    MTBF = e<sup>(T_resolve / τ)</sup> / (f_clk × f_data × C_meta)
+  </div>
+  <table class="cmp-table">
+    <tr><th>Parameter</th><th>Meaning</th><th>Typical Value</th></tr>
+    <tr><td><strong>T_resolve</strong></td><td>Time available for metastability to resolve = T_clk − T_setup</td><td>At 1GHz: 1ns − 0.05ns ≈ 0.95ns per FF stage</td></tr>
+    <tr><td><strong>τ (tau)</strong></td><td>FF metastability resolution time constant — process-dependent</td><td>28nm: ~50ps, 7nm: ~30–40ps</td></tr>
+    <tr><td><strong>f_clk</strong></td><td>Destination clock frequency</td><td>1 GHz typical</td></tr>
+    <tr><td><strong>f_data</strong></td><td>Rate at which the async signal toggles</td><td>100 MHz typical</td></tr>
+    <tr><td><strong>C_meta</strong></td><td>Metastability window constant — flip-flop specific</td><td>~10⁻¹² seconds</td></tr>
+  </table>
+  <div class="tip-box">
+    <p><strong>2-stage vs 3-stage MTBF:</strong> Adding a 3rd synchronizer FF multiplies MTBF by e<sup>(T_clk/τ)</sup>. At 1GHz with τ=50ps: multiplier = e<sup>20</sup> ≈ 5×10<sup>8</sup>. A 2-stage sync with MTBF of 100 years becomes a 3-stage sync with MTBF of 5×10<sup>10</sup> years — effectively infinite. Use 3-stage when f_clk &gt; 500MHz or safety requirements demand it.</p>
+  </div>
+
+  <h2>Synchronizer Types <span class="badge">DESIGNS</span></h2>
+  <div class="code-wrap">
+    <span class="lang-tag">verilog</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span style="color:#64748b">// Two-stage synchronizer (standard)</span>
+<span style="color:#c084fc">module</span> sync_2stage (
+  <span style="color:#38bdf8">input</span>  clk_dst, rst_n, async_in,
+  <span style="color:#38bdf8">output</span> sync_out
+);
+  <span style="color:#38bdf8">reg</span> ff1, ff2;
+  <span style="color:#64748b">// No combinational logic between FFs — synthesis must not split</span>
+  (* dont_touch = "true" *) <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> clk_dst <span style="color:#c084fc">or</span> <span style="color:#34d399">negedge</span> rst_n) <span style="color:#c084fc">begin</span>
+    <span style="color:#c084fc">if</span> (!rst_n) {ff2, ff1} &lt;= <span style="color:#34d399">2'b0</span>;
+    <span style="color:#c084fc">else</span>        {ff2, ff1} &lt;= {ff1, async_in};
+  <span style="color:#c084fc">end</span>
+  <span style="color:#c084fc">assign</span> sync_out = ff2;
+<span style="color:#c084fc">endmodule</span>
+
+<span style="color:#64748b">// Three-stage synchronizer (high-speed / safety-critical)</span>
+<span style="color:#c084fc">module</span> sync_3stage (
+  <span style="color:#38bdf8">input</span>  clk_dst, rst_n, async_in,
+  <span style="color:#38bdf8">output</span> sync_out
+);
+  <span style="color:#38bdf8">reg</span> ff1, ff2, ff3;
+  (* dont_touch = "true" *) <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> clk_dst <span style="color:#c084fc">or</span> <span style="color:#34d399">negedge</span> rst_n) <span style="color:#c084fc">begin</span>
+    <span style="color:#c084fc">if</span> (!rst_n) {ff3, ff2, ff1} &lt;= <span style="color:#34d399">3'b0</span>;
+    <span style="color:#c084fc">else</span>        {ff3, ff2, ff1} &lt;= {ff2, ff1, async_in};
+  <span style="color:#c084fc">end</span>
+  <span style="color:#c084fc">assign</span> sync_out = ff3;
+<span style="color:#c084fc">endmodule</span></pre>
+  </div>
+
+  <h2>Async FIFO — Multi-Bit CDC Using Gray Code <span class="badge">ASYNC FIFO</span></h2>
+  <p>For multi-bit data crossing clock domains, a simple synchronizer doesn't work — multiple bits changing simultaneously can be captured in a mix of old and new values. The solution is an <strong>asynchronous FIFO</strong> with <strong>Gray-coded pointers</strong>.</p>
+  <p>Why Gray code? Only <strong>one bit changes</strong> between adjacent Gray code values. So when the write pointer is synchronized into the read clock domain, even if the synchronizer captures a metastable value, it resolves to either the old or new pointer value — off by one is safe (worst case: FIFO appears slightly less full/empty than reality).</p>
+
+  <div class="code-wrap">
+    <span class="lang-tag">verilog</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span style="color:#64748b">// Async FIFO — Gray code pointer synchronization</span>
+<span style="color:#c084fc">module</span> async_fifo #(
+  <span style="color:#fbbf24">parameter</span> DATA_W = <span style="color:#34d399">8</span>,
+  <span style="color:#fbbf24">parameter</span> DEPTH  = <span style="color:#34d399">8</span>   <span style="color:#64748b">// must be power of 2</span>
+) (
+  <span style="color:#38bdf8">input</span>              wclk, wrst_n, wen,
+  <span style="color:#38bdf8">input</span>  [DATA_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] wdata,
+  <span style="color:#38bdf8">output</span>             wfull,
+
+  <span style="color:#38bdf8">input</span>              rclk, rrst_n, ren,
+  <span style="color:#38bdf8">output</span> [DATA_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] rdata,
+  <span style="color:#38bdf8">output</span>             rempty
+);
+  <span style="color:#fbbf24">localparam</span> PTR_W = $clog2(DEPTH) + <span style="color:#34d399">1</span>;  <span style="color:#64748b">// extra bit for full/empty distinction</span>
+
+  <span style="color:#38bdf8">reg</span> [DATA_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] mem [<span style="color:#34d399">0</span>:DEPTH-<span style="color:#34d399">1</span>];
+
+  <span style="color:#64748b">// Binary pointers (internal)</span>
+  <span style="color:#38bdf8">reg</span> [PTR_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] wptr_bin, rptr_bin;
+
+  <span style="color:#64748b">// Gray code pointers (for crossing)</span>
+  <span style="color:#38bdf8">wire</span> [PTR_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] wptr_gray = wptr_bin ^ (wptr_bin >> <span style="color:#34d399">1</span>);
+  <span style="color:#38bdf8">wire</span> [PTR_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] rptr_gray = rptr_bin ^ (rptr_bin >> <span style="color:#34d399">1</span>);
+
+  <span style="color:#64748b">// Synchronize wptr_gray → rclk domain (2-stage)</span>
+  <span style="color:#38bdf8">reg</span> [PTR_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] wptr_sync1, wptr_sync2;
+  <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> rclk <span style="color:#c084fc">or</span> <span style="color:#34d399">negedge</span> rrst_n) <span style="color:#c084fc">begin</span>
+    <span style="color:#c084fc">if</span> (!rrst_n) {wptr_sync2, wptr_sync1} &lt;= <span style="color:#34d399">'0</span>;
+    <span style="color:#c084fc">else</span>         {wptr_sync2, wptr_sync1} &lt;= {wptr_sync1, wptr_gray};
+  <span style="color:#c084fc">end</span>
+
+  <span style="color:#64748b">// Synchronize rptr_gray → wclk domain (2-stage)</span>
+  <span style="color:#38bdf8">reg</span> [PTR_W-<span style="color:#34d399">1</span>:<span style="color:#34d399">0</span>] rptr_sync1, rptr_sync2;
+  <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> wclk <span style="color:#c084fc">or</span> <span style="color:#34d399">negedge</span> wrst_n) <span style="color:#c084fc">begin</span>
+    <span style="color:#c084fc">if</span> (!wrst_n) {rptr_sync2, rptr_sync1} &lt;= <span style="color:#34d399">'0</span>;
+    <span style="color:#c084fc">else</span>         {rptr_sync2, rptr_sync1} &lt;= {rptr_sync1, rptr_gray};
+  <span style="color:#c084fc">end</span>
+
+  <span style="color:#64748b">// Write logic</span>
+  <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> wclk) <span style="color:#c084fc">if</span> (wen && !wfull) <span style="color:#c084fc">begin</span>
+    mem[wptr_bin[PTR_W-<span style="color:#34d399">2</span>:<span style="color:#34d399">0</span>]] &lt;= wdata;
+    wptr_bin &lt;= wptr_bin + <span style="color:#34d399">1</span>;
+  <span style="color:#c084fc">end</span>
+
+  <span style="color:#64748b">// Read logic</span>
+  <span style="color:#c084fc">assign</span> rdata = mem[rptr_bin[PTR_W-<span style="color:#34d399">2</span>:<span style="color:#34d399">0</span>]];
+  <span style="color:#c084fc">always</span> @(<span style="color:#34d399">posedge</span> rclk) <span style="color:#c084fc">if</span> (ren && !rempty) rptr_bin &lt;= rptr_bin + <span style="color:#34d399">1</span>;
+
+  <span style="color:#64748b">// Full: wptr_gray MSB != rptr_sync MSB, next MSB also != , rest equal</span>
+  <span style="color:#c084fc">assign</span> wfull  = (wptr_gray == {~rptr_sync2[PTR_W-<span style="color:#34d399">1</span>:PTR_W-<span style="color:#34d399">2</span>], rptr_sync2[PTR_W-<span style="color:#34d399">3</span>:<span style="color:#34d399">0</span>]});
+  <span style="color:#64748b">// Empty: synchronized wptr equals rptr_gray</span>
+  <span style="color:#c084fc">assign</span> rempty = (wptr_sync2 == rptr_gray);
+<span style="color:#c084fc">endmodule</span></pre>
+  </div>
+
+  <h2>2-Stage vs 3-Stage: When to Use Which <span class="badge">GUIDELINE</span></h2>
+  <table class="cmp-table">
+    <tr><th>Criterion</th><th>2-Stage Sync</th><th>3-Stage Sync</th></tr>
+    <tr><td><strong>Destination clock</strong></td><td>&lt; 500 MHz</td><td>&gt; 500 MHz</td></tr>
+    <tr><td><strong>Latency</strong></td><td>2 cycles</td><td>3 cycles (+1 vs 2-stage)</td></tr>
+    <tr><td><strong>MTBF improvement</strong></td><td>Baseline</td><td>~10⁸–10¹⁰× better at 1GHz</td></tr>
+    <tr><td><strong>Functional safety</strong></td><td>Consumer / general purpose</td><td>Automotive ASIL-D, aerospace, medical</td></tr>
+    <tr><td><strong>Timing constraint</strong></td><td>max_delay / false path on FF1→FF2</td><td>max_delay / false path on FF1→FF2 and FF2→FF3</td></tr>
+  </table>
+
+  <h2>CDC SDC Constraints <span class="badge">SDC</span></h2>
+  <div class="code-wrap">
+    <span class="lang-tag">tcl / SDC</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span style="color:#64748b"># Set false path on async input to first sync FF</span>
+set_false_path -from [get_clocks CLK_SRC] \
+               -to   [get_cells sync_ff1_reg]
+
+<span style="color:#64748b"># OR: set max delay (allows timing check on ff1→ff2)</span>
+set_max_delay -datapath_only 1.5 \
+  -from [get_cells {sync_ff1_reg}] \
+  -to   [get_cells {sync_ff2_reg}]
+
+<span style="color:#64748b"># For FIFO: constrain Gray code pointer synchronizer</span>
+set_max_delay -datapath_only [expr {1.0/$CLK_FAST_MHZ * 1e9}] \
+  -from [get_cells wptr_gray_reg*] \
+  -to   [get_cells wptr_sync1_reg*]</pre>
+  </div>
+
+  <h2>Frequently Asked Questions <span class="badge">FAQ</span></h2>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">What is metastability in clock domain crossing? <span>+</span></div>
+    <div class="faq-a"><p>Metastability occurs when a flip-flop samples a signal changing within its setup/hold window — producing an undefined output that takes unpredictable time to resolve. In CDC, asynchronous signals always risk this. Synchronizers add FF stages to give more time to resolve before the output propagates.</p></div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">When should I use a three-stage synchronizer? <span>+</span></div>
+    <div class="faq-a"><p>Use 3-stage when: destination clock &gt;500MHz, automotive/aerospace functional safety (ASIL-D), or process node τ is large. The 3rd FF multiplies MTBF by ~10⁸–10¹⁰ at 1GHz. Trade-off: +1 clock cycle latency.</p></div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">Why use Gray code in async FIFO? <span>+</span></div>
+    <div class="faq-a"><p>Gray code changes only 1 bit at a time between adjacent values. When a binary pointer crosses clock domains, multiple bits change simultaneously — can corrupt full/empty detection. With Gray code, only 1 bit changes → the synchronized pointer is always the old or new value (off by 1 at worst), which is safe for FIFO control logic.</p></div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">What SDC constraint do I need for a synchronizer? <span>+</span></div>
+    <div class="faq-a"><p>Use set_false_path or set_max_delay -datapath_only from the source clock to the first sync FF. Do NOT set false path between sync FF1 and FF2 — that path must be timed (the hold check on FF1→FF2 is real and must pass in the destination clock domain).</p></div>
+  </div>
+
+  <div style="margin:2rem 0">
+    <a href="/vlsi/cdc/" class="kw-tag">Clock Domain Crossing</a>
+    <a href="/sta/clock-skew-cts/" class="kw-tag">Clock Skew &amp; CTS</a>
+    <a href="/vlsi/" class="kw-tag">VLSI</a>
+  </div>
+</div>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer><p>© 2026 EcrioniX · <a href="/vlsi/">VLSI</a> · <a href="/sta/">STA</a></p></footer>
+<script>
+function copyCode(btn){const pre=btn.parentElement.querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);});}
+function toggleFaq(el){const a=el.nextElementSibling,s=el.querySelector('span');a.classList.toggle('open');s.textContent=a.classList.contains('open')?'−':'+';}
+window.addEventListener('scroll',()=>{document.getElementById('backTop').classList.toggle('show',window.scrollY>400);});
+</script>
+</body>
+</html>
