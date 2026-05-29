@@ -36,7 +36,7 @@
   --border:rgba(148,163,184,0.1);--border2:rgba(148,163,184,0.18);
   --teal:#2dd4bf;--sky:#38bdf8;--indigo:#818cf8;--amber:#f59e0b;
   --green:#4ade80;--red:#f87171;--muted:#94a3b8;--dim:#475569;
-  --text:#f1f5f9;--mono:'JetBrains Mono',monospace
+  --text:#f1f5f9;--mono:'Courier New',Courier,monospace
 }
 html{scroll-behavior:smooth}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.7}
@@ -95,7 +95,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* OUTPUT */
-.output{font-family:var(--mono);font-size:.8rem;line-height:1.7;padding:1rem;overflow-y:auto;min-height:320px;max-height:500px;white-space:pre;color:#94a3b8}
+.output{font-family:var(--mono);font-size:.8rem;line-height:1.7;padding:1rem;overflow-y:auto;min-height:320px;max-height:560px;white-space:pre-wrap;word-break:break-all;color:#94a3b8}
 .out-met{color:var(--green);font-weight:700}
 .out-vio{color:var(--red);font-weight:700}
 .out-path{color:var(--sky)}
@@ -105,6 +105,21 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .out-err{color:var(--red)}
 .out-dim{color:var(--dim)}
 .out-info{color:var(--teal)}
+.stage-hdr{font-family:'Outfit',sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.3rem .5rem;border-radius:4px;display:inline-block;margin-bottom:.4rem;white-space:normal}
+.stage-syn{background:rgba(45,212,191,.12);color:var(--teal)}
+.stage-sta{background:rgba(129,140,248,.12);color:var(--indigo)}
+.stage-con{background:rgba(245,158,11,.12);color:var(--amber)}
+.stage-sep{display:block;border:none;border-top:1px solid rgba(148,163,184,.1);margin:.6rem 0}
+
+/* CONSTRAINTS PANEL */
+.cons-panel{max-width:1100px;margin:.5rem auto 0;padding:0 1.5rem}
+.cons-inner{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.cons-ta{font-family:var(--mono);font-size:.8rem;line-height:1.65;background:transparent;color:#e2e8f0;border:none;outline:none;resize:vertical;width:100%;padding:.9rem 1rem;min-height:120px;tab-size:2}
+.cons-footer{padding:.5rem 1rem;border-top:1px solid var(--border);background:rgba(15,23,42,.5);display:flex;align-items:center;gap:.75rem}
+.rerun-btn{display:flex;align-items:center;gap:.4rem;background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:.35rem .85rem;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .2s}
+.rerun-btn:hover:not(:disabled){background:rgba(245,158,11,.25)}
+.rerun-btn:disabled{opacity:.5;cursor:not-allowed}
+.cons-note{font-size:.7rem;color:var(--dim)}
 
 /* LEGEND */
 .legend{max-width:1100px;margin:0 auto;padding:0 1.5rem 1rem;display:flex;gap:1rem;flex-wrap:wrap}
@@ -261,6 +276,26 @@ endmodule</textarea>
 
 </div>
 
+<!-- Constraints Panel (shown after first run) -->
+<div class="cons-panel" id="consPanel" style="display:none">
+  <div class="cons-inner">
+    <div class="panel-hdr">
+      <div class="dot" style="background:#f59e0b"></div>
+      Applied Constraints (TCL / SDC) — edit and re-run
+      <span id="cons-badge" style="margin-left:auto;font-size:.68rem;color:var(--dim)">auto-generated</span>
+    </div>
+    <textarea class="cons-ta" id="consTA" spellcheck="false"></textarea>
+    <div class="cons-footer">
+      <button class="rerun-btn" id="rerun-btn" onclick="reRunSTA()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Re-run with these constraints
+        <div class="spinner" id="respin"></div>
+      </button>
+      <span class="cons-note">Changes here are sent directly to OpenSTA — modify create_clock period, add set_false_path, etc.</span>
+    </div>
+  </div>
+</div>
+
 <!-- Legend -->
 <div class="legend">
   <div class="leg"><div class="leg-dot" style="background:var(--green)"></div><span style="font-size:.78rem;color:var(--muted)">slack (MET) — timing OK</span></div>
@@ -403,62 +438,116 @@ function loadExample(i) {
   document.getElementById('result-badge').style.display = 'none';
 }
 
+function setBadge(badge, d){
+  badge.style.display='inline';
+  if(/slack\s*\(VIOLATED\)/i.test(d.report||'')){
+    badge.textContent='VIOLATED'; badge.style.background='rgba(248,113,113,.15)'; badge.style.color='#f87171'; badge.style.border='1px solid rgba(248,113,113,.3)';
+  } else if(/slack\s*\(MET\)/i.test(d.report||'')){
+    badge.textContent='TIMING MET'; badge.style.background='rgba(74,222,128,.15)'; badge.style.color='#4ade80'; badge.style.border='1px solid rgba(74,222,128,.3)';
+  } else {
+    badge.textContent='FAILED'; badge.style.background='rgba(248,113,113,.15)'; badge.style.color='#f87171'; badge.style.border='1px solid rgba(248,113,113,.3)';
+  }
+}
+
+function renderOutput(d, freqMHz, period, clkName){
+  const detectedClk = clkName || d.clock || null;
+  let html = '';
+
+  /* ── Stage 1: Synthesis ── */
+  html += `<span class="stage-hdr stage-syn">&#9654; Synthesis &amp; Liberty Mapping  (Yosys → NanGate45)</span>\n`;
+  if(d.yosys_stat){
+    html += esc(d.yosys_stat) + '\n';
+  } else {
+    html += `<span class="out-dim">(no stat — synthesis output not available)</span>\n`;
+  }
+
+  html += `<hr class="stage-sep">`;
+
+  /* ── Stage 3: Timing Report ── */
+  html += `<span class="stage-hdr stage-sta">&#9654; OpenSTA Timing Report</span>\n`;
+  if(detectedClk){
+    html += `<span class="out-dim">Clock: ${esc(detectedClk)} · ${freqMHz} MHz · period ${period.toFixed(3)} ns · I/O delay ${(period*0.1).toFixed(3)} ns\n</span>`;
+  } else {
+    html += `<span class="out-dim">No clock — unconstrained analysis\n</span>`;
+  }
+  if(d.success && d.report){
+    html += fmt(d.report);
+  } else {
+    html += `<span class="out-err">── Synthesis / STA failed ──────────────────\n${esc(d.stderr||'')}\n</span>`;
+    if(d.report) html += fmt(d.report);
+  }
+  return html;
+}
+
+async function callSTA(payload, out, badge, freqMHz, period, clkName){
+  let attempts=0, res;
+  while(attempts<3){
+    try{
+      res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      break;
+    }catch(e){
+      attempts++;
+      if(attempts>=3) throw e;
+      out.innerHTML=`<span class="out-info">Server waking up... retry ${attempts}/3</span>`;
+      await new Promise(r=>setTimeout(r,20000));
+    }
+  }
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const d = await res.json();
+
+  /* populate constraints panel */
+  if(d.tcl_constraints){
+    document.getElementById('consTA').value = d.tcl_constraints;
+    document.getElementById('consPanel').style.display = 'block';
+    document.getElementById('cons-badge').textContent = payload.custom_tcl ? 'user-edited' : 'auto-generated';
+  }
+
+  setBadge(badge, d);
+  out.innerHTML = renderOutput(d, freqMHz, period, clkName);
+  return d;
+}
+
 async function runSTA(){
   const code = document.getElementById('code').value.trim();
   if(!code) return;
-  const freqMHz   = parseFloat(document.getElementById('freq-num').value)||100;
-  const period    = +(1000/freqMHz).toFixed(6);
-  const clkName   = (document.getElementById('clk-name').value||'').trim();
+  const freqMHz = parseFloat(document.getElementById('freq-num').value)||100;
+  const period  = 1000/freqMHz;
+  const clkName = (document.getElementById('clk-name').value||'').trim();
 
-  const btn=document.getElementById('run-btn');
-  const sp=document.getElementById('spin');
-  const out=document.getElementById('output');
-  const badge=document.getElementById('result-badge');
+  const btn=document.getElementById('run-btn'), sp=document.getElementById('spin');
+  const out=document.getElementById('output'), badge=document.getElementById('result-badge');
   btn.disabled=true; sp.style.display='block'; badge.style.display='none';
   out.innerHTML='<span class="out-info">Running Yosys → OpenSTA pipeline...</span>';
 
-  const payload = {code, period};
+  const payload = {code, period: +period.toFixed(6)};
   if(clkName) payload.clock_name = clkName;
 
-  try{
-    let attempts=0;
-    let res;
-    while(attempts<3){
-      try{
-        res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        break;
-      }catch(e){
-        attempts++;
-        if(attempts>=3) throw e;
-        out.innerHTML=`<span class="out-info">Server waking up... retry ${attempts}/3 (HF free tier sleeps after inactivity)</span>`;
-        await new Promise(r=>setTimeout(r,20000));
-      }
-    }
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const d = await res.json();
+  try{ await callSTA(payload, out, badge, freqMHz, period, clkName); }
+  catch(e){
+    out.innerHTML=`<span class="out-err">── Connection error ──\n${esc(e.message)}\n</span><span class="out-dim">Backend sleeps on free tier — click Run STA again (~60 s warm-up).</span>`;
+  }finally{ btn.disabled=false; sp.style.display='none'; }
+}
 
-    const detectedClk = clkName || d.clock || null;
-    const clkNote = detectedClk
-      ? `<span class="out-dim">Clock: ${esc(detectedClk)} · ${freqMHz} MHz · period ${period} ns · I/O delay ${(period*0.1).toFixed(3)} ns\n\n</span>`
-      : `<span class="out-dim">No clock detected — unconstrained combinational analysis\n\n</span>`;
+async function reRunSTA(){
+  const code = document.getElementById('code').value.trim();
+  if(!code) return;
+  const freqMHz = parseFloat(document.getElementById('freq-num').value)||100;
+  const period  = 1000/freqMHz;
+  const clkName = (document.getElementById('clk-name').value||'').trim();
+  const customTcl = document.getElementById('consTA').value.trim();
 
-    if(d.success){
-      const hasMet = /slack\s*\(MET\)/i.test(d.report);
-      const hasVio = /slack\s*\(VIOLATED\)/i.test(d.report);
-      badge.style.display='inline';
-      if(hasVio){ badge.textContent='VIOLATED'; badge.style.background='rgba(248,113,113,.15)'; badge.style.color='#f87171'; badge.style.border='1px solid rgba(248,113,113,.3)'; }
-      else if(hasMet){ badge.textContent='TIMING MET'; badge.style.background='rgba(74,222,128,.15)'; badge.style.color='#4ade80'; badge.style.border='1px solid rgba(74,222,128,.3)'; }
-      out.innerHTML = clkNote + fmt(d.report);
-    } else {
-      badge.textContent='FAILED'; badge.style.display='inline';
-      badge.style.background='rgba(248,113,113,.15)'; badge.style.color='#f87171'; badge.style.border='1px solid rgba(248,113,113,.3)';
-      out.innerHTML = clkNote
-        + `<span class="out-err">── Synthesis / STA failed ────────────────\n${esc(d.stderr||'')}\n</span>`
-        + (d.report ? fmt(d.report) : '');
-    }
-  }catch(e){
-    out.innerHTML=`<span class="out-err">── Connection error ──────────────────────\n${esc(e.message)}\n</span><span class="out-dim">The backend sleeps on the free tier. Click Run STA again — it connects within ~60 s.</span>`;
-  }finally{btn.disabled=false;sp.style.display='none';}
+  const rbtn=document.getElementById('rerun-btn'), rspin=document.getElementById('respin');
+  const out=document.getElementById('output'), badge=document.getElementById('result-badge');
+  rbtn.disabled=true; rspin.style.display='block'; badge.style.display='none';
+  out.innerHTML='<span class="out-info">Re-running with custom constraints...</span>';
+
+  const payload = {code, period: +period.toFixed(6), custom_tcl: customTcl};
+  if(clkName) payload.clock_name = clkName;
+
+  try{ await callSTA(payload, out, badge, freqMHz, period, clkName); }
+  catch(e){
+    out.innerHTML=`<span class="out-err">── Connection error ──\n${esc(e.message)}\n</span>`;
+  }finally{ rbtn.disabled=false; rspin.style.display='none'; }
 }
 
 // back-to-top
