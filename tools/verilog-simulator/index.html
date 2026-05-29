@@ -405,6 +405,11 @@
     <span>SKY130</span>
     <div class="spinner" id="sky130-spin" style="border-color:rgba(74,222,128,.25);border-top-color:#4ade80"></div>
   </button>
+  <button class="synth-btn" id="floorplan-btn" onclick="floorplanCode()" style="border-color:rgba(192,132,252,0.35);background:rgba(192,132,252,0.08);color:#c084fc">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 9v12M3 15h6"/></svg>
+    <span>Floorplan</span>
+    <div class="spinner" id="fp-spin" style="border-color:rgba(192,132,252,.25);border-top-color:#c084fc"></div>
+  </button>
   <button class="synth-btn" id="lint-btn" onclick="runLint()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     <span id="lint-label">Lint</span>
@@ -448,6 +453,7 @@
       <div class="out-tab" id="tab-liberty" onclick="switchTab('liberty',this)">Liberty</div>
       <div class="out-tab" id="tab-sta" onclick="switchTab('sta',this)">STA</div>
       <div class="out-tab" id="tab-sky130" onclick="switchTab('sky130',this)" style="color:#4ade80">SKY130</div>
+      <div class="out-tab" id="tab-floorplan" onclick="switchTab('floorplan',this)" style="color:#c084fc">Floorplan</div>
       <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
     </div>
 
@@ -495,6 +501,11 @@
     <!-- SKY130 -->
     <div class="out-panel" id="panel-sky130">
       <div id="sky130-out"><span class="dim">// Click SKY130 to synthesise with SkyWater 130nm standard cells...</span></div>
+    </div>
+
+    <!-- FLOORPLAN -->
+    <div class="out-panel" id="panel-floorplan">
+      <div id="floorplan-out"><span class="dim">// Click Floorplan to run SKY130 synthesis → OpenROAD die/core planning...</span></div>
     </div>
 
     <!-- WAVEFORM -->
@@ -2229,6 +2240,67 @@ async function sky130Code(){
   }catch(e){
     out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────────\n${esc(e.message)}\n</span>`
       +`<span class="dim">The backend sleeps on the free tier. Click SKY130 again — connects within ~60 s.</span>`;
+    setStatus('err','Server unreachable — retry');
+  }finally{btn.disabled=false;sp.style.display='none';}
+}
+
+// ── OpenROAD Floorplan ───────────────────────────────────
+const FLOORPLAN_API = 'https://ecrionix-ecrionix-verilog.hf.space/floorplan';
+
+function fmtFloorplan(text){
+  return text.split('\n').map(line=>{
+    const e = esc(line);
+    if(/^\s*\[INFO/.test(line))  return `<span style="color:#94a3b8">${e}</span>`;
+    if(/^\s*\[WARN/.test(line))  return `<span class="sy-warn">${e}</span>`;
+    if(/^\s*\[ERROR/.test(line)) return `<span class="sy-err">${e}</span>`;
+    if(/die area|core area|design area|utilization/i.test(line)) return `<span style="color:#c084fc;font-weight:600">${e}</span>`;
+    if(/sky130_fd_sc_hd__/i.test(line)) return `<span style="color:#4ade80">${e}</span>`;
+    return e;
+  }).join('\n');
+}
+
+async function floorplanCode(){
+  files[activeFile].code = ed.value;
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+  const btn=document.getElementById('floorplan-btn');
+  const sp=document.getElementById('fp-spin');
+  btn.disabled=true; sp.style.display='inline-block';
+  const out=document.getElementById('floorplan-out');
+  out.innerHTML='<span class="info">Running SKY130 synthesis → OpenROAD floorplan...</span>\n';
+  switchTab('floorplan', document.getElementById('tab-floorplan'));
+  const t0=Date.now();
+  try{
+    const res=await apiFetch(FLOORPLAN_API,{code},(attempt,s)=>{
+      out.innerHTML=`<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt+1}/3)\n</span>`;
+      setStatus('run',`Waking server... ${Math.round(s)}s`);
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('status-time').textContent=ms;
+    if(d.success){
+      const dieStr = d.die_side ? `${d.die_side} × ${d.die_side} µm` : '—';
+      const coreStr= d.core_side? `${d.core_side} × ${d.core_side} µm` : '—';
+      const areaStr= d.chip_area_um2 ? `${d.chip_area_um2.toFixed(1)} µm²` : '—';
+      out.innerHTML=
+        `<span style="color:#c084fc;font-weight:600">── OpenROAD Floorplan complete (${ms}) ──────────\n</span>`
+        +`<span style="color:#64748b;font-size:.75rem">Process: SkyWater SKY130 HD · Site: unithd · Target utilisation: 40%\n\n</span>`
+        +`<span style="color:#e2e8f0;font-weight:600">Die:  ${dieStr}  |  Core: ${coreStr}  |  Cell area: ${areaStr}\n\n</span>`
+        +(d.yosys_stat?`<span style="color:#64748b;font-size:.75rem">─── SKY130 Synthesis Stat ───\n</span>`+fmtSKY130(d.yosys_stat)+'\n\n':'')
+        +`<span style="color:#64748b;font-size:.75rem">─── OpenROAD Log ───\n</span>`
+        +fmtFloorplan(d.report);
+      setStatus('ok',`Floorplan done — ${ms}`);
+    } else {
+      out.innerHTML=`<span class="sy-err">── Floorplan failed ─────────────────────────────────\n</span>`
+        +(d.yosys_stat?`<span style="color:#64748b">SKY130 stat:\n</span>`+fmtSKY130(d.yosys_stat)+'\n':'')
+        +`<span class="sy-err">${esc(d.stderr||'Unknown error')}</span>`;
+      setStatus('err','Floorplan failed');
+    }
+  }catch(e){
+    out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────────\n${esc(e.message)}\n</span>`
+      +`<span class="dim">The backend sleeps on the free tier. Click Floorplan again — connects within ~60 s.</span>`;
     setStatus('err','Server unreachable — retry');
   }finally{btn.disabled=false;sp.style.display='none';}
 }
