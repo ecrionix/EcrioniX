@@ -1283,6 +1283,23 @@ function lintCode(rawCode){
   const mc=(src.match(/\bendmodule\b/g)||[]).length;
   if(mo>mc) add(lines.length,'err','L008','Module not closed — missing endmodule');
 
+  // Undriven internal wires — declared wire/reg never appears on LHS of assign/always
+  const wireDecls=[];
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(/^\s*wire\s+(?:\[[^\]]+\]\s*)?(\w+)\s*;/);
+    if(m) wireDecls.push({name:m[1],ln:i+1});
+  }
+  for(const {name,ln} of wireDecls){
+    // driven if: assign <name> = ... OR <name> <= OR <name> =
+    const driven=lines.some(l=>{
+      const s=l.replace(/\/\/.*/,'');
+      return new RegExp('\\bassign\\s+'+name+'\\b').test(s)||
+             new RegExp('\\b'+name+'\\s*<=').test(s)||
+             new RegExp('\\b'+name+'\\s*=(?!=)').test(s);
+    });
+    if(!driven) add(ln,'warn','L009','Wire "'+name+'" is never driven — reads as X/Z');
+  }
+
   return issues.sort((a,b)=>a.ln-b.ln);
 }
 
