@@ -400,6 +400,11 @@
     <span>STA</span>
     <div class="spinner" id="sta-spin" style="border-color:rgba(129,140,248,.25);border-top-color:#818cf8"></div>
   </button>
+  <button class="synth-btn" id="sky130-btn" onclick="sky130Code()" style="border-color:rgba(74,222,128,0.35);background:rgba(74,222,128,0.08);color:#4ade80">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
+    <span>SKY130</span>
+    <div class="spinner" id="sky130-spin" style="border-color:rgba(74,222,128,.25);border-top-color:#4ade80"></div>
+  </button>
   <button class="synth-btn" id="lint-btn" onclick="runLint()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     <span id="lint-label">Lint</span>
@@ -442,6 +447,7 @@
       <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
       <div class="out-tab" id="tab-liberty" onclick="switchTab('liberty',this)">Liberty</div>
       <div class="out-tab" id="tab-sta" onclick="switchTab('sta',this)">STA</div>
+      <div class="out-tab" id="tab-sky130" onclick="switchTab('sky130',this)" style="color:#4ade80">SKY130</div>
       <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
     </div>
 
@@ -484,6 +490,11 @@
     <!-- STA -->
     <div class="out-panel" id="panel-sta">
       <div id="sta-out"><span class="dim">// Click STA to run OpenSTA static timing analysis...</span></div>
+    </div>
+
+    <!-- SKY130 -->
+    <div class="out-panel" id="panel-sky130">
+      <div id="sky130-out"><span class="dim">// Click SKY130 to synthesise with SkyWater 130nm standard cells...</span></div>
     </div>
 
     <!-- WAVEFORM -->
@@ -2151,6 +2162,73 @@ async function staCode(){
   }catch(e){
     out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────\n${esc(e.message)}\n</span>`
       +`<span class="dim">The backend sleeps on the free tier. Click STA again — it connects within ~60 s.</span>`;
+    setStatus('err','Server unreachable — retry');
+  }finally{btn.disabled=false;sp.style.display='none';}
+}
+
+// ── SKY130 Synthesis ──────────────────────────────────
+const SKY130_API = 'https://ecrionix-ecrionix-verilog.hf.space/synth-sky130';
+
+function fmtSKY130(text){
+  return text.split('\n').map(line=>{
+    const e = esc(line);
+    if(/^\s*===/.test(line))           return `<span class="sy-hdr">${e}</span>`;
+    if(/^Error/i.test(line.trim()))    return `<span class="sy-err">${e}</span>`;
+    if(/^Warn/i.test(line.trim()))     return `<span class="sy-warn">${e}</span>`;
+    if(/Chip area/i.test(line))        return `<span style="color:#4ade80;font-weight:600">${e}</span>`;
+    if(/Number of/.test(line)){
+      return e.replace(/(\d+(?:\.\d+)?)(?=\s*$)/,
+        n=>`<span class="sy-num">${n}</span>`)
+       .replace(/(Number of [^:]+)/,
+        m=>`<span style="color:#94a3b8">${m}</span>`);
+    }
+    // sky130 cell line: "  sky130_fd_sc_hd__dfxtp_1   4"
+    if(/^\s+sky130_/.test(line)){
+      return e.replace(/(\d+(?:\.\d+)?)\s*$/,
+        n=>`<span class="sy-num">${n}</span>`)
+       .replace(/(sky130_fd_sc_hd__\S+)/,
+        m=>`<span style="color:#4ade80">${m}</span>`);
+    }
+    return e;
+  }).join('\n');
+}
+
+async function sky130Code(){
+  files[activeFile].code = ed.value;
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+  const btn=document.getElementById('sky130-btn');
+  const sp=document.getElementById('sky130-spin');
+  btn.disabled=true; sp.style.display='block';
+  setStatus('run','Synthesising with SKY130...');
+  const out=document.getElementById('sky130-out');
+  out.innerHTML='<span class="info">Running Yosys → SkyWater SKY130 HD synthesis...</span>\n';
+  switchTab('sky130', document.getElementById('tab-sky130'));
+  const t0=Date.now();
+  try{
+    const res=await apiFetch(SKY130_API,{code},(attempt,s)=>{
+      out.innerHTML=`<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt+1}/3)\n</span>`;
+      setStatus('run',`Waking server... ${Math.round(s)}s`);
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('status-time').textContent=ms;
+    if(d.success){
+      out.innerHTML=`<span style="color:#4ade80;font-weight:600">── SKY130 HD Synthesis complete (${ms}) ──────────\n</span>`
+        +`<span style="color:#64748b;font-size:.75rem">Library: sky130_fd_sc_hd · TT corner 25°C 1.8V\n\n</span>`
+        +fmtSKY130(d.report);
+      setStatus('ok',`SKY130 done — ${ms}`);
+    } else {
+      out.innerHTML=`<span class="sy-err">── SKY130 synthesis failed ────────────────────────\n</span>`
+        +fmtSKY130(d.report)
+        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      setStatus('err','SKY130 synthesis failed');
+    }
+  }catch(e){
+    out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────────\n${esc(e.message)}\n</span>`
+      +`<span class="dim">The backend sleeps on the free tier. Click SKY130 again — connects within ~60 s.</span>`;
     setStatus('err','Server unreachable — retry');
   }finally{btn.disabled=false;sp.style.display='none';}
 }
