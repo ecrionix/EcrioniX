@@ -390,6 +390,11 @@
     <span>Synth</span>
     <div class="spinner teal" id="synth-spin"></div>
   </button>
+  <button class="synth-btn" id="liberty-btn" onclick="libertyCode()" style="border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.08);color:#f59e0b">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M9 7V4M12 7V4M15 7V4M9 17v3M12 17v3M15 17v3M7 9H4M7 12H4M7 15H4M17 9h3M17 12h3M17 15h3"/></svg>
+    <span>Liberty</span>
+    <div class="spinner" id="liberty-spin" style="border-color:rgba(245,158,11,.25);border-top-color:#f59e0b"></div>
+  </button>
   <button class="synth-btn" id="lint-btn" onclick="runLint()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     <span id="lint-label">Lint</span>
@@ -430,6 +435,7 @@
       <div class="out-tab" id="tab-lint" onclick="switchTab('lint',this)">Lint</div>
       <div class="out-tab" id="tab-waveform" onclick="switchTab('waveform',this)">Waveform</div>
       <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
+      <div class="out-tab" id="tab-liberty" onclick="switchTab('liberty',this)">Liberty</div>
       <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
     </div>
 
@@ -462,6 +468,11 @@
     <!-- SYNTHESIS -->
     <div class="out-panel" id="panel-synth">
       <div id="synth-out"><span class="dim">// Click Synth to run Yosys synthesis...</span></div>
+    </div>
+
+    <!-- LIBERTY -->
+    <div class="out-panel" id="panel-liberty">
+      <div id="liberty-out"><span class="dim">// Click Liberty to map to NanGate45 standard cells...</span></div>
     </div>
 
     <!-- WAVEFORM -->
@@ -1995,6 +2006,67 @@ async function synthCode(){
   }catch(e){
     out.innerHTML=`<span class="sy-err">── Error ───────────────────────────────\n${esc(e.message)}\n</span>`
       +`<span class="dim">The backend sleeps on the free tier. Click Synth again — it connects within ~60 s.</span>`;
+    setStatus('err','Server unreachable — retry');
+  }finally{btn.disabled=false;sp.style.display='none';}
+}
+
+// ── Liberty Synthesis (NanGate45) ─────────────────────
+const LIBERTY_API = 'https://ecrionix-ecrionix-verilog.hf.space/synth-liberty';
+
+function fmtLiberty(text){
+  return text.split('\n').map(line=>{
+    const e=esc(line);
+    if(/^\s*===/.test(line))          return `<span class="sy-hdr">${e}</span>`;
+    if(/^Error/i.test(line.trim()))   return `<span class="sy-err">${e}</span>`;
+    if(/^Warn/i.test(line.trim()))    return `<span class="sy-warn">${e}</span>`;
+    if(/Successfully/i.test(line))    return `<span class="sy-ok">${e}</span>`;
+    if(/Chip area/i.test(line))       return `<span style="color:#f59e0b;font-weight:600">${e}</span>`;
+    if(/Number of/.test(line)){
+      return e.replace(/(\d+(?:\.\d+)?)(?=\s*$)/, n=>`<span class="sy-num">${n}</span>`)
+              .replace(/(Number of [^:]+)/, m=>`<span style="color:#94a3b8">${m}</span>`);
+    }
+    if(/^\s+\w[\w$]*\s+\d/.test(line)){
+      return e.replace(/(\d+(?:\.\d+)?)\s*$/, n=>`<span class="sy-num">${n}</span>`)
+              .replace(/(\w[\w$]*)(?=\s+\d)/, m=>`<span class="sy-cell">${m}</span>`);
+    }
+    return e;
+  }).join('\n');
+}
+
+async function libertyCode(){
+  files[activeFile].code = ed.value;
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+  const btn=document.getElementById('liberty-btn');
+  const sp=document.getElementById('liberty-spin');
+  btn.disabled=true; sp.style.display='block';
+  setStatus('run','Mapping to NanGate45...');
+  const out=document.getElementById('liberty-out');
+  out.innerHTML='<span class="info">Connecting to Liberty synthesis server...</span>\n';
+  switchTab('liberty', document.getElementById('tab-liberty'));
+  const t0=Date.now();
+  try{
+    const res=await apiFetch(LIBERTY_API,{code},(attempt,s)=>{
+      out.innerHTML=`<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt+1}/3)\nHugging Face Spaces sleep after inactivity; this can take 30–60 s.\n</span>`;
+      setStatus('run',`Waking server... ${Math.round(s)}s`);
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('status-time').textContent=ms;
+    if(d.success){
+      out.innerHTML=`<span class="sy-ok">── NanGate45 Liberty mapping complete (${ms}) ──────\n</span>`+fmtLiberty(d.report);
+      setStatus('ok',`Liberty done — ${ms}`);
+    } else {
+      out.innerHTML=`<span class="sy-err">── Liberty synthesis failed ─────────────────────────\n</span>`
+        +fmtLiberty(d.report)
+        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      setStatus('err','Liberty synthesis failed');
+    }
+  }catch(e){
+    out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────────\n${esc(e.message)}\n</span>`
+      +`<span class="dim">The backend sleeps on the free tier. Click Liberty again — it connects within ~60 s.</span>`;
     setStatus('err','Server unreachable — retry');
   }finally{btn.disabled=false;sp.style.display='none';}
 }
