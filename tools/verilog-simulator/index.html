@@ -196,6 +196,17 @@
     .ftab-x:hover{color:var(--rose);background:rgba(251,113,133,0.1)}
     .ftab-add{padding:.3rem .7rem;font-size:.72rem;color:#2a3a50;background:none;border:none;cursor:pointer;transition:.15s;font-family:'Outfit',sans-serif;white-space:nowrap;margin-left:.25rem}
     .ftab-add:hover{color:var(--sky)}
+    /* RTL / TB section labels & colored active tabs */
+    .ftab.rtl-active{color:#38bdf8;border-bottom-color:#38bdf8;background:rgba(56,189,248,0.06)}
+    .ftab.tb-active{color:#a78bfa;border-bottom-color:#a78bfa;background:rgba(167,139,250,0.06)}
+    .ftab-section-label{font-size:.56rem;font-family:'Orbitron',sans-serif;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:.28rem .55rem;white-space:nowrap;user-select:none;flex-shrink:0;align-self:center}
+    .ftab-section-label.rtl-lbl{color:rgba(56,189,248,0.38)}
+    .ftab-section-label.tb-lbl{color:rgba(167,139,250,0.38)}
+    .ftab-divider-v{width:1px;height:16px;background:rgba(148,163,184,0.12);flex-shrink:0;margin:.25rem .2rem;align-self:center}
+    .ftab-add-rtl{padding:.28rem .58rem;font-size:.69rem;color:rgba(56,189,248,0.38);background:none;border:none;cursor:pointer;transition:.15s;font-family:'Outfit',sans-serif;white-space:nowrap}
+    .ftab-add-rtl:hover{color:#38bdf8}
+    .ftab-add-tb{padding:.28rem .58rem;font-size:.69rem;color:rgba(167,139,250,0.38);background:none;border:none;cursor:pointer;transition:.15s;font-family:'Outfit',sans-serif;white-space:nowrap}
+    .ftab-add-tb:hover{color:#a78bfa}
     .file-op-btn{padding:.18rem .52rem;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--slate);font-size:.67rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.15s;white-space:nowrap;line-height:1.5}
     .file-op-btn:hover{border-color:var(--sky-brd);color:var(--sky)}
     #lint-btn{border-color:rgba(251,191,36,0.35)!important;background:rgba(251,191,36,0.07)!important;color:var(--amber)!important}
@@ -1002,19 +1013,76 @@ function jumpToFirstError(){
 }
 
 // ════════════════════════════════════════════════════════
-//  FILE TABS
+//  FILE TABS  (RTL | TB sections)
 // ════════════════════════════════════════════════════════
-let files = [{ name:'design.v', code:'' }];
+const RTL_BOILERPLATE =
+`module module_name (
+    input  wire clk,
+    input  wire rst_n,
+    input  wire [7:0] data_in,
+    output reg  [7:0] data_out
+);
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      data_out <= 8'h00;
+    else
+      data_out <= data_in;
+  end
+
+endmodule`;
+
+const TB_BOILERPLATE =
+`\`timescale 1ns/1ps
+module tb_module;
+  reg        clk   = 0;
+  reg        rst_n = 0;
+  reg  [7:0] data_in  = 0;
+  wire [7:0] data_out;
+
+  module_name dut (
+    .clk(clk), .rst_n(rst_n),
+    .data_in(data_in), .data_out(data_out)
+  );
+
+  always #5 clk = ~clk;
+
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb_module);
+    #20 rst_n = 1;
+    #10 data_in = 8'hAB;
+    #10 data_in = 8'hCD;
+    #20 $finish;
+  end
+
+  initial $monitor("%0t clk=%b rst=%b in=%h out=%h",
+    $time, clk, rst_n, data_in, data_out);
+endmodule`;
+
+let files = [{ name:'design.v', code:'', type:'rtl' }];
 let activeFile = 0;
 
 function renderFileTabs(){
   const bar = document.getElementById('file-tabs');
-  bar.innerHTML = files.map((f,i)=>`
-    <div class="ftab${i===activeFile?' active':''}" onclick="switchFile(${i})">
+  const rtlFiles = files.map((f,i)=>({f,i})).filter(({f})=>f.type!=='tb');
+  const tbFiles  = files.map((f,i)=>({f,i})).filter(({f})=>f.type==='tb');
+  function tabHtml({f,i}){
+    const isActive = i===activeFile;
+    const cls = isActive ? (f.type==='tb' ? 'ftab tb-active' : 'ftab rtl-active') : 'ftab';
+    return `<div class="${cls}" onclick="switchFile(${i})">
       <span>${f.name}</span>
       ${files.length>1?`<span class="ftab-x" onclick="event.stopPropagation();closeFile(${i})">×</span>`:''}
-    </div>`).join('')
-    + `<button class="ftab-add" onclick="addFile()">＋ New File</button>`;
+    </div>`;
+  }
+  let html = `<span class="ftab-section-label rtl-lbl">RTL</span>`;
+  html += rtlFiles.map(tabHtml).join('');
+  html += `<button class="ftab-add-rtl" onclick="addFileOfType('rtl')" title="New RTL module">＋ RTL</button>`;
+  html += `<div class="ftab-divider-v"></div>`;
+  html += `<span class="ftab-section-label tb-lbl">TB</span>`;
+  html += tbFiles.map(tabHtml).join('');
+  html += `<button class="ftab-add-tb" onclick="addFileOfType('tb')" title="New testbench">＋ TB</button>`;
+  bar.innerHTML = html;
 }
 
 function switchFile(idx){
@@ -1026,12 +1094,14 @@ function switchFile(idx){
   renderFileTabs();
 }
 
-function addFile(){
+function addFileOfType(type){
   files[activeFile].code = ed.value;
-  const n = files.length + 1;
-  files.push({ name:`file${n}.v`, code:'' });
+  const n = files.filter(f=>f.type===type).length + 1;
+  const name = type==='tb' ? `tb_module${n}.v` : `module${n}.v`;
+  const code = type==='tb' ? TB_BOILERPLATE : RTL_BOILERPLATE;
+  files.push({ name, code, type });
   activeFile = files.length - 1;
-  ed.value = '';
+  ed.value = code;
   updateLines(); updateHighlight();
   renderFileTabs();
 }
@@ -1242,8 +1312,9 @@ function lintJumpTo(fileIdx,ln){
   document.getElementById('lnums').scrollTop=top;
 }
 
-function isTbFile(name){
-  const n=name.toLowerCase();
+function isTbFile(f){
+  if(typeof f==='object'&&f!==null) return f.type==='tb'||isTbFile(f.name);
+  const n=f.toLowerCase();
   return n.startsWith('tb_')||n.endsWith('_tb.v')||n.endsWith('_tb.sv')||n.includes('_tb_')||n.includes('testbench')||n==='tb.v'||n==='tb.sv';
 }
 
@@ -1253,7 +1324,7 @@ function runLint(){
   const list=document.getElementById('lint-file-list');
   list.innerHTML='';
   files.forEach((f,i)=>{
-    const isTb=isTbFile(f.name);
+    const isTb=isTbFile(f);
     const item=document.createElement('div');
     item.className='lint-file-item';
     item.innerHTML=`<input type="checkbox" id="lf${i}" data-idx="${i}" checked>
@@ -1327,9 +1398,9 @@ const _fileInput = (()=>{
       files[activeFile].code = ed.value;
       const content = ev.target.result;
       if(files[activeFile].code.trim() === ''){
-        files[activeFile] = {name: f.name, code: content};
+        files[activeFile] = {name: f.name, code: content, type:isTbFile(f.name)?'tb':'rtl'};
       } else {
-        files.push({name: f.name, code: content});
+        files.push({name: f.name, code: content, type:isTbFile(f.name)?'tb':'rtl'});
         activeFile = files.length - 1;
       }
       ed.value = files[activeFile].code;
@@ -1520,7 +1591,7 @@ ed.addEventListener('keydown', e=>{
 });
 
 function load(name, btn){
-  files = EXAMPLES[name].map(f=>({name:f.name, code:f.code}));
+  files = EXAMPLES[name].map(f=>({name:f.name, code:f.code, type:isTbFile(f.name)?'tb':'rtl'}));
   activeFile = 0;
   ed.value = files[0].code;
   updateLines(); updateHighlight(); renderFileTabs();
@@ -1531,7 +1602,7 @@ function load(name, btn){
 }
 
 function clearAll(){
-  files = [{ name:'design.v', code:'' }];
+  files = [{ name:'design.v', code:'', type:'rtl' }];
   activeFile = 0;
   ed.value=''; updateLines(); updateHighlight(); renderFileTabs();
   document.getElementById('console').innerHTML='<span class="dim">// Output will appear here...</span>';
@@ -2199,7 +2270,7 @@ window.addEventListener('keydown',e=>{ if(e.key==='Escape' && _pendingClose!==nu
     if(!c) return;
     const data=JSON.parse(decodeURIComponent(escape(atob(c))));
     if(Array.isArray(data)&&data.length){
-      files=data.map(f=>({name:String(f.name||'file.v'),code:String(f.code||'')}));
+      files=data.map(f=>({name:String(f.name||'file.v'),code:String(f.code||''),type:f.type||(isTbFile(String(f.name||''))?'tb':'rtl')}));
       activeFile=0;
       ed.value=files[0].code;
       updateLines(); updateHighlight(); renderFileTabs();
