@@ -1141,7 +1141,40 @@ function _doCloseFile(idx){
 }
 
 // ════════════════════════════════════════════════════════
-//  VERILOG LINTER
+//  VERILATOR LINT (backend) + manual fallback
+// ════════════════════════════════════════════════════════
+const LINT_API = 'https://ecrionix-ecrionix-verilog.hf.space/lint';
+
+// Parse Verilator stderr: "%Warning-RULE: file:line:col: msg"
+// fileRanges: [{fileIdx, fileName, start, end}] for line→file mapping
+function parseVerilatorOutput(text, fileRanges){
+  const issues=[];
+  for(const raw of text.split('\n')){
+    const line=raw.trim();
+    // %Warning-ID: path:line:col: message  OR  %Error[-ID]: path:line:col: message
+    const m=line.match(/^%(Warning|Error)(?:-(\w+))?:\s*[^:]*:(\d+):\d+:\s*(.+)/);
+    if(!m) continue;
+    const [,level,rule,lineStr,msg]=m;
+    if(/note:|See also/i.test(msg)) continue; // skip continuation notes
+    const absLn=parseInt(lineStr);
+    const sev=level==='Error'?'err':'warn';
+    const id=(rule||'LINT').slice(0,10);
+    // map absolute line → file
+    let fileIdx=fileRanges[0]?.fileIdx??0;
+    let fileName=fileRanges[0]?.fileName??'design.v';
+    let fileLn=absLn;
+    for(const r of fileRanges){
+      if(absLn>=r.start&&absLn<=r.end){
+        fileIdx=r.fileIdx; fileName=r.fileName; fileLn=absLn-r.start+1; break;
+      }
+    }
+    issues.push({ln:fileLn,sev,id,msg:msg.trim(),fileIdx,fileName});
+  }
+  return issues.sort((a,b)=>a.fileIdx-b.fileIdx||a.ln-b.ln);
+}
+
+// ════════════════════════════════════════════════════════
+//  MANUAL LINT FALLBACK
 // ════════════════════════════════════════════════════════
 function lintStrip(src){
   let out='',i=0,n=src.length;
@@ -1261,13 +1294,17 @@ function lintAll(){
   return all;
 }
 
-function renderLintResults(allIssues){
+function renderLintResults(allIssues, engine='verilator'){
   const out=document.getElementById('lint-out');
+  const engineTag = engine==='verilator'
+    ? '<span style="color:#2dd4bf;font-size:.68rem;font-weight:700">VERILATOR</span>'
+    : '<span style="color:#fbbf24;font-size:.68rem;font-weight:700">MANUAL</span>';
   if(!allIssues.length){
-    out.innerHTML='<span class="ok">── Lint Passed ─────────────────────────────────\n✓  No issues detected.\n────────────────────────────────────────────────</span>';
+    out.innerHTML=`<span class="ok">── Lint Passed [${engine==='verilator'?'Verilator':'Manual'}] ────────────────\n✓  No issues detected.\n──────────────────────────────────────────────</span>`;
     return;
   }
-  let html='',lastFile=null;
+  let html=`<span class="dim">── Engine: ${engineTag}\n</span>`;
+  let lastFile=null;
   for(const iss of allIssues){
     if(iss.fileName!==lastFile){
       const bar='─'.repeat(Math.max(2,38-iss.fileName.length));
@@ -1276,7 +1313,7 @@ function renderLintResults(allIssues){
     }
     const cls=iss.sev==='err'?'err':iss.sev==='warn'?'warn':'info';
     const icon=iss.sev==='err'?'✗':iss.sev==='warn'?'⚠':'ℹ';
-    html+=`<span class="lint-issue ${cls}" onclick="lintJumpTo(${iss.fileIdx},${iss.ln})">${icon} [${iss.id}]  line ${String(iss.ln).padStart(4,' ')}  ${esc(iss.msg)}\n</span>`;
+    html+=`<span class="lint-issue ${cls}" onclick="lintJumpTo(${iss.fileIdx},${iss.ln})">${icon} [${esc(iss.id)}]  line ${String(iss.ln).padStart(4,' ')}  ${esc(iss.msg)}\n</span>`;
   }
   const e=allIssues.filter(i=>i.sev==='err').length;
   const w=allIssues.filter(i=>i.sev==='warn').length;
@@ -1359,17 +1396,48 @@ function closeLintModal(){
   document.getElementById('lint-modal').classList.remove('open');
 }
 
-function confirmLint(){
+async function confirmLint(){
   closeLintModal();
-  const selected=[...document.querySelectorAll('#lint-file-list input[type=checkbox]')]
+  const selectedIdxs=[...document.querySelectorAll('#lint-file-list input[type=checkbox]')]
     .filter(c=>c.checked).map(c=>parseInt(c.dataset.idx));
-  const issues=[];
-  selected.forEach(fi=>{
-    lintCode(files[fi].code).forEach(iss=>issues.push(Object.assign({},iss,{fileIdx:fi,fileName:files[fi].name})));
-  });
-  renderLintResults(issues);
-  updateLintBadge(issues);
+
   switchTab('lint',document.getElementById('tab-lint'));
+  const out=document.getElementById('lint-out');
+  out.innerHTML='<span class="info">Running Verilator lint...</span>';
+  setStatus('run','Linting...');
+
+  // Build combined code + file range map for line→file mapping
+  const parts=[], fileRanges=[];
+  let offset=0;
+  selectedIdxs.forEach(fi=>{
+    const code=files[fi].code;
+    const lc=code.split('\n').length;
+    fileRanges.push({fileIdx:fi,fileName:files[fi].name,start:offset+1,end:offset+lc});
+    offset+=lc;
+    parts.push(code);
+  });
+  const combined=parts.join('\n');
+
+  let issues=[], engine='verilator';
+  try{
+    const res=await apiFetch(LINT_API,{code:combined},(attempt,s)=>{
+      out.innerHTML=`<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt+1}/3)</span>`;
+      setStatus('run',`Waking server... ${Math.round(s)}s`);
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    issues=parseVerilatorOutput(d.output||'', fileRanges);
+  }catch(e){
+    // Backend unavailable — fall back to manual checks
+    engine='manual';
+    selectedIdxs.forEach(fi=>{
+      lintCode(files[fi].code).forEach(iss=>issues.push(Object.assign({},iss,{fileIdx:fi,fileName:files[fi].name})));
+    });
+  }
+
+  renderLintResults(issues, engine);
+  updateLintBadge(issues);
+  setStatus(issues.some(i=>i.sev==='err')?'err':'ok', `Lint done (${engine})`);
 }
 
 // ════════════════════════════════════════════════════════
