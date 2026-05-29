@@ -203,6 +203,29 @@
     #lint-out{flex:1;font-family:var(--mono);font-size:.78rem;line-height:1.7;padding:.85rem 1rem;background:var(--bg3);white-space:pre-wrap;overflow:auto;color:#c0cae0}
     .lint-issue{display:block;border-radius:2px;padding:0 .15rem;margin:0 -.15rem;transition:background .1s;cursor:pointer}
     .lint-issue:hover{background:rgba(56,189,248,0.06)}
+    /* LINT FILE PICKER MODAL */
+    #lint-modal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center}
+    #lint-modal.open{display:flex}
+    #lint-modal-bg{position:absolute;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(3px)}
+    #lint-modal-box{position:relative;background:#0f1e33;border:1px solid rgba(251,191,36,0.35);border-radius:12px;padding:1.4rem 1.6rem;min-width:320px;max-width:460px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.5),0 0 0 1px rgba(251,191,36,0.1)}
+    #lint-modal-box h3{font-size:.95rem;font-weight:700;color:#fbbf24;margin-bottom:.3rem}
+    #lint-modal-box p{font-size:.78rem;color:#64748b;margin-bottom:1rem}
+    .lint-file-list{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.1rem;max-height:220px;overflow-y:auto}
+    .lint-file-item{display:flex;align-items:center;gap:.65rem;background:rgba(30,41,59,0.7);border:1px solid rgba(148,163,184,0.1);border-radius:7px;padding:.5rem .75rem;cursor:pointer;transition:border-color .15s}
+    .lint-file-item:hover{border-color:rgba(251,191,36,0.35)}
+    .lint-file-item input[type=checkbox]{width:15px;height:15px;accent-color:#fbbf24;cursor:pointer;flex-shrink:0}
+    .lint-file-item label{font-size:.82rem;font-family:var(--mono);color:#cbd5e1;cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lint-file-item .file-badge{font-size:.62rem;padding:.1rem .4rem;border-radius:4px;font-weight:600;flex-shrink:0}
+    .badge-rtl{background:rgba(56,189,248,0.12);color:#38bdf8}
+    .badge-tb{background:rgba(167,139,250,0.12);color:#a78bfa}
+    .lint-modal-actions{display:flex;gap:.6rem;justify-content:flex-end;align-items:center}
+    .lint-sel-all{font-size:.75rem;color:#64748b;cursor:pointer;margin-right:auto;transition:color .15s}
+    .lint-sel-all:hover{color:#94a3b8}
+    .lint-modal-cancel{background:transparent;border:1px solid rgba(148,163,184,0.2);border-radius:7px;padding:.38rem .9rem;font-family:'Outfit',sans-serif;font-size:.82rem;color:#64748b;cursor:pointer;transition:all .15s}
+    .lint-modal-cancel:hover{border-color:rgba(148,163,184,0.4);color:#94a3b8}
+    .lint-modal-run{background:linear-gradient(135deg,rgba(251,191,36,0.9),rgba(245,158,11,0.9));border:none;border-radius:7px;padding:.38rem 1.1rem;font-family:'Outfit',sans-serif;font-size:.82rem;font-weight:700;color:#0a0f1e;cursor:pointer;transition:opacity .15s}
+    .lint-modal-run:hover{opacity:.85}
+    .lint-modal-run:disabled{opacity:.4;cursor:not-allowed}
 
     /* EDITOR */
     .editor-body{flex:1;min-height:0;display:flex;overflow:hidden}
@@ -1219,9 +1242,60 @@ function lintJumpTo(fileIdx,ln){
   document.getElementById('lnums').scrollTop=top;
 }
 
+function isTbFile(name){
+  const n=name.toLowerCase();
+  return n.startsWith('tb_')||n.endsWith('_tb.v')||n.endsWith('_tb.sv')||n.includes('_tb_')||n.includes('testbench')||n==='tb.v'||n==='tb.sv';
+}
+
 function runLint(){
   files[activeFile].code=ed.value;
-  const issues=lintAll();
+  // Build file list for modal
+  const list=document.getElementById('lint-file-list');
+  list.innerHTML='';
+  files.forEach((f,i)=>{
+    const isTb=isTbFile(f.name);
+    const item=document.createElement('div');
+    item.className='lint-file-item';
+    item.innerHTML=`<input type="checkbox" id="lf${i}" data-idx="${i}" checked>
+      <label for="lf${i}">${f.name}</label>
+      <span class="file-badge ${isTb?'badge-tb':'badge-rtl'}">${isTb?'TB':'RTL'}</span>`;
+    item.querySelector('input').addEventListener('change', updateLintRunBtn);
+    item.addEventListener('click',function(e){
+      if(e.target.tagName==='INPUT') return;
+      const cb=item.querySelector('input');
+      cb.checked=!cb.checked;
+      updateLintRunBtn();
+    });
+    list.appendChild(item);
+  });
+  updateLintRunBtn();
+  document.getElementById('lint-modal').classList.add('open');
+}
+
+function updateLintRunBtn(){
+  const any=[...document.querySelectorAll('#lint-file-list input[type=checkbox]')].some(c=>c.checked);
+  document.getElementById('lint-modal-run-btn').disabled=!any;
+}
+
+function lintToggleAll(){
+  const cbs=[...document.querySelectorAll('#lint-file-list input[type=checkbox]')];
+  const allChecked=cbs.every(c=>c.checked);
+  cbs.forEach(c=>c.checked=!allChecked);
+  updateLintRunBtn();
+}
+
+function closeLintModal(){
+  document.getElementById('lint-modal').classList.remove('open');
+}
+
+function confirmLint(){
+  closeLintModal();
+  const selected=[...document.querySelectorAll('#lint-file-list input[type=checkbox]')]
+    .filter(c=>c.checked).map(c=>parseInt(c.dataset.idx));
+  const issues=[];
+  selected.forEach(fi=>{
+    lintCode(files[fi].code).forEach(iss=>issues.push(Object.assign({},iss,{fileIdx:fi,fileName:files[fi].name})));
+  });
   renderLintResults(issues);
   updateLintBadge(issues);
   switchTab('lint',document.getElementById('tab-lint'));
@@ -2148,6 +2222,20 @@ const _sy=document.getElementById('seo-year'); if(_sy) _sy.textContent=new Date(
     <div class="confirm-btns">
       <button class="confirm-btn-cancel" onclick="cancelClose()">Keep</button>
       <button class="confirm-btn-del" onclick="confirmClose()">Close tab</button>
+    </div>
+  </div>
+</div>
+<!-- LINT FILE PICKER MODAL -->
+<div id="lint-modal">
+  <div id="lint-modal-bg" onclick="closeLintModal()"></div>
+  <div id="lint-modal-box">
+    <h3>⚡ Select Files to Lint</h3>
+    <p>Choose which files to run lint checks on. Testbench files (tb_*.v, *_tb.v) may have intentional constructs that are not synthesizable.</p>
+    <div class="lint-file-list" id="lint-file-list"></div>
+    <div class="lint-modal-actions">
+      <span class="lint-sel-all" onclick="lintToggleAll()">Select all / None</span>
+      <button class="lint-modal-cancel" onclick="closeLintModal()">Cancel</button>
+      <button class="lint-modal-run" id="lint-modal-run-btn" onclick="confirmLint()">Run Lint</button>
     </div>
   </div>
 </div>
