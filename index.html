@@ -682,8 +682,75 @@
 
     .btn-launch svg { width: 16px; height: 16px; flex-shrink: 0; }
 
+    .compiler-mini-editor {
+      position: absolute;
+      right: 2.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      flex-direction: column;
+      width: 270px;
+      background: rgba(2,6,23,0.72);
+      border: 1px solid rgba(56,189,248,0.22);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    @media (min-width: 1100px) { .compiler-mini-editor { display: flex; } }
+
+    .mini-editor-ta {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.71rem;
+      color: rgba(148,163,184,0.85);
+      line-height: 1.75;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 0.75rem 1rem;
+      resize: none;
+      width: 100%;
+      box-sizing: border-box;
+      height: 158px;
+      tab-size: 2;
+    }
+    .mini-editor-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      border-top: 1px solid rgba(56,189,248,0.15);
+      background: rgba(2,6,23,0.55);
+    }
+    .mini-run-btn {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #38bdf8;
+      background: rgba(56,189,248,0.13);
+      border: 1px solid rgba(56,189,248,0.32);
+      border-radius: 5px;
+      padding: 0.18rem 0.6rem;
+      cursor: pointer;
+      transition: background .2s;
+      letter-spacing: .03em;
+    }
+    .mini-run-btn:hover:not(:disabled) { background: rgba(56,189,248,0.24); }
+    .mini-run-btn:disabled { opacity: .5; cursor: default; }
+    .mini-run-status { font-size: 0.62rem; color: rgba(148,163,184,0.45); margin-left: auto; }
+    .mini-run-out {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.66rem;
+      line-height: 1.55;
+      background: rgba(2,6,23,0.65);
+      border-top: 1px solid rgba(56,189,248,0.1);
+      padding: 0.45rem 0.75rem;
+      margin: 0;
+      white-space: pre-wrap;
+      max-height: 84px;
+      overflow-y: auto;
+      display: none;
+    }
+    /* legacy static preview kept for STA banner */
     .compiler-code-preview {
-      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-family: 'Courier New', Courier, monospace;
       font-size: 0.72rem;
       color: rgba(148,163,184,0.5);
       position: absolute;
@@ -694,10 +761,7 @@
       pointer-events: none;
       white-space: pre;
       display: none;
-      font-variant-ligatures: none;
-      font-feature-settings: "liga" 0, "calt" 0;
     }
-
     @media (min-width: 1100px) { .compiler-code-preview { display: block; } }
 
     @media (max-width: 700px) {
@@ -997,14 +1061,34 @@
           </svg>
         </a>
       </div>
-      <div class="compiler-code-preview">module counter(
+      <div class="compiler-mini-editor">
+        <textarea class="mini-editor-ta" id="homeVerilog" spellcheck="false">module counter(
   input clk, rst,
   output reg [3:0] q
 );
   always @(posedge clk)
-    if(rst) q &lt;= 0;
-    else    q &lt;= q + 1;
-endmodule</div>
+    if(rst) q <= 0;
+    else    q <= q + 1;
+endmodule
+
+module tb;
+  reg clk=0, rst=1;
+  wire [3:0] q;
+  counter uut(.clk(clk),.rst(rst),.q(q));
+  always #5 clk=~clk;
+  initial begin
+    #10 rst=0;
+    repeat(8) @(posedge clk)
+      $display("q = %0d", q);
+    $finish;
+  end
+endmodule</textarea>
+        <div class="mini-editor-footer">
+          <button class="mini-run-btn" id="homeRunBtn" onclick="runHomeVerilog()">&#9654; Run</button>
+          <span class="mini-run-status" id="homeRunStatus"></span>
+        </div>
+        <pre class="mini-run-out" id="homeRunOut"></pre>
+      </div>
     </div>
   </div>
 </section>
@@ -2960,6 +3044,39 @@ Total Negative Slack : 0.000</div>
     init();
     draw();
   })();
+
+  /* ── Homepage mini Verilog compiler ── */
+  async function runHomeVerilog() {
+    const btn  = document.getElementById('homeRunBtn');
+    const out  = document.getElementById('homeRunOut');
+    const stat = document.getElementById('homeRunStatus');
+    const code = document.getElementById('homeVerilog').value.trim();
+    if (!code) return;
+    btn.disabled = true; btn.textContent = '…';
+    stat.textContent = 'running…'; stat.style.color = 'rgba(148,163,184,.45)';
+    out.style.display = 'none';
+    try {
+      const r = await fetch('https://ecrionix-ecrionix-verilog.hf.space/run', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({code})
+      });
+      const d = await r.json();
+      const txt = (d.stdout || d.stderr || '(no output)').trim();
+      out.textContent = txt.length > 400 ? txt.slice(0, 400) + '…' : txt;
+      out.style.color  = d.success ? '#4ade80' : '#f87171';
+      out.style.display = 'block';
+      stat.textContent  = d.success ? '✓ ok' : '✗ error';
+      stat.style.color  = d.success ? '#4ade80' : '#f87171';
+    } catch(e) {
+      out.textContent   = 'API unreachable: ' + e.message;
+      out.style.color   = '#f87171';
+      out.style.display = 'block';
+      stat.textContent  = '✗ failed';
+      stat.style.color  = '#f87171';
+    }
+    btn.disabled = false; btn.textContent = '▶ Run';
+  }
 </script>
 
 <script src="/cookie-consent.js"></script>

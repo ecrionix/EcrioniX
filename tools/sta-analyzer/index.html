@@ -213,6 +213,23 @@ details[open] summary::after{content:'−'}
 endmodule</textarea>
 
     <div class="controls">
+      <!-- Example buttons -->
+      <div style="margin-bottom:.65rem;display:flex;gap:.4rem;flex-wrap:wrap">
+        <span style="font-size:.72rem;color:var(--muted);align-self:center;margin-right:.1rem">Examples:</span>
+        <button onclick="loadExample(0)" style="font-size:.68rem;padding:.2rem .55rem;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:4px;cursor:pointer">4-bit Counter (MET)</button>
+        <button onclick="loadExample(1)" style="font-size:.68rem;padding:.2rem .55rem;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:4px;cursor:pointer">8×8 Mult (VIOLATED)</button>
+      </div>
+
+      <!-- Clock name -->
+      <div style="margin-bottom:.55rem">
+        <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:.2rem">Clock Port Name</label>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <input id="clk-name" type="text" value="" placeholder="auto-detect" spellcheck="false"
+            style="font-size:.75rem;padding:.25rem .5rem;background:rgba(15,23,42,.8);border:1px solid rgba(148,163,184,.2);color:#cbd5e1;border-radius:5px;width:110px;outline:none">
+          <span style="font-size:.68rem;color:var(--muted)">leave blank to auto-detect (clk/clock/CLK…)</span>
+        </div>
+      </div>
+
       <!-- Frequency slider -->
       <div style="margin-bottom:.5rem">
         <label style="font-size:.78rem;color:var(--muted)">Clock Frequency</label>
@@ -341,11 +358,57 @@ function fmt(text){
   }).join('\n');
 }
 
+const EXAMPLES = [
+  {
+    label: '4-bit Counter (MET)',
+    clk: 'clk',
+    freq: 500,
+    code: `module counter #(parameter N = 4) (
+  input  wire       clk,
+  input  wire       rst,
+  output reg [N-1:0] count
+);
+  always @(posedge clk or posedge rst)
+    if (rst) count <= 0;
+    else     count <= count + 1;
+endmodule`
+  },
+  {
+    label: '8×8 Multiplier (VIOLATED at 2 GHz)',
+    clk: 'clk',
+    freq: 2000,
+    code: `// Deep combinational chain — expect VIOLATED at 2 GHz
+module mul8 (
+  input  wire        clk,
+  input  wire        rst,
+  input  wire [7:0]  a,
+  input  wire [7:0]  b,
+  output reg  [15:0] result
+);
+  wire [15:0] p;
+  assign p = a * b;           // 8×8 unsigned multiplier
+  always @(posedge clk or posedge rst)
+    if (rst) result <= 0;
+    else     result <= p;
+endmodule`
+  }
+];
+
+function loadExample(i) {
+  const ex = EXAMPLES[i];
+  document.getElementById('code').value = ex.code;
+  document.getElementById('clk-name').value = ex.clk;
+  syncFreq(ex.freq, 'num');
+  document.getElementById('output').innerHTML = '<span class="out-dim">// Example loaded. Click Run STA...</span>';
+  document.getElementById('result-badge').style.display = 'none';
+}
+
 async function runSTA(){
   const code = document.getElementById('code').value.trim();
   if(!code) return;
-  const freqMHz = parseFloat(document.getElementById('freq-num').value)||100;
-  const period = +(1000/freqMHz).toFixed(6);
+  const freqMHz   = parseFloat(document.getElementById('freq-num').value)||100;
+  const period    = +(1000/freqMHz).toFixed(6);
+  const clkName   = (document.getElementById('clk-name').value||'').trim();
 
   const btn=document.getElementById('run-btn');
   const sp=document.getElementById('spin');
@@ -354,12 +417,15 @@ async function runSTA(){
   btn.disabled=true; sp.style.display='block'; badge.style.display='none';
   out.innerHTML='<span class="out-info">Running Yosys → OpenSTA pipeline...</span>';
 
+  const payload = {code, period};
+  if(clkName) payload.clock_name = clkName;
+
   try{
     let attempts=0;
     let res;
     while(attempts<3){
       try{
-        res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,period})});
+        res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         break;
       }catch(e){
         attempts++;
@@ -371,8 +437,9 @@ async function runSTA(){
     if(!res.ok) throw new Error('HTTP '+res.status);
     const d = await res.json();
 
-    const clkNote = d.clock
-      ? `<span class="out-dim">Clock: ${esc(d.clock)} · ${freqMHz} MHz · period ${period} ns · I/O delay ${(period*0.1).toFixed(3)} ns\n\n</span>`
+    const detectedClk = clkName || d.clock || null;
+    const clkNote = detectedClk
+      ? `<span class="out-dim">Clock: ${esc(detectedClk)} · ${freqMHz} MHz · period ${period} ns · I/O delay ${(period*0.1).toFixed(3)} ns\n\n</span>`
       : `<span class="out-dim">No clock detected — unconstrained combinational analysis\n\n</span>`;
 
     if(d.success){
