@@ -395,6 +395,11 @@
     <span>Liberty</span>
     <div class="spinner" id="liberty-spin" style="border-color:rgba(245,158,11,.25);border-top-color:#f59e0b"></div>
   </button>
+  <button class="synth-btn" id="sta-btn" onclick="staCode()" style="border-color:rgba(129,140,248,0.35);background:rgba(129,140,248,0.08);color:#818cf8">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span>STA</span>
+    <div class="spinner" id="sta-spin" style="border-color:rgba(129,140,248,.25);border-top-color:#818cf8"></div>
+  </button>
   <button class="synth-btn" id="lint-btn" onclick="runLint()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     <span id="lint-label">Lint</span>
@@ -436,6 +441,7 @@
       <div class="out-tab" id="tab-waveform" onclick="switchTab('waveform',this)">Waveform</div>
       <div class="out-tab" id="tab-synth" onclick="switchTab('synth',this)">Synthesis</div>
       <div class="out-tab" id="tab-liberty" onclick="switchTab('liberty',this)">Liberty</div>
+      <div class="out-tab" id="tab-sta" onclick="switchTab('sta',this)">STA</div>
       <div class="out-tab" id="tab-netlist" onclick="switchTab('netlist',this)">Netlist</div>
     </div>
 
@@ -473,6 +479,11 @@
     <!-- LIBERTY -->
     <div class="out-panel" id="panel-liberty">
       <div id="liberty-out"><span class="dim">// Click Liberty to map to NanGate45 standard cells...</span></div>
+    </div>
+
+    <!-- STA -->
+    <div class="out-panel" id="panel-sta">
+      <div id="sta-out"><span class="dim">// Click STA to run OpenSTA static timing analysis...</span></div>
     </div>
 
     <!-- WAVEFORM -->
@@ -2067,6 +2078,67 @@ async function libertyCode(){
   }catch(e){
     out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────────\n${esc(e.message)}\n</span>`
       +`<span class="dim">The backend sleeps on the free tier. Click Liberty again — it connects within ~60 s.</span>`;
+    setStatus('err','Server unreachable — retry');
+  }finally{btn.disabled=false;sp.style.display='none';}
+}
+
+// ── OpenSTA ───────────────────────────────────────────
+const STA_API = 'https://ecrionix-ecrionix-verilog.hf.space/sta';
+
+function fmtSTA(text){
+  return text.split('\n').map(line=>{
+    const e=esc(line);
+    if(/slack\s*\(MET\)/i.test(line))      return `<span style="color:#4ade80;font-weight:600">${e}</span>`;
+    if(/slack\s*\(VIOLATED\)/i.test(line)) return `<span style="color:#f87171;font-weight:600">${e}</span>`;
+    if(/^Startpoint:/i.test(line.trim()))  return `<span style="color:#38bdf8">${e}</span>`;
+    if(/^Endpoint:/i.test(line.trim()))    return `<span style="color:#38bdf8">${e}</span>`;
+    if(/Worst Negative Slack/i.test(line)) return `<span style="color:#f59e0b;font-weight:600">${e}</span>`;
+    if(/Total Negative Slack/i.test(line)) return `<span style="color:#f59e0b;font-weight:600">${e}</span>`;
+    if(/^[-]{10,}/.test(line.trim()))      return `<span style="color:#1e3a4a">${e}</span>`;
+    if(/^Error/i.test(line.trim()))        return `<span class="sy-err">${e}</span>`;
+    if(/^Warn/i.test(line.trim()))         return `<span class="sy-warn">${e}</span>`;
+    return e;
+  }).join('\n');
+}
+
+async function staCode(){
+  files[activeFile].code = ed.value;
+  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
+  if(!code){setStatus('err','No code');return;}
+  const btn=document.getElementById('sta-btn');
+  const sp=document.getElementById('sta-spin');
+  btn.disabled=true; sp.style.display='block';
+  setStatus('run','Running OpenSTA...');
+  const out=document.getElementById('sta-out');
+  out.innerHTML='<span class="info">Running Yosys → OpenSTA pipeline...</span>\n';
+  switchTab('sta', document.getElementById('tab-sta'));
+  const t0=Date.now();
+  try{
+    const res=await apiFetch(STA_API,{code},(attempt,s)=>{
+      out.innerHTML=`<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt+1}/3)\n</span>`;
+      setStatus('run',`Waking server... ${Math.round(s)}s`);
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
+    document.getElementById('status-time').textContent=ms;
+    const clkNote = d.clock
+      ? `<span style="color:#64748b;font-size:.75rem">Clock: ${esc(d.clock)} @ 10 ns (100 MHz) · input/output delay 1 ns</span>\n`
+      : `<span style="color:#64748b;font-size:.75rem">No clock detected — unconstrained combinational analysis</span>\n`;
+    if(d.success){
+      out.innerHTML=`<span style="color:#818cf8;font-weight:600">── OpenSTA complete (${ms}) ─────────────────────\n</span>`
+        +clkNote+fmtSTA(d.report);
+      setStatus('ok',`STA done — ${ms}`);
+    } else {
+      out.innerHTML=`<span class="sy-err">── STA failed ─────────────────────────────────\n</span>`
+        +clkNote+fmtSTA(d.report)
+        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      setStatus('err','STA failed');
+    }
+  }catch(e){
+    out.innerHTML=`<span class="sy-err">── Error ──────────────────────────────────────\n${esc(e.message)}\n</span>`
+      +`<span class="dim">The backend sleeps on the free tier. Click STA again — it connects within ~60 s.</span>`;
     setStatus('err','Server unreachable — retry');
   }finally{btn.disabled=false;sp.style.display='none';}
 }
