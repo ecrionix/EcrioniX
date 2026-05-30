@@ -781,6 +781,30 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
     .score-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem;margin-top:.75rem}
     .score-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(148,163,184,.07);font-size:.8rem}
     .score-log{font-family:var(--mono);font-size:.71rem;color:#a0aec0;white-space:pre-wrap;word-break:break-word;margin-top:.5rem;padding:.5rem;background:rgba(15,23,42,.5);border-radius:6px;max-height:180px;overflow:auto}
+
+    /* ── signal console ── */
+    .console-wrap{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .console-hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:.4rem .8rem;display:flex;align-items:center;gap:.6rem}
+    .console-hdr-title{font-size:.64rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate)}
+    .console-meta{font-size:.67rem;color:rgba(148,163,184,.5);font-family:var(--mono)}
+    .stage-tabs{display:flex;overflow-x:auto;border-bottom:1px solid var(--border)}
+    .stage-tab{padding:.38rem .85rem;font-size:.72rem;cursor:pointer;border:none;background:transparent;color:var(--slate);border-bottom:2px solid transparent;transition:.15s;white-space:nowrap;font-family:'Outfit',sans-serif}
+    .stage-tab:hover{color:var(--text)}
+    .stage-tab.t1.on{color:#22d3ee;border-bottom-color:#22d3ee}
+    .stage-tab.t2.on{color:#a78bfa;border-bottom-color:#a78bfa}
+    .stage-tab.t3.on{color:#f59e0b;border-bottom-color:#f59e0b}
+    .stage-tab.t4.on{color:#4ade80;border-bottom-color:#4ade80}
+    .stage-pane{padding:.65rem .75rem;display:none}
+    .stage-pane.on{display:block}
+    .stage-note{font-size:.74rem;color:var(--slate);background:rgba(15,23,42,.4);border-radius:6px;padding:.45rem .65rem;margin-bottom:.55rem;line-height:1.5}
+    .sig-tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.72rem}
+    .sig-tbl th{text-align:left;padding:.28rem .5rem;color:var(--slate);font-size:.61rem;letter-spacing:.07em;text-transform:uppercase;border-bottom:1px solid var(--border);font-family:'Outfit',sans-serif}
+    .sig-tbl td{padding:.28rem .5rem;border-bottom:1px solid rgba(148,163,184,.04)}
+    .sig-tbl tr:last-child td{border-bottom:none}
+    .sig-tbl tr:hover td{background:rgba(148,163,184,.025)}
+    .swatch{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle}
+    .bp{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:3px;padding:.04rem .32rem;font-size:.63rem;font-family:'Outfit',sans-serif}
+    .bf{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25);border-radius:3px;padding:.04rem .32rem;font-size:.63rem;font-family:'Outfit',sans-serif}
   </style>
 
   <div class="drop-zone" id="dropZone" onclick="document.getElementById('imgInput').click()">
@@ -807,6 +831,26 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
       </div>
     </div>
     <div class="score-card" id="scoreCard"></div>
+
+    <!-- Signal Console -->
+    <div id="sigConsole" style="display:none;margin-top:.75rem">
+      <div class="console-wrap">
+        <div class="console-hdr">
+          <span class="console-hdr-title">Signal Console</span>
+          <span class="console-meta" id="consoleMeta"></span>
+        </div>
+        <div class="stage-tabs">
+          <button class="stage-tab t1 on" id="st1" onclick="showStage(1)">① Python Extract</button>
+          <button class="stage-tab t2" id="st2" onclick="showStage(2)">② TB → DUT</button>
+          <button class="stage-tab t3" id="st3" onclick="showStage(3)">③ DUT → TB</button>
+          <button class="stage-tab t4" id="st4" onclick="showStage(4)">④ Reconstruct</button>
+        </div>
+        <div id="sp1" class="stage-pane on"></div>
+        <div id="sp2" class="stage-pane"></div>
+        <div id="sp3" class="stage-pane"></div>
+        <div id="sp4" class="stage-pane"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -925,12 +969,107 @@ function renderResult(d, ms) {
     ${d.log ? `<details style="margin-top:.5rem"><summary style="font-size:.72rem;color:var(--slate);cursor:pointer">Simulation Log</summary><div class="score-log">${escHtml(d.log)}</div></details>` : ''}
   `;
 
+  // Signal console
+  populateConsole(d);
+
   // Scroll to result
   document.getElementById('asicResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Signal Console ──────────────────────────────────────
+function showStage(n) {
+  [1,2,3,4].forEach(k => {
+    document.getElementById('sp'+k).classList.toggle('on', k===n);
+    const t = document.getElementById('st'+k);
+    t.classList.remove('on');
+    if (k===n) t.classList.add('on');
+  });
+}
+
+function h2(v) { return v.toString(16).padStart(2,'0').toUpperCase(); }
+
+function populateConsole(d) {
+  document.getElementById('sigConsole').style.display = 'block';
+  document.getElementById('consoleMeta').textContent =
+    (d.width && d.height) ? `${d.width}×${d.height} · ${(d.n_pixels||0).toLocaleString()} px` : '';
+
+  // Stage 1 — Python Extract
+  const ex = d.extract_sample || [];
+  let s1 = `<div class="stage-note">PIL opened image (${d.width||'?'}×${d.height||'?'}), converted to RGB, extracted ${(d.n_pixels||0).toLocaleString()} pixels → wrote <code style="color:#22d3ee">pixel_input.hex</code>. Showing first ${ex.length}:</div>`;
+  if (ex.length) {
+    s1 += `<table class="sig-tbl"><thead><tr><th>px</th><th style="color:#f87171">R</th><th style="color:#4ade80">G</th><th style="color:#38bdf8">B</th><th>hex</th><th>preview</th></tr></thead><tbody>`;
+    ex.forEach(p => {
+      s1 += `<tr>
+        <td style="color:var(--slate)">${p.px}</td>
+        <td style="color:#f87171">${h2(p.R)}</td>
+        <td style="color:#4ade80">${h2(p.G)}</td>
+        <td style="color:#38bdf8">${h2(p.B)}</td>
+        <td style="color:var(--slate)">#${h2(p.R)}${h2(p.G)}${h2(p.B)}</td>
+        <td><span class="swatch" style="background:rgb(${p.R},${p.G},${p.B})"></span></td>
+      </tr>`;
+    });
+    s1 += `</tbody></table>`;
+  } else {
+    s1 += `<div style="color:var(--slate);font-size:.74rem;padding:.25rem 0">No extract sample returned — run a simulation first.</div>`;
+  }
+  document.getElementById('sp1').innerHTML = s1;
+
+  // Stage 2 — TB → DUT
+  const ti = d.trace_in || [];
+  let s2 = `<div class="stage-note">Testbench drives <code style="color:#a78bfa">valid_in=1</code>, <code style="color:#a78bfa">R[7:0]</code>, <code style="color:#a78bfa">G[7:0]</code>, <code style="color:#a78bfa">B[7:0]</code> at each negedge — 1 pixel/clock (100 MHz). Showing first/last captured via <code>$display([TRACE-IN])</code>:</div>`;
+  if (ti.length) {
+    s2 += `<table class="sig-tbl"><thead><tr><th>px</th><th style="color:#a78bfa">valid_in</th><th style="color:#f87171">R[7:0]</th><th style="color:#4ade80">G[7:0]</th><th style="color:#38bdf8">B[7:0]</th></tr></thead><tbody>`;
+    ti.forEach(p => {
+      s2 += `<tr>
+        <td style="color:var(--slate)">${p.px}</td>
+        <td style="color:#a78bfa;font-weight:700">${p.vi}</td>
+        <td style="color:#f87171">${h2(p.R)}</td>
+        <td style="color:#4ade80">${h2(p.G)}</td>
+        <td style="color:#38bdf8">${h2(p.B)}</td>
+      </tr>`;
+    });
+    s2 += `</tbody></table>`;
+  } else {
+    s2 += `<div style="color:var(--slate);font-size:.74rem;padding:.25rem 0">No TB→DUT trace yet. Run simulation to populate.</div>`;
+  }
+  document.getElementById('sp2').innerHTML = s2;
+
+  // Stage 3 — DUT → TB
+  const to = d.trace_out || [];
+  let s3 = `<div class="stage-note">DUT asserts <code style="color:#f59e0b">valid_out=1</code> and outputs <code style="color:#f59e0b">gray[7:0]</code> one clock after input. TB cross-checks: <code>ref = (77×R + 150×G + 29×B) &gt;&gt; 8</code>. Showing via <code>$display([TRACE-OUT])</code>:</div>`;
+  if (to.length) {
+    s3 += `<table class="sig-tbl"><thead><tr><th>px</th><th style="color:#f59e0b">valid_out</th><th style="color:#f59e0b">gray</th><th>ref</th><th>status</th></tr></thead><tbody>`;
+    to.forEach(p => {
+      s3 += `<tr>
+        <td style="color:var(--slate)">${p.px}</td>
+        <td style="color:#f59e0b;font-weight:700">${p.vo}</td>
+        <td style="color:#f59e0b;font-weight:600">${h2(p.gray)}</td>
+        <td style="color:var(--slate)">${h2(p.ref)}</td>
+        <td><span class="${p.status==='PASS'?'bp':'bf'}">${p.status}</span></td>
+      </tr>`;
+    });
+    s3 += `</tbody></table>`;
+  } else {
+    s3 += `<div style="color:var(--slate);font-size:.74rem;padding:.25rem 0">No DUT→TB trace yet. Run simulation to populate.</div>`;
+  }
+  document.getElementById('sp3').innerHTML = s3;
+
+  // Stage 4 — Reconstruction
+  const passRate = (d.n_pixels > 0) ? ((( d.pass||0) / d.n_pixels)*100).toFixed(1) : '0.0';
+  document.getElementById('sp4').innerHTML = `
+    <div class="stage-note">Python reads <code style="color:#4ade80">pixel_output.hex</code> (${(d.n_pixels||0).toLocaleString()} lines), builds PIL Image(mode="L"), encodes as PNG, returns base64 to browser.</div>
+    <table class="sig-tbl"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
+      <tr><td style="color:var(--slate)">Gray values read</td><td>${(d.n_pixels||0).toLocaleString()}</td></tr>
+      <tr><td style="color:var(--slate)">Image mode</td><td>L (8-bit grayscale)</td></tr>
+      <tr><td style="color:var(--slate)">Output dimensions</td><td>${d.width||'?'} × ${d.height||'?'} px</td></tr>
+      <tr><td style="color:var(--slate)">PASS count</td><td style="color:#4ade80">${(d.pass||0).toLocaleString()} / ${(d.n_pixels||0).toLocaleString()}</td></tr>
+      <tr><td style="color:var(--slate)">Pass rate</td><td style="color:#4ade80">${passRate}%</td></tr>
+      <tr><td style="color:var(--slate)">Final verdict</td><td><span class="${(d.fail||0)===0?'bp':'bf'}">${(d.fail||0)===0?'ALL PASS':(d.fail)+' MISMATCH'}</span></td></tr>
+    </tbody></table>`;
 }
 </script>
 </body>
