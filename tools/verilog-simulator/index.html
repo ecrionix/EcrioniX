@@ -274,6 +274,20 @@
     /* ── WAVEFORM VIEWER ─────────────────────────── */
     #panel-waveform{flex-direction:column;overflow:hidden}
 
+    /* floorplan summary card */
+    .fp-card{background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.18);border-radius:10px;padding:1rem 1.1rem;margin:.6rem 0 .5rem}
+    .fp-card-title{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#c084fc;margin-bottom:.75rem}
+    .fp-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.5rem;margin-bottom:.75rem}
+    .fp-metric{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:7px;padding:.5rem .7rem}
+    .fp-metric-label{display:block;font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.25rem}
+    .fp-metric-value{display:block;font-size:.92rem;font-weight:700;color:#e2e8f0;font-family:var(--mono)}
+    .fp-metric-value.hi{color:#c084fc}
+    .fp-meta{font-size:.7rem;color:#475569;margin-bottom:.6rem}
+    .fp-warn{font-size:.72rem;color:var(--amber);margin:.3rem 0}
+    .fp-details{margin-top:.5rem}
+    .fp-details summary{font-size:.72rem;color:#475569;cursor:pointer;user-select:none;padding:.25rem 0}
+    .fp-details summary:hover{color:#94a3b8}
+    .fp-details pre{margin:.4rem 0 0;font-size:.74rem;line-height:1.55;white-space:pre-wrap;word-break:break-all}
     /* wave toolbar */
     .wave-tb{background:#0a1020;border-bottom:1px solid var(--border);padding:.3rem .7rem;display:flex;align-items:center;gap:.4rem;flex-shrink:0}
     .wz-btn{padding:.2rem .6rem;border-radius:5px;border:1px solid var(--border);background:rgba(15,23,42,0.9);color:var(--slate);font-size:.73rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.2s;line-height:1.4}
@@ -2259,13 +2273,23 @@ const FLOORPLAN_API = 'https://ecrionix-ecrionix-verilog.hf.space/floorplan';
 function fmtFloorplan(text){
   return text.split('\n').map(line=>{
     const e = esc(line);
-    if(/^\s*\[INFO/.test(line))  return `<span style="color:#94a3b8">${e}</span>`;
+    if(/^\s*\[INFO/.test(line))  return `<span style="color:#475569">${e}</span>`;
     if(/^\s*\[WARN/.test(line))  return `<span class="sy-warn">${e}</span>`;
     if(/^\s*\[ERROR/.test(line)) return `<span class="sy-err">${e}</span>`;
     if(/die area|core area|design area|utilization/i.test(line)) return `<span style="color:#c084fc;font-weight:600">${e}</span>`;
-    if(/sky130_fd_sc_hd__/i.test(line)) return `<span style="color:#4ade80">${e}</span>`;
     return e;
   }).join('\n');
+}
+function parseFpReport(report){
+  const out={rows:null,sites:null,util:null,warns:[]};
+  for(const line of report.split('\n')){
+    const rm=line.match(/Added\s+(\d+)\s+rows\s+of\s+(\d+)\s+sites/i);
+    if(rm){out.rows=rm[1];out.sites=rm[2];}
+    const um=line.match(/Design area.*?([\d.]+)%\s+utilization/i);
+    if(um) out.util=um[1];
+    if(/\[WARN/i.test(line)) out.warns.push(line.replace(/^\s*\[WARN[^\]]*\]\s*/,''));
+  }
+  return out;
 }
 
 async function floorplanCode(){
@@ -2290,16 +2314,32 @@ async function floorplanCode(){
     const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
     document.getElementById('status-time').textContent=ms;
     if(d.success){
-      const dieStr = d.die_side ? `${d.die_side} × ${d.die_side} µm` : '—';
-      const coreStr= d.core_side? `${d.core_side} × ${d.core_side} µm` : '—';
-      const areaStr= d.chip_area_um2 ? `${d.chip_area_um2.toFixed(1)} µm²` : '—';
-      out.innerHTML=
-        `<span style="color:#c084fc;font-weight:600">── OpenROAD Floorplan complete (${ms}) ──────────\n</span>`
-        +`<span style="color:#64748b;font-size:.75rem">Process: SkyWater SKY130 HD · Site: unithd · Target utilisation: 40%\n\n</span>`
-        +`<span style="color:#e2e8f0;font-weight:600">Die:  ${dieStr}  |  Core: ${coreStr}  |  Cell area: ${areaStr}\n\n</span>`
-        +(d.yosys_stat?`<span style="color:#64748b;font-size:.75rem">─── SKY130 Synthesis Stat ───\n</span>`+fmtSKY130(d.yosys_stat)+'\n\n':'')
-        +`<span style="color:#64748b;font-size:.75rem">─── OpenROAD Log ───\n</span>`
-        +fmtFloorplan(d.report);
+      const dieStr  = d.die_side      ? `${d.die_side} × ${d.die_side} µm`  : '—';
+      const coreStr = d.core_side     ? `${d.core_side} × ${d.core_side} µm`: '—';
+      const areaStr = d.chip_area_um2 ? `${d.chip_area_um2.toFixed(2)} µm²`  : '—';
+      const fp = parseFpReport(d.report||'');
+      const utilStr = fp.util ? `${fp.util}%` : '—';
+      const rowStr  = (fp.rows&&fp.sites) ? `${fp.rows} rows × ${fp.sites} sites` : '—';
+      const warnHtml = fp.warns.length
+        ? fp.warns.map(w=>`<div class="fp-warn">⚠ ${esc(w)}</div>`).join('')
+        : '';
+      const synthHtml = d.yosys_stat
+        ? `<details class="fp-details"><summary>SKY130 Synthesis Stats</summary><pre>${fmtSKY130(d.yosys_stat)}</pre></details>`
+        : '';
+      const logHtml = d.report
+        ? `<details class="fp-details"><summary>Full OpenROAD Log</summary><pre>${fmtFloorplan(d.report)}</pre></details>`
+        : '';
+      out.innerHTML=`<div class="fp-card">
+  <div class="fp-card-title">OpenROAD Floorplan &nbsp;<span style="color:#64748b;font-weight:400;text-transform:none;letter-spacing:0">${ms}</span></div>
+  <div class="fp-metrics">
+    <div class="fp-metric"><span class="fp-metric-label">Die Area</span><span class="fp-metric-value hi">${esc(dieStr)}</span></div>
+    <div class="fp-metric"><span class="fp-metric-label">Core Area</span><span class="fp-metric-value hi">${esc(coreStr)}</span></div>
+    <div class="fp-metric"><span class="fp-metric-label">Cell Area</span><span class="fp-metric-value">${esc(areaStr)}</span></div>
+    <div class="fp-metric"><span class="fp-metric-label">Utilisation</span><span class="fp-metric-value">${esc(utilStr)}</span></div>
+  </div>
+  <div class="fp-meta">Process: SkyWater SKY130 HD &nbsp;·&nbsp; Site: unithd &nbsp;·&nbsp; ${esc(rowStr)}</div>
+  ${warnHtml}${synthHtml}${logHtml}
+</div>`;
       setStatus('ok',`Floorplan done — ${ms}`);
     } else {
       out.innerHTML=`<span class="sy-err">── Floorplan failed ─────────────────────────────────\n</span>`
