@@ -794,6 +794,7 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
     .stage-tab.t2.on{color:#a78bfa;border-bottom-color:#a78bfa}
     .stage-tab.t3.on{color:#f59e0b;border-bottom-color:#f59e0b}
     .stage-tab.t4.on{color:#4ade80;border-bottom-color:#4ade80}
+    .stage-tab.t5.on{color:#22d3ee;border-bottom-color:#22d3ee}
     .stage-pane{padding:.65rem .75rem;display:none}
     .stage-pane.on{display:block}
     .stage-note{font-size:.74rem;color:var(--slate);background:rgba(15,23,42,.4);border-radius:6px;padding:.45rem .65rem;margin-bottom:.55rem;line-height:1.5}
@@ -806,6 +807,20 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
     .bp{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:3px;padding:.04rem .32rem;font-size:.63rem;font-family:'Outfit',sans-serif}
     .bf{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25);border-radius:3px;padding:.04rem .32rem;font-size:.63rem;font-family:'Outfit',sans-serif}
   </style>
+
+  <!-- hidden canvas for pixel sampling -->
+  <canvas id="sampleCanvas" style="display:none"></canvas>
+
+  <!-- Step 1 pixel preview (shows immediately on upload) -->
+  <div id="pixelPreview" style="display:none;margin-bottom:1rem">
+    <div class="console-wrap">
+      <div class="console-hdr">
+        <span class="console-hdr-title" style="color:#22d3ee">Step 1 · Image → Pixel Extraction</span>
+        <span class="console-meta" id="previewMeta"></span>
+      </div>
+      <div id="pixelPreviewBody" style="padding:.6rem .75rem"></div>
+    </div>
+  </div>
 
   <div class="drop-zone" id="dropZone" onclick="document.getElementById('imgInput').click()">
     <div style="font-size:2rem;margin-bottom:.5rem">🖼</div>
@@ -844,11 +859,13 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
           <button class="stage-tab t2" id="st2" onclick="showStage(2)">② TB → DUT</button>
           <button class="stage-tab t3" id="st3" onclick="showStage(3)">③ DUT → TB</button>
           <button class="stage-tab t4" id="st4" onclick="showStage(4)">④ Reconstruct</button>
+          <button class="stage-tab t5" id="st5" onclick="showStage(5)">⑤ Waveform</button>
         </div>
         <div id="sp1" class="stage-pane on"></div>
         <div id="sp2" class="stage-pane"></div>
         <div id="sp3" class="stage-pane"></div>
         <div id="sp4" class="stage-pane"></div>
+        <div id="sp5" class="stage-pane"></div>
       </div>
     </div>
   </div>
@@ -887,12 +904,73 @@ function onFileSelect(file) {
   document.getElementById('dropText').textContent = file.name;
   dz.classList.add('has-file');
   document.getElementById('runAsicBtn').disabled = false;
-  // preview original
+
   const reader = new FileReader();
   reader.onload = e => {
     document.getElementById('origImg').src = e.target.result;
+    // pixel preview using canvas
+    const img = new Image();
+    img.onload = () => previewPixels(img);
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function previewPixels(img) {
+  const cv = document.getElementById('sampleCanvas');
+  cv.width  = img.naturalWidth;
+  cv.height = img.naturalHeight;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const total = w * h;
+
+  // Sample: first 20 pixels from row 0, plus 5 from the image centre
+  const sampleIdxs = [];
+  for (let i = 0; i < Math.min(20, total); i++) sampleIdxs.push(i);
+  const cx = Math.floor(w/2), cy = Math.floor(h/2);
+  for (let di = -2; di <= 2; di++) {
+    const idx = (cy * w) + cx + di;
+    if (idx >= 0 && idx < total && !sampleIdxs.includes(idx)) sampleIdxs.push(idx);
+  }
+
+  const rows = sampleIdxs.map(idx => {
+    const px = idx % w, py = Math.floor(idx / w);
+    const d = ctx.getImageData(px, py, 1, 1).data;
+    return { idx, px, py, R: d[0], G: d[1], B: d[2] };
+  });
+
+  document.getElementById('previewMeta').textContent =
+    `${w}×${h} · ${total.toLocaleString()} pixels — first 20 + 5 centre samples`;
+
+  let html = `<div class="stage-note">PIL opens image, converts to RGB, writes <code style="color:#22d3ee">pixel_input.hex</code> header: <code style="color:#22d3ee">${w} ${h}</code>, then one <code>RR GG BB</code> hex line per pixel. Verify pixel colors match the color swatches below:</div>`;
+  html += `<table class="sig-tbl"><thead><tr>
+    <th>idx</th><th>x,y</th>
+    <th style="color:#f87171">R</th><th style="color:#4ade80">G</th><th style="color:#38bdf8">B</th>
+    <th>hex</th><th>color</th><th>note</th>
+  </tr></thead><tbody>`;
+
+  rows.forEach(r => {
+    const brightness = (0.299*r.R + 0.587*r.G + 0.114*r.B);
+    const note = r.R>240&&r.G>240&&r.B>240 ? 'white bg' :
+                 r.R<20&&r.G<20&&r.B<20   ? 'black'    :
+                 r.R>r.G&&r.R>r.B         ? 'reddish'  :
+                 r.G>r.R&&r.G>r.B         ? 'greenish' :
+                 r.B>r.R&&r.B>r.G         ? 'bluish'   : '';
+    html += `<tr>
+      <td style="color:var(--slate)">${r.idx}</td>
+      <td style="color:var(--slate)">${r.px},${r.py}</td>
+      <td style="color:#f87171">${h2(r.R)}</td>
+      <td style="color:#4ade80">${h2(r.G)}</td>
+      <td style="color:#38bdf8">${h2(r.B)}</td>
+      <td style="color:var(--slate)">#${h2(r.R)}${h2(r.G)}${h2(r.B)}</td>
+      <td><span class="swatch" style="background:rgb(${r.R},${r.G},${r.B});border:1px solid rgba(255,255,255,.15)"></span></td>
+      <td style="color:rgba(148,163,184,.45);font-size:.67rem">${note}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById('pixelPreviewBody').innerHTML = html;
+  document.getElementById('pixelPreview').style.display = 'block';
 }
 
 const dz = document.getElementById('dropZone');
@@ -991,12 +1069,134 @@ function escHtml(s) {
 
 // ── Signal Console ──────────────────────────────────────
 function showStage(n) {
-  [1,2,3,4].forEach(k => {
+  [1,2,3,4,5].forEach(k => {
     document.getElementById('sp'+k).classList.toggle('on', k===n);
     const t = document.getElementById('st'+k);
+    if (!t) return;
     t.classList.remove('on');
     if (k===n) t.classList.add('on');
   });
+}
+
+// ── Waveform (timing diagram) ────────────────────────────
+function buildWaveformSVG(trace_in, trace_out) {
+  const N  = Math.min(trace_in.length, 10);
+  if (N === 0) return '<div class="stage-note">No trace data yet — run a simulation first.</div>';
+
+  const TOTAL = N + 3;           // 1 reset + 1 idle + N drive + 1 drain
+  const LW = 82, CW = 54, RH = 28, PAD = 3;
+  const W  = LW + TOTAL * CW;
+
+  const rows = [
+    { label:'CLK',       key:'clk',  color:'#4ade80', type:'clk'  },
+    { label:'rst_n',     key:'rst',  color:'#f59e0b', type:'bit'  },
+    { label:'valid_in',  key:'vi',   color:'#a78bfa', type:'bit'  },
+    { label:'R[7:0]',    key:'R',    color:'#f87171', type:'bus'  },
+    { label:'G[7:0]',    key:'G',    color:'#4ade80', type:'bus'  },
+    { label:'B[7:0]',    key:'B',    color:'#38bdf8', type:'bus'  },
+    { label:'valid_out', key:'vo',   color:'#f59e0b', type:'bit'  },
+    { label:'gray[7:0]', key:'gray', color:'#f59e0b', type:'bus', status:true },
+  ];
+  const H = 22 + rows.length * RH + 8;
+
+  // Build per-cycle state
+  // c=0: reset (rst_n=0, vi=0)
+  // c=1: idle  (rst_n=1, vi=0)
+  // c=2..N+1: drive px[0..N-1]  →  trace_in[c-2]
+  // valid_out 1 cycle delayed: c=3..N+2  →  trace_out[c-3]
+  function st(c) {
+    const ti = (c>=2 && c<N+2) ? trace_in[c-2]  : null;
+    const to = (c>=3 && c<N+3) ? trace_out[c-3] : null;
+    return {
+      rst: c>=1?1:0, vi: ti?1:0,
+      R: ti?ti.R:0,  G: ti?ti.G:0,  B: ti?ti.B:0,
+      vo: to?1:0,    gray: to?to.gray:0,  pass: to?to.status:null
+    };
+  }
+  const S = Array.from({length:TOTAL}, (_,c) => st(c));
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:560px;background:#0c1220;border-radius:8px;display:block">`;
+
+  // Alternating column shading
+  for (let c=0;c<TOTAL;c++) {
+    if (c%2===0) svg += `<rect x="${LW+c*CW}" y="0" width="${CW}" height="${H}" fill="rgba(148,163,184,.018)"/>`;
+  }
+
+  // Cycle labels
+  for (let c=0;c<TOTAL;c++) {
+    const label = c===0?'RST': c===1?'IDLE': c===TOTAL-1?'DRN':`T${c-1}`;
+    svg += `<text x="${LW+c*CW+CW/2}" y="11" fill="rgba(148,163,184,.35)" font-size="7.5" text-anchor="middle" font-family="JetBrains Mono,monospace">${label}</text>`;
+  }
+
+  // Draw each signal row
+  rows.forEach((row, ri) => {
+    const y  = 16 + ri*RH;
+    const hi = y + PAD + 2;
+    const lo = y + RH - PAD - 3;
+    const mid= y + RH/2 + 1;
+
+    if (ri>0) svg += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="rgba(148,163,184,.05)" stroke-width="1"/>`;
+
+    // Label
+    svg += `<text x="${LW-4}" y="${mid+3}" fill="${row.color}" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace" opacity=".85">${row.label}</text>`;
+
+    if (row.type==='clk') {
+      let d=`M ${LW} ${lo}`;
+      for (let c=0;c<TOTAL;c++) {
+        const x=LW+c*CW;
+        d+=` L${x} ${lo} L${x} ${hi} L${x+CW/2} ${hi} L${x+CW/2} ${lo} L${x+CW} ${lo}`;
+      }
+      svg += `<path d="${d}" stroke="${row.color}" stroke-width="1.5" fill="none" opacity=".45"/>`;
+
+    } else if (row.type==='bit') {
+      let prev=S[0][row.key], d=`M ${LW} ${prev?hi:lo}`;
+      for (let c=0;c<TOTAL;c++) {
+        const x=LW+c*CW, val=S[c][row.key];
+        if (val!==prev) { d+=` L${x} ${prev?hi:lo} L${x} ${val?hi:lo}`; prev=val; }
+        d+=` L${x+CW} ${val?hi:lo}`;
+      }
+      svg += `<path d="${d}" stroke="${row.color}" stroke-width="1.5" fill="none"/>`;
+      // fill high regions
+      let inH=false, hs=0;
+      for (let c=0;c<=TOTAL;c++) {
+        const v=c<TOTAL?S[c][row.key]:0;
+        if (v&&!inH){inH=true;hs=c;}
+        else if(!v&&inH){svg+=`<rect x="${LW+hs*CW}" y="${hi}" width="${(c-hs)*CW}" height="${lo-hi}" fill="${row.color}" opacity=".07"/>`;inH=false;}
+      }
+
+    } else { // bus
+      for (let c=0;c<TOTAL;c++) {
+        const x=LW+c*CW, val=S[c][row.key];
+        const vo=row.key==='gray'?S[c].vo:1;
+        const active = vo && (val!==0 || row.key==='gray');
+        const prevVal=c>0?S[c-1][row.key]:null;
+        const transition=c>0&&(val!==prevVal||(row.key==='gray'&&S[c].vo!==S[c-1].vo));
+
+        // Crossing X mark at transition
+        if (transition) {
+          svg += `<line x1="${x-1}" y1="${hi}" x2="${x+4}" y2="${lo}" stroke="${row.color}" stroke-width="1" opacity=".5"/>`;
+          svg += `<line x1="${x-1}" y1="${lo}" x2="${x+4}" y2="${hi}" stroke="${row.color}" stroke-width="1" opacity=".5"/>`;
+        }
+        const xL=transition?x+4:x;
+        const op=active?.75:.15;
+        svg += `<line x1="${xL}" y1="${hi}" x2="${x+CW}" y2="${hi}" stroke="${row.color}" stroke-width="1" opacity="${op}"/>`;
+        svg += `<line x1="${xL}" y1="${lo}" x2="${x+CW}" y2="${lo}" stroke="${row.color}" stroke-width="1" opacity="${op}"/>`;
+        if (active) svg += `<rect x="${xL}" y="${hi+1}" width="${x+CW-xL-1}" height="${lo-hi-1}" fill="${row.color}" opacity=".07"/>`;
+
+        const hex=val.toString(16).padStart(2,'0').toUpperCase();
+        if (active) {
+          const tc = row.status && S[c].pass ? (S[c].pass==='PASS'?'#4ade80':'#f87171') : row.color;
+          svg+=`<text x="${x+CW/2}" y="${mid+3}" fill="${tc}" font-size="8.5" text-anchor="middle" font-family="JetBrains Mono,monospace">${hex}</text>`;
+        } else {
+          svg+=`<text x="${x+CW/2}" y="${mid+3}" fill="rgba(148,163,184,.18)" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">X</text>`;
+        }
+      }
+    }
+  });
+
+  svg += '</svg>';
+  return `<div class="stage-note">Timing diagram — showing first ${N} pixels. T1=first pixel driven at negedge; DUT latches at posedge; output appears 1 clock later. Green gray values = PASS.</div>` +
+         `<div style="overflow-x:auto;padding:.25rem 0">${svg}</div>`;
 }
 
 function h2(v) { return v.toString(16).padStart(2,'0').toUpperCase(); }
@@ -1069,6 +1269,9 @@ function populateConsole(d) {
 
   // Stage 4 — Reconstruction
   const passRate = (d.n_pixels > 0) ? ((( d.pass||0) / d.n_pixels)*100).toFixed(1) : '0.0';
+  // Stage 5 — Waveform
+  document.getElementById('sp5').innerHTML = buildWaveformSVG(d.trace_in||[], d.trace_out||[]);
+
   document.getElementById('sp4').innerHTML = `
     <div class="stage-note">Python reads <code style="color:#4ade80">pixel_output.hex</code> (${(d.n_pixels||0).toLocaleString()} lines), builds PIL Image(mode="L"), encodes as PNG, returns base64 to browser.</div>
     <table class="sig-tbl"><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody>
