@@ -872,7 +872,7 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
 </div>
 
 <footer>
-  &copy; 2025 EcrioniX &nbsp;·&nbsp;
+  &copy; 2026 EcrioniX &nbsp;·&nbsp;
   <a href="/tools/" style="color:var(--slate);text-decoration:none">Tools</a> &nbsp;·&nbsp;
   <a href="/vlsi/" style="color:var(--slate);text-decoration:none">VLSI</a> &nbsp;·&nbsp;
   <a href="https://ecrionix.org" style="color:var(--slate);text-decoration:none">ecrionix.org</a>
@@ -1079,12 +1079,12 @@ function showStage(n) {
 }
 
 // ── Waveform (timing diagram) ────────────────────────────
-function buildWaveformSVG(trace_in, trace_out) {
-  const N  = Math.min(trace_in.length, 10);
+function buildWaveformSVG(trace_in, trace_out, vcd) {
+  const N  = trace_in.length;   // show ALL sampled transactions
   if (N === 0) return '<div class="stage-note">No trace data yet — run a simulation first.</div>';
 
   const TOTAL = N + 3;           // 1 reset + 1 idle + N drive + 1 drain
-  const LW = 82, CW = 54, RH = 28, PAD = 3;
+  const LW = 82, CW = N > 30 ? 38 : 54, RH = 28, PAD = 3;
   const W  = LW + TOTAL * CW;
 
   const rows = [
@@ -1124,7 +1124,8 @@ function buildWaveformSVG(trace_in, trace_out) {
 
   // Cycle labels
   for (let c=0;c<TOTAL;c++) {
-    const label = c===0?'RST': c===1?'IDLE': c===TOTAL-1?'DRN':`T${c-1}`;
+    const label = c===0?'RST': c===1?'IDLE': c===TOTAL-1?'DRN':
+                  (trace_in[c-2]?`px${trace_in[c-2].px}`:`T${c-1}`);
     svg += `<text x="${LW+c*CW+CW/2}" y="11" fill="rgba(148,163,184,.35)" font-size="7.5" text-anchor="middle" font-family="JetBrains Mono,monospace">${label}</text>`;
   }
 
@@ -1195,9 +1196,21 @@ function buildWaveformSVG(trace_in, trace_out) {
   });
 
   svg += '</svg>';
-  return `<div class="stage-note">Timing diagram — showing first ${N} pixels. T1=first pixel driven at negedge; DUT latches at posedge; output appears 1 clock later. Green gray values = PASS.</div>` +
-         `<div style="overflow-x:auto;padding:.25rem 0">${svg}</div>`;
+
+  // VCD download button
+  let vcdBtn = '';
+  if (vcd) {
+    const blob = new Blob([vcd], {type:'text/plain'});
+    const url  = URL.createObjectURL(blob);
+    vcdBtn = `<a href="${url}" download="lumacore01_dump.vcd" style="margin-left:.6rem;font-size:.7rem;color:#22d3ee;text-decoration:none;border:1px solid rgba(34,211,238,.3);border-radius:4px;padding:.15rem .55rem">⬇ Download VCD</a>`;
+  }
+
+  return `<div class="stage-note">Full timing diagram — <b style="color:var(--text)">${N} sampled transactions</b> (first 20 + evenly spaced across all ${N > 20 ? 'pixels' : 'cycles'} + last 5). T-labels = pixel index. Scroll right → to see all.${vcdBtn}</div>` +
+         `<div style="overflow-x:auto;overflow-y:hidden;padding:.25rem 0;cursor:grab" id="wfScroll">${svg}</div>`;
 }
+
+// Store VCD globally for stage 5 to reuse
+let _lastVcd = null;
 
 function h2(v) { return v.toString(16).padStart(2,'0').toUpperCase(); }
 
@@ -1270,7 +1283,8 @@ function populateConsole(d) {
   // Stage 4 — Reconstruction
   const passRate = (d.n_pixels > 0) ? ((( d.pass||0) / d.n_pixels)*100).toFixed(1) : '0.0';
   // Stage 5 — Waveform
-  document.getElementById('sp5').innerHTML = buildWaveformSVG(d.trace_in||[], d.trace_out||[]);
+  _lastVcd = d.vcd || null;
+  document.getElementById('sp5').innerHTML = buildWaveformSVG(d.trace_in||[], d.trace_out||[], d.vcd||null);
 
   document.getElementById('sp4').innerHTML = `
     <div class="stage-note">Python reads <code style="color:#4ade80">pixel_output.hex</code> (${(d.n_pixels||0).toLocaleString()} lines), builds PIL Image(mode="L"), encodes as PNG, returns base64 to browser.</div>
