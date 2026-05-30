@@ -274,6 +274,19 @@
     /* ── WAVEFORM VIEWER ─────────────────────────── */
     #panel-waveform{flex-direction:column;overflow:hidden}
 
+    /* shared output card (sky130 / sta / floorplan) */
+    .out-card{border-radius:10px;padding:.85rem 1rem;margin:.5rem 0}
+    .out-card-title{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.65rem;display:flex;align-items:baseline;gap:.5rem}
+    .out-card-time{font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;color:#64748b}
+    .out-card-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:.4rem;margin-bottom:.6rem}
+    .out-card-metric{background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.09);border-radius:7px;padding:.4rem .6rem}
+    .out-card-label{display:block;font-size:.59rem;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.18rem;font-family:'Outfit',sans-serif}
+    .out-card-value{display:block;font-size:.86rem;font-weight:700;color:#e2e8f0;font-family:var(--mono)}
+    .out-card-meta{font-size:.68rem;color:#475569;margin-bottom:.4rem;font-family:'Outfit',sans-serif}
+    .out-card-cells{margin:.45rem 0 .2rem}
+    .out-card-cell-row{display:flex;justify-content:space-between;font-size:.72rem;padding:.14rem 0;border-bottom:1px solid rgba(148,163,184,.06)}
+    .out-card-path{display:grid;grid-template-columns:auto 1fr;gap:.2rem .65rem;font-size:.74rem;margin:.4rem 0 .3rem}
+    .out-card-path-lbl{color:#475569}
     /* floorplan summary card */
     .fp-card{background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.18);border-radius:10px;padding:1rem 1.1rem;margin:.6rem 0 .5rem}
     .fp-card-title{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#c084fc;margin-bottom:.75rem}
@@ -2184,13 +2197,33 @@ async function staCode(){
       ? `<span style="color:#64748b;font-size:.75rem">Clock: ${esc(d.clock)} @ 10 ns (100 MHz) · input/output delay 1 ns</span>\n`
       : `<span style="color:#64748b;font-size:.75rem">No clock detected — unconstrained combinational analysis</span>\n`;
     if(d.success){
-      out.innerHTML=`<span style="color:#818cf8;font-weight:600">── OpenSTA complete (${ms}) ─────────────────────\n</span>`
-        +clkNote+fmtSTA(d.report);
+      const s=parseSTA(d.report||'');
+      const slackBadge=s.slackMet===null
+        ?`<span style="color:#64748b">${s.unconstrained?'unconstrained':'—'}</span>`
+        :s.slackMet
+          ?`<span style="color:#4ade80;font-weight:700">MET</span>`
+          :`<span style="color:#f87171;font-weight:700">VIOLATED</span>`;
+      const slackVal=s.slack!==null?`${s.slack.toFixed(3)} ns`:(s.unconstrained?'—':'—');
+      const wnsVal=s.wns!==null?`${s.wns.toFixed(3)} ns`:(s.unconstrained?'unconstrained':'—');
+      const tnsVal=s.tns!==null?`${s.tns.toFixed(3)} ns`:'—';
+      const arrVal=s.arrivalTime?`${s.arrivalTime} ns`:'—';
+      const clkMeta=d.clock?`Clock: ${esc(d.clock)} @ 10 ns (100 MHz)`:'Combinational — no clock detected';
+      const pathHtml=(s.startpoint||s.endpoint)?`<div class="out-card-path"><span class="out-card-path-lbl">Startpoint</span><span>${esc(s.startpoint||'—')}</span><span class="out-card-path-lbl">Endpoint</span><span>${esc(s.endpoint||'—')}</span></div>`:'';
+      out.innerHTML=`<div class="out-card" style="background:rgba(129,140,248,.05);border:1px solid rgba(129,140,248,.18)">
+  <div class="out-card-title" style="color:#818cf8">OpenSTA Complete <span class="out-card-time">${ms}</span></div>
+  <div class="out-card-metrics">
+    <div class="out-card-metric"><span class="out-card-label">Arrival Time</span><span class="out-card-value" style="color:#818cf8">${esc(arrVal)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">WNS</span><span class="out-card-value">${esc(wnsVal)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">TNS</span><span class="out-card-value">${esc(tnsVal)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">Slack</span><span class="out-card-value">${slackBadge} <span style="color:#94a3b8;font-size:.78rem">${esc(slackVal)}</span></span></div>
+  </div>
+  <div class="out-card-meta">${esc(clkMeta)}</div>
+  ${pathHtml}
+  <details class="fp-details"><summary>Timing Report</summary><pre>${fmtSTA(d.report)}</pre></details>
+</div>`;
       setStatus('ok',`STA done — ${ms}`);
     } else {
-      out.innerHTML=`<span class="sy-err">── STA failed ─────────────────────────────────\n</span>`
-        +clkNote+fmtSTA(d.report)
-        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      out.innerHTML=`<div style="padding:.5rem"><span class="sy-err">STA failed</span><br><pre style="margin-top:.4rem;font-size:.74rem;color:#64748b;white-space:pre-wrap">${fmtSTA(d.report)}${d.stderr?'\n'+esc(d.stderr):''}</pre></div>`;
       setStatus('err','STA failed');
     }
   }catch(e){
@@ -2250,14 +2283,23 @@ async function sky130Code(){
     const ms=((Date.now()-t0)/1000).toFixed(2)+'s';
     document.getElementById('status-time').textContent=ms;
     if(d.success){
-      out.innerHTML=`<span style="color:#4ade80;font-weight:600">── SKY130 HD Synthesis complete (${ms}) ──────────\n</span>`
-        +`<span style="color:#64748b;font-size:.75rem">Library: sky130_fd_sc_hd · TT corner 25°C 1.8V\n\n</span>`
-        +fmtSKY130(d.report);
+      const s=parseSKY130Stat(d.report||'');
+      const cellRows=s.cellList.map(c=>`<div class="out-card-cell-row"><span style="color:#4ade80">${esc(c.name)}</span><span style="color:#94a3b8">×${esc(c.count)}</span></div>`).join('');
+      out.innerHTML=`<div class="out-card" style="background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18)">
+  <div class="out-card-title" style="color:#4ade80">SKY130 HD Synthesis <span class="out-card-time">${ms}</span></div>
+  <div class="out-card-metrics">
+    <div class="out-card-metric"><span class="out-card-label">Cells</span><span class="out-card-value" style="color:#4ade80">${esc(s.cells)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">Wires</span><span class="out-card-value">${esc(s.wires)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">Chip Area</span><span class="out-card-value" style="color:#4ade80">${esc(s.area)}</span></div>
+    <div class="out-card-metric"><span class="out-card-label">Sequential</span><span class="out-card-value">${esc(s.seqEls)} <span style="color:#64748b;font-size:.7rem">(${esc(s.seqPct)}%)</span></span></div>
+  </div>
+  <div class="out-card-meta">Library: sky130_fd_sc_hd · TT corner 25°C 1.8V</div>
+  ${cellRows?`<div class="out-card-cells">${cellRows}</div>`:''}
+  <details class="fp-details"><summary>Full Synthesis Log</summary><pre>${fmtSKY130(d.report)}</pre></details>
+</div>`;
       setStatus('ok',`SKY130 done — ${ms}`);
     } else {
-      out.innerHTML=`<span class="sy-err">── SKY130 synthesis failed ────────────────────────\n</span>`
-        +fmtSKY130(d.report)
-        +(d.stderr?`\n<span class="sy-err">${esc(d.stderr)}</span>`:'');
+      out.innerHTML=`<div style="padding:.5rem"><span class="sy-err">SKY130 synthesis failed</span><br><pre style="margin-top:.4rem;font-size:.74rem;color:#64748b;white-space:pre-wrap">${fmtSKY130(d.report)}${d.stderr?'\n'+esc(d.stderr):''}</pre></div>`;
       setStatus('err','SKY130 synthesis failed');
     }
   }catch(e){
@@ -2288,6 +2330,34 @@ function parseFpReport(report){
     const um=line.match(/Design area.*?([\d.]+)%\s+utilization/i);
     if(um) out.util=um[1];
     if(/\[WARN/i.test(line)) out.warns.push(line.replace(/^\s*\[WARN[^\]]*\]\s*/,''));
+  }
+  return out;
+}
+function parseSKY130Stat(text){
+  const out={cells:'—',wires:'—',area:'—',seqEls:'—',seqPct:'0',cellList:[]};
+  for(const line of text.split('\n')){
+    const cm=line.match(/Number of cells:\s*(\d+)/); if(cm) out.cells=cm[1];
+    const wm=line.match(/Number of wires:\s*(\d+)/); if(wm) out.wires=wm[1];
+    const am=line.match(/Chip area for module[^:]*:\s*([\d.]+)/i);
+    if(am) out.area=parseFloat(am[1]).toFixed(2)+' µm²';
+    const sm=line.match(/sequential elements:\s*([\d.]+)\s*\(([\d.]+)%\)/i);
+    if(sm){out.seqEls=sm[1];out.seqPct=sm[2];}
+    const cl=line.match(/^\s+(sky130_fd_sc_hd__\S+)\s+(\d+)/);
+    if(cl) out.cellList.push({name:cl[1],count:cl[2]});
+  }
+  return out;
+}
+function parseSTA(text){
+  const out={wns:null,tns:null,slack:null,slackMet:null,startpoint:null,endpoint:null,arrivalTime:null,unconstrained:false};
+  for(const line of text.split('\n')){
+    if(/unconstrained/i.test(line)&&!/Startpoint|Endpoint/i.test(line)) out.unconstrained=true;
+    const wm=line.match(/Worst Negative Slack[^:]*:\s*([\-\d.]+)/i); if(wm) out.wns=parseFloat(wm[1]);
+    const tm=line.match(/Total Negative Slack[^:]*:\s*([\-\d.]+)/i); if(tm) out.tns=parseFloat(tm[1]);
+    const sm=line.match(/slack\s*\((MET|VIOLATED)\)\s*([\-\d.]+)/i);
+    if(sm){out.slackMet=sm[1]==='MET';out.slack=parseFloat(sm[2]);}
+    const spm=line.match(/^Startpoint:\s*(.+)/i); if(spm) out.startpoint=spm[1].trim();
+    const epm=line.match(/^Endpoint:\s*(.+)/i); if(epm) out.endpoint=epm[1].trim();
+    const atm=line.match(/([\d.]+)\s+data arrival time/i); if(atm) out.arrivalTime=atm[1];
   }
   return out;
 }
