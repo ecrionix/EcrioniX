@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verilog Lint Tutorial — Fix Lint Violations with Verilator | EcrioniX</title>
+  <meta name="description" content="Learn to fix common Verilog lint violations interactively. Uses Verilator + iverilog to catch implicit wires, width mismatches, undriven outputs, bad sensitivity lists, and blocking assignments.">
+  <meta name="keywords" content="verilog lint, verilator lint, verilog linting tutorial, fix verilog warnings, implicit wire verilog, width mismatch verilog, undriven output verilog, always block sensitivity list, blocking assignment sequential">
+  <link rel="canonical" href="https://ecrionix.org/tools/verilog-lint/">
+  <meta property="og:title" content="Verilog Lint Tutorial — Fix Violations with Verilator">
+  <meta property="og:description" content="Interactive lint tutorial: spot and fix 5 classic Verilog RTL issues using real Verilator checks.">
+  <meta property="og:url" content="https://ecrionix.org/tools/verilog-lint/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Tools","item":"https://ecrionix.org/tools/"},
+      {"@type":"ListItem","position":3,"name":"Verilog Lint Tutorial","item":"https://ecrionix.org/tools/verilog-lint/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is Verilog linting?",
+       "acceptedAnswer":{"@type":"Answer","text":"Linting is static analysis of RTL code to catch bugs before simulation. It finds issues like undeclared wires, width mismatches, incomplete sensitivity lists, and undriven outputs that simulators may silently ignore."}},
+      {"@type":"Question","name":"What is Verilator lint-only mode?",
+       "acceptedAnswer":{"@type":"Answer","text":"Verilator --lint-only runs structural checks on Verilog/SystemVerilog without generating C++ simulation code. It is very fast and catches a wide range of RTL coding issues."}},
+      {"@type":"Question","name":"What is an implicit wire in Verilog?",
+       "acceptedAnswer":{"@type":"Answer","text":"An implicit wire is created when you use a signal name that was never declared. This is legal in Verilog by default but dangerous — a typo creates a new net instead of a compile error. Using `default_nettype none forces explicit declarations."}},
+      {"@type":"Question","name":"Why should I use non-blocking assignments in sequential always blocks?",
+       "acceptedAnswer":{"@type":"Answer","text":"Non-blocking assignments (<=) model clocked flip-flop behavior correctly. Blocking assignments (=) in clocked always blocks cause race conditions in simulation and mismatches between RTL and gate-level netlist."}},
+      {"@type":"Question","name":"What does WIDTH warning mean in Verilator?",
+       "acceptedAnswer":{"@type":"Answer","text":"A WIDTH warning means you are assigning or comparing signals of different bit widths without explicit casting. This can silently truncate or zero-extend values, causing subtle functional bugs."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    :root{
+      --bg:#020617;--bg2:#0c1220;--bg3:#111827;
+      --border:rgba(148,163,184,.1);
+      --blue:#38bdf8;--green:#4ade80;--red:#f87171;--amber:#f59e0b;
+      --slate:#94a3b8;--text:#e2e8f0;
+      --mono:'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+
+    /* ── nav ── */
+    .nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.25rem;height:52px;flex-shrink:0}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;color:#fff;text-decoration:none;letter-spacing:.04em}
+    .nav-links{display:flex;gap:1.5rem}
+    .nav-links a{color:var(--slate);text-decoration:none;font-size:.82rem;transition:.2s}
+    .nav-links a:hover{color:var(--text)}
+
+    /* ── breadcrumb ── */
+    .breadcrumb{padding:.55rem 1.25rem;font-size:.74rem;color:var(--slate);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg2)}
+    .breadcrumb a{color:var(--slate);text-decoration:none}
+    .breadcrumb a:hover{color:var(--blue)}
+    .breadcrumb span{opacity:.45}
+
+    /* ── hero ── */
+    .hero{padding:2rem 1.25rem 1.25rem;text-align:center}
+    .hero-badge{display:inline-flex;align-items:center;gap:.4rem;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:99px;padding:.28rem .85rem;font-size:.72rem;font-weight:600;color:#f87171;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.9rem}
+    .hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(1.4rem,3.5vw,2.1rem);font-weight:700;line-height:1.2;margin-bottom:.6rem}
+    .hero h1 span{color:#f87171}
+    .hero p{color:var(--slate);font-size:.92rem;max-width:560px;margin:0 auto;line-height:1.65}
+
+    /* ── diagram ── */
+    .diagram-wrap{display:flex;justify-content:center;padding:1rem 1.25rem .5rem}
+    .diagram-wrap svg{max-width:600px;width:100%}
+
+    /* ── examples strip ── */
+    .examples-strip{padding:.6rem 1.25rem;display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;border-bottom:1px solid var(--border)}
+    .ex-btn{padding:.32rem .9rem;border-radius:6px;border:1px solid var(--border);background:rgba(15,23,42,.8);color:var(--slate);font-size:.75rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.2s;white-space:nowrap}
+    .ex-btn:hover{border-color:rgba(248,113,113,.4);color:#f87171;background:rgba(248,113,113,.05)}
+    .ex-btn.active{border-color:rgba(248,113,113,.5);color:#f87171;background:rgba(248,113,113,.08);font-weight:600}
+
+    /* ── main layout ── */
+    .main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0;border-top:1px solid var(--border)}
+    @media(max-width:780px){.main{grid-template-columns:1fr}}
+
+    /* ── left: tutorial panel ── */
+    .tutorial-panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+    .panel-hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:.4rem .85rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .panel-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate)}
+    .run-btn{padding:.32rem .9rem;border-radius:6px;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.08);color:#f87171;font-size:.76rem;font-family:'Outfit',sans-serif;cursor:pointer;transition:.2s;font-weight:600}
+    .run-btn:hover{background:rgba(248,113,113,.18);border-color:rgba(248,113,113,.6)}
+    .run-btn:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── code editor ── */
+    .editor-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
+    #editor{flex:1;background:var(--bg3);color:#c0cae0;font-family:var(--mono);font-size:.78rem;line-height:1.7;padding:.85rem 1rem;border:none;outline:none;resize:none;width:100%;tab-size:2;white-space:pre;overflow:auto}
+    #editor:focus{box-shadow:inset 0 0 0 1px rgba(248,113,113,.25)}
+
+    /* ── output pane ── */
+    .output-panel{display:flex;flex-direction:column;overflow:hidden}
+    #output{flex:1;font-family:var(--mono);font-size:.78rem;line-height:1.7;padding:.85rem 1rem;background:var(--bg3);overflow:auto;white-space:pre-wrap;word-break:break-word;color:#c0cae0}
+
+    /* ── violation card (right pane header) ── */
+    .viol-card{background:var(--bg2);border-bottom:1px solid var(--border);padding:.65rem 1rem;flex-shrink:0}
+    .viol-name{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#f87171;margin-bottom:.2rem}
+    .viol-desc{font-size:.8rem;color:var(--slate);line-height:1.5}
+    .viol-hint{font-size:.73rem;color:rgba(248,113,113,.7);margin-top:.3rem;font-family:var(--mono)}
+
+    /* ── result cards ── */
+    .out-card{border-radius:10px;padding:.85rem 1rem;margin:.5rem}
+    .out-card-title{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center}
+    .out-card-time{font-size:.65rem;font-weight:400;opacity:.6;letter-spacing:0}
+    .out-card-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.4rem;margin-bottom:.6rem}
+    .out-card-metric{background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.09);border-radius:7px;padding:.4rem .6rem}
+    .out-card-label{display:block;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;opacity:.55;margin-bottom:.15rem}
+    .out-card-val{font-size:.9rem;font-weight:600;font-family:var(--mono)}
+    .out-card-meta{font-size:.72rem;color:var(--slate);margin-top:.35rem}
+    .badge{display:inline-block;padding:.12rem .45rem;border-radius:4px;font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+    .badge-pass{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25)}
+    .badge-fail{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)}
+    .warn-item{font-size:.76rem;font-family:var(--mono);color:#fbbf24;padding:.2rem 0;border-top:1px solid rgba(148,163,184,.06)}
+    .err-item{font-size:.76rem;font-family:var(--mono);color:#f87171;padding:.2rem 0;border-top:1px solid rgba(148,163,184,.06)}
+    .fp-details{margin-top:.5rem}
+    .fp-details summary{font-size:.72rem;color:var(--slate);cursor:pointer;padding:.25rem 0;user-select:none}
+    .fp-details pre{font-family:var(--mono);font-size:.72rem;color:#a0aec0;white-space:pre-wrap;word-break:break-word;margin-top:.4rem;padding:.5rem;background:rgba(15,23,42,.5);border-radius:6px;line-height:1.6}
+
+    /* ── how it works ── */
+    .how-section{padding:2rem 1.25rem;max-width:860px;margin:0 auto;width:100%}
+    .how-section h2{font-family:'Orbitron',sans-serif;font-size:1.05rem;margin-bottom:1.2rem;color:var(--text)}
+    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.85rem}
+    .step-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem}
+    .step-num{font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;color:#f87171;margin-bottom:.4rem}
+    .step-title{font-size:.85rem;font-weight:600;margin-bottom:.3rem}
+    .step-desc{font-size:.78rem;color:var(--slate);line-height:1.5}
+
+    /* ── faq ── */
+    .faq-section{padding:1.5rem 1.25rem 2rem;max-width:860px;margin:0 auto;width:100%}
+    .faq-section h2{font-family:'Orbitron',sans-serif;font-size:1.05rem;margin-bottom:1rem}
+    .faq-item{border:1px solid var(--border);border-radius:8px;margin-bottom:.6rem;overflow:hidden}
+    .faq-q{display:flex;justify-content:space-between;align-items:center;padding:.85rem 1rem;cursor:pointer;font-size:.85rem;font-weight:500;gap:.75rem;background:var(--bg2)}
+    .faq-q:hover{background:rgba(148,163,184,.04)}
+    .faq-arrow{flex-shrink:0;transition:.2s;color:var(--slate)}
+    .faq-a{display:none;padding:.75rem 1rem;font-size:.82rem;color:var(--slate);line-height:1.6;background:var(--bg3)}
+    .faq-item.open .faq-arrow{transform:rotate(180deg)}
+    .faq-item.open .faq-a{display:block}
+
+    /* ── footer ── */
+    footer{border-top:1px solid var(--border);padding:1rem 1.25rem;text-align:center;font-size:.75rem;color:var(--slate);background:var(--bg2)}
+
+    /* ── back to top ── */
+    #btt{position:fixed;bottom:1.25rem;right:1.25rem;background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:8px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;display:none;z-index:999;transition:.2s}
+    #btt:hover{background:rgba(248,113,113,.28)}
+
+    /* ── copy btn ── */
+    .copy-btn{padding:.18rem .55rem;border-radius:5px;border:1px solid var(--border);background:rgba(15,23,42,.7);color:var(--slate);font-size:.67rem;cursor:pointer;transition:.2s}
+    .copy-btn:hover{color:var(--text);border-color:rgba(148,163,184,.3)}
+    .copy-btn.copied{color:#4ade80;border-color:rgba(74,222,128,.3)}
+  </style>
+</head>
+<body>
+
+<!-- nav -->
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/tools/">Tools</a>
+    <a href="/digital-electronics/">Digital</a>
+    <a href="/vlsi/">VLSI</a>
+  </div>
+</nav>
+
+<!-- breadcrumb -->
+<div class="breadcrumb" aria-label="breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/tools/">Tools</a><span>›</span>
+  <span>Verilog Lint Tutorial</span>
+</div>
+
+<!-- hero -->
+<div class="hero">
+  <div class="hero-badge">&#x26A0; Lint Checker</div>
+  <h1>Fix Verilog <span>Lint Violations</span></h1>
+  <p>5 hands-on examples using real <strong>Verilator + iverilog</strong> checks. Load a broken module, spot the issue, fix it, and run lint to confirm it's clean.</p>
+</div>
+
+<!-- inline svg diagram -->
+<div class="diagram-wrap">
+  <svg viewBox="0 0 600 110" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Lint flow: RTL → Verilator → Warnings → Fix → Clean">
+    <rect width="600" height="110" rx="10" fill="#0c1220"/>
+    <!-- boxes -->
+    <rect x="12" y="35" width="90" height="40" rx="6" fill="#1e293b" stroke="rgba(148,163,184,.2)"/>
+    <text x="57" y="59" text-anchor="middle" font-family="Outfit,sans-serif" font-size="12" fill="#e2e8f0">RTL Code</text>
+    <rect x="136" y="35" width="110" height="40" rx="6" fill="#1e293b" stroke="rgba(248,113,113,.3)"/>
+    <text x="191" y="53" text-anchor="middle" font-family="Outfit,sans-serif" font-size="11" fill="#f87171">Verilator</text>
+    <text x="191" y="67" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#94a3b8">--lint-only</text>
+    <rect x="282" y="35" width="100" height="40" rx="6" fill="#1e293b" stroke="rgba(251,191,36,.3)"/>
+    <text x="332" y="53" text-anchor="middle" font-family="Outfit,sans-serif" font-size="11" fill="#fbbf24">Warnings /</text>
+    <text x="332" y="67" text-anchor="middle" font-family="Outfit,sans-serif" font-size="11" fill="#fbbf24">Errors</text>
+    <rect x="416" y="35" width="80" height="40" rx="6" fill="#1e293b" stroke="rgba(148,163,184,.2)"/>
+    <text x="456" y="59" text-anchor="middle" font-family="Outfit,sans-serif" font-size="12" fill="#e2e8f0">Fix RTL</text>
+    <rect x="530" y="35" width="58" height="40" rx="6" fill="#0f2a1a" stroke="rgba(74,222,128,.35)"/>
+    <text x="559" y="59" text-anchor="middle" font-family="Outfit,sans-serif" font-size="11" fill="#4ade80">Clean ✓</text>
+    <!-- arrows -->
+    <line x1="102" y1="55" x2="134" y2="55" stroke="rgba(148,163,184,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+    <line x1="246" y1="55" x2="280" y2="55" stroke="rgba(248,113,113,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+    <line x1="382" y1="55" x2="414" y2="55" stroke="rgba(148,163,184,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+    <line x1="496" y1="55" x2="528" y2="55" stroke="rgba(74,222,128,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+    <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(148,163,184,.5)"/></marker></defs>
+    <!-- label -->
+    <text x="300" y="98" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="rgba(148,163,184,.4)">Static analysis · no simulation needed</text>
+  </svg>
+</div>
+
+<!-- example selector -->
+<div class="examples-strip">
+  <button class="ex-btn active" onclick="loadExample(0)">1 · Implicit Wire</button>
+  <button class="ex-btn" onclick="loadExample(1)">2 · Width Mismatch</button>
+  <button class="ex-btn" onclick="loadExample(2)">3 · Sensitivity List</button>
+  <button class="ex-btn" onclick="loadExample(3)">4 · Undriven Output</button>
+  <button class="ex-btn" onclick="loadExample(4)">5 · Blocking in Seq</button>
+</div>
+
+<!-- main editor + output -->
+<div class="main">
+
+  <!-- left: editor -->
+  <div class="tutorial-panel">
+    <div class="panel-hdr">
+      <span class="panel-title" id="editor-label">design.v — broken</span>
+      <div style="display:flex;gap:.5rem">
+        <button class="copy-btn" onclick="copyEditor()">Copy</button>
+        <button class="run-btn" id="run-btn" onclick="runLint()">&#9654; Run Lint</button>
+      </div>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="editor" spellcheck="false" autocorrect="off" autocomplete="off"></textarea>
+    </div>
+  </div>
+
+  <!-- right: violation info + output -->
+  <div class="output-panel">
+    <div class="viol-card" id="viol-card">
+      <div class="viol-name" id="viol-name">IMPLICIT · Undeclared Net</div>
+      <div class="viol-desc" id="viol-desc">A signal is used without being declared. In default Verilog this silently creates a 1-bit wire — dangerous if it's a typo.</div>
+      <div class="viol-hint" id="viol-hint">Fix: declare the missing wire before using it.</div>
+    </div>
+    <div class="panel-hdr">
+      <span class="panel-title">Lint Output</span>
+      <span id="status-dot" style="font-size:.72rem;color:var(--slate)">— not run</span>
+    </div>
+    <div id="output">Run lint to see results.</div>
+  </div>
+
+</div>
+
+<!-- how it works -->
+<div class="how-section">
+  <h2>How It Works</h2>
+  <div class="steps">
+    <div class="step-card">
+      <div class="step-num">STEP 01</div>
+      <div class="step-title">Pick an Example</div>
+      <div class="step-desc">Each example loads a broken Verilog module that contains one specific lint violation.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">STEP 02</div>
+      <div class="step-title">Read the Hint</div>
+      <div class="step-desc">The violation name, description, and fix hint are shown above the output pane.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">STEP 03</div>
+      <div class="step-title">Fix the RTL</div>
+      <div class="step-desc">Edit the code directly in the editor. The fix is usually one or two lines.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">STEP 04</div>
+      <div class="step-title">Run Lint</div>
+      <div class="step-desc">Click Run Lint. Verilator + iverilog check your code. Fix until the output shows Clean.</div>
+    </div>
+  </div>
+</div>
+
+<!-- faq -->
+<div class="faq-section">
+  <h2>FAQ</h2>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">What is Verilog linting?<svg class="faq-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="faq-a">Linting is static analysis of RTL code that catches bugs before simulation. It finds issues like undeclared wires, width mismatches, and undriven outputs that simulators may silently ignore.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">What does Verilator --lint-only do?<svg class="faq-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="faq-a">It runs structural checks on Verilog/SystemVerilog without generating any simulation model. It is very fast and catches a wide range of RTL coding issues including WIDTH, UNDRIVEN, UNUSEDSIGNAL, and BLKSEQ.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">Why is an implicit wire dangerous?<svg class="faq-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="faq-a">In standard Verilog, using an undeclared name auto-creates a 1-bit wire. A typo silently creates a new unconnected net instead of a compile error. Adding `default_nettype none turns this into a hard error.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">Why use &lt;= in clocked always blocks?<svg class="faq-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="faq-a">Non-blocking assignments (&lt;=) correctly model flip-flop behavior — all right-hand sides are evaluated before any are written. Blocking (=) assignments in clocked blocks cause race conditions in simulation and synthesis mismatches.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)">What does a WIDTH warning mean?<svg class="faq-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+    <div class="faq-a">A WIDTH warning means you are assigning or comparing signals of different bit widths. This can silently truncate or zero-extend values. Fix by matching widths explicitly using zero-extension or proper sizing of literals.</div>
+  </div>
+</div>
+
+<footer>
+  &copy; 2025 EcrioniX &nbsp;·&nbsp; <a href="/tools/" style="color:var(--slate);text-decoration:none">All Tools</a> &nbsp;·&nbsp; <a href="https://ecrionix.org" style="color:var(--slate);text-decoration:none">ecrionix.org</a>
+</footer>
+
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679; Top</button>
+
+<script>
+const LINT_API = 'https://ecrionix-ecrionix-verilog.hf.space/lint';
+
+/* ── examples ── */
+const EXAMPLES = [
+  {
+    label: '1 · Implicit Wire',
+    violation: 'IMPLICIT · Undeclared Net',
+    desc: 'A signal is used without being declared. In default Verilog this silently creates a 1-bit wire — dangerous if it\'s a typo.',
+    hint: 'Fix: add  wire temp;  before the first assign statement.',
+    code: `// Example 1: Implicit Wire
+// 'temp' is never declared — spot the missing wire declaration
+module implicit_wire (
+  input  a,
+  input  b,
+  output y
+);
+  assign y    = a & temp;   // temp is used here …
+  assign temp = a | b;      // … and driven here — but never declared!
+endmodule`
+  },
+  {
+    label: '2 · Width Mismatch',
+    violation: 'WIDTH · Bit-width Mismatch',
+    desc: 'A 4-bit value is assigned to an 8-bit port without explicit extension. Verilator warns because silent truncation or zero-extension can hide bugs.',
+    hint: 'Fix: zero-extend:  assign y = {4\'b0, a + 4\'b1};  or cast explicitly.',
+    code: `// Example 2: Width Mismatch
+// 4-bit 'a' + 4-bit literal assigned directly to 8-bit 'y'
+module width_mismatch (
+  input  [3:0] a,
+  output [7:0] y
+);
+  assign y = a + 4'b0001;   // 4-bit result → 8-bit port: WIDTH warning
+endmodule`
+  },
+  {
+    label: '3 · Sensitivity List',
+    violation: 'ALWCOMBORDER · Incomplete Sensitivity List',
+    desc: 'The always block is sensitive to "a" only. If "b" changes the output won\'t update, causing a simulation/synthesis mismatch.',
+    hint: 'Fix: change  always @(a)  to  always @(*)  or  always @(a or b).',
+    code: `// Example 3: Incomplete Sensitivity List
+// always block only triggers on 'a', missing 'b'
+module sens_list (
+  input  a,
+  input  b,
+  output reg y
+);
+  always @(a)          // 'b' is missing from the sensitivity list!
+    y = a & b;
+endmodule`
+  },
+  {
+    label: '4 · Undriven Output',
+    violation: 'UNDRIVEN · Output Never Assigned',
+    desc: 'The port "q_bar" is declared as output reg but is never driven. It stays X in simulation and synthesises to a constant.',
+    hint: 'Fix: add  q_bar <= ~d;  inside the always block.',
+    code: `// Example 4: Undriven Output
+// 'q_bar' is declared but never assigned
+module undriven_output (
+  input       clk,
+  input       d,
+  output reg  q,
+  output reg  q_bar    // declared output, but never driven!
+);
+  always @(posedge clk) begin
+    q <= d;
+    // q_bar is missing its assignment
+  end
+endmodule`
+  },
+  {
+    label: '5 · Blocking in Seq',
+    violation: 'BLKSEQ · Blocking Assignment in Sequential Block',
+    desc: 'Using = (blocking) inside a clocked always block causes race conditions in simulation and mismatches between RTL and gate-level netlists.',
+    hint: 'Fix: change  q = d;  to  q <= d;  (non-blocking assignment).',
+    code: `// Example 5: Blocking Assignment in Sequential Block
+// '=' used in a clocked always block — should be '<='
+module blkseq (
+  input       clk,
+  input  [7:0] d,
+  output reg [7:0] q
+);
+  always @(posedge clk)
+    q = d;    // blocking '=' in clocked block: BLKSEQ warning
+endmodule`
+  }
+];
+
+let currentExample = 0;
+
+function loadExample(idx) {
+  currentExample = idx;
+  document.querySelectorAll('.ex-btn').forEach((b,i) => b.classList.toggle('active', i===idx));
+  const ex = EXAMPLES[idx];
+  document.getElementById('editor').value = ex.code;
+  document.getElementById('editor-label').textContent = 'design.v — broken';
+  document.getElementById('viol-name').textContent = ex.violation;
+  document.getElementById('viol-desc').textContent = ex.desc;
+  document.getElementById('viol-hint').textContent = ex.hint;
+  document.getElementById('output').innerHTML = 'Run lint to see results.';
+  document.getElementById('status-dot').textContent = '— not run';
+  document.getElementById('status-dot').style.color = 'var(--slate)';
+}
+
+/* ── lint runner ── */
+async function runLint() {
+  const btn = document.getElementById('run-btn');
+  const out = document.getElementById('output');
+  const dot = document.getElementById('status-dot');
+  const code = document.getElementById('editor').value;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  out.innerHTML = '<span style="color:var(--slate)">Running Verilator + iverilog…</span>';
+  dot.textContent = 'running…';
+  dot.style.color = 'var(--slate)';
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch(LINT_API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({code})
+    });
+    const d = await res.json();
+    const ms = ((Date.now()-t0)/1000).toFixed(2)+'s';
+    renderResult(d, ms);
+  } catch(e) {
+    out.innerHTML = `<span style="color:#f87171">Network error: ${e.message}</span>`;
+    dot.textContent = 'error';
+    dot.style.color = '#f87171';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run Lint';
+  }
+}
+
+function renderResult(d, ms) {
+  const out = document.getElementById('output');
+  const dot = document.getElementById('status-dot');
+  const raw  = (d.output || '').trim();
+  const ok   = d.exit_code === 0 && !raw;
+
+  if (ok) {
+    dot.textContent = '✓ clean';
+    dot.style.color = '#4ade80';
+    document.getElementById('editor-label').textContent = 'design.v — clean ✓';
+
+    const lines = parseLintLines(raw);
+    out.innerHTML = `<div class="out-card" style="background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18)">
+      <div class="out-card-title" style="color:#4ade80">Lint Passed <span class="out-card-time">${ms}</span></div>
+      <div class="out-card-metrics">
+        <div class="out-card-metric"><span class="out-card-label">Warnings</span><span class="out-card-val" style="color:#4ade80">0</span></div>
+        <div class="out-card-metric"><span class="out-card-label">Errors</span><span class="out-card-val" style="color:#4ade80">0</span></div>
+        <div class="out-card-metric"><span class="out-card-label">Tool</span><span class="out-card-val" style="font-size:.72rem">Verilator+iv</span></div>
+      </div>
+      <div class="out-card-meta" style="color:#4ade80">&#10003; No lint violations found. Your RTL is clean!</div>
+    </div>`;
+  } else {
+    const lines = parseLintLines(raw);
+    const warnCount = lines.filter(l=>l.type==='warn').length;
+    const errCount  = lines.filter(l=>l.type==='error').length;
+    dot.textContent = `${errCount} err · ${warnCount} warn`;
+    dot.style.color = errCount>0 ? '#f87171' : '#fbbf24';
+
+    const itemsHtml = lines.slice(0,12).map(l =>
+      `<div class="${l.type==='error'?'err-item':'warn-item'}">${escHtml(l.text)}</div>`
+    ).join('');
+    const moreCount = lines.length > 12 ? lines.length - 12 : 0;
+
+    out.innerHTML = `<div class="out-card" style="background:rgba(248,113,113,.05);border:1px solid rgba(248,113,113,.18)">
+      <div class="out-card-title" style="color:#f87171">Lint Issues Found <span class="out-card-time">${ms}</span></div>
+      <div class="out-card-metrics">
+        <div class="out-card-metric"><span class="out-card-label">Errors</span><span class="out-card-val" style="color:${errCount?'#f87171':'#4ade80'}">${errCount}</span></div>
+        <div class="out-card-metric"><span class="out-card-label">Warnings</span><span class="out-card-val" style="color:${warnCount?'#fbbf24':'#4ade80'}">${warnCount}</span></div>
+        <div class="out-card-metric"><span class="out-card-label">Tool</span><span class="out-card-val" style="font-size:.72rem">Verilator+iv</span></div>
+      </div>
+      <div class="out-card-meta">Fix the issue in the editor, then run lint again.</div>
+      <div style="margin-top:.5rem">${itemsHtml}</div>
+      ${moreCount ? `<div style="font-size:.7rem;color:var(--slate);margin-top:.3rem">… and ${moreCount} more</div>` : ''}
+      <details class="fp-details"><summary>Full Raw Output</summary><pre>${escHtml(raw)}</pre></details>
+    </div>`;
+  }
+}
+
+function parseLintLines(text) {
+  return text.split('\n').filter(l=>l.trim()).map(l => {
+    const isErr = /(%Error|error:)/i.test(l);
+    return {type: isErr ? 'error' : 'warn', text: l.trim()};
+  });
+}
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── copy editor ── */
+function copyEditor() {
+  navigator.clipboard.writeText(document.getElementById('editor').value);
+  const btn = event.target;
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1500);
+}
+
+/* ── faq toggle ── */
+function toggleFaq(el) {
+  el.parentElement.classList.toggle('open');
+}
+
+/* ── back to top ── */
+window.addEventListener('scroll', () => {
+  document.getElementById('btt').style.display = window.scrollY > 300 ? 'block' : 'none';
+});
+
+/* ── keyboard shortcut: Ctrl+Enter = Run ── */
+document.getElementById('editor').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runLint(); }
+  if (e.key === 'Tab') { e.preventDefault(); const s=e.target; const v=s.value; const p=s.selectionStart; s.value=v.slice(0,p)+'  '+v.slice(s.selectionEnd); s.selectionStart=s.selectionEnd=p+2; }
+});
+
+/* ── init ── */
+loadExample(0);
+</script>
+</body>
+</html>
