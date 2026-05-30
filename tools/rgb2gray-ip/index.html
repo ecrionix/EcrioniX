@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LumaCore-01 — RGB to Grayscale ASIC IP | EcrioniX</title>
+  <meta name="description" content="LumaCore-01: Open-source ASIC IP for RGB to Grayscale conversion. Upload an image, Python extracts pixels, Verilog DUT processes via iverilog, Python reconstructs the grayscale output. Full RTL + Testbench + Python pipeline.">
+  <meta name="keywords" content="ASIC IP RGB to grayscale verilog, rgb2gray verilog, image processing ASIC, RTL image processing, iverilog testbench image, pixel processing verilog, ASIC design project, EcrioniX ASIC">
+  <link rel="canonical" href="https://ecrionix.org/tools/rgb2gray-ip/">
+  <meta property="og:title" content="LumaCore-01 — RGB to Grayscale ASIC IP">
+  <meta property="og:description" content="Open-source ASIC IP: upload an image, Verilog DUT converts RGB pixels to grayscale, Python reconstructs the output image.">
+  <meta property="og:url" content="https://ecrionix.org/tools/rgb2gray-ip/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Tools","item":"https://ecrionix.org/tools/"},
+      {"@type":"ListItem","position":3,"name":"LumaCore-01 ASIC IP","item":"https://ecrionix.org/tools/rgb2gray-ip/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"How does the RGB to grayscale ASIC IP work?",
+       "acceptedAnswer":{"@type":"Answer","text":"Python extracts RGB pixel values from the uploaded image and writes them to a hex file. The Verilog testbench reads this file and feeds each pixel to the DUT one at a time. The DUT computes Gray = (77*R + 150*G + 29*B) >> 8 in hardware. The testbench captures outputs and writes to an output hex file. Python reads this and reconstructs the grayscale image."}},
+      {"@type":"Question","name":"Why use integer coefficients instead of 0.299, 0.587, 0.114?",
+       "acceptedAnswer":{"@type":"Answer","text":"Hardware cannot do floating-point multiply cheaply. Instead, 0.299≈77/256, 0.587≈150/256, 0.114≈29/256. Multiply by 77, 150, 29 (integer), sum them, then right-shift by 8 (divide by 256). This gives the same result with only integer multipliers and a shift — much cheaper silicon."}},
+      {"@type":"Question","name":"What is the IP interface?",
+       "acceptedAnswer":{"@type":"Answer","text":"The DUT has: clk, rst_n, valid_in, R[7:0], G[7:0], B[7:0] as inputs. Outputs: valid_out, gray[7:0]. One pixel per clock cycle when valid_in is high. No buffering inside the IP — it is a pure combinational datapath registered at the output."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    :root{
+      --bg:#020617;--bg2:#0c1220;--bg3:#111827;
+      --border:rgba(148,163,184,.1);
+      --blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;
+      --amber:#f59e0b;--red:#f87171;--cyan:#22d3ee;
+      --slate:#94a3b8;--text:#e2e8f0;
+      --mono:'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.65}
+
+    .nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;color:#fff;text-decoration:none}
+    .nav-links{display:flex;gap:1.5rem}
+    .nav-links a{color:var(--slate);text-decoration:none;font-size:.82rem;transition:.2s}
+    .nav-links a:hover{color:var(--text)}
+
+    .breadcrumb{padding:.55rem 1.5rem;font-size:.74rem;color:var(--slate);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg2)}
+    .breadcrumb a{color:var(--slate);text-decoration:none}.breadcrumb a:hover{color:var(--blue)}.breadcrumb span{opacity:.45}
+
+    /* ── PROJECT HERO ── */
+    .project-hero{background:linear-gradient(135deg,rgba(34,211,238,.04) 0%,rgba(167,139,250,.04) 50%,rgba(2,6,23,0) 100%);border-bottom:1px solid var(--border);padding:2.5rem 1.5rem}
+    .project-hero-inner{max-width:960px;margin:0 auto}
+    .project-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);border-radius:6px;padding:.3rem .85rem;font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;color:#22d3ee;letter-spacing:.12em;text-transform:uppercase;margin-bottom:1rem}
+    .project-badge span{width:7px;height:7px;border-radius:50%;background:#22d3ee;animation:pulse 1.5s infinite}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+    .project-name{font-family:'Orbitron',sans-serif;font-size:clamp(1.8rem,5vw,3rem);font-weight:700;letter-spacing:.04em;line-height:1.1;margin-bottom:.4rem}
+    .project-name .accent{color:#22d3ee}
+    .project-tagline{font-size:1.05rem;color:var(--slate);margin-bottom:1.25rem}
+    .project-meta{display:flex;gap:1rem;flex-wrap:wrap}
+    .meta-chip{display:flex;align-items:center;gap:.35rem;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:.28rem .7rem;font-size:.72rem;color:var(--slate)}
+    .meta-chip b{color:var(--text);font-weight:600}
+
+    /* ── section ── */
+    .section{padding:2.5rem 1.5rem;max-width:960px;margin:0 auto}
+    .sec-title{font-family:'Orbitron',sans-serif;font-size:1.05rem;font-weight:700;margin-bottom:.3rem}
+    .sec-sub{color:var(--slate);font-size:.86rem;margin-bottom:1.5rem}
+
+    /* ── flow diagram ── */
+    .diagram-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.5rem;overflow-x:auto}
+
+    /* ── IO table ── */
+    .io-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:.8rem}
+    thead{background:var(--bg2)}
+    th{padding:.65rem 1rem;text-align:left;font-size:.67rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);border-bottom:1px solid var(--border)}
+    td{padding:.62rem 1rem;border-bottom:1px solid rgba(148,163,184,.06);vertical-align:top;font-family:var(--mono);font-size:.77rem}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(148,163,184,.02)}
+    .dir-in{color:#4ade80;font-weight:700}
+    .dir-out{color:#f59e0b;font-weight:700}
+    .td-desc{font-family:'Outfit',sans-serif;color:var(--slate)}
+
+    /* ── code block ── */
+    .code-block{position:relative;background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:.5rem 0}
+    .code-hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:.4rem .85rem;display:flex;align-items:center;justify-content:space-between}
+    .code-lang{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate)}
+    .code-filename{font-size:.72rem;font-family:var(--mono);color:#22d3ee}
+    .copy-btn{padding:.2rem .6rem;border-radius:5px;border:1px solid var(--border);background:rgba(15,23,42,.7);color:var(--slate);font-size:.67rem;cursor:pointer;transition:.2s}
+    .copy-btn:hover{color:var(--text);border-color:rgba(148,163,184,.3)}
+    .copy-btn.copied{color:#4ade80;border-color:rgba(74,222,128,.3)}
+    pre{font-family:var(--mono);font-size:.77rem;line-height:1.7;padding:1rem 1.1rem;overflow-x:auto;color:#c0cae0;white-space:pre}
+    .kw{color:#c792ea}.fn{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}
+
+    /* ── formula card ── */
+    .formula-card{background:rgba(34,211,238,.05);border:1px solid rgba(34,211,238,.2);border-radius:10px;padding:1.25rem 1.5rem;margin:1rem 0}
+    .formula-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#22d3ee;margin-bottom:.65rem}
+    .formula-main{font-family:var(--mono);font-size:1rem;color:#e2e8f0;margin-bottom:.5rem}
+    .formula-hw{font-family:var(--mono);font-size:.88rem;color:#a78bfa;margin-bottom:.4rem}
+    .formula-note{font-size:.77rem;color:var(--slate);line-height:1.5}
+
+    /* ── status section ── */
+    .status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;margin-top:1rem}
+    .status-item{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.85rem 1rem;display:flex;align-items:center;gap:.65rem}
+    .status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .status-done{background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.5)}
+    .status-wip{background:#f59e0b;animation:pulse 1.5s infinite}
+    .status-soon{background:rgba(148,163,184,.3)}
+    .status-label{font-size:.8rem;font-weight:600}
+    .status-sub{font-size:.68rem;color:var(--slate);margin-top:.1rem}
+
+    /* ── upload section ── */
+    .upload-coming{background:var(--bg2);border:2px dashed rgba(34,211,238,.2);border-radius:12px;padding:2.5rem;text-align:center;margin-top:1rem}
+    .upload-coming-icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.5}
+    .upload-coming p{color:var(--slate);font-size:.86rem}
+    .upload-coming strong{color:#22d3ee}
+
+    footer{border-top:1px solid var(--border);padding:1.25rem 1.5rem;text-align:center;font-size:.75rem;color:var(--slate);background:var(--bg2)}
+    #btt{position:fixed;bottom:1.25rem;right:1.25rem;background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.3);color:#22d3ee;border-radius:8px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;display:none;z-index:999}
+    #btt:hover{background:rgba(34,211,238,.25)}
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/tools/">Tools</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/digital-electronics/">Digital</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">Home</a><span>›</span>
+  <a href="/tools/">Tools</a><span>›</span>
+  <span>LumaCore-01 ASIC IP</span>
+</div>
+
+<!-- ── PROJECT HERO ── -->
+<div class="project-hero">
+  <div class="project-hero-inner">
+    <div class="project-badge"><span></span>EcrioniX ASIC Project · v1.0</div>
+    <div class="project-name"><span class="accent">LumaCore</span>-01</div>
+    <div class="project-tagline">RGB to Grayscale ASIC IP — Full RTL · Testbench · Python Pipeline</div>
+    <div class="project-meta">
+      <div class="meta-chip"><b>Node</b> Generic (technology-independent RTL)</div>
+      <div class="meta-chip"><b>Simulator</b> Icarus Verilog (iverilog)</div>
+      <div class="meta-chip"><b>Interface</b> Pixel-streaming, 1 px/clk</div>
+      <div class="meta-chip"><b>Precision</b> 8-bit input · 8-bit output</div>
+      <div class="meta-chip"><b>Latency</b> 1 clock cycle</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PROJECT STATUS ── -->
+<div class="section">
+  <div class="sec-title">Project Status</div>
+  <div class="sec-sub">Build progress — RTL and TB coming in next commits</div>
+  <div class="status-grid">
+    <div class="status-item">
+      <div class="status-dot status-done"></div>
+      <div>
+        <div class="status-label">Page &amp; Spec</div>
+        <div class="status-sub">Architecture, IO, formula defined</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <div class="status-dot status-done"></div>
+      <div>
+        <div class="status-label">Python Pipeline</div>
+        <div class="status-sub">Extract · feed · reconstruct</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <div class="status-dot status-wip"></div>
+      <div>
+        <div class="status-label">Verilog DUT</div>
+        <div class="status-sub">rgb2gray_dut.v — in progress</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <div class="status-dot status-wip"></div>
+      <div>
+        <div class="status-label">Testbench</div>
+        <div class="status-sub">rgb2gray_tb.v — in progress</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <div class="status-dot status-soon"></div>
+      <div>
+        <div class="status-label">Browser Tool</div>
+        <div class="status-sub">Upload &amp; run online</div>
+      </div>
+    </div>
+    <div class="status-item">
+      <div class="status-dot status-soon"></div>
+      <div>
+        <div class="status-label">Synthesis Report</div>
+        <div class="status-sub">Yosys → SKY130 area/power</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SYSTEM DIAGRAM ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">System Architecture</div>
+  <div class="sec-sub">End-to-end data flow from browser upload to grayscale output</div>
+  <div class="diagram-box">
+    <svg viewBox="0 0 900 320" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:600px">
+
+      <!-- background -->
+      <rect width="900" height="320" rx="8" fill="#0c1220"/>
+
+      <!-- labels: HOST side -->
+      <rect x="8" y="8" width="220" height="304" rx="6" fill="rgba(34,211,238,.03)" stroke="rgba(34,211,238,.12)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="118" y="26" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="rgba(34,211,238,.5)" letter-spacing="2">HOST / PYTHON</text>
+
+      <!-- labels: SIM side -->
+      <rect x="340" y="8" width="250" height="304" rx="6" fill="rgba(167,139,250,.03)" stroke="rgba(167,139,250,.12)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="465" y="26" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="rgba(167,139,250,.5)" letter-spacing="2">VERILOG SIMULATION</text>
+
+      <!-- labels: OUTPUT side -->
+      <rect x="608" y="8" width="284" height="304" rx="6" fill="rgba(74,222,128,.03)" stroke="rgba(74,222,128,.12)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="750" y="26" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="rgba(74,222,128,.5)" letter-spacing="2">OUTPUT</text>
+
+      <!-- Box 1: User Upload -->
+      <rect x="20" y="50" width="120" height="52" rx="6" fill="rgba(34,211,238,.1)" stroke="rgba(34,211,238,.4)" stroke-width="1.5"/>
+      <text x="80" y="71" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#22d3ee" font-weight="700">User Upload</text>
+      <text x="80" y="86" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(34,211,238,.6)">PNG / JPG / BMP</text>
+
+      <!-- Box 2: Python extract -->
+      <rect x="20" y="130" width="200" height="52" rx="6" fill="rgba(34,211,238,.07)" stroke="rgba(34,211,238,.25)" stroke-width="1"/>
+      <text x="120" y="151" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#22d3ee" font-weight="700">Python: Extract Pixels</text>
+      <text x="120" y="165" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(34,211,238,.5)">PIL → R[7:0], G[7:0], B[7:0] per pixel</text>
+
+      <!-- Box 3: hex file -->
+      <rect x="20" y="210" width="200" height="52" rx="6" fill="rgba(34,211,238,.05)" stroke="rgba(34,211,238,.15)" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="120" y="231" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(34,211,238,.8)">pixel_input.hex</text>
+      <text x="120" y="247" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(34,211,238,.45)">FF 00 7A ← one pixel per line</text>
+
+      <!-- arrows: upload → extract -->
+      <line x1="80" y1="102" x2="80" y2="128" stroke="rgba(34,211,238,.4)" stroke-width="1.5" marker-end="url(#arrc)"/>
+      <!-- arrows: extract → hex -->
+      <line x1="120" y1="182" x2="120" y2="208" stroke="rgba(34,211,238,.4)" stroke-width="1.5" marker-end="url(#arrc)"/>
+
+      <!-- Box 4: Testbench -->
+      <rect x="352" y="50" width="120" height="52" rx="6" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.4)" stroke-width="1.5"/>
+      <text x="412" y="70" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#a78bfa" font-weight="700">Testbench</text>
+      <text x="412" y="84" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(167,139,250,.6)">rgb2gray_tb.v</text>
+      <!-- drives valid, R, G, B -->
+      <text x="412" y="96" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(167,139,250,.45)">Drives valid_in, R, G, B</text>
+
+      <!-- Box 5: DUT -->
+      <rect x="380" y="155" width="160" height="70" rx="6" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.5)" stroke-width="2"/>
+      <text x="460" y="178" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="11" fill="#a78bfa" font-weight="700">DUT</text>
+      <text x="460" y="193" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(167,139,250,.7)">rgb2gray_dut.v</text>
+      <text x="460" y="207" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8.5" fill="rgba(167,139,250,.5)">Gray = (77R + 150G + 29B) &gt;&gt; 8</text>
+      <text x="460" y="218" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(167,139,250,.4)">1 cycle latency</text>
+
+      <!-- Box 6: out hex -->
+      <rect x="352" y="255" width="230" height="40" rx="6" fill="rgba(167,139,250,.05)" stroke="rgba(167,139,250,.15)" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="467" y="272" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="rgba(167,139,250,.7)">pixel_output.hex</text>
+      <text x="467" y="285" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(167,139,250,.4)">8-bit gray value per line</text>
+
+      <!-- TB ↔ DUT arrows -->
+      <path d="M412 102 L412 153" stroke="rgba(167,139,250,.4)" stroke-width="1.5" marker-end="url(#arrp)"/>
+      <path d="M460 225 L460 253" stroke="rgba(167,139,250,.4)" stroke-width="1.5" marker-end="url(#arrp)"/>
+
+      <!-- hex → TB arrow (horizontal) -->
+      <path d="M222 236 L350 236 L350 76 L350 76" stroke="rgba(34,211,238,.35)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrc)"/>
+
+      <!-- Box 7: Python reconstruct -->
+      <rect x="620" y="130" width="200" height="52" rx="6" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.25)" stroke-width="1"/>
+      <text x="720" y="151" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#4ade80" font-weight="700">Python: Reconstruct</text>
+      <text x="720" y="165" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(74,222,128,.5)">Gray values → PIL Image.save()</text>
+
+      <!-- Box 8: output image -->
+      <rect x="640" y="210" width="160" height="52" rx="6" fill="rgba(74,222,128,.1)" stroke="rgba(74,222,128,.4)" stroke-width="1.5"/>
+      <text x="720" y="232" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#4ade80" font-weight="700">Grayscale Image</text>
+      <text x="720" y="246" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(74,222,128,.6)">gray_output.png</text>
+      <text x="720" y="256" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.4)">Verified by TB scoreboard</text>
+
+      <!-- out hex → reconstruct -->
+      <path d="M582 270 L612 270 L612 156 L618 156" stroke="rgba(74,222,128,.35)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrg)"/>
+      <!-- reconstruct → output -->
+      <path d="M720 182 L720 208" stroke="rgba(74,222,128,.4)" stroke-width="1.5" marker-end="url(#arrg)"/>
+
+      <!-- arrowhead markers -->
+      <defs>
+        <marker id="arrc" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(34,211,238,.6)"/></marker>
+        <marker id="arrp" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(167,139,250,.6)"/></marker>
+        <marker id="arrg" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(74,222,128,.6)"/></marker>
+      </defs>
+    </svg>
+  </div>
+</div>
+
+<!-- ── FORMULA ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">Grayscale Conversion Formula</div>
+  <div class="sec-sub">ITU-R BT.601 luminance standard — implemented in integer hardware</div>
+
+  <div class="formula-card">
+    <div class="formula-title">Floating Point (Mathematical)</div>
+    <div class="formula-main">Gray = 0.299 × R &nbsp;+&nbsp; 0.587 × G &nbsp;+&nbsp; 0.114 × B</div>
+    <div class="formula-note">Human eyes are most sensitive to green, less to red, least to blue. These weights reflect perceptual luminance.</div>
+  </div>
+
+  <div class="formula-card" style="background:rgba(167,139,250,.05);border-color:rgba(167,139,250,.2)">
+    <div class="formula-title" style="color:#a78bfa">Hardware Implementation (Integer Math)</div>
+    <div class="formula-hw">Gray = ( 77×R &nbsp;+&nbsp; 150×G &nbsp;+&nbsp; 29×B ) &gt;&gt; 8</div>
+    <div class="formula-note">
+      77/256 ≈ 0.301 &nbsp;·&nbsp; 150/256 ≈ 0.586 &nbsp;·&nbsp; 29/256 ≈ 0.113<br>
+      No floating-point hardware needed. Just integer multipliers + a right-shift by 8. Max error: &lt;1 LSB. The sum 77+150+29 = 256 — so dividing by 256 (right-shift 8) normalises back to 8-bit range.
+    </div>
+  </div>
+</div>
+
+<!-- ── IO SPECIFICATION ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">IP Interface — Port List</div>
+  <div class="sec-sub">Pixel-streaming interface, 1 pixel per clock cycle</div>
+  <div class="io-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Port</th>
+          <th>Width</th>
+          <th>Direction</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>clk</td><td>1</td><td class="dir-in">INPUT</td><td class="td-desc">System clock — rising edge active</td></tr>
+        <tr><td>rst_n</td><td>1</td><td class="dir-in">INPUT</td><td class="td-desc">Active-low synchronous reset</td></tr>
+        <tr><td>valid_in</td><td>1</td><td class="dir-in">INPUT</td><td class="td-desc">High when R, G, B inputs hold a valid pixel</td></tr>
+        <tr><td>R</td><td>8</td><td class="dir-in">INPUT</td><td class="td-desc">Red channel, 8-bit unsigned (0–255)</td></tr>
+        <tr><td>G</td><td>8</td><td class="dir-in">INPUT</td><td class="td-desc">Green channel, 8-bit unsigned (0–255)</td></tr>
+        <tr><td>B</td><td>8</td><td class="dir-in">INPUT</td><td class="td-desc">Blue channel, 8-bit unsigned (0–255)</td></tr>
+        <tr><td>valid_out</td><td>1</td><td class="dir-out">OUTPUT</td><td class="td-desc">High when gray output is valid (1 cycle after valid_in)</td></tr>
+        <tr><td>gray</td><td>8</td><td class="dir-out">OUTPUT</td><td class="td-desc">Grayscale result, 8-bit unsigned (0–255)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── PYTHON CODE ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">Python Pipeline Script</div>
+  <div class="sec-sub">Extracts pixels from any image format → feeds Verilog TB → reconstructs output image</div>
+
+  <div class="code-block">
+    <div class="code-hdr">
+      <span class="code-lang">Python</span>
+      <span class="code-filename">rgb2gray_pipeline.py</span>
+      <button class="copy-btn" onclick="copyCode(this,'py1')">Copy</button>
+    </div>
+    <pre id="py1"><span class="cm">#!/usr/bin/env python3
+# LumaCore-01 Pipeline
+# Converts any image to grayscale via Verilog DUT simulation
+# Usage: python rgb2gray_pipeline.py &lt;input_image&gt; [output_image]</span>
+
+<span class="kw">import</span> sys, os, subprocess
+<span class="kw">from</span> PIL <span class="kw">import</span> Image
+
+<span class="cm"># ── Paths ────────────────────────────────────────────────</span>
+INPUT_HEX  = <span class="str">"pixel_input.hex"</span>
+OUTPUT_HEX = <span class="str">"pixel_output.hex"</span>
+DUT_SRC    = <span class="str">"rgb2gray_dut.v"</span>
+TB_SRC     = <span class="str">"rgb2gray_tb.v"</span>
+SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
+
+<span class="kw">def</span> <span class="fn">extract_pixels</span>(image_path):
+    <span class="str">"""Load image, convert to RGB, write hex file for testbench."""</span>
+    img = Image.<span class="fn">open</span>(image_path).<span class="fn">convert</span>(<span class="str">"RGB"</span>)
+    width, height = img.size
+    pixels = <span class="fn">list</span>(img.<span class="fn">getdata</span>())
+
+    <span class="kw">with</span> <span class="fn">open</span>(INPUT_HEX, <span class="str">"w"</span>) <span class="kw">as</span> f:
+        <span class="cm"># First line: width height (decimal)</span>
+        f.<span class="fn">write</span>(<span class="str">f"</span>{width} {height}<span class="str">\n"</span>)
+        <span class="kw">for</span> r, g, b <span class="kw">in</span> pixels:
+            <span class="cm"># Each pixel: RR GG BB in hex, space-separated</span>
+            f.<span class="fn">write</span>(<span class="str">f"</span>{r:<span class="num">02</span>X} {g:<span class="num">02</span>X} {b:<span class="num">02</span>X}<span class="str">\n"</span>)
+
+    <span class="fn">print</span>(<span class="str">f"[1/4] Extracted {len(pixels)} pixels ({width}x{height}) → {INPUT_HEX}"</span>)
+    <span class="kw">return</span> width, height, <span class="fn">len</span>(pixels)
+
+<span class="kw">def</span> <span class="fn">compile_verilog</span>():
+    <span class="str">"""Compile DUT + TB with iverilog."""</span>
+    cmd = [<span class="str">"iverilog"</span>, <span class="str">"-o"</span>, SIM_BIN, TB_SRC, DUT_SRC]
+    result = subprocess.<span class="fn">run</span>(cmd, capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+    <span class="kw">if</span> result.returncode != <span class="num">0</span>:
+        <span class="fn">print</span>(<span class="str">"[ERROR] iverilog compilation failed:"</span>)
+        <span class="fn">print</span>(result.stderr)
+        sys.<span class="fn">exit</span>(<span class="num">1</span>)
+    <span class="fn">print</span>(<span class="str">f"[2/4] Compiled {DUT_SRC} + {TB_SRC} → {SIM_BIN}"</span>)
+
+<span class="kw">def</span> <span class="fn">run_simulation</span>():
+    <span class="str">"""Run vvp simulation — TB reads INPUT_HEX, writes OUTPUT_HEX."""</span>
+    result = subprocess.<span class="fn">run</span>([<span class="str">"vvp"</span>, SIM_BIN], capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+    <span class="kw">if</span> result.returncode != <span class="num">0</span>:
+        <span class="fn">print</span>(<span class="str">"[ERROR] Simulation failed:"</span>)
+        <span class="fn">print</span>(result.stderr)
+        sys.<span class="fn">exit</span>(<span class="num">1</span>)
+    <span class="fn">print</span>(<span class="str">f"[3/4] Simulation complete → {OUTPUT_HEX}"</span>)
+    <span class="cm"># Print any DUT $display messages</span>
+    <span class="kw">if</span> result.stdout.strip():
+        <span class="fn">print</span>(result.stdout)
+
+<span class="kw">def</span> <span class="fn">reconstruct_image</span>(width, height, output_path):
+    <span class="str">"""Read gray hex values from TB output, reconstruct PNG."""</span>
+    gray_values = []
+    <span class="kw">with</span> <span class="fn">open</span>(OUTPUT_HEX, <span class="str">"r"</span>) <span class="kw">as</span> f:
+        <span class="kw">for</span> line <span class="kw">in</span> f:
+            line = line.<span class="fn">strip</span>()
+            <span class="kw">if</span> line:
+                gray_values.<span class="fn">append</span>(<span class="fn">int</span>(line, <span class="num">16</span>))
+
+    <span class="kw">if</span> <span class="fn">len</span>(gray_values) != width * height:
+        <span class="fn">print</span>(<span class="str">f"[WARN] Expected {width*height} pixels, got {len(gray_values)}"</span>)
+
+    gray_img = Image.<span class="fn">new</span>(<span class="str">"L"</span>, (width, height))
+    gray_img.<span class="fn">putdata</span>(gray_values)
+    gray_img.<span class="fn">save</span>(output_path)
+    <span class="fn">print</span>(<span class="str">f"[4/4] Grayscale image saved → {output_path}"</span>)
+    <span class="kw">return</span> gray_img
+
+<span class="kw">def</span> <span class="fn">verify</span>(input_path, output_path):
+    <span class="str">"""Cross-check DUT output against Python reference model."""</span>
+    src  = Image.<span class="fn">open</span>(input_path).<span class="fn">convert</span>(<span class="str">"RGB"</span>)
+    dut  = Image.<span class="fn">open</span>(output_path).<span class="fn">convert</span>(<span class="str">"L"</span>)
+    pixels = <span class="fn">list</span>(src.<span class="fn">getdata</span>())
+    dut_px = <span class="fn">list</span>(dut.<span class="fn">getdata</span>())
+
+    errors, max_err = <span class="num">0</span>, <span class="num">0</span>
+    <span class="kw">for</span> idx, (rgb, g_dut) <span class="kw">in</span> <span class="fn">enumerate</span>(<span class="fn">zip</span>(pixels, dut_px)):
+        r, g, b = rgb
+        g_ref = ((<span class="num">77</span>*r + <span class="num">150</span>*g + <span class="num">29</span>*b) >> <span class="num">8</span>)
+        err = <span class="fn">abs</span>(g_ref - g_dut)
+        <span class="kw">if</span> err > <span class="num">0</span>:
+            errors += <span class="num">1</span>
+            max_err = <span class="fn">max</span>(max_err, err)
+            <span class="kw">if</span> errors <= <span class="num">5</span>:  <span class="cm"># show first 5 mismatches</span>
+                <span class="fn">print</span>(<span class="str">f"  MISMATCH px[{idx}]: R={r} G={g} B={b} → ref={g_ref} dut={g_dut} err={err}"</span>)
+
+    total = <span class="fn">len</span>(pixels)
+    <span class="fn">print</span>(<span class="str">f"\n=== Scoreboard: {total-errors}/{total} pixels PASS | max_err={max_err} ==="</span>)
+    <span class="kw">if</span> errors == <span class="num">0</span>:
+        <span class="fn">print</span>(<span class="str">"✓ DUT output matches reference model — ALL PASS"</span>)
+    <span class="kw">else</span>:
+        <span class="fn">print</span>(<span class="str">f"✗ {errors} pixel mismatches detected"</span>)
+
+<span class="kw">def</span> <span class="fn">run</span>(input_image, output_image=<span class="str">"gray_output.png"</span>):
+    <span class="fn">print</span>(<span class="str">f"\n{'='*50}"</span>)
+    <span class="fn">print</span>(<span class="str">"  LumaCore-01 · RGB to Grayscale ASIC IP Pipeline"</span>)
+    <span class="fn">print</span>(<span class="str">f"{'='*50}\n"</span>)
+    width, height, n_px = <span class="fn">extract_pixels</span>(input_image)
+    <span class="fn">compile_verilog</span>()
+    <span class="fn">run_simulation</span>()
+    <span class="fn">reconstruct_image</span>(width, height, output_image)
+    <span class="fn">verify</span>(input_image, output_image)
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    <span class="kw">if</span> <span class="fn">len</span>(sys.argv) < <span class="num">2</span>:
+        <span class="fn">print</span>(<span class="str">"Usage: python rgb2gray_pipeline.py &lt;input_image&gt; [output_image]"</span>)
+        sys.<span class="fn">exit</span>(<span class="num">1</span>)
+    out = sys.argv[<span class="num">2</span>] <span class="kw">if</span> <span class="fn">len</span>(sys.argv) > <span class="num">2</span> <span class="kw">else</span> <span class="str">"gray_output.png"</span>
+    <span class="fn">run</span>(sys.argv[<span class="num">1</span>], out)</pre>
+  </div>
+</div>
+
+<!-- ── PIXEL HEX FORMAT ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">File Format Specification</div>
+  <div class="sec-sub">How Python and the Testbench exchange pixel data</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="code-block">
+      <div class="code-hdr">
+        <span class="code-lang">HEX</span>
+        <span class="code-filename">pixel_input.hex</span>
+        <button class="copy-btn" onclick="copyCode(this,'hex1')">Copy</button>
+      </div>
+      <pre id="hex1"><span class="cm"># Line 1: width height (decimal)</span>
+<span class="num">640 480</span>
+<span class="cm"># Lines 2+: RR GG BB per pixel</span>
+<span class="num">FF 00 7A</span>
+<span class="num">FE 01 79</span>
+<span class="num">A0 B2 C3</span>
+...</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-hdr">
+        <span class="code-lang">HEX</span>
+        <span class="code-filename">pixel_output.hex</span>
+        <button class="copy-btn" onclick="copyCode(this,'hex2')">Copy</button>
+      </div>
+      <pre id="hex2"><span class="cm"># One gray value per line (hex)</span>
+<span class="cm"># Written by Testbench after DUT</span>
+<span class="num">3E</span>
+<span class="num">3D</span>
+<span class="num">B1</span>
+...</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ── UPLOAD (coming soon) ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">Try It Online</div>
+  <div class="sec-sub">Browser tool — available once RTL and TB are complete</div>
+  <div class="upload-coming">
+    <div class="upload-coming-icon">🔧</div>
+    <p><strong>RTL + Testbench under construction.</strong></p>
+    <p style="margin-top:.5rem">Once <code style="color:#22d3ee;font-family:var(--mono)">rgb2gray_dut.v</code> and <code style="color:#a78bfa;font-family:var(--mono)">rgb2gray_tb.v</code> are committed,<br>this section will let you upload any image and run the full simulation in your browser.</p>
+  </div>
+</div>
+
+<footer>
+  &copy; 2025 EcrioniX &nbsp;·&nbsp;
+  <a href="/tools/" style="color:var(--slate);text-decoration:none">Tools</a> &nbsp;·&nbsp;
+  <a href="/vlsi/" style="color:var(--slate);text-decoration:none">VLSI</a> &nbsp;·&nbsp;
+  <a href="https://ecrionix.org" style="color:var(--slate);text-decoration:none">ecrionix.org</a>
+</footer>
+
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8679; Top</button>
+
+<script>
+function copyCode(btn, id) {
+  const txt = document.getElementById(id).innerText;
+  navigator.clipboard.writeText(txt);
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+}
+window.addEventListener('scroll', () => {
+  document.getElementById('btt').style.display = window.scrollY > 300 ? 'block' : 'none';
+});
+</script>
+</body>
+</html>
