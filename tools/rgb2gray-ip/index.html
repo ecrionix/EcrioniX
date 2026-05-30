@@ -191,10 +191,10 @@
       </div>
     </div>
     <div class="status-item">
-      <div class="status-dot status-wip"></div>
+      <div class="status-dot status-done"></div>
       <div>
         <div class="status-label">Testbench</div>
-        <div class="status-sub">rgb2gray_tb.v — in progress</div>
+        <div class="status-sub">rgb2gray_tb.v — done</div>
       </div>
     </div>
     <div class="status-item">
@@ -666,14 +666,147 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
   </div>
 </div>
 
-<!-- ── UPLOAD (coming soon) ── -->
+<!-- ── TB CODE ── -->
+<div class="section" style="padding-top:0">
+  <div class="sec-title">Verilog Testbench — rgb2gray_tb.v</div>
+  <div class="sec-sub">Pure Verilog · $fopen / $fscanf / $fwrite · built-in scoreboard · 1-pixel/clock pipeline</div>
+  <div class="code-block">
+    <div class="code-hdr">
+      <span class="code-lang">Verilog</span>
+      <span class="code-filename">rgb2gray_tb.v</span>
+      <button class="copy-btn" onclick="copyCode(this,'tb1')">Copy</button>
+    </div>
+    <pre id="tb1"><span class="kw">`timescale</span> <span class="num">1</span>ns/<span class="num">1</span>ps
+<span class="kw">`default_nettype</span> none
+
+<span class="kw">module</span> <span class="fn">rgb2gray_tb</span>;
+
+  <span class="kw">reg</span>        clk = <span class="num">0</span>, rst_n = <span class="num">0</span>, valid_in = <span class="num">0</span>;
+  <span class="kw">reg</span>  [<span class="num">7</span>:<span class="num">0</span>] R = <span class="num">0</span>, G = <span class="num">0</span>, B = <span class="num">0</span>;
+  <span class="kw">wire</span>       valid_out;
+  <span class="kw">wire</span> [<span class="num">7</span>:<span class="num">0</span>] gray;
+
+  <span class="fn">rgb2gray_dut</span> dut (
+    .clk(clk), .rst_n(rst_n), .valid_in(valid_in),
+    .R(R), .G(G), .B(B),
+    .valid_out(valid_out), .gray(gray)
+  );
+
+  <span class="kw">always</span> #<span class="num">5</span> clk = ~clk;   <span class="cm">// 100 MHz</span>
+
+  <span class="kw">integer</span> fin, fout, ret;
+  <span class="kw">integer</span> width, height, n_pixels;
+  <span class="kw">integer</span> r_val, g_val, b_val, r_prev, g_prev, b_prev;
+  <span class="kw">integer</span> ref_gray, pass_count, fail_count, i;
+
+  <span class="kw">initial begin</span>
+    fin  = <span class="fn">$fopen</span>(<span class="str">"pixel_input.hex"</span>,  <span class="str">"r"</span>);
+    fout = <span class="fn">$fopen</span>(<span class="str">"pixel_output.hex"</span>, <span class="str">"w"</span>);
+    <span class="kw">if</span> (fin  == <span class="num">0</span>) begin <span class="fn">$display</span>(<span class="str">"[ERROR] pixel_input.hex not found"</span>); <span class="fn">$finish</span>; <span class="kw">end</span>
+
+    ret = <span class="fn">$fscanf</span>(fin, <span class="str">"%d %d"</span>, width, height);
+    n_pixels = width * height;
+    <span class="fn">$display</span>(<span class="str">"[TB] %0dx%0d = %0d pixels"</span>, width, height, n_pixels);
+
+    <span class="cm">// Reset</span>
+    <span class="kw">repeat</span>(<span class="num">4</span>) @(<span class="kw">posedge</span> clk);
+    @(<span class="kw">negedge</span> clk); rst_n = <span class="num">1</span>;
+
+    pass_count = <span class="num">0</span>; fail_count = <span class="num">0</span>;
+
+    <span class="cm">// Prime pipeline: drive pixel 0</span>
+    ret = <span class="fn">$fscanf</span>(fin, <span class="str">"%h %h %h"</span>, r_val, g_val, b_val);
+    r_prev = r_val; g_prev = g_val; b_prev = b_val;
+    @(<span class="kw">negedge</span> clk);
+    valid_in = <span class="num">1</span>; R = r_val[<span class="num">7</span>:<span class="num">0</span>]; G = g_val[<span class="num">7</span>:<span class="num">0</span>]; B = b_val[<span class="num">7</span>:<span class="num">0</span>];
+
+    <span class="cm">// Pipeline loop: capture i-1, drive i</span>
+    <span class="kw">for</span> (i = <span class="num">1</span>; i < n_pixels; i = i + <span class="num">1</span>) <span class="kw">begin</span>
+      ret = <span class="fn">$fscanf</span>(fin, <span class="str">"%h %h %h"</span>, r_val, g_val, b_val);
+      @(<span class="kw">negedge</span> clk);
+      <span class="kw">if</span> (valid_out) <span class="kw">begin</span>
+        ref_gray = ((<span class="num">77</span>*r_prev)+(<span class="num">150</span>*g_prev)+(<span class="num">29</span>*b_prev)) >> <span class="num">8</span>;
+        <span class="fn">$fwrite</span>(fout, <span class="str">"%02X\n"</span>, gray);
+        <span class="kw">if</span> (gray === ref_gray[<span class="num">7</span>:<span class="num">0</span>]) pass_count = pass_count + <span class="num">1</span>;
+        <span class="kw">else</span> begin
+          fail_count = fail_count + <span class="num">1</span>;
+          <span class="kw">if</span> (fail_count <= <span class="num">5</span>)
+            <span class="fn">$display</span>(<span class="str">"[MISMATCH] px[%0d] ref=%0d dut=%0d"</span>, i-<span class="num">1</span>, ref_gray[<span class="num">7</span>:<span class="num">0</span>], gray);
+        <span class="kw">end</span>
+      <span class="kw">end</span>
+      R = r_val[<span class="num">7</span>:<span class="num">0</span>]; G = g_val[<span class="num">7</span>:<span class="num">0</span>]; B = b_val[<span class="num">7</span>:<span class="num">0</span>];
+      r_prev = r_val; g_prev = g_val; b_prev = b_val;
+    <span class="kw">end</span>
+
+    <span class="cm">// Drain: capture last pixel</span>
+    @(<span class="kw">negedge</span> clk); valid_in = <span class="num">0</span>; R = <span class="num">0</span>; G = <span class="num">0</span>; B = <span class="num">0</span>;
+    <span class="kw">if</span> (valid_out) <span class="kw">begin</span>
+      ref_gray = ((<span class="num">77</span>*r_prev)+(<span class="num">150</span>*g_prev)+(<span class="num">29</span>*b_prev)) >> <span class="num">8</span>;
+      <span class="fn">$fwrite</span>(fout, <span class="str">"%02X\n"</span>, gray);
+      <span class="kw">if</span> (gray === ref_gray[<span class="num">7</span>:<span class="num">0</span>]) pass_count = pass_count + <span class="num">1</span>;
+      <span class="kw">else</span> fail_count = fail_count + <span class="num">1</span>;
+    <span class="kw">end</span>
+
+    <span class="fn">$fclose</span>(fin); <span class="fn">$fclose</span>(fout);
+    <span class="fn">$display</span>(<span class="str">"================================================"</span>);
+    <span class="fn">$display</span>(<span class="str">"  PASS : %0d / %0d"</span>, pass_count, n_pixels);
+    <span class="fn">$display</span>(<span class="str">"  FAIL : %0d"</span>, fail_count);
+    <span class="fn">$display</span>((fail_count==<span class="num">0</span>) ? <span class="str">"  RESULT : *** ALL PASS ***"</span> : <span class="str">"  RESULT : *** FAIL ***"</span>);
+    <span class="fn">$display</span>(<span class="str">"================================================"</span>);
+    <span class="fn">$finish</span>;
+  <span class="kw">end</span>
+<span class="kw">endmodule</span>
+
+<span class="kw">`default_nettype</span> wire</pre>
+  </div>
+</div>
+
+<!-- ── TRY IT ONLINE ── -->
 <div class="section" style="padding-top:0">
   <div class="sec-title">Try It Online</div>
-  <div class="sec-sub">Browser tool — available once Testbench is complete</div>
-  <div class="upload-coming">
-    <div class="upload-coming-icon">🔧</div>
-    <p><strong>Testbench under construction.</strong></p>
-    <p style="margin-top:.5rem">Once <code style="color:#a78bfa;font-family:var(--mono)">rgb2gray_tb.v</code> is committed, this section will let you upload any image and run the full simulation in your browser.</p>
+  <div class="sec-sub">Upload any image — Python extracts pixels, Verilog DUT processes them via iverilog, Python reconstructs output</div>
+
+  <style>
+    .drop-zone{border:2px dashed rgba(34,211,238,.3);border-radius:12px;padding:2rem;text-align:center;cursor:pointer;transition:.2s;background:var(--bg2);margin-bottom:1rem}
+    .drop-zone.drag{border-color:#22d3ee;background:rgba(34,211,238,.05)}
+    .drop-zone.has-file{border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.04)}
+    .run-asic-btn{padding:.55rem 1.5rem;border-radius:8px;border:1px solid rgba(34,211,238,.4);background:rgba(34,211,238,.1);color:#22d3ee;font-size:.88rem;font-family:'Outfit',sans-serif;cursor:pointer;font-weight:600;transition:.2s}
+    .run-asic-btn:hover{background:rgba(34,211,238,.2)}
+    .run-asic-btn:disabled{opacity:.4;cursor:not-allowed}
+    .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+    @media(max-width:600px){.result-grid{grid-template-columns:1fr}}
+    .img-box{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .img-box-label{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);padding:.45rem .75rem;border-bottom:1px solid var(--border)}
+    .img-box img{width:100%;display:block;object-fit:contain;max-height:300px;background:#000}
+    .score-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem;margin-top:.75rem}
+    .score-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(148,163,184,.07);font-size:.8rem}
+    .score-log{font-family:var(--mono);font-size:.71rem;color:#a0aec0;white-space:pre-wrap;word-break:break-word;margin-top:.5rem;padding:.5rem;background:rgba(15,23,42,.5);border-radius:6px;max-height:180px;overflow:auto}
+  </style>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('imgInput').click()">
+    <div style="font-size:2rem;margin-bottom:.5rem">🖼</div>
+    <div style="font-weight:600;color:var(--text);margin-bottom:.25rem" id="dropText">Click or drag &amp; drop an image</div>
+    <div style="font-size:.76rem;color:var(--slate)">PNG · JPG · BMP · WEBP · any format</div>
+    <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="onFileSelect(this.files[0])">
+  </div>
+
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+    <button class="run-asic-btn" id="runAsicBtn" onclick="runASIC()" disabled>&#9654; Run ASIC Simulation</button>
+    <span id="asicStatus" style="font-size:.78rem;color:var(--slate)"></span>
+  </div>
+
+  <div id="asicResult" style="display:none;margin-top:1rem">
+    <div class="result-grid">
+      <div class="img-box">
+        <div class="img-box-label" style="color:#22d3ee">Original (RGB)</div>
+        <img id="origImg" src="" alt="Original">
+      </div>
+      <div class="img-box">
+        <div class="img-box-label" style="color:#4ade80">Output (Grayscale from DUT)</div>
+        <img id="grayImg" src="" alt="Grayscale">
+      </div>
+    </div>
+    <div class="score-card" id="scoreCard"></div>
   </div>
 </div>
 
@@ -687,6 +820,8 @@ SIM_BIN    = <span class="str">"rgb2gray_sim"</span>
 <button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8679; Top</button>
 
 <script>
+const RGB2GRAY_API = 'https://ecrionix-ecrionix-verilog.hf.space/rgb2gray';
+
 function copyCode(btn, id) {
   const txt = document.getElementById(id).innerText;
   navigator.clipboard.writeText(txt);
@@ -697,6 +832,106 @@ function copyCode(btn, id) {
 window.addEventListener('scroll', () => {
   document.getElementById('btt').style.display = window.scrollY > 300 ? 'block' : 'none';
 });
+
+// ── File select / drag-drop ──
+let selectedFile = null;
+
+function onFileSelect(file) {
+  if (!file) return;
+  selectedFile = file;
+  const dz = document.getElementById('dropZone');
+  document.getElementById('dropText').textContent = file.name;
+  dz.classList.add('has-file');
+  document.getElementById('runAsicBtn').disabled = false;
+  // preview original
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('origImg').src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) onFileSelect(f);
+});
+
+// ── Run simulation ──
+async function runASIC() {
+  if (!selectedFile) return;
+  const btn    = document.getElementById('runAsicBtn');
+  const status = document.getElementById('asicStatus');
+  const result = document.getElementById('asicResult');
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  status.textContent = 'Uploading image…';
+  status.style.color = 'var(--slate)';
+  result.style.display = 'none';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    status.textContent = 'Running iverilog simulation…';
+
+    const t0 = Date.now();
+    const res = await fetch(RGB2GRAY_API, { method: 'POST', body: formData });
+    const d   = await res.json();
+    const ms  = ((Date.now() - t0) / 1000).toFixed(2) + 's';
+
+    if (d.error) {
+      status.textContent = 'Error: ' + d.error;
+      status.style.color = '#f87171';
+    } else {
+      status.textContent = `Done in ${ms}`;
+      status.style.color = '#4ade80';
+      renderResult(d, ms);
+    }
+  } catch(e) {
+    status.textContent = 'Network error: ' + e.message;
+    status.style.color = '#f87171';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run ASIC Simulation';
+  }
+}
+
+function renderResult(d, ms) {
+  document.getElementById('grayImg').src = 'data:image/png;base64,' + d.gray_image;
+  document.getElementById('asicResult').style.display = 'block';
+
+  const pass = d.pass || 0;
+  const fail = d.fail || 0;
+  const total = d.n_pixels || 0;
+  const allPass = fail === 0;
+
+  document.getElementById('scoreCard').innerHTML = `
+    <div style="font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${allPass?'#4ade80':'#f87171'};margin-bottom:.6rem">
+      TB Scoreboard <span style="font-weight:400;opacity:.6">${ms}</span>
+    </div>
+    <div class="score-row"><span style="color:var(--slate)">Pixels processed</span><span style="font-family:var(--mono)">${total.toLocaleString()}</span></div>
+    <div class="score-row"><span style="color:var(--slate)">Image size</span><span style="font-family:var(--mono)">${d.width} × ${d.height}</span></div>
+    <div class="score-row"><span style="color:var(--slate)">PASS</span><span style="color:#4ade80;font-weight:700;font-family:var(--mono)">${pass.toLocaleString()}</span></div>
+    <div class="score-row"><span style="color:var(--slate)">FAIL</span><span style="color:${fail?'#f87171':'#4ade80'};font-weight:700;font-family:var(--mono)">${fail}</span></div>
+    <div class="score-row" style="border:none"><span style="color:var(--slate)">Result</span>
+      <span style="padding:.15rem .5rem;border-radius:4px;font-size:.7rem;font-weight:700;background:${allPass?'rgba(74,222,128,.12)':'rgba(248,113,113,.12)'};color:${allPass?'#4ade80':'#f87171'};border:1px solid ${allPass?'rgba(74,222,128,.3)':'rgba(248,113,113,.3)'}">
+        ${allPass ? '✓ ALL PASS' : `✗ ${fail} MISMATCH`}
+      </span>
+    </div>
+    ${d.log ? `<details style="margin-top:.5rem"><summary style="font-size:.72rem;color:var(--slate);cursor:pointer">Simulation Log</summary><div class="score-log">${escHtml(d.log)}</div></details>` : ''}
+  `;
+
+  // Scroll to result
+  document.getElementById('asicResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 </script>
 </body>
 </html>
