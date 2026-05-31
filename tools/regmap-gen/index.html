@@ -209,6 +209,7 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
         <div class="btn-row">
           <button class="btn btn-add" onclick="addReg()">＋ Add Register</button>
           <button class="btn btn-gen" onclick="gen()">⚙ Generate RTL</button>
+          <button class="btn" style="color:#fb923c;border-color:rgba(251,146,60,.4);background:rgba(251,146,60,.1)" onclick="openManual()">📄 Datasheet (PDF)</button>
         </div>
         <div id="mapPreview" style="margin-top:1rem"></div>
       </div>
@@ -522,6 +523,159 @@ function downloadRTL(){
   const a=document.createElement('a'); a.href=url; a.download=mod+'.v';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url); toast('✓ Downloaded '+mod+'.v');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Datasheet / Register Manual (print → Save as PDF)
+// ─────────────────────────────────────────────────────────────
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Full bit layout per register, MSB-first, with Reserved gaps filled
+function regSegments(reg, DW){
+  const packed = packFields(reg).slice().sort((a,b)=>a.lsb-b.lsb);
+  const segs=[]; let pos=0;
+  packed.forEach(f=>{
+    if(f.lsb>pos) segs.push({msb:f.lsb-1, lsb:pos, reserved:true});
+    segs.push({msb:f.msb, lsb:f.lsb, reserved:false, f});
+    pos=f.msb+1;
+  });
+  if(pos<=DW-1) segs.push({msb:DW-1, lsb:pos, reserved:true});
+  return segs.reverse();
+}
+function bitLabel(msb,lsb){ return msb===lsb ? `${lsb}` : `${msb}:${lsb}`; }
+
+// Combined reset value of a whole register (fields placed at their bit offsets)
+function regResetHex(reg, DW){
+  let v=0n;
+  packFields(reg).forEach(f=>{
+    const r = BigInt(parseInt(f.reset,16)||0) & ((1n<<BigInt(f.width))-1n);
+    v |= r << BigInt(f.lsb);
+  });
+  return '0x'+v.toString(16).toUpperCase().padStart(Math.ceil(DW/4),'0');
+}
+
+function buildManualHTML(){
+  const mod = (document.getElementById('modName').value||'my_periph').trim();
+  const DW  = +document.getElementById('dataW').value;
+  const AW  = +document.getElementById('addrW').value;
+  const date = new Date().toISOString().slice(0,10);
+
+  const accColor = {RW:'#0e7a5f',RO:'#1d6fb8',WO:'#b07d12',W1C:'#b03a6e'};
+
+  // Summary rows
+  const summary = regs.map(r=>{
+    const accs = [...new Set(r.fields.map(f=>f.access))].join('/') || '—';
+    return `<tr>
+      <td class="mono">0x${esc((r.offset||'0').toUpperCase())}</td>
+      <td class="mono"><b>${esc(r.name)}</b></td>
+      <td>${esc(accs)}</td>
+      <td class="mono">${regResetHex(r,DW)}</td>
+      <td>${esc(r.desc)}</td>
+    </tr>`;
+  }).join('');
+
+  // Per-register detail sections
+  const details = regs.map((r,idx)=>{
+    const segs = regSegments(r, DW);
+    const rows = segs.map(s=>{
+      if(s.reserved){
+        return `<tr class="rsv">
+          <td class="mono">${bitLabel(s.msb,s.lsb)}</td>
+          <td><i>Reserved</i></td><td class="mono">—</td><td class="mono">0</td>
+          <td><i>Reserved. Reads return 0; writes ignored.</i></td>
+        </tr>`;
+      }
+      const f=s.f, c=accColor[f.access]||'#333';
+      return `<tr>
+        <td class="mono">${bitLabel(s.msb,s.lsb)}</td>
+        <td class="mono"><b>${esc(f.name)}</b></td>
+        <td><span class="acc" style="background:${c}">${esc(f.access)}</span></td>
+        <td class="mono">0x${esc((f.reset||'0').toUpperCase())}</td>
+        <td>${esc(f.desc)}</td>
+      </tr>`;
+    }).join('');
+    return `<section class="reg">
+      <h3>${idx+1}. ${esc(r.name)} <span class="off">— Offset 0x${esc((r.offset||'0').toUpperCase())}</span></h3>
+      <p class="rdesc">${esc(r.desc)||'&nbsp;'}</p>
+      <p class="rmeta">Reset value: <span class="mono">${regResetHex(r,DW)}</span> &nbsp;·&nbsp; Width: ${DW} bits</p>
+      <table class="bits">
+        <thead><tr><th style="width:12%">Bits</th><th style="width:20%">Field</th><th style="width:12%">Access</th><th style="width:12%">Reset</th><th>Description</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>${esc(mod)} — Register Manual</title>
+<style>
+  @page{margin:18mm 16mm;}
+  *{box-sizing:border-box;}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;line-height:1.5;margin:0;padding:24px;background:#fff;}
+  .mono{font-family:'Consolas','Courier New',monospace;}
+  header.cover{border-bottom:3px solid #0e7a5f;padding-bottom:14px;margin-bottom:20px;}
+  .brand{font-size:13px;font-weight:700;letter-spacing:.12em;color:#0e7a5f;text-transform:uppercase;}
+  header.cover h1{font-size:26px;margin:6px 0 4px;color:#111;}
+  .subtitle{color:#555;font-size:14px;}
+  .meta-grid{display:flex;gap:26px;margin-top:12px;font-size:12.5px;color:#444;flex-wrap:wrap;}
+  .meta-grid b{color:#111;}
+  h2{font-size:16px;color:#0e7a5f;border-bottom:1px solid #ddd;padding-bottom:5px;margin:26px 0 10px;}
+  table{border-collapse:collapse;width:100%;font-size:12px;margin:8px 0 4px;}
+  th{background:#0e7a5f;color:#fff;text-align:left;padding:6px 8px;font-size:11px;letter-spacing:.03em;}
+  td{border:1px solid #d6d6d6;padding:5px 8px;vertical-align:top;}
+  table.summary tr:nth-child(even) td{background:#f4f8f7;}
+  section.reg{margin-top:18px;page-break-inside:avoid;}
+  section.reg h3{font-size:14px;margin:0 0 2px;color:#111;}
+  section.reg h3 .off{color:#0e7a5f;font-weight:600;font-size:12.5px;}
+  .rdesc{margin:2px 0 2px;color:#333;font-size:12.5px;}
+  .rmeta{margin:0 0 6px;font-size:11.5px;color:#666;}
+  table.bits tr.rsv td{background:#f6f6f6;color:#888;}
+  .acc{color:#fff;padding:1px 7px;border-radius:3px;font-size:10.5px;font-weight:700;font-family:'Consolas',monospace;}
+  footer{margin-top:30px;padding-top:10px;border-top:1px solid #ddd;font-size:10.5px;color:#888;display:flex;justify-content:space-between;}
+  @media print{ .noprint{display:none;} body{padding:0;} }
+  .noprint{position:fixed;top:12px;right:12px;}
+  .noprint button{background:#0e7a5f;color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;}
+</style></head>
+<body>
+  <div class="noprint"><button onclick="window.print()">🖨 Save as PDF</button></div>
+
+  <header class="cover">
+    <div class="brand">EcrioniX · Register Manual</div>
+    <h1>${esc(mod)}</h1>
+    <div class="subtitle">APB3 Slave Register Block — Programmer's Reference</div>
+    <div class="meta-grid">
+      <div><b>Data width:</b> ${DW} bits</div>
+      <div><b>Address width:</b> ${AW} bits</div>
+      <div><b>Registers:</b> ${regs.length}</div>
+      <div><b>Generated:</b> ${date}</div>
+    </div>
+  </header>
+
+  <h2>APB Interface</h2>
+  <p style="font-size:12.5px;color:#333;margin:6px 0;">Standard APB3 slave. A write commits when <span class="mono">PSEL &amp; PENABLE &amp; PWRITE</span> is asserted; reads return the addressed register on <span class="mono">PRDATA</span>. <span class="mono">PREADY</span> is always high (zero wait states) and <span class="mono">PSLVERR</span> is tied low. Reserved bits read as 0 and ignore writes.</p>
+
+  <h2>1. Register Summary</h2>
+  <table class="summary">
+    <thead><tr><th style="width:13%">Offset</th><th style="width:24%">Name</th><th style="width:12%">Access</th><th style="width:16%">Reset</th><th>Description</th></tr></thead>
+    <tbody>${summary}</tbody>
+  </table>
+
+  <h2>2. Register Descriptions</h2>
+  ${details}
+
+  <footer>
+    <span>${esc(mod)} — generated by EcrioniX APB Register Map Generator</span>
+    <span>ecrionix.org/tools/regmap-gen/</span>
+  </footer>
+</body></html>`;
+}
+
+function openManual(){
+  const w = window.open('', '_blank');
+  if(!w){ toast('⚠ Allow pop-ups to export the datasheet'); return; }
+  w.document.open();
+  w.document.write(buildManualHTML());
+  w.document.close();
+  toast('✓ Datasheet opened — use “Save as PDF”');
 }
 
 addEventListener('scroll',()=>document.getElementById('btt').classList.toggle('show',scrollY>400));
