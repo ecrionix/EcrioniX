@@ -121,6 +121,23 @@
         XNOR
       </button>
       <div class="pal-sep"></div>
+      <div class="pal-label">Auto Clock</div>
+      <button class="pal-btn" data-place="CLOCK" style="border-color:rgba(129,140,248,.2)">
+        <svg class="gi" viewBox="0 0 26 16">
+          <rect x="1" y="2" width="24" height="12" rx="2" fill="rgba(129,140,248,.12)" stroke="#818cf8" stroke-width="1.3"/>
+          <polyline points="4,10 4,5 8,5 8,10 12,10 12,5 16,5 16,10 20,10" fill="none" stroke="#818cf8" stroke-width="1.3"/>
+        </svg>
+        Clock Source
+      </button>
+      <button class="tool-btn" id="btn-run" onclick="toggleRun()" style="color:#4ade80;border-color:rgba(74,222,128,.3)">▶ Run</button>
+      <div style="display:flex;gap:.2rem;margin-top:.1rem">
+        <button class="hz-btn tool-btn" data-hz="1"  onclick="setHz(1)"  style="flex:1;padding:.3rem .1rem;font-size:.66rem;text-align:center">1Hz</button>
+        <button class="hz-btn tool-btn active" data-hz="2"  onclick="setHz(2)"  style="flex:1;padding:.3rem .1rem;font-size:.66rem;text-align:center">2Hz</button>
+        <button class="hz-btn tool-btn" data-hz="5"  onclick="setHz(5)"  style="flex:1;padding:.3rem .1rem;font-size:.66rem;text-align:center">5Hz</button>
+        <button class="hz-btn tool-btn" data-hz="10" onclick="setHz(10)" style="flex:1;padding:.3rem .1rem;font-size:.66rem;text-align:center">10Hz</button>
+      </div>
+
+      <div class="pal-sep"></div>
       <div class="pal-label">Probe</div>
       <button class="pal-btn" data-place="PROBE" style="border-color:rgba(245,158,11,.2)">
         <svg class="gi" viewBox="0 0 26 16">
@@ -157,7 +174,7 @@
 
     <div id="cvs-wrap">
       <canvas id="cvs"></canvas>
-      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>Probe / Waveform:</b><br>Place Probe → wire to any output<br>Waveform panel appears below<br><b>Step Clock</b> = force a wave tick</div>
+      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>Auto Clock:</b><br>Place Clock → wire to DFF CLK<br>Press <b>▶ Run</b> to start<br>Set speed: 1 / 2 / 5 / 10 Hz<br><br><b>Probe:</b> wire to any output<br>→ waveform appears below</div>
     </div>
   </div>
 
@@ -211,6 +228,7 @@ const DEFS = {
   DFF:    {n:2, fn:null,             col:'#34d399', shape:'dff', seq:true},
   // Probe — records signal history, renders in waveform panel
   PROBE:  {n:1, fn:null,             col:'#f59e0b'},
+  CLOCK:  {n:0, fn:null,             col:'#818cf8'},
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -225,6 +243,9 @@ let drag  = null;       // {comp, ox, oy, sx, sy, moved}
 let conn  = null;       // {fromId, mx, my}  (wire being drawn)
 let hoverPort = null;   // {comp, kind:'out'|'in', idx} — highlighted port
 let tick  = 0;          // logical time step counter
+let autoRun  = false;   // auto-clock running
+let tickTimer = null;   // setInterval handle
+let tickHz    = 2;      // clock frequency (Hz)
 
 /* ═══════════════════════════════════════════════════════════
    CANVAS SETUP
@@ -257,12 +278,13 @@ window.addEventListener('resize', resize);
 function outPort(c) {
   if (c.type === 'OUTPUT') return null;
   if (c.type === 'PROBE')  return null;
-  if (c.type === 'INPUT')  return {x: c.x + IW, y: c.y + IH/2};
+  if (c.type === 'INPUT' || c.type === 'CLOCK') return {x: c.x + IW, y: c.y + IH/2};
   return {x: c.x + GW, y: c.y + GH/2};
 }
 
 function inPorts(c) {
   if (c.type === 'INPUT')  return [];
+  if (c.type === 'CLOCK')  return [];
   if (c.type === 'OUTPUT') return [{x: c.x, y: c.y + OR_}];
   if (c.type === 'PROBE')  return [{x: c.x, y: c.y + 16}];
   const n = DEFS[c.type].n;
@@ -299,7 +321,7 @@ function compAt(mx, my) {
     const c = comps[i];
     if (c.type === 'PROBE') {
       if (mx >= c.x-4 && mx <= c.x+56 && my >= c.y && my <= c.y+32) return c;
-    } else if (c.type === 'INPUT') {
+    } else if (c.type === 'CLOCK' || c.type === 'INPUT') {
       if (mx >= c.x && mx <= c.x+IW && my >= c.y && my <= c.y+IH) return c;
     } else if (c.type === 'OUTPUT') {
       if (Math.hypot(mx - (c.x+OR_), my - (c.y+OR_)) < OR_+4) return c;
@@ -314,8 +336,10 @@ function compAt(mx, my) {
    SIMULATION
    ═══════════════════════════════════════════════════════════ */
 function simulate() {
-  comps.forEach(c => { if (c.type !== 'INPUT') c.value = 0; });
-  const done = new Set(comps.filter(c => c.type==='INPUT').map(c => c.id));
+  comps.forEach(c => { if (c.type !== 'INPUT' && c.type !== 'CLOCK') c.value = 0; });
+  const done = new Set(
+    comps.filter(c => c.type==='INPUT' || c.type==='CLOCK').map(c => c.id)
+  );
   let changed = true, iter = 0;
   while (changed && iter++ < 200) {
     changed = false;
@@ -770,9 +794,54 @@ function drawWave() {
   });
 }
 
+function drawClock(c) {
+  const col = '#818cf8';
+  const on  = !!c.value;
+  const running = autoRun;
+  ctx.save();
+  rrect(c.x, c.y, IW, IH, 8);
+  ctx.fillStyle   = on ? 'rgba(129,140,248,.2)' : 'rgba(10,16,30,.92)';
+  ctx.strokeStyle = sel===c.id ? '#fff' : (running ? col : '#475569');
+  ctx.lineWidth   = 1.8;
+  ctx.fill(); ctx.stroke();
+
+  // Square-wave symbol
+  const wx = c.x+8, wy = c.y+IH/2;
+  ctx.strokeStyle = running ? (on ? col : 'rgba(129,140,248,.5)') : '#334155';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(wx,    wy+7);
+  ctx.lineTo(wx,    wy-7); ctx.lineTo(wx+8,  wy-7);
+  ctx.lineTo(wx+8,  wy+7); ctx.lineTo(wx+16, wy+7);
+  ctx.lineTo(wx+16, wy-7); ctx.lineTo(wx+24, wy-7);
+  ctx.stroke();
+
+  // Value
+  ctx.font = 'bold 12px Orbitron,sans-serif';
+  ctx.fillStyle   = on ? col : '#334155';
+  ctx.textAlign   = 'right';
+  ctx.textBaseline= 'middle';
+  ctx.fillText(on?'1':'0', c.x+IW-5, c.y+IH/2);
+
+  // "CLK" label
+  ctx.font = '7px Orbitron,sans-serif';
+  ctx.fillStyle = running ? 'rgba(129,140,248,.55)' : '#334155';
+  ctx.textAlign = 'left';
+  ctx.fillText('CLK', c.x+8, c.y+7);
+
+  // Glow dot when running & HIGH
+  if (running && on) {
+    ctx.shadowColor = col; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(c.x+IW-12, c.y+IH/2, 4, 0, 2*Math.PI);
+    ctx.fillStyle = col; ctx.fill(); ctx.shadowBlur=0;
+  }
+  ctx.restore();
+}
+
 function drawComp(c) {
   if      (c.type==='INPUT')  drawInput(c);
   else if (c.type==='OUTPUT') drawOutput(c);
+  else if (c.type==='CLOCK')  drawClock(c);
   else if (c.type==='DFF')    drawDFF(c);
   else if (c.type==='PROBE')  drawProbe(c);
   else                        drawGate(c);
@@ -1047,7 +1116,46 @@ function deleteSelected() {
   sel=null; simulate(); draw();
 }
 function clearAll() {
+  stopAutoRun();
   comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0; draw();
+}
+
+/* ── Auto-clock ── */
+function startAutoRun() {
+  if (autoRun) return;
+  autoRun = true;
+  const halfPeriod = Math.round(500 / tickHz); // ms per half-cycle
+  tickTimer = setInterval(() => {
+    comps.filter(c => c.type==='CLOCK').forEach(c => { c.value ^= 1; });
+    simulate();
+    draw();
+  }, halfPeriod);
+  updateRunBtn();
+}
+function stopAutoRun() {
+  autoRun = false;
+  clearInterval(tickTimer); tickTimer=null;
+  updateRunBtn();
+}
+function toggleRun() { autoRun ? stopAutoRun() : startAutoRun(); }
+function setHz(hz) {
+  tickHz = hz;
+  document.querySelectorAll('.hz-btn').forEach(b =>
+    b.classList.toggle('active', +b.dataset.hz === hz)
+  );
+  if (autoRun) { stopAutoRun(); startAutoRun(); }
+}
+function updateRunBtn() {
+  const btn = document.getElementById('btn-run');
+  if (!btn) return;
+  if (autoRun) {
+    btn.textContent = '⏸ Stop'; btn.style.color='#f87171';
+    btn.style.borderColor='rgba(248,113,113,.4)';
+  } else {
+    btn.textContent = '▶ Run';  btn.style.color='#4ade80';
+    btn.style.borderColor='rgba(74,222,128,.3)';
+  }
+  draw(); // refresh clock visuals
 }
 
 // Force a waveform tick (useful with DFF clock)
@@ -1081,6 +1189,7 @@ function loadDemo() {
 /* ═══════════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════════ */
+window.addEventListener('beforeunload', stopAutoRun);
 setTool('select');
 setTimeout(() => { resize(); loadDemo(); }, 60);
 </script>
