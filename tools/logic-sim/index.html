@@ -138,6 +138,22 @@
       </div>
 
       <div class="pal-sep"></div>
+      <div class="pal-label">Display</div>
+      <button class="pal-btn" data-place="SEG7" style="border-color:rgba(251,146,60,.25)">
+        <svg class="gi" viewBox="0 0 26 18">
+          <rect x="1" y="1" width="24" height="16" rx="2" fill="#060910" stroke="#334155" stroke-width="1"/>
+          <!-- a top --><rect x="5" y="2" width="12" height="2" rx=".5" fill="#fb923c"/>
+          <!-- b top-right --><rect x="18" y="4" width="2" height="4" rx=".5" fill="#fb923c"/>
+          <!-- c bot-right --><rect x="18" y="10" width="2" height="4" rx=".5" fill="#1a1f2e"/>
+          <!-- d bot --><rect x="5" y="14" width="12" height="2" rx=".5" fill="#1a1f2e"/>
+          <!-- e bot-left --><rect x="4" y="10" width="2" height="4" rx=".5" fill="#fb923c"/>
+          <!-- f top-left --><rect x="4" y="4" width="2" height="4" rx=".5" fill="#fb923c"/>
+          <!-- g mid --><rect x="5" y="8.5" width="12" height="2" rx=".5" fill="#fb923c"/>
+        </svg>
+        7-Segment
+      </button>
+
+      <div class="pal-sep"></div>
       <div class="pal-label">Probe</div>
       <button class="pal-btn" data-place="PROBE" style="border-color:rgba(245,158,11,.2)">
         <svg class="gi" viewBox="0 0 26 16">
@@ -174,7 +190,7 @@
 
     <div id="cvs-wrap">
       <canvas id="cvs"></canvas>
-      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>Auto Clock:</b><br>Place Clock → wire to DFF CLK<br>Press <b>▶ Run</b> to start<br>Set speed: 1 / 2 / 5 / 10 Hz<br><br><b>Probe:</b> wire to any output<br>→ waveform appears below</div>
+      <div id="hint"><b>How to use:</b><br>① Click gate → click on canvas<br>② <b>Wire</b>: green dot → blue dot<br>③ <b>Move</b>: Select → drag<br>④ Click Input to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>7-Segment:</b><br>7 inputs: a b c d e f g<br>Wire any output to a segment<br>Lit segment = input is HIGH<br><br><b>Clock:</b> ▶ Run → auto-tick<br><b>Probe:</b> records waveform</div>
     </div>
   </div>
 
@@ -214,6 +230,16 @@ const WV_HDR = 26;   // panel header
 const WV_LBL = 72;   // label column width
 const MAX_HIST = 100; // samples per probe
 
+// 7-segment display dimensions
+const S7W  = 140;  // total width
+const S7H  = 130;  // total height
+// display inner area (where segments live)
+const S7IX = 52;   // inner x offset from c.x
+const S7IY = 8;    // inner y offset from c.y
+const S7IW = 76;   // inner width
+const S7IH = 114;  // inner height
+const S7SW = 10;   // segment thickness
+
 const DEFS = {
   INPUT:  {n:0, fn:null,            col:'#4ade80'},
   OUTPUT: {n:1, fn:null,            col:'#4ade80'},
@@ -229,6 +255,7 @@ const DEFS = {
   // Probe — records signal history, renders in waveform panel
   PROBE:  {n:1, fn:null,             col:'#f59e0b'},
   CLOCK:  {n:0, fn:null,             col:'#818cf8'},
+  SEG7:   {n:7, fn:null,             col:'#fb923c'},  // 7-segment display
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -278,15 +305,20 @@ window.addEventListener('resize', resize);
 function outPort(c) {
   if (c.type === 'OUTPUT') return null;
   if (c.type === 'PROBE')  return null;
+  if (c.type === 'SEG7')   return null;
   if (c.type === 'INPUT' || c.type === 'CLOCK') return {x: c.x + IW, y: c.y + IH/2};
   return {x: c.x + GW, y: c.y + GH/2};
 }
+
+// 7-segment port y positions — evenly spread, matching segment order a-g
+const S7_PY = [0,1,2,3,4,5,6].map(i => 15 + i * 17); // [15,32,49,66,83,100,117]
 
 function inPorts(c) {
   if (c.type === 'INPUT')  return [];
   if (c.type === 'CLOCK')  return [];
   if (c.type === 'OUTPUT') return [{x: c.x, y: c.y + OR_}];
   if (c.type === 'PROBE')  return [{x: c.x, y: c.y + 16}];
+  if (c.type === 'SEG7')   return S7_PY.map(dy => ({x: c.x, y: c.y + dy}));
   const n = DEFS[c.type].n;
   if (n === 1) return [{x: c.x, y: c.y + GH/2}];
   if (c.type === 'DFF') return [
@@ -319,7 +351,9 @@ function portAt(mx, my) {
 function compAt(mx, my) {
   for (let i = comps.length-1; i >= 0; i--) {
     const c = comps[i];
-    if (c.type === 'PROBE') {
+    if (c.type === 'SEG7') {
+      if (mx >= c.x && mx <= c.x+S7W && my >= c.y && my <= c.y+S7H) return c;
+    } else if (c.type === 'PROBE') {
       if (mx >= c.x-4 && mx <= c.x+56 && my >= c.y && my <= c.y+32) return c;
     } else if (c.type === 'CLOCK' || c.type === 'INPUT') {
       if (mx >= c.x && mx <= c.x+IW && my >= c.y && my <= c.y+IH) return c;
@@ -838,12 +872,119 @@ function drawClock(c) {
   ctx.restore();
 }
 
+/* ── 7-Segment Display ── */
+function segPoly(ctx, x, y, w, h, horiz) {
+  // Chamfered hexagon shape for each LED segment
+  const k = Math.min(w, h) * 0.28;
+  ctx.beginPath();
+  if (horiz) {
+    ctx.moveTo(x+k,   y);
+    ctx.lineTo(x+w-k, y);
+    ctx.lineTo(x+w,   y+h/2);
+    ctx.lineTo(x+w-k, y+h);
+    ctx.lineTo(x+k,   y+h);
+    ctx.lineTo(x,     y+h/2);
+  } else {
+    ctx.moveTo(x+w/2, y);
+    ctx.lineTo(x+w,   y+k);
+    ctx.lineTo(x+w,   y+h-k);
+    ctx.lineTo(x+w/2, y+h);
+    ctx.lineTo(x,     y+h-k);
+    ctx.lineTo(x,     y+k);
+  }
+  ctx.closePath();
+}
+
+function drawSeg7(c) {
+  // Gather segment values from connected wires (unconnected = 0)
+  const seg = new Array(7).fill(0);
+  for (const w of wires) {
+    if (w.to !== c.id) continue;
+    const src = comps.find(x => x.id === w.from);
+    if (src !== undefined) seg[w.toPort] = src.value;
+  }
+
+  const labels = ['a','b','c','d','e','f','g'];
+  const isS = sel === c.id;
+  ctx.save();
+
+  // ── Outer bezel ──
+  rrect(c.x, c.y, S7W, S7H, 10);
+  ctx.fillStyle = '#0a0d14';
+  ctx.strokeStyle = isS ? '#fff' : '#334155';
+  ctx.lineWidth = 1.8;
+  ctx.fill(); ctx.stroke();
+
+  // ── Input stubs + labels ──
+  S7_PY.forEach((dy, i) => {
+    const px = c.x, py = c.y + dy;
+    const on = !!seg[i];
+    // stub line
+    ctx.strokeStyle = on ? '#fb923c' : '#1e293b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(c.x + 40, py); ctx.stroke();
+    // segment label
+    ctx.font = 'bold 9px Orbitron,sans-serif';
+    ctx.fillStyle = on ? '#fb923c' : '#334155';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(labels[i], c.x + 46, py);
+  });
+
+  // ── Display background ──
+  const dx = c.x + S7IX, dy2 = c.y + S7IY;
+  const dw = S7IW, dh = S7IH, sw = S7SW, gap = 2;
+  rrect(dx, dy2, dw, dh, 4);
+  ctx.fillStyle = '#060910';
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.fill(); ctx.stroke();
+
+  // Segment geometry [x, y, w, h, isHoriz]  — relative to (dx, dy2)
+  const sl = dw - 2*sw - 2*gap;           // horizontal segment length
+  const sv = (dh/2) - sw - 2*gap;         // vertical segment height
+  const mx = sw + gap;                     // horizontal segment x start
+  const midy = dh/2;
+  const segs = [
+    [mx,          0,          sl, sw, true ], // a — top
+    [dw-sw,       sw+gap,     sw, sv, false], // b — top-right
+    [dw-sw,       midy+gap,   sw, sv, false], // c — bot-right
+    [mx,          dh-sw,      sl, sw, true ], // d — bottom
+    [0,           midy+gap,   sw, sv, false], // e — bot-left
+    [0,           sw+gap,     sw, sv, false], // f — top-left
+    [mx,          midy-sw/2,  sl, sw, true ], // g — middle
+  ];
+
+  segs.forEach(([sx, sy, sw2, sh, horiz], i) => {
+    const on = !!seg[i];
+    segPoly(ctx, dx+sx, dy2+sy, sw2, sh, horiz);
+    if (on) {
+      ctx.fillStyle = '#fb923c';
+      ctx.shadowColor = '#fb923c';
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.fillStyle = '#1a1f2e';
+      ctx.shadowBlur = 0;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // Decimal point
+  ctx.beginPath();
+  ctx.arc(dx + dw - sw/2, dy2 + dh - sw/2, sw/2 - 1, 0, 2*Math.PI);
+  ctx.fillStyle = '#1a1f2e';
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function drawComp(c) {
   if      (c.type==='INPUT')  drawInput(c);
   else if (c.type==='OUTPUT') drawOutput(c);
   else if (c.type==='CLOCK')  drawClock(c);
   else if (c.type==='DFF')    drawDFF(c);
   else if (c.type==='PROBE')  drawProbe(c);
+  else if (c.type==='SEG7')   drawSeg7(c);
   else                        drawGate(c);
 }
 
