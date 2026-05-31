@@ -215,8 +215,8 @@
         <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">4-bit → a,b,c,d,e,f,g</div>
       </button>
       <button class="tool-btn" onclick="loadCounter()" style="border-color:rgba(251,191,36,.25);color:#fbbf24;text-align:left;margin-top:.2rem">
-        🔢 Counter 0-9
-        <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">DFF chain + display</div>
+        🔢 Counter 0–F
+        <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">4-bit ripple + display · press Run</div>
       </button>
 
       <div class="pal-sep"></div>
@@ -524,18 +524,36 @@ function compAt(mx, my) {
 /* ═══════════════════════════════════════════════════════════
    SIMULATION
    ═══════════════════════════════════════════════════════════ */
-function simulate() {
-  comps.forEach(c => { if (c.type !== 'INPUT' && c.type !== 'CLOCK') c.value = 0; });
+const SEG_TABLE = [0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71];
+
+// Read a component's input-port values from current wire sources (uses each source's .value)
+function readInputs(c) {
+  const n = DEFS[c.type].n;
+  const vals = new Array(n).fill(null);
+  for (const w of wires) {
+    if (w.to !== c.id) continue;
+    const src = comps.find(x => x.id === w.from);
+    if (src) vals[w.toPort] = src.value;
+  }
+  return vals;
+}
+
+// Settle all COMBINATIONAL logic. DFFs are treated as sources (output = stored q),
+// which breaks feedback loops (Q→NOT→D) that would otherwise deadlock the solver.
+function settleCombinational() {
+  comps.forEach(c => {
+    if (c.type === 'DFF') c.value = c.q;            // state element outputs its stored bit
+    else if (c.type !== 'INPUT' && c.type !== 'CLOCK') c.value = 0;
+  });
   const done = new Set(
-    comps.filter(c => c.type==='INPUT' || c.type==='CLOCK').map(c => c.id)
+    comps.filter(c => c.type==='INPUT' || c.type==='CLOCK' || c.type==='DFF').map(c => c.id)
   );
   let changed = true, iter = 0;
-  while (changed && iter++ < 200) {
+  while (changed && iter++ < 300) {
     changed = false;
     for (const c of comps) {
       if (done.has(c.id)) continue;
-      const n = DEFS[c.type].n;
-      const vals = new Array(n).fill(null);
+      const vals = new Array(DEFS[c.type].n).fill(null);
       for (const w of wires) {
         if (w.to !== c.id) continue;
         const src = comps.find(x => x.id === w.from);
@@ -545,38 +563,54 @@ function simulate() {
         if (vals[0] !== null) { c.value = vals[0]; done.add(c.id); changed = true; }
         continue;
       }
-      // SEG7 is display-only — rendered from wires in drawSeg7(), no fn to call
       if (c.type === 'SEG7') { done.add(c.id); changed = true; continue; }
-      // DEC7: 4-bit to 7-segment decoder
       if (c.type === 'DEC7') {
         if (vals.every(v => v !== null)) {
-          const num = (vals[3]<<3) | (vals[2]<<2) | (vals[1]<<1) | vals[0];
-          const segs = [0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71];
+          const num = ((vals[3]<<3)|(vals[2]<<2)|(vals[1]<<1)|vals[0]) & 15;
           c.outputs = [];
-          for (let i = 0; i < 7; i++) c.outputs[i] = (segs[num%16] >> i) & 1;
+          for (let i = 0; i < 7; i++) c.outputs[i] = (SEG_TABLE[num] >> i) & 1;
           c.value = c.outputs[0];
-          done.add(c.id); changed = true;
-        }
-        continue;
-      }
-      // DFF: rising-edge triggered — Q captures D when CLK goes 0→1
-      if (c.type === 'DFF') {
-        if (vals[0] !== null && vals[1] !== null) {
-          const d = vals[0], clk = vals[1];
-          if (clk === 1 && c.prevClk === 0) c.q = d; // rising edge
-          c.prevClk = clk;
-          c.value = c.q;
           done.add(c.id); changed = true;
         }
         continue;
       }
       if (vals.every(v => v !== null)) {
         c.value = DEFS[c.type].fn(...vals) ? 1 : 0;
-        done.add(c.id);
-        changed = true;
+        done.add(c.id); changed = true;
       }
     }
   }
+}
+
+function simulate() {
+  // 1. Settle combinational logic using current flip-flop state
+  settleCombinational();
+
+  // 2. Detect clock edges on every DFF and update state. Loop so that ripple
+  //    counters (where one DFF's Q clocks the next) propagate within one call.
+  let guard = 0;
+  while (guard++ < 64) {
+    // Snapshot every DFF's D and CLK FIRST (synchronous sampling) so that a DFF
+    // toggling in this pass cannot instantly false-clock the next stage.
+    const snap = comps.filter(c => c.type === 'DFF').map(c => {
+      const v = readInputs(c);
+      return { c, d: v[0], clk: (v[1] === null ? 0 : v[1]) };
+    });
+    let edge = false;
+    for (const s of snap) {
+      const c = s.c;
+      if (c.primed) {
+        if (s.clk === 1 && c.prevClk === 0 && s.d !== null) { c.q = s.d; edge = true; }
+      } else {
+        c.primed = true;                 // first sighting: establish baseline, don't fire
+      }
+      c.prevClk = s.clk;
+      c.value = c.q;
+    }
+    if (!edge) break;
+    settleCombinational();               // re-propagate new Q values, then re-check edges
+  }
+
   recordProbes();
 }
 
@@ -1703,24 +1737,23 @@ function loadCounter(){
     y+=90;
   }
 
-  // NOT gates for Q (to feed back to D for toggling)
+  // NOT gate per DFF gives Qbar — used BOTH as D feedback (toggle) AND to clock
+  // the next stage (Qbar's rising edge = Q's falling edge = correct up-count ripple).
   const notQ=[];
   y=cy;
   for(let i=0;i<4;i++){
-    const not={id:uid++, type:'NOT', x:snap(cx+240), y:snap(y+20), value:0};
+    const not={id:uid++, type:'NOT', x:snap(cx+240), y:snap(y+18), value:0};
     notQ.push(not);
     comps.push(not);
-    // Wire Q to NOT
-    wires.push({id:uid++, from:dff[i].id, to:not.id, toPort:0});
-    // Wire NOT back to D (feedback for toggle)
-    wires.push({id:uid++, from:not.id, to:dff[i].id, toPort:0});
+    wires.push({id:uid++, from:dff[i].id, to:not.id, toPort:0});   // Q -> NOT
+    wires.push({id:uid++, from:not.id, to:dff[i].id, toPort:0});   // Qbar -> D (toggle)
     y+=90;
   }
 
-  // Clock cascade: Q output drives next DFF's clock
-  wires.push({id:uid++, from:clk.id, to:dff[0].id, toPort:1});  // CLK to first DFF
+  // Clock chain: master clock -> DFF0; each next stage clocked by previous Qbar
+  wires.push({id:uid++, from:clk.id, to:dff[0].id, toPort:1});
   for(let i=0;i<3;i++){
-    wires.push({id:uid++, from:dff[i].id, to:dff[i+1].id, toPort:1});  // Cascade clocks
+    wires.push({id:uid++, from:notQ[i].id, to:dff[i+1].id, toPort:1}); // Qbar(i) -> CLK(i+1)
   }
 
   // 4-bit decoder
