@@ -214,6 +214,10 @@
         📺 7-Seg Decoder
         <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">4-bit → a,b,c,d,e,f,g</div>
       </button>
+      <button class="tool-btn" onclick="loadCounter()" style="border-color:rgba(251,191,36,.25);color:#fbbf24;text-align:left;margin-top:.2rem">
+        🔢 Counter 0-9
+        <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">DFF chain + display</div>
+      </button>
 
       <div class="pal-sep"></div>
       <div class="pal-label">File</div>
@@ -1679,6 +1683,58 @@ function detectPattern(out_idx){const t=[];for(let i=0;i<(1<<ttInputs);i++)t[i]=
 function minimizeBoolean(out_idx){const pat=detectPattern(out_idx);if(pat)return pat;const ones=[];for(let i=0;i<(1<<ttInputs);i++)if(ttOutputs[`o${i}_${out_idx}`])ones.push(i);if(!ones.length)return[];const vars=[];for(let i=0;i<ttInputs;i++)vars.push(String.fromCharCode(65+i));let terms=ones.map(i=>({val:i,mask:(1<<ttInputs)-1,used:false}));let processed=terms;for(let pass=0;pass<ttInputs;pass++){const next=[];for(let i=0;i<processed.length;i++)for(let j=i+1;j<processed.length;j++){const a=processed[i],b=processed[j];if(a.mask===b.mask){const diff=a.val^b.val;if(!(diff&(diff-1))){const new_mask=a.mask^diff;const new_val=a.val&new_mask;const nt={val:new_val,mask:new_mask,used:false};if(!next.some(x=>x.val===nt.val&&x.mask===nt.mask))next.push(nt);a.used=b.used=true}}}next.forEach(t=>{if(!processed.some(x=>x.val===t.val&&x.mask===t.mask&&!x.used))processed.push(t)});if(!next.length)break}return processed.filter(t=>!t.used).concat(terms.filter(t=>!t.used)).map(t=>({val:t.val,mask:t.mask}))}
 function termToExpr(t,n){let s='';for(let i=n-1;i>=0;i--){if(!(t.mask&(1<<i)))continue;const lit=(t.val>>i)&1;s+=(lit?'':'-')+String.fromCharCode(65+i)}return s||'1'}
 /* ─── 4-bit to 7-Segment Decoder Blackbox Module ─── */
+/* ─── 4-bit Counter (0-9) with 7-Segment Display ─── */
+function loadCounter(){
+  stopAutoRun();
+  comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0;
+  const cx=snap(cvs.width/2-300), cy=snap(cvs.height/2-100);
+
+  // Clock input
+  const clk={id:uid++, type:'CLOCK', x:snap(cx), y:snap(cy), value:0};
+  comps=[clk];
+
+  // 4 D flip-flops (Q0, Q1, Q2, Q3) — ripple counter
+  // Each DFF output feeds to next DFF's clock (or input)
+  const dff=[];
+  let y=cy;
+  for(let i=0;i<4;i++){
+    const ff={id:uid++, type:'DFF', x:snap(cx+120), y:snap(y), q:0, prevClk:0, value:0};
+    dff.push(ff);
+    comps.push(ff);
+    y+=90;
+  }
+
+  // Wire clock to first DFF
+  wires.push({id:uid++, from:clk.id, to:dff[0].id, toPort:1});
+
+  // Cascade: each Q output feeds to next DFF's D input (dividing by 2 per stage)
+  // Q0 → D1, Q1 → D2, Q2 → D3
+  for(let i=0;i<3;i++){
+    wires.push({id:uid++, from:dff[i].id, to:dff[i+1].id, toPort:0});
+    wires.push({id:uid++, from:dff[i].id, to:dff[i+1].id, toPort:1});  // Same Q to both D and CLK
+  }
+
+  // 4-bit decoder (DEC7)
+  const dec={id:uid++, type:'DEC7', x:snap(cx+380), y:snap(cy), value:0, outputs:[0,0,0,0,0,0,0]};
+  comps.push(dec);
+
+  // Wire counter outputs (Q0-Q3) to decoder inputs (D0-D3)
+  for(let i=0;i<4;i++){
+    wires.push({id:uid++, from:dff[i].id, to:dec.id, toPort:i});
+  }
+
+  // 7-segment display
+  const seg7={id:uid++, type:'SEG7', x:snap(cx+600), y:snap(cy+30), value:0};
+  comps.push(seg7);
+
+  // Wire decoder outputs (a-g) to display
+  for(let i=0;i<7;i++){
+    wires.push({id:uid++, from:dec.id, to:seg7.id, toPort:i});
+  }
+
+  simulate(); draw();
+}
+
 function load7SegDecoder(){
   stopAutoRun();
   comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0;
