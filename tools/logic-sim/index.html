@@ -224,6 +224,7 @@
       <button class="tool-btn" onclick="saveCircuit()" style="color:#34d399;border-color:rgba(52,211,153,.25)">💾 Save .ecx</button>
       <button class="tool-btn" onclick="document.getElementById('ecx-file').click()" style="color:#34d399;border-color:rgba(52,211,153,.25);margin-top:.2rem">📂 Open .ecx</button>
       <input type="file" id="ecx-file" accept=".ecx,.json" style="display:none" onchange="openCircuit(event)">
+      <button class="tool-btn" onclick="exportDiagram()" style="color:#38bdf8;border-color:rgba(56,189,248,.3);margin-top:.2rem">🖼 Export PNG</button>
 
       <div class="pal-sep"></div>
       <div class="pal-label">Tools</div>
@@ -416,8 +417,9 @@ let tickHz    = 2;      // clock frequency (Hz)
 /* ═══════════════════════════════════════════════════════════
    CANVAS SETUP
    ═══════════════════════════════════════════════════════════ */
-const cvs = document.getElementById('cvs');
-const ctx = cvs.getContext('2d');
+let cvs = document.getElementById('cvs');   // let: temporarily swapped to offscreen for PNG export
+let ctx = cvs.getContext('2d');
+const SCREEN_CVS = cvs, SCREEN_CTX = ctx;
 
 function resize() {
   const w = document.getElementById('cvs-wrap');
@@ -1727,7 +1729,157 @@ function openCircuit(e) {
   e.target.value = '';
 }
 
-let ttInputs=2, ttOutputCount=1, ttOutputs={};
+/* ─── Export professional circuit diagram (PNG) ─── */
+function compBounds(c){
+  let w=GW, h=GH;
+  if (c.type==='INPUT'||c.type==='CLOCK') { w=IW; h=IH; }
+  else if (c.type==='OUTPUT') { w=2*OR_; h=2*OR_; }
+  else if (c.type==='PROBE')  { w=56; h=32; }
+  else if (c.type==='SEG7')   { w=S7W; h=S7H; }
+  else if (c.type==='DEC7')   { w=140; h=210; }
+  return { x:c.x, y:c.y, w, h };
+}
+
+function exportDiagram(){
+  if (!comps.length) {
+    document.getElementById('sb-mode').textContent='✗ Nothing to export — build a circuit first';
+    setTimeout(updateModeLabel, 2500); return;
+  }
+  const title = (prompt('Diagram title:', 'Logic Circuit') || 'Logic Circuit').trim();
+
+  // 1. Bounding box over all components (+ their ports)
+  let minX=1e9, minY=1e9, maxX=-1e9, maxY=-1e9;
+  for (const c of comps) {
+    const b = compBounds(c);
+    minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+    maxX=Math.max(maxX,b.x+b.w); maxY=Math.max(maxY,b.y+b.h);
+    [...inPorts(c), ...outPorts(c), outPort(c)].forEach(p=>{
+      if(!p) return;
+      minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x);
+      minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y);
+    });
+  }
+  const pad=70, titleH=130, scale=2;
+  const cw = (maxX-minX) + pad*2;
+  const ch = (maxY-minY) + pad*2 + titleH;
+
+  // 2. Offscreen high-res canvas
+  const off = document.createElement('canvas');
+  off.width = Math.round(cw*scale);
+  off.height = Math.round(ch*scale);
+  const offctx = off.getContext('2d');
+
+  // Swap globals so existing draw* helpers render offscreen
+  cvs = off; ctx = offctx;
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  // Background
+  ctx.fillStyle = '#0a0f1e';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Subtle dot grid
+  ctx.fillStyle = 'rgba(148,163,184,.06)';
+  for (let gx=pad%24; gx<cw; gx+=24)
+    for (let gy=pad%24; gy<ch-titleH; gy+=24) { ctx.beginPath(); ctx.arc(gx,gy,1,0,6.283); ctx.fill(); }
+
+  // Outer frame
+  ctx.strokeStyle = 'rgba(45,212,191,.5)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(12, 12, cw-24, ch-24);
+  ctx.strokeStyle = 'rgba(45,212,191,.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(18, 18, cw-36, ch-36);
+
+  // 3. Circuit (translate so content sits inside the padding)
+  ctx.save();
+  ctx.translate(pad - minX, pad - minY);
+  const savedSel = sel, savedHover = hoverPort;
+  sel = null; hoverPort = null;              // hide selection ring + hover glow in export
+  wires.forEach(drawWire);
+  comps.forEach(drawComp);
+  comps.forEach(drawPorts);
+  sel = savedSel; hoverPort = savedHover;
+  ctx.restore();
+
+  // 4. Title block (engineering style, bottom band)
+  drawTitleBlock(cw, ch, titleH, title);
+
+  ctx.restore();
+  // Restore screen globals
+  cvs = SCREEN_CVS; ctx = SCREEN_CTX;
+
+  // 5. Download
+  const safe = title.replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'-').toLowerCase() || 'circuit';
+  off.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = safe + '-diagram.png';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+
+  document.getElementById('sb-mode').textContent='✓ Exported — '+safe+'-diagram.png';
+  setTimeout(updateModeLabel, 3000);
+  draw();   // repaint screen canvas
+}
+
+function drawTitleBlock(cw, ch, titleH, title){
+  const top = ch - titleH + 8;
+  const bx = 24, bw = cw - 48, by = top, bh = titleH - 28;
+  // Block background + border
+  ctx.fillStyle = 'rgba(15,23,42,.92)';
+  ctx.strokeStyle = 'rgba(45,212,191,.6)';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeRect(bx, by, bw, bh);
+
+  // Right-side info cells
+  const cellW = 150;
+  const c3 = bx + bw - cellW*2, c2 = bx + bw - cellW;
+  ctx.beginPath();
+  ctx.moveTo(c3, by); ctx.lineTo(c3, by+bh);
+  ctx.moveTo(c2, by); ctx.lineTo(c2, by+bh);
+  ctx.moveTo(c3, by+bh/2); ctx.lineTo(bx+bw, by+bh/2);
+  ctx.strokeStyle = 'rgba(45,212,191,.35)';
+  ctx.lineWidth = 1; ctx.stroke();
+
+  // EcrioniX branding (left cell)
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#2dd4bf';
+  ctx.font = "700 26px 'Orbitron', sans-serif";
+  ctx.fillText('EcrioniX', bx+22, by+bh/2 - 12);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = "500 13px 'Outfit', sans-serif";
+  ctx.fillText('Logic Gate Simulator  ·  ecrionix.org', bx+22, by+bh/2 + 14);
+
+  // Title (center, large)
+  const cenX = bx + (c3-bx)/2 + 120;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#64748b';
+  ctx.font = "600 11px 'Outfit', sans-serif";
+  ctx.fillText('TITLE', c3 - 240, by + bh*0.30);
+  ctx.fillStyle = '#f1f5f9';
+  ctx.font = "700 22px 'Outfit', sans-serif";
+  ctx.fillText(title, c3 - 240, by + bh*0.66);
+
+  // Info cells text helper
+  const cell = (x, y, label, value, vcol) => {
+    ctx.fillStyle = '#64748b';
+    ctx.font = "600 10px 'Outfit', sans-serif";
+    ctx.fillText(label, x+10, y+13);
+    ctx.fillStyle = vcol || '#e2e8f0';
+    ctx.font = "700 15px 'Outfit', sans-serif";
+    ctx.fillText(value, x+10, y+32);
+  };
+  const half = bh/2;
+  const date = new Date().toISOString().slice(0,10);
+  cell(c3, by,        'DATE',  date,                    '#38bdf8');
+  cell(c3, by+half,   'REV',   '1.0',                   '#a78bfa');
+  cell(c2, by,        'GATES', String(comps.length),    '#4ade80');
+  cell(c2, by+half,   'WIRES', String(wires.length),    '#fbbf24');
+}
 function openTruthTable(){document.getElementById('tt-modal').style.display='flex';buildTTTable()}
 function closeTruthTable(){document.getElementById('tt-modal').style.display='none'}
 function setTTInputs(n){ttInputs=n;document.querySelectorAll('.tt-n-btn').forEach(b=>{b.style.background=+b.dataset.n===n?'rgba(99,102,241,.15)':'rgba(15,23,42,.6)';b.style.color=+b.dataset.n===n?'#818cf8':'#64748b'});ttOutputs={};buildTTTable()}
