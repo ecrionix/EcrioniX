@@ -121,6 +121,18 @@
         XNOR
       </button>
       <div class="pal-sep"></div>
+      <div class="pal-label">Probe</div>
+      <button class="pal-btn" data-place="PROBE" style="border-color:rgba(245,158,11,.2)">
+        <svg class="gi" viewBox="0 0 26 16">
+          <rect x="1" y="3" width="20" height="10" rx="2" fill="rgba(245,158,11,.12)" stroke="#f59e0b" stroke-width="1.3"/>
+          <polygon points="9,8 12,4 15,8 12,12" fill="rgba(245,158,11,.6)"/>
+          <line x1="21" y1="8" x2="25" y2="8" stroke="#f59e0b" stroke-width="1.3"/>
+        </svg>
+        Add Probe
+      </button>
+      <button class="tool-btn" onclick="manualStep()" style="border-color:rgba(245,158,11,.2);color:#f59e0b;margin-top:.1rem">⏱ Step Clock</button>
+
+      <div class="pal-sep"></div>
       <div class="pal-label">Sequential</div>
       <button class="pal-btn" data-place="DFF" style="border-color:rgba(52,211,153,.2)">
         <svg class="gi" viewBox="0 0 26 16">
@@ -145,7 +157,7 @@
 
     <div id="cvs-wrap">
       <canvas id="cvs"></canvas>
-      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select tool → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>D Flip-Flop:</b><br>D=data input, ▷=clock<br>Q captures D on CLK 0→1</div>
+      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> = delete<br><br><b>Probe / Waveform:</b><br>Place Probe → wire to any output<br>Waveform panel appears below<br><b>Step Clock</b> = force a wave tick</div>
     </div>
   </div>
 
@@ -179,6 +191,12 @@ const HIT  = 16;   // port hit radius
 const IW=60, IH=40;   // input switch
 const OR_=24;          // output circle radius
 
+// Waveform panel
+const WV_ROW = 38;   // height per probe row
+const WV_HDR = 26;   // panel header
+const WV_LBL = 72;   // label column width
+const MAX_HIST = 100; // samples per probe
+
 const DEFS = {
   INPUT:  {n:0, fn:null,            col:'#4ade80'},
   OUTPUT: {n:1, fn:null,            col:'#4ade80'},
@@ -191,6 +209,8 @@ const DEFS = {
   XNOR:   {n:2, fn:(a,b)=>(a^b)^1,  col:'#a78bfa', shape:'xor', bubble:true},
   // Sequential — edge-triggered, handled specially in simulate()
   DFF:    {n:2, fn:null,             col:'#34d399', shape:'dff', seq:true},
+  // Probe — records signal history, renders in waveform panel
+  PROBE:  {n:1, fn:null,             col:'#f59e0b'},
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -204,6 +224,7 @@ let sel   = null;       // selected comp id
 let drag  = null;       // {comp, ox, oy, sx, sy, moved}
 let conn  = null;       // {fromId, mx, my}  (wire being drawn)
 let hoverPort = null;   // {comp, kind:'out'|'in', idx} — highlighted port
+let tick  = 0;          // logical time step counter
 
 /* ═══════════════════════════════════════════════════════════
    CANVAS SETUP
@@ -235,14 +256,15 @@ window.addEventListener('resize', resize);
 */
 function outPort(c) {
   if (c.type === 'OUTPUT') return null;
+  if (c.type === 'PROBE')  return null;
   if (c.type === 'INPUT')  return {x: c.x + IW, y: c.y + IH/2};
-  // Logic gate: output stub end
   return {x: c.x + GW, y: c.y + GH/2};
 }
 
 function inPorts(c) {
   if (c.type === 'INPUT')  return [];
   if (c.type === 'OUTPUT') return [{x: c.x, y: c.y + OR_}];
+  if (c.type === 'PROBE')  return [{x: c.x, y: c.y + 16}];
   const n = DEFS[c.type].n;
   if (n === 1) return [{x: c.x, y: c.y + GH/2}];
   if (c.type === 'DFF') return [
@@ -275,7 +297,9 @@ function portAt(mx, my) {
 function compAt(mx, my) {
   for (let i = comps.length-1; i >= 0; i--) {
     const c = comps[i];
-    if (c.type === 'INPUT') {
+    if (c.type === 'PROBE') {
+      if (mx >= c.x-4 && mx <= c.x+56 && my >= c.y && my <= c.y+32) return c;
+    } else if (c.type === 'INPUT') {
       if (mx >= c.x && mx <= c.x+IW && my >= c.y && my <= c.y+IH) return c;
     } else if (c.type === 'OUTPUT') {
       if (Math.hypot(mx - (c.x+OR_), my - (c.y+OR_)) < OR_+4) return c;
@@ -304,7 +328,7 @@ function simulate() {
         const src = comps.find(x => x.id === w.from);
         if (src && done.has(src.id)) vals[w.toPort] = src.value;
       }
-      if (c.type === 'OUTPUT') {
+      if (c.type === 'OUTPUT' || c.type === 'PROBE') {
         if (vals[0] !== null) { c.value = vals[0]; done.add(c.id); changed = true; }
         continue;
       }
@@ -326,6 +350,31 @@ function simulate() {
       }
     }
   }
+  recordProbes();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROBE HISTORY
+   ═══════════════════════════════════════════════════════════ */
+function recordProbes() {
+  const probes = comps.filter(c => c.type === 'PROBE');
+  if (!probes.length) return;
+  // Only record if any probe value changed since last sample
+  const anyChanged = probes.some(p =>
+    !p.history.length || p.history[p.history.length-1] !== p.value
+  );
+  if (!anyChanged) return;
+  tick++;
+  probes.forEach(p => {
+    p.history.push(p.value);
+    if (p.history.length > MAX_HIST) p.history.shift();
+  });
+}
+
+function nextProbeName() {
+  const used = new Set(comps.filter(c=>c.type==='PROBE').map(c=>c.label));
+  for (let i=1; i<100; i++) { const n='P'+i; if (!used.has(n)) return n; }
+  return 'P?';
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -571,10 +620,161 @@ function drawDFF(c) {
   ctx.restore();
 }
 
+function drawProbe(c) {
+  const on = !!c.value;
+  const col = '#f59e0b';
+  ctx.save();
+  // Body: small rounded rectangle
+  ctx.lineWidth = 1.6;
+  ctx.fillStyle = on ? 'rgba(245,158,11,.18)' : 'rgba(10,16,30,.92)';
+  ctx.strokeStyle = sel===c.id ? '#fff' : col;
+  rrect(c.x, c.y, 52, 32, 6);
+  ctx.fill(); ctx.stroke();
+  // Diamond indicator
+  ctx.fillStyle = on ? col : 'rgba(245,158,11,.25)';
+  if (on) { ctx.shadowColor=col; ctx.shadowBlur=8; }
+  ctx.beginPath();
+  ctx.moveTo(c.x+10, c.y+16);
+  ctx.lineTo(c.x+16, c.y+8);
+  ctx.lineTo(c.x+22, c.y+16);
+  ctx.lineTo(c.x+16, c.y+24);
+  ctx.closePath();
+  ctx.fill(); ctx.shadowBlur=0;
+  // Label + value
+  ctx.font = 'bold 9px Orbitron,sans-serif';
+  ctx.fillStyle = sel===c.id ? '#fff' : col;
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(c.label || 'P?', c.x+28, c.y+12);
+  ctx.font = 'bold 11px Orbitron,sans-serif';
+  ctx.fillStyle = on ? '#4ade80' : '#334155';
+  ctx.fillText(on?'1':'0', c.x+28, c.y+24);
+  // Input stub
+  const ip = inPorts(c)[0];
+  ctx.strokeStyle = sel===c.id ? '#fff' : col;
+  ctx.beginPath(); ctx.moveTo(ip.x, ip.y); ctx.lineTo(c.x, ip.y); ctx.stroke();
+  ctx.restore();
+}
+
+/* ─── Waveform panel (drawn at bottom of main canvas) ─── */
+function waveHeight() {
+  const n = comps.filter(c=>c.type==='PROBE').length;
+  return n ? WV_HDR + n * WV_ROW + 8 : 0;
+}
+
+function drawWave() {
+  const probes = comps.filter(c=>c.type==='PROBE');
+  if (!probes.length) return;
+  const wh = waveHeight();
+  const wy = cvs.height - wh;
+  const ww = cvs.width;
+
+  // Panel background
+  ctx.fillStyle = 'rgba(8,14,26,.96)';
+  ctx.fillRect(0, wy, ww, wh);
+  ctx.strokeStyle = 'rgba(245,158,11,.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,wy); ctx.lineTo(ww,wy); ctx.stroke();
+
+  // Header
+  ctx.fillStyle = 'rgba(245,158,11,.7)';
+  ctx.font = 'bold 9px Orbitron,sans-serif';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText('WAVEFORM PROBE', 10, wy + WV_HDR/2);
+  ctx.fillStyle = '#334155';
+  ctx.font = '9px Outfit,sans-serif';
+  ctx.textAlign='right';
+  ctx.fillText(`tick ${tick}`, ww-10, wy + WV_HDR/2);
+
+  // Tick marks at top of waveform area
+  const dataW = ww - WV_LBL - 12;
+
+  probes.forEach((p, pi) => {
+    const rowY = wy + WV_HDR + pi * WV_ROW;
+    const midY = rowY + WV_ROW/2;
+    const hiY  = rowY + 5;
+    const loY  = rowY + WV_ROW - 7;
+
+    // Row separator
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,rowY+WV_ROW); ctx.lineTo(ww,rowY+WV_ROW); ctx.stroke();
+
+    // Label
+    ctx.fillStyle = p.value ? '#f59e0b' : '#64748b';
+    ctx.font = 'bold 9px Orbitron,sans-serif';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(p.label||'P?', 8, midY);
+    // Current value chip
+    ctx.fillStyle = p.value ? 'rgba(74,222,128,.15)' : 'rgba(51,65,85,.5)';
+    ctx.strokeStyle = p.value ? '#4ade80' : '#334155';
+    ctx.lineWidth=1;
+    rrect(WV_LBL-22, midY-7, 18, 14, 3);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = p.value ? '#4ade80' : '#475569';
+    ctx.font='bold 10px Orbitron,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(p.value?'1':'0', WV_LBL-13, midY);
+
+    // Waveform
+    const hist = p.history;
+    if (hist.length < 2) {
+      // Flat line if no history yet
+      ctx.strokeStyle = p.value ? '#4ade80' : '#1e3a5f';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(WV_LBL, p.value?hiY:loY);
+      ctx.lineTo(WV_LBL+dataW, p.value?hiY:loY);
+      ctx.stroke();
+      return;
+    }
+    const dx = dataW / (MAX_HIST - 1);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#4ade80';
+    ctx.shadowColor = '#4ade80';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    for (let i=0; i<hist.length; i++) {
+      const x = WV_LBL + (i - (hist.length - MAX_HIST < 0 ? 0 : hist.length - MAX_HIST)) * dx;
+      const y = hist[i] ? hiY : loY;
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        const xPrev = WV_LBL + (i-1 - (hist.length - MAX_HIST < 0 ? 0 : hist.length - MAX_HIST)) * dx;
+        const yPrev = hist[i-1] ? hiY : loY;
+        ctx.lineTo(xPrev, y);  // vertical transition
+        ctx.lineTo(x, y);       // horizontal segment
+      }
+    }
+    // Extend to right edge with current value
+    ctx.lineTo(WV_LBL + dataW, hist[hist.length-1] ? hiY : loY);
+    ctx.stroke();
+
+    // Fill under HIGH segments (subtle)
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#4ade80';
+    ctx.beginPath();
+    for (let i=0; i<hist.length; i++) {
+      const x = WV_LBL + i * dx;
+      if (hist[i]) {
+        ctx.rect(x, hiY, dx, loY - hiY);
+      }
+    }
+    ctx.fill();
+    ctx.restore();
+
+    // Label divider
+    ctx.strokeStyle='rgba(245,158,11,.12)';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(WV_LBL,rowY); ctx.lineTo(WV_LBL,rowY+WV_ROW); ctx.stroke();
+  });
+}
+
 function drawComp(c) {
   if      (c.type==='INPUT')  drawInput(c);
   else if (c.type==='OUTPUT') drawOutput(c);
   else if (c.type==='DFF')    drawDFF(c);
+  else if (c.type==='PROBE')  drawProbe(c);
   else                        drawGate(c);
 }
 
@@ -673,6 +873,9 @@ function draw() {
     }
   }
 
+  // Waveform panel
+  drawWave();
+
   // Status
   document.getElementById('sb-gc').textContent = comps.length;
   document.getElementById('sb-wc').textContent = wires.length;
@@ -719,7 +922,8 @@ cvs.addEventListener('mousedown', e => {
     else if(type==='OUTPUT')  { cx=snap(x-OR_);      cy=snap(y-OR_);    }
     else                      { cx=snap(x-GW/2);     cy=snap(y-GH/2);   }
     const nc = {id:uid++, type, x:cx, y:cy, value:0};
-    if (type === 'DFF') { nc.q = 0; nc.prevClk = 0; }
+    if (type === 'DFF')   { nc.q = 0; nc.prevClk = 0; }
+    if (type === 'PROBE') { nc.label = nextProbeName(); nc.history = []; }
     comps.push(nc);
     simulate(); draw(); return;
   }
@@ -843,7 +1047,17 @@ function deleteSelected() {
   sel=null; simulate(); draw();
 }
 function clearAll() {
-  comps=[]; wires=[]; sel=null; conn=null; uid=1; draw();
+  comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0; draw();
+}
+
+// Force a waveform tick (useful with DFF clock)
+function manualStep() {
+  tick++;
+  comps.filter(c=>c.type==='PROBE').forEach(p => {
+    p.history.push(p.value);
+    if (p.history.length > MAX_HIST) p.history.shift();
+  });
+  draw();
 }
 
 /* ═══════════════════════════════════════════════════════════
