@@ -390,6 +390,7 @@ const DEFS = {
   PROBE:  {n:1, fn:null,             col:'#f59e0b'},
   CLOCK:  {n:0, fn:null,             col:'#818cf8'},
   SEG7:   {n:7, fn:null,             col:'#fb923c'},  // 7-segment display
+  DEC7:   {n:4, fn:null,             col:'#f472b6'},  // 4-bit to 7-seg decoder (blackbox)
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -436,10 +437,15 @@ window.addEventListener('resize', resize);
     gate body sits between x+STUB and x+STUB+BODY
     bubble (if any) sits between body right edge and output port
 */
+function outPorts(c) {
+  if (c.type === 'DEC7') return [10,40,70,100,130,160,190].map(dy => ({x: c.x + 140, y: c.y + dy}));
+  return [];
+}
 function outPort(c) {
   if (c.type === 'OUTPUT') return null;
   if (c.type === 'PROBE')  return null;
   if (c.type === 'SEG7')   return null;
+  if (c.type === 'DEC7')   return null;
   if (c.type === 'INPUT' || c.type === 'CLOCK') return {x: c.x + IW, y: c.y + IH/2};
   return {x: c.x + GW, y: c.y + GH/2};
 }
@@ -453,6 +459,7 @@ function inPorts(c) {
   if (c.type === 'OUTPUT') return [{x: c.x, y: c.y + OR_}];
   if (c.type === 'PROBE')  return [{x: c.x, y: c.y + 16}];
   if (c.type === 'SEG7')   return S7_PY.map(dy => ({x: c.x, y: c.y + dy}));
+  if (c.type === 'DEC7')   return [20,50,80,110].map(dy => ({x: c.x, y: c.y + dy}));
   const n = DEFS[c.type].n;
   if (n === 1) return [{x: c.x, y: c.y + GH/2}];
   if (c.type === 'DFF') return [
@@ -470,9 +477,17 @@ function inPorts(c) {
    ═══════════════════════════════════════════════════════════ */
 function portAt(mx, my) {
   for (const c of comps) {
+    // Check multiple output ports (for DEC7, etc)
+    const ops = outPorts(c);
+    for (let i = 0; i < ops.length; i++) {
+      if (Math.hypot(mx - ops[i].x, my - ops[i].y) < HIT)
+        return {c, kind:'out', idx:i, pos:ops[i]};
+    }
+    // Check single output port
     const op = outPort(c);
     if (op && Math.hypot(mx - op.x, my - op.y) < HIT)
       return {c, kind:'out', idx:0, pos:op};
+    // Check input ports
     const ips = inPorts(c);
     for (let i=0; i<ips.length; i++) {
       if (Math.hypot(mx - ips[i].x, my - ips[i].y) < HIT)
@@ -489,6 +504,8 @@ function compAt(mx, my) {
       if (mx >= c.x && mx <= c.x+S7W && my >= c.y && my <= c.y+S7H) return c;
     } else if (c.type === 'PROBE') {
       if (mx >= c.x-4 && mx <= c.x+56 && my >= c.y && my <= c.y+32) return c;
+    } else if (c.type === 'DEC7') {
+      if (mx >= c.x && mx <= c.x+140 && my >= c.y && my <= c.y+210) return c;
     } else if (c.type === 'CLOCK' || c.type === 'INPUT') {
       if (mx >= c.x && mx <= c.x+IW && my >= c.y && my <= c.y+IH) return c;
     } else if (c.type === 'OUTPUT') {
@@ -526,6 +543,18 @@ function simulate() {
       }
       // SEG7 is display-only — rendered from wires in drawSeg7(), no fn to call
       if (c.type === 'SEG7') { done.add(c.id); changed = true; continue; }
+      // DEC7: 4-bit to 7-segment decoder
+      if (c.type === 'DEC7') {
+        if (vals.every(v => v !== null)) {
+          const num = (vals[3]<<3) | (vals[2]<<2) | (vals[1]<<1) | vals[0];
+          const segs = [0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71];
+          c.outputs = [];
+          for (let i = 0; i < 7; i++) c.outputs[i] = (segs[num%16] >> i) & 1;
+          c.value = c.outputs[0];
+          done.add(c.id); changed = true;
+        }
+        continue;
+      }
       // DFF: rising-edge triggered — Q captures D when CLK goes 0→1
       if (c.type === 'DFF') {
         if (vals[0] !== null && vals[1] !== null) {
@@ -1114,11 +1143,46 @@ function drawSeg7(c) {
   ctx.restore();
 }
 
+function drawDec7(c) {
+  const col = '#f472b6';
+  const isS = sel === c.id;
+  ctx.save();
+  rrect(c.x, c.y, 140, 210, 8);
+  ctx.fillStyle = 'rgba(15,23,42,.9)';
+  ctx.strokeStyle = isS ? '#fff' : col;
+  ctx.lineWidth = 1.8;
+  ctx.fill(); ctx.stroke();
+  // Label
+  ctx.font = 'bold 8px Orbitron,sans-serif';
+  ctx.fillStyle = col;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('7-SEG', c.x+70, c.y+8);
+  ctx.fillText('DEC', c.x+70, c.y+18);
+  // Input labels (left)
+  const inLabels = ['D0','D1','D2','D3'];
+  for (let i = 0; i < 4; i++) {
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 7px Orbitron,sans-serif';
+    ctx.fillStyle = '#f472b6';
+    ctx.fillText(inLabels[i], c.x+6, c.y+20+i*50);
+  }
+  // Output labels (right)
+  const outLabels = ['a','b','c','d','e','f','g'];
+  for (let i = 0; i < 7; i++) {
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 7px Orbitron,sans-serif';
+    ctx.fillStyle = (c.outputs && c.outputs[i]) ? '#34d399' : '#475569';
+    ctx.fillText(outLabels[i], c.x+134, c.y+10+i*28);
+  }
+  ctx.restore();
+}
+
 function drawComp(c) {
   if      (c.type==='INPUT')  drawInput(c);
   else if (c.type==='OUTPUT') drawOutput(c);
   else if (c.type==='CLOCK')  drawClock(c);
   else if (c.type==='DFF')    drawDFF(c);
+  else if (c.type==='DEC7')   drawDec7(c);
   else if (c.type==='PROBE')  drawProbe(c);
   else if (c.type==='SEG7')   drawSeg7(c);
   else                        drawGate(c);
@@ -1614,93 +1678,40 @@ function buildTTTable(){const rows=1<<ttInputs;const tbl=document.getElementById
 function detectPattern(out_idx){const t=[];for(let i=0;i<(1<<ttInputs);i++)t[i]=ttOutputs[`o${i}_${out_idx}`]||0;if(ttInputs===2){if(t[1]&&t[2]&&!t[0]&&!t[3])return{type:'XOR'};if(!t[1]&&!t[2]&&t[0]&&t[3])return{type:'XNOR'}}return null}
 function minimizeBoolean(out_idx){const pat=detectPattern(out_idx);if(pat)return pat;const ones=[];for(let i=0;i<(1<<ttInputs);i++)if(ttOutputs[`o${i}_${out_idx}`])ones.push(i);if(!ones.length)return[];const vars=[];for(let i=0;i<ttInputs;i++)vars.push(String.fromCharCode(65+i));let terms=ones.map(i=>({val:i,mask:(1<<ttInputs)-1,used:false}));let processed=terms;for(let pass=0;pass<ttInputs;pass++){const next=[];for(let i=0;i<processed.length;i++)for(let j=i+1;j<processed.length;j++){const a=processed[i],b=processed[j];if(a.mask===b.mask){const diff=a.val^b.val;if(!(diff&(diff-1))){const new_mask=a.mask^diff;const new_val=a.val&new_mask;const nt={val:new_val,mask:new_mask,used:false};if(!next.some(x=>x.val===nt.val&&x.mask===nt.mask))next.push(nt);a.used=b.used=true}}}next.forEach(t=>{if(!processed.some(x=>x.val===t.val&&x.mask===t.mask&&!x.used))processed.push(t)});if(!next.length)break}return processed.filter(t=>!t.used).concat(terms.filter(t=>!t.used)).map(t=>({val:t.val,mask:t.mask}))}
 function termToExpr(t,n){let s='';for(let i=n-1;i>=0;i--){if(!(t.mask&(1<<i)))continue;const lit=(t.val>>i)&1;s+=(lit?'':'-')+String.fromCharCode(65+i)}return s||'1'}
-/* ─── 4-bit to 7-Segment Decoder Template ─── */
+/* ─── 4-bit to 7-Segment Decoder Blackbox Module ─── */
 function load7SegDecoder(){
   stopAutoRun();
   comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0;
-  const cx=snap(cvs.width/2-300), cy=snap(cvs.height/2-100);
-
-  // 4 inputs (D0, D1, D2, D3)
-  const D0={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy), value:0};
-  const D1={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+70), value:0};
-  const D2={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+140), value:0};
-  const D3={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+210), value:0};
-
+  const cx=snap(cvs.width/2-200), cy=snap(cvs.height/2-80);
+  // 4 inputs
+  const D0={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+20), value:0};
+  const D1={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+50), value:0};
+  const D2={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+80), value:0};
+  const D3={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+110), value:0};
   comps=[D0,D1,D2,D3];
-
-  // NOT gates for inverted inputs
-  const notD0={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+20), value:0};
-  const notD1={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+90), value:0};
-  const notD2={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+160), value:0};
-  const notD3={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+230), value:0};
-  comps.push(notD0,notD1,notD2,notD3);
-  wires.push({id:uid++, from:D0.id, to:notD0.id, toPort:0});
-  wires.push({id:uid++, from:D1.id, to:notD1.id, toPort:0});
-  wires.push({id:uid++, from:D2.id, to:notD2.id, toPort:0});
-  wires.push({id:uid++, from:D3.id, to:notD3.id, toPort:0});
-
-  // 7 outputs (a-g) - each driven by an OR gate combining its minterms
-  let x=cx+200, y=cy;
+  // Decoder (blackbox)
+  const dec={id:uid++, type:'DEC7', x:snap(cx+100), y:snap(cy), value:0, outputs:[0,0,0,0,0,0,0]};
+  comps.push(dec);
+  wires=[
+    {id:uid++, from:D0.id, to:dec.id, toPort:0},
+    {id:uid++, from:D1.id, to:dec.id, toPort:1},
+    {id:uid++, from:D2.id, to:dec.id, toPort:2},
+    {id:uid++, from:D3.id, to:dec.id, toPort:3}
+  ];
+  // 7 outputs (a-g) + 7-segment display
   const segs=['a','b','c','d','e','f','g'];
-  const outputs={};
-
-  // For each segment, create AND gates for its minterms, then OR them
-  const segMinterms={
-    // segment a: D3·D1 + D3·D2·D0 + D2·D1·D0' → rows 8,9,13,15,5,6,7,0 (need proper minimization)
-    a: [{inputs:[D3,D1]}, {inputs:[D3,D2,D0]}, {inputs:[D2,D1,notD0]}],
-    b: [{inputs:[D3,notD2,notD0]}, {inputs:[D2,D1,notD0]}],
-    c: [{inputs:[D3,D1,D0]}],
-    d: [{inputs:[D3,D2,notD1]}, {inputs:[D3,D1,D0]}, {inputs:[D2,notD1,D0]}],
-    e: [{inputs:[D3,notD1]}, {inputs:[notD2,D0]}],
-    f: [{inputs:[D3,D2,notD0]}, {inputs:[D3,D1,D0]}, {inputs:[notD2,D1,notD0]}],
-    g: [{inputs:[D3,D2,D1]}, {inputs:[D2,D1,notD0]}, {inputs:[D3,D0]}]
-  };
-
-  for(let si=0;si<segs.length;si++){
-    const seg=segs[si];
-    const minterms=segMinterms[seg];
-    const andGates=[];
-
-    // Create AND gates for each minterm
-    for(let m=0;m<minterms.length;m++){
-      const minterm=minterms[m];
-      const and={id:uid++, type:'AND', x:snap(x), y:snap(y+m*60), value:0};
-      andGates.push(and);
-      comps.push(and);
-
-      // Wire inputs to AND gate
-      for(let i=0;i<minterm.inputs.length;i++){
-        wires.push({id:uid++, from:minterm.inputs[i].id, to:and.id, toPort:i});
-      }
-    }
-
-    // OR gate to combine minterms
-    let orGate=andGates[0];
-    if(andGates.length>1){
-      orGate={id:uid++, type:'OR', x:snap(x+80), y:snap(y+andGates.length*30), value:0};
-      comps.push(orGate);
-      for(let a=0;a<andGates.length;a++){
-        wires.push({id:uid++, from:andGates[a].id, to:orGate.id, toPort:a});
-      }
-    }
-
-    // OUTPUT for segment
-    const out={id:uid++, type:'OUTPUT', x:snap(x+180), y:snap(y+30), value:0};
-    comps.push(out);
-    outputs[seg]=out;
-    wires.push({id:uid++, from:orGate.id, to:out.id, toPort:0});
-
-    y+=120;
-  }
-
-  // Optional: place 7-segment display to show output
-  const seg7={id:uid++, type:'SEG7', x:snap(cx+600), y:snap(cy+80), value:0};
-  comps.push(seg7);
-  const seg_order=['a','b','c','d','e','f','g'];
+  let x=cx+300, y=cy;
   for(let i=0;i<7;i++){
-    wires.push({id:uid++, from:outputs[seg_order[i]].id, to:seg7.id, toPort:i});
+    const out={id:uid++, type:'OUTPUT', x:snap(x), y:snap(y+i*50), value:0};
+    comps.push(out);
+    wires.push({id:uid++, from:dec.id, to:out.id, toPort:i});
   }
-
+  // 7-segment display
+  const seg7={id:uid++, type:'SEG7', x:snap(cx+550), y:snap(cy), value:0};
+  comps.push(seg7);
+  for(let i=0;i<7;i++){
+    wires.push({id:uid++, from:dec.id, to:seg7.id, toPort:i});
+  }
   simulate(); draw();
 }
 
