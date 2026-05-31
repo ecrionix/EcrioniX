@@ -526,14 +526,21 @@ function compAt(mx, my) {
    ═══════════════════════════════════════════════════════════ */
 const SEG_TABLE = [0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71];
 
-// Read a component's input-port values from current wire sources (uses each source's .value)
+// Value emitted by a source on a given output port. Multi-output blocks (DEC7)
+// expose one bit per port via src.outputs[]; everything else uses src.value.
+function srcValue(src, fromPort) {
+  if (src.type === 'DEC7') return (src.outputs && src.outputs[fromPort||0]) || 0;
+  return src.value;
+}
+
+// Read a component's input-port values from current wire sources
 function readInputs(c) {
   const n = DEFS[c.type].n;
   const vals = new Array(n).fill(null);
   for (const w of wires) {
     if (w.to !== c.id) continue;
     const src = comps.find(x => x.id === w.from);
-    if (src) vals[w.toPort] = src.value;
+    if (src) vals[w.toPort] = srcValue(src, w.fromPort);
   }
   return vals;
 }
@@ -557,7 +564,7 @@ function settleCombinational() {
       for (const w of wires) {
         if (w.to !== c.id) continue;
         const src = comps.find(x => x.id === w.from);
-        if (src && done.has(src.id)) vals[w.toPort] = src.value;
+        if (src && done.has(src.id)) vals[w.toPort] = srcValue(src, w.fromPort);
       }
       if (c.type === 'OUTPUT' || c.type === 'PROBE') {
         if (vals[0] !== null) { c.value = vals[0]; done.add(c.id); changed = true; }
@@ -1104,7 +1111,7 @@ function drawSeg7(c) {
   for (const w of wires) {
     if (w.to !== c.id) continue;
     const src = comps.find(x => x.id === w.from);
-    if (src !== undefined) seg[w.toPort] = src.value;
+    if (src !== undefined) seg[w.toPort] = srcValue(src, w.fromPort);
   }
 
   const labels = ['a','b','c','d','e','f','g'];
@@ -1228,7 +1235,17 @@ function drawComp(c) {
 
 function drawPorts(c) {
   const def = DEFS[c.type];
-  // Output port — green when HIGH
+  // Multi-output ports (DEC7) — one dot per segment, green when that bit is HIGH
+  const ops = outPorts(c);
+  if (ops.length) {
+    ops.forEach((op, i) => {
+      const hi = hoverPort && hoverPort.c===c && hoverPort.kind==='out' && hoverPort.idx===i;
+      const bit = c.outputs && c.outputs[i];
+      const col = bit ? '#4ade80' : (hi ? '#fff' : '#2a4a6b');
+      drawPortDot(op, col, hi || !!bit);
+    });
+  }
+  // Single output port — green when HIGH
   const op = outPort(c);
   if (op) {
     const hi = hoverPort && hoverPort.c===c && hoverPort.kind==='out';
@@ -1249,10 +1266,12 @@ function drawWire(w) {
   const src = comps.find(c=>c.id===w.from);
   const dst = comps.find(c=>c.id===w.to);
   if (!src||!dst) return;
-  const from = outPort(src);
+  // Multi-output sources (DEC7) expose ports via outPorts(); others via outPort()
+  const ops = outPorts(src);
+  const from = ops.length ? ops[w.fromPort||0] : outPort(src);
   const to   = inPorts(dst)[w.toPort];
   if (!from||!to) return;
-  const on = !!src.value;
+  const on = !!srcValue(src, w.fromPort);
   ctx.save();
   ctx.strokeStyle = on ? '#4ade80' : '#1e3a5f';
   ctx.lineWidth = 2.5;
@@ -1285,7 +1304,8 @@ function draw() {
   // Wire preview while connecting
   if (conn) {
     const src = comps.find(c=>c.id===conn.fromId);
-    const op  = src ? outPort(src) : null;
+    const sops = src ? outPorts(src) : [];
+    const op  = src ? (sops.length ? sops[conn.fromPort||0] : outPort(src)) : null;
     if (op) {
       ctx.save();
       ctx.setLineDash([7,4]);
@@ -1389,7 +1409,7 @@ cvs.addEventListener('mousedown', e => {
     const ph = portAt(x, y);
     if (!conn) {
       if (ph && ph.kind==='out') {
-        conn = {fromId: ph.c.id, mx:x, my:y};
+        conn = {fromId: ph.c.id, fromPort: ph.idx, mx:x, my:y};
       } else {
         // Clicking gate body in wire mode = select it (so Del key works)
         const c = compAt(x, y);
@@ -1399,12 +1419,12 @@ cvs.addEventListener('mousedown', e => {
       if (ph && ph.kind==='in' && ph.c.id !== conn.fromId) {
         const dup = wires.find(w => w.to===ph.c.id && w.toPort===ph.idx);
         if (!dup) {
-          wires.push({id:uid++, from:conn.fromId, to:ph.c.id, toPort:ph.idx});
+          wires.push({id:uid++, from:conn.fromId, fromPort:conn.fromPort||0, to:ph.c.id, toPort:ph.idx});
           simulate();
         }
         conn = null;
       } else if (ph && ph.kind==='out') {
-        conn = {fromId: ph.c.id, mx:x, my:y}; // redirect wire to new source
+        conn = {fromId: ph.c.id, fromPort: ph.idx, mx:x, my:y}; // redirect wire to new source
       } else if (!ph) {
         conn = null; // cancel on empty space
       }
@@ -1765,11 +1785,11 @@ function loadCounter(){
     wires.push({id:uid++, from:dff[i].id, to:dec.id, toPort:i});
   }
 
-  // 7-segment display
+  // 7-segment display — each decoder output port (a-g) to matching display input
   const seg7={id:uid++, type:'SEG7', x:snap(cx+600), y:snap(cy+30), value:0};
   comps.push(seg7);
   for(let i=0;i<7;i++){
-    wires.push({id:uid++, from:dec.id, to:seg7.id, toPort:i});
+    wires.push({id:uid++, from:dec.id, fromPort:i, to:seg7.id, toPort:i});
   }
 
   simulate(); draw();
@@ -1800,13 +1820,13 @@ function load7SegDecoder(){
   for(let i=0;i<7;i++){
     const out={id:uid++, type:'OUTPUT', x:snap(x), y:snap(y+i*50), value:0};
     comps.push(out);
-    wires.push({id:uid++, from:dec.id, to:out.id, toPort:i});
+    wires.push({id:uid++, from:dec.id, fromPort:i, to:out.id, toPort:i});
   }
   // 7-segment display
   const seg7={id:uid++, type:'SEG7', x:snap(cx+550), y:snap(cy), value:0};
   comps.push(seg7);
   for(let i=0;i<7;i++){
-    wires.push({id:uid++, from:dec.id, to:seg7.id, toPort:i});
+    wires.push({id:uid++, from:dec.id, fromPort:i, to:seg7.id, toPort:i});
   }
   simulate(); draw();
 }
