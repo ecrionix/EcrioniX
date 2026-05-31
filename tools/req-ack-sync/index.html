@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Request-Acknowledge Synchronizer — CDC Handshake | EcrioniX</title>
+  <meta name="description" content="Complete architecture of a 4-phase Request-Acknowledge CDC synchronizer. Block diagrams, 2-FF sync paths, timing waveform, FSM, Verilog RTL, and when to use Req-Ack vs pulse sync vs FIFO.">
+  <meta name="keywords" content="request acknowledge synchronizer CDC, req ack handshake verilog, clock domain crossing synchronizer, 4-phase handshake CDC, req ack FSM verilog, multi-bit CDC, 2FF synchronizer, metastability handshake">
+  <link rel="canonical" href="https://ecrionix.org/tools/req-ack-sync/">
+  <meta property="og:title" content="Request-Acknowledge CDC Synchronizer — Architecture & Verilog | EcrioniX">
+  <meta property="og:description" content="Full architecture of a Req-Ack 4-phase handshake synchronizer for clock domain crossing — diagrams, FSM, timing, Verilog RTL.">
+  <meta property="og:url" content="https://ecrionix.org/tools/req-ack-sync/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"Tools","item":"https://ecrionix.org/tools/"},
+      {"@type":"ListItem","position":3,"name":"Req-Ack Synchronizer","item":"https://ecrionix.org/tools/req-ack-sync/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a Request-Acknowledge synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A Req-Ack synchronizer is a 4-phase handshake circuit for safely transferring data across two unrelated clock domains. The source asserts REQ; the destination synchronizes it with a 2-FF chain, captures the data, then asserts ACK; the source synchronizes ACK back and de-asserts REQ; the destination then de-asserts ACK. This guarantees metastability-free data transfer at the cost of throughput."}},
+      {"@type":"Question","name":"Why use Req-Ack instead of a 2-FF synchronizer directly on data?","acceptedAnswer":{"@type":"Answer","text":"You must NEVER put a multi-bit bus through a 2-FF synchronizer directly — each bit resolves independently, so you can capture a mix of old and new values (a bus tear). A Req-Ack handshake is safe because only the single-bit REQ and ACK signals cross domains through synchronizers. The multi-bit data is held stable for multiple clock cycles before the destination captures it, so there is no metastability risk on data bits."}},
+      {"@type":"Question","name":"When should I use Req-Ack vs a Gray-coded async FIFO?","acceptedAnswer":{"@type":"Answer","text":"Use Req-Ack when throughput is low (one transfer every several clock cycles is acceptable) and you need acknowledgment. Use a Gray-coded async FIFO when you need continuous high-bandwidth data flow across clock domains. The Req-Ack handshake has a minimum latency of 4-6 cycles in the destination domain per word; an async FIFO can accept new data every destination clock cycle once primed."}},
+      {"@type":"Question","name":"How many clock cycles does a Req-Ack transfer take?","acceptedAnswer":{"@type":"Answer","text":"Minimum: 2 cycles to sync REQ to destination + 1 cycle to capture + 2 cycles to sync ACK back to source + 1 cycle to de-assert REQ + 2 cycles to sync REQ-low to destination + 1 cycle to de-assert ACK. Total: ~9 destination-clock cycles minimum per transfer in steady state, depending on clock ratios."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    :root{--bg:#020617;--bg2:#0c1220;--bg3:#111827;--border:rgba(148,163,184,.1);
+      --teal:#2dd4bf;--blue:#38bdf8;--purple:#a78bfa;--green:#4ade80;
+      --red:#f87171;--amber:#f59e0b;--slate:#94a3b8;--text:#e2e8f0;
+      --mono:'JetBrains Mono',monospace}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.65}
+    a{color:inherit;text-decoration:none}
+
+    .nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;color:#fff}
+    .nav-links{display:flex;gap:1.5rem}
+    .nav-links a{color:var(--slate);font-size:.82rem;transition:.2s}
+    .nav-links a:hover{color:var(--text)}
+
+    .bc{padding:.55rem 1.5rem;font-size:.74rem;color:var(--slate);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg2)}
+    .bc a{color:var(--slate)}.bc a:hover{color:var(--teal)}.bc span{opacity:.45}
+
+    .hero{background:linear-gradient(135deg,rgba(45,212,191,.06),rgba(167,139,250,.05),transparent);border-bottom:1px solid var(--border);padding:2.5rem 1.5rem}
+    .hero-inner{max-width:960px;margin:0 auto}
+    .badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);border-radius:6px;padding:.3rem .85rem;font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;color:#2dd4bf;letter-spacing:.12em;margin-bottom:1rem}
+    .badge-dot{width:7px;height:7px;border-radius:50%;background:#2dd4bf;animation:pulse 1.5s infinite}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+    .pname{font-family:'Orbitron',sans-serif;font-size:clamp(1.6rem,4vw,2.8rem);font-weight:700;line-height:1.15;margin-bottom:.4rem}
+    .pname .a{color:#2dd4bf}
+    .tagline{font-size:1rem;color:var(--slate);margin-bottom:1.2rem}
+    .meta-row{display:flex;gap:.7rem;flex-wrap:wrap}
+    .chip{display:flex;align-items:center;gap:.35rem;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:.28rem .7rem;font-size:.72rem;color:var(--slate)}
+    .chip b{color:var(--text);font-weight:600}
+
+    .sec{padding:2.5rem 1.5rem;max-width:960px;margin:0 auto}
+    .sec-t{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;margin-bottom:.3rem}
+    .sec-s{color:var(--slate);font-size:.86rem;margin-bottom:1.5rem}
+    .box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.5rem;overflow-x:auto}
+
+    /* port table */
+    .tbl{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:.8rem}
+    thead{background:var(--bg2)}
+    th{padding:.6rem 1rem;text-align:left;font-size:.67rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);border-bottom:1px solid var(--border)}
+    td{padding:.58rem 1rem;border-bottom:1px solid rgba(148,163,184,.06);vertical-align:top;font-family:var(--mono);font-size:.77rem}
+    tr:last-child td{border-bottom:none}
+    .in{color:#4ade80;font-weight:700}.out{color:#f59e0b;font-weight:700}
+    .td-d{font-family:'Outfit',sans-serif;color:var(--slate)}
+
+    /* phase cards */
+    .phases{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.8rem}
+    .ph{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem;position:relative;overflow:hidden}
+    .ph::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+    .ph1::before{background:#2dd4bf}.ph2::before{background:#a78bfa}
+    .ph3::before{background:#4ade80}.ph4::before{background:#f59e0b}
+    .ph-num{font-family:'Orbitron',sans-serif;font-size:.62rem;font-weight:700;letter-spacing:.1em;margin-bottom:.5rem}
+    .ph h4{font-size:.85rem;font-weight:700;margin-bottom:.3rem}
+    .ph p{font-size:.77rem;color:var(--slate);line-height:1.5;margin:0}
+    .ph code{background:rgba(45,212,191,.1);padding:.1rem .3rem;border-radius:3px;font-family:var(--mono);font-size:.73rem;color:#2dd4bf}
+
+    /* vs cards */
+    .vs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.9rem}
+    .vs-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem}
+    .vs-card h4{font-size:.85rem;font-weight:700;margin-bottom:.6rem}
+    .vs-card ul{padding-left:1rem;font-size:.78rem;color:var(--slate);line-height:1.7}
+    .vs-card ul li b{color:var(--text)}
+
+    /* code */
+    .cb{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:.5rem 0}
+    .cb-hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:.4rem .85rem;display:flex;align-items:center;justify-content:space-between}
+    .cb-lang{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate)}
+    .cb-file{font-size:.72rem;font-family:var(--mono);color:#2dd4bf}
+    .copy-btn{padding:.2rem .6rem;border-radius:5px;border:1px solid var(--border);background:rgba(15,23,42,.7);color:var(--slate);font-size:.67rem;cursor:pointer;transition:.2s}
+    .copy-btn:hover{color:var(--text);border-color:rgba(148,163,184,.3)}
+    .copy-btn.copied{color:#4ade80;border-color:rgba(74,222,128,.3)}
+    pre{font-family:var(--mono);font-size:.77rem;line-height:1.7;padding:1rem 1.1rem;overflow-x:auto;color:#c0cae0}
+    .kw{color:#c792ea}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.fn{color:#82aaff}
+
+    /* rule cards */
+    .rules{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.8rem}
+    .rule{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;display:flex;gap:.75rem;align-items:flex-start}
+    .rule-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem}
+    .rule h5{font-size:.83rem;font-weight:700;margin-bottom:.2rem}
+    .rule p{font-size:.76rem;color:var(--slate);margin:0;line-height:1.5}
+
+    footer{border-top:1px solid var(--border);padding:1.25rem 1.5rem;text-align:center;font-size:.75rem;color:var(--slate);background:var(--bg2)}
+    #btt{position:fixed;bottom:1.25rem;right:1.25rem;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);color:#2dd4bf;border-radius:8px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;display:none;z-index:999}
+    #btt:hover{background:rgba(45,212,191,.25)}
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/tools/">Tools</a>
+    <a href="/tools/cdc-lab/">CDC Lab</a>
+    <a href="/vlsi/">VLSI</a>
+  </div>
+</nav>
+
+<div class="bc">
+  <a href="/">Home</a><span>›</span>
+  <a href="/tools/">Tools</a><span>›</span>
+  <a href="/tools/cdc-lab/">CDC Lab</a><span>›</span>
+  <span>Req-Ack Synchronizer</span>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="badge"><span class="badge-dot"></span>CDC Synchronizer · 4-Phase Handshake</div>
+    <div class="pname"><span class="a">Req-Ack</span> Synchronizer</div>
+    <div class="tagline">Request-Acknowledge CDC Handshake — Architecture · FSM · Timing · Verilog RTL</div>
+    <div class="meta-row">
+      <div class="chip"><b>Type</b> 4-Phase Handshake</div>
+      <div class="chip"><b>Sync Chain</b> 2-FF per signal</div>
+      <div class="chip"><b>Data Width</b> Parameterizable</div>
+      <div class="chip"><b>Latency</b> ~4–6 dst cycles</div>
+      <div class="chip"><b>Safe For</b> Multi-bit data CDC</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SYSTEM DIAGRAM ═══════════════ -->
+<div class="sec">
+  <div class="sec-t">System-Level Architecture</div>
+  <div class="sec-s">Two unrelated clock domains — only single-bit REQ and ACK cross the boundary through 2-FF synchronizers</div>
+
+  <div class="box">
+    <svg viewBox="0 0 960 320" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:680px">
+      <defs>
+        <marker id="at" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(45,212,191,.8)"/></marker>
+        <marker id="ap" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(167,139,250,.8)"/></marker>
+        <marker id="ag" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(74,222,128,.8)"/></marker>
+        <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(248,113,113,.8)"/></marker>
+      </defs>
+
+      <!-- SOURCE DOMAIN box (CLK_A) -->
+      <rect x="8" y="20" width="360" height="280" rx="10" fill="rgba(45,212,191,.03)" stroke="rgba(45,212,191,.3)" stroke-width="1.5" stroke-dasharray="6,4"/>
+      <text x="188" y="40" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="rgba(45,212,191,.5)" letter-spacing="1.5">SOURCE DOMAIN — CLK_A</text>
+
+      <!-- DEST DOMAIN box (CLK_B) -->
+      <rect x="592" y="20" width="360" height="280" rx="10" fill="rgba(167,139,250,.03)" stroke="rgba(167,139,250,.3)" stroke-width="1.5" stroke-dasharray="6,4"/>
+      <text x="772" y="40" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="rgba(167,139,250,.5)" letter-spacing="1.5">DESTINATION DOMAIN — CLK_B</text>
+
+      <!-- CDC BOUNDARY -->
+      <line x1="480" y1="16" x2="480" y2="310" stroke="rgba(248,113,113,.4)" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="480" y="10" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="7.5" fill="rgba(248,113,113,.6)" letter-spacing="1">CDC BOUNDARY</text>
+
+      <!-- SRC: DATA REGISTER -->
+      <rect x="24" y="80" width="120" height="60" rx="7" fill="rgba(45,212,191,.08)" stroke="rgba(45,212,191,.4)" stroke-width="1.5"/>
+      <text x="84" y="106" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10.5" fill="#2dd4bf" font-weight="700">DATA REG</text>
+      <text x="84" y="121" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,.6)">data[N-1:0]</text>
+      <text x="84" y="133" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">clocked by CLK_A</text>
+
+      <!-- SRC: REQ FF -->
+      <rect x="200" y="80" width="100" height="60" rx="7" fill="rgba(45,212,191,.08)" stroke="rgba(45,212,191,.4)" stroke-width="1.5"/>
+      <text x="250" y="106" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10.5" fill="#2dd4bf" font-weight="700">REQ FF</text>
+      <text x="250" y="121" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(45,212,191,.6)">req_a</text>
+      <text x="250" y="133" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">set/clear by FSM</text>
+
+      <!-- SRC: ACK 2-FF SYNC -->
+      <rect x="60" y="200" width="220" height="70" rx="7" fill="rgba(74,222,128,.06)" stroke="rgba(74,222,128,.35)" stroke-width="1.5"/>
+      <text x="170" y="222" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="#4ade80" font-weight="700">ACK 2-FF SYNC</text>
+      <text x="170" y="238" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(74,222,128,.6)">ack_in → FF1_a → FF2_a</text>
+      <text x="170" y="252" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(74,222,128,.5)">ack_sync_a</text>
+      <text x="170" y="264" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">clocked by CLK_A</text>
+
+      <!-- SRC FSM -->
+      <rect x="24" y="168" width="24" height="24" rx="4" fill="rgba(45,212,191,.15)" stroke="rgba(45,212,191,.4)" stroke-width="1"/>
+      <text x="36" y="184" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="7" fill="#2dd4bf">FSM</text>
+
+      <!-- DST: REQ 2-FF SYNC -->
+      <rect x="608" y="80" width="220" height="70" rx="7" fill="rgba(45,212,191,.06)" stroke="rgba(45,212,191,.35)" stroke-width="1.5"/>
+      <text x="718" y="102" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="#2dd4bf" font-weight="700">REQ 2-FF SYNC</text>
+      <text x="718" y="118" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(45,212,191,.6)">req_in → FF1_b → FF2_b</text>
+      <text x="718" y="132" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(45,212,191,.5)">req_sync_b</text>
+      <text x="718" y="145" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">clocked by CLK_B</text>
+
+      <!-- DST: DATA CAPTURE REG -->
+      <rect x="608" y="168" width="120" height="60" rx="7" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.4)" stroke-width="1.5"/>
+      <text x="668" y="193" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10" fill="#a78bfa" font-weight="700">CAPTURE</text>
+      <text x="668" y="207" text-anchor="middle" font-family="Outfit,sans-serif" font-size="9" fill="rgba(167,139,250,.6)">REG (CLK_B)</text>
+      <text x="668" y="220" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(167,139,250,.4)">data_b[N-1:0]</text>
+
+      <!-- DST: ACK FF -->
+      <rect x="786" y="200" width="110" height="60" rx="7" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.4)" stroke-width="1.5"/>
+      <text x="841" y="225" text-anchor="middle" font-family="Outfit,sans-serif" font-size="10.5" fill="#a78bfa" font-weight="700">ACK FF</text>
+      <text x="841" y="240" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(167,139,250,.6)">ack_b</text>
+      <text x="841" y="253" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">set/clear by FSM</text>
+
+      <!-- DST FSM -->
+      <rect x="746" y="168" width="24" height="24" rx="4" fill="rgba(167,139,250,.15)" stroke="rgba(167,139,250,.4)" stroke-width="1"/>
+      <text x="758" y="184" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="7" fill="#a78bfa">FSM</text>
+
+      <!-- ── SIGNAL PATHS ── -->
+
+      <!-- DATA: from DATA REG across boundary (dashed, NOT through sync) -->
+      <path d="M144 110 L608 175" stroke="rgba(248,113,113,.35)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ar)"/>
+      <text x="376" y="128" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8.5" fill="rgba(248,113,113,.6)" font-weight="700">data[N-1:0]</text>
+      <text x="376" y="140" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(248,113,113,.4)">(held stable — never sync'd)</text>
+
+      <!-- REQ: from REQ FF → across boundary → REQ 2-FF SYNC -->
+      <line x1="300" y1="110" x2="480" y2="110" stroke="rgba(45,212,191,.7)" stroke-width="2" marker-end="url(#at)"/>
+      <line x1="480" y1="110" x2="608" y2="110" stroke="rgba(45,212,191,.7)" stroke-width="2" marker-end="url(#at)"/>
+      <text x="390" y="102" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#2dd4bf">req_a</text>
+      <text x="540" y="102" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#2dd4bf">req_in</text>
+
+      <!-- ACK: from ACK FF → across boundary → ACK 2-FF SYNC -->
+      <line x1="786" y1="230" x2="480" y2="230" stroke="rgba(74,222,128,.7)" stroke-width="2" marker-end="url(#ag)"/>
+      <line x1="480" y1="230" x2="280" y2="230" stroke="rgba(74,222,128,.7)" stroke-width="2" marker-end="url(#ag)"/>
+      <text x="634" y="222" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#4ade80">ack_b</text>
+      <text x="380" y="222" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#4ade80">ack_in</text>
+
+      <!-- req_sync_b → Capture + DST FSM -->
+      <line x1="718" y1="150" x2="718" y2="165" stroke="rgba(45,212,191,.5)" stroke-width="1.5" marker-end="url(#at)"/>
+      <line x1="718" y1="155" x2="758" y2="168" stroke="rgba(45,212,191,.4)" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+      <!-- ack_sync_a → SRC FSM -->
+      <line x1="170" y1="198" x2="60" y2="198" stroke="rgba(74,212,120,.4)" stroke-width="1.5"/>
+      <line x1="36" y1="192" x2="36" y2="168" stroke="rgba(45,212,191,.4)" stroke-width="1.5" marker-end="url(#at)"/>
+
+      <!-- LEGEND -->
+      <rect x="368" y="260" width="224" height="50" rx="6" fill="rgba(15,23,42,.7)" stroke="rgba(148,163,184,.1)" stroke-width="1"/>
+      <text x="480" y="277" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.6)" font-weight="700">LEGEND</text>
+      <line x1="376" y1="290" x2="400" y2="290" stroke="rgba(45,212,191,.7)" stroke-width="2"/>
+      <text x="404" y="294" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.8)">REQ path (2-FF sync)</text>
+      <line x1="376" y1="304" x2="400" y2="304" stroke="rgba(74,222,128,.7)" stroke-width="2"/>
+      <text x="404" y="308" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.8)">ACK path (2-FF sync)</text>
+      <line x1="500" y1="290" x2="524" y2="290" stroke="rgba(248,113,113,.5)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="528" y="294" font-family="Outfit,sans-serif" font-size="8" fill="rgba(248,113,113,.7)">Data (no sync — stable)</text>
+
+      <!-- clk labels -->
+      <text x="16" y="308" font-family="Orbitron,sans-serif" font-size="7.5" fill="rgba(45,212,191,.35)">CLK_A (any freq)</text>
+      <text x="680" y="308" font-family="Orbitron,sans-serif" font-size="7.5" fill="rgba(167,139,250,.35)">CLK_B (any freq)</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════ 2-FF SYNC DETAIL ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">2-FF Synchronizer — Internal Structure</div>
+  <div class="sec-s">Applied to both REQ (A→B) and ACK (B→A) signal paths — never applied to the data bus</div>
+
+  <div class="box">
+    <svg viewBox="0 0 860 180" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:600px">
+      <defs>
+        <marker id="a2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="rgba(45,212,191,.8)"/></marker>
+      </defs>
+
+      <!-- signal_in label -->
+      <text x="10" y="96" font-family="JetBrains Mono,monospace" font-size="11" fill="rgba(45,212,191,.8)">sig_async</text>
+      <line x1="92" y1="92" x2="136" y2="92" stroke="rgba(45,212,191,.7)" stroke-width="2" marker-end="url(#a2)"/>
+
+      <!-- FF1 -->
+      <rect x="138" y="60" width="100" height="64" rx="7" fill="rgba(45,212,191,.07)" stroke="rgba(45,212,191,.4)" stroke-width="1.5"/>
+      <text x="188" y="86" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="10" fill="#2dd4bf" font-weight="700">FF1</text>
+      <text x="188" y="101" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8.5" fill="rgba(45,212,191,.6)">D  Q</text>
+      <text x="188" y="116" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">may go metastable</text>
+
+      <!-- clk arrow FF1 -->
+      <line x1="188" y1="145" x2="188" y2="125" stroke="rgba(148,163,184,.35)" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="188" y="158" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(148,163,184,.4)">CLK_DST</text>
+
+      <!-- FF1→FF2 -->
+      <line x1="238" y1="92" x2="302" y2="92" stroke="rgba(45,212,191,.6)" stroke-width="2" marker-end="url(#a2)"/>
+      <text x="270" y="84" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(45,212,191,.5)">FF1_Q</text>
+      <text x="270" y="110" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(248,113,113,.5)">⚠ may be metastable</text>
+
+      <!-- resolution time annotation -->
+      <rect x="238" y="120" width="64" height="22" rx="4" fill="rgba(248,113,113,.07)" stroke="rgba(248,113,113,.2)" stroke-width="1"/>
+      <text x="270" y="135" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(248,113,113,.6)">1 clock cycle</text>
+      <text x="270" y="148" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(248,113,113,.4)">resolution time Tr</text>
+
+      <!-- FF2 -->
+      <rect x="304" y="60" width="100" height="64" rx="7" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.4)" stroke-width="1.5"/>
+      <text x="354" y="86" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="10" fill="#4ade80" font-weight="700">FF2</text>
+      <text x="354" y="101" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8.5" fill="rgba(74,222,128,.6)">D  Q</text>
+      <text x="354" y="116" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)">fully resolved output</text>
+
+      <!-- clk arrow FF2 -->
+      <line x1="354" y1="145" x2="354" y2="125" stroke="rgba(148,163,184,.35)" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="354" y="158" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="rgba(148,163,184,.4)">CLK_DST</text>
+
+      <!-- FF2 → output -->
+      <line x1="404" y1="92" x2="480" y2="92" stroke="rgba(74,222,128,.7)" stroke-width="2" marker-end="url(#a2)"/>
+      <text x="442" y="84" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(74,222,128,.6)">sig_sync</text>
+      <text x="442" y="110" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.5)">✓ safe to use</text>
+
+      <!-- text boxes -->
+      <rect x="490" y="52" width="340" height="96" rx="8" fill="rgba(15,23,42,.5)" stroke="rgba(148,163,184,.1)" stroke-width="1"/>
+      <text x="660" y="74" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="rgba(148,163,184,.5)" font-weight="700">WHY TWO FLIP-FLOPS?</text>
+      <text x="500" y="92" font-family="Outfit,sans-serif" font-size="9" fill="rgba(148,163,184,.7)">FF1 may enter metastability but has one full</text>
+      <text x="500" y="106" font-family="Outfit,sans-serif" font-size="9" fill="rgba(148,163,184,.7)">clock period (Tr) to resolve. Metastability</text>
+      <text x="500" y="120" font-family="Outfit,sans-serif" font-size="9" fill="rgba(148,163,184,.7)">probability decays as e^(−Tr/τ), τ ≈ 100 ps.</text>
+      <text x="500" y="134" font-family="Outfit,sans-serif" font-size="9" fill="rgba(74,222,128,.7)">FF2 captures a fully resolved 0 or 1. ✓</text>
+
+      <!-- rule note -->
+      <text x="138" y="22" font-family="Outfit,sans-serif" font-size="9" fill="rgba(248,113,113,.7)" font-weight="700">⚠ RULE: Apply 2-FF sync only to 1-bit signals (REQ, ACK). NEVER to a multi-bit data bus.</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════ 4-PHASE HANDSHAKE ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">4-Phase Handshake Protocol</div>
+  <div class="sec-s">Each transfer requires exactly four phase transitions — REQ↑, ACK↑, REQ↓, ACK↓</div>
+
+  <div class="phases">
+    <div class="ph ph1">
+      <div class="ph-num" style="color:#2dd4bf">PHASE 1</div>
+      <h4>SRC asserts REQ</h4>
+      <p>Source locks data onto the bus and asserts <code>req_a ↑</code>. Data is now stable and will not change until the full handshake completes.</p>
+    </div>
+    <div class="ph ph2">
+      <div class="ph-num" style="color:#a78bfa">PHASE 2</div>
+      <h4>DST sees REQ, asserts ACK</h4>
+      <p>After 2-FF sync delay, <code>req_sync_b ↑</code> is seen in CLK_B domain. Destination captures data into its local register, then asserts <code>ack_b ↑</code>.</p>
+    </div>
+    <div class="ph ph3">
+      <div class="ph-num" style="color:#4ade80">PHASE 3</div>
+      <h4>SRC sees ACK, de-asserts REQ</h4>
+      <p>After 2-FF sync delay, <code>ack_sync_a ↑</code> is seen in CLK_A domain. Transfer is confirmed. Source de-asserts <code>req_a ↓</code>. Data may now change.</p>
+    </div>
+    <div class="ph ph4">
+      <div class="ph-num" style="color:#f59e0b">PHASE 4</div>
+      <h4>DST sees REQ low, de-asserts ACK</h4>
+      <p>After 2-FF sync delay, <code>req_sync_b ↓</code> is seen. Destination de-asserts <code>ack_b ↓</code>. System is now reset — ready for the next transfer.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TIMING DIAGRAM ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">Timing Waveform</div>
+  <div class="sec-s">Signal progression across both clock domains — sync delays shown as shaded regions</div>
+
+  <div class="box" style="padding:1.2rem">
+    <svg viewBox="0 0 920 300" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:660px">
+      <!-- signal labels -->
+      <text x="8"  y="34"  font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,.7)">CLK_A</text>
+      <text x="8"  y="60"  font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(148,163,184,.6)">data_a</text>
+      <text x="8"  y="86"  font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,.8)">req_a</text>
+      <text x="8"  y="128" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(167,139,250,.7)">CLK_B</text>
+      <text x="8"  y="155" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(45,212,191,.7)">req_sync_b</text>
+      <text x="8"  y="196" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(74,222,128,.8)">ack_b</text>
+      <text x="8"  y="238" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(74,222,128,.7)">ack_sync_a</text>
+      <text x="8"  y="278" font-family="JetBrains Mono,monospace" font-size="9.5" fill="rgba(248,113,113,.6)">data_b</text>
+
+      <!-- x-axis ticks every 60px starting at 130 -->
+      <!-- CLK_A (fast) — 30px period -->
+      <polyline stroke="rgba(45,212,191,.5)" stroke-width="1.2" points="
+        130,42 130,22 160,22 160,42 190,42 190,22 220,22 220,42
+        250,42 250,22 280,22 280,42 310,42 310,22 340,22 340,42
+        370,42 370,22 400,22 400,42 430,42 430,22 460,22 460,42
+        490,42 490,22 520,22 520,42 550,42 550,22 580,22 580,42
+        610,42 610,22 640,22 640,42 670,42 670,22 700,22 700,42
+        730,42 730,22 760,22 760,42 790,42 790,22 820,22 820,42 850,42"/>
+
+      <!-- data_a — valid before req, stable during, changes after phase 3 -->
+      <rect x="130" y="50" width="220" height="18" rx="3" fill="rgba(148,163,184,.06)" stroke="rgba(148,163,184,.2)" stroke-width="1"/>
+      <text x="240" y="63" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(148,163,184,.5)">DATA_OLD</text>
+      <rect x="350" y="50" width="280" height="18" rx="3" fill="rgba(45,212,191,.08)" stroke="rgba(45,212,191,.3)" stroke-width="1"/>
+      <text x="490" y="63" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#2dd4bf">DATA_NEW  ← locked, stable</text>
+      <rect x="630" y="50" width="220" height="18" rx="3" fill="rgba(148,163,184,.06)" stroke="rgba(148,163,184,.15)" stroke-width="1"/>
+      <text x="740" y="63" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(148,163,184,.4)">next data</text>
+
+      <!-- req_a -->
+      <polyline stroke="rgba(45,212,191,.8)" stroke-width="2" points="130,96 350,96 350,72 630,72 630,96 850,96"/>
+      <text x="490" y="69" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.7)">req_a HIGH</text>
+
+      <!-- sync delay shading (2 CLK_B cycles) -->
+      <rect x="350" y="110" width="90" height="52" rx="0" fill="rgba(45,212,191,.04)" stroke="none"/>
+      <text x="395" y="140" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(45,212,191,.4)">2-FF delay</text>
+
+      <!-- CLK_B (same speed for clarity) — 45px period -->
+      <polyline stroke="rgba(167,139,250,.5)" stroke-width="1.2" points="
+        130,138 130,118 175,118 175,138 220,138 220,118 265,118 265,138
+        310,138 310,118 355,118 355,138 400,138 400,118 445,118 445,138
+        490,138 490,118 535,118 535,138 580,138 580,118 625,118 625,138
+        670,138 670,118 715,118 715,138 760,138 760,118 805,118 805,138 850,138"/>
+
+      <!-- req_sync_b (delayed by 2 CLK_B clocks after req_a rises) -->
+      <polyline stroke="rgba(45,212,191,.7)" stroke-width="2" points="130,165 440,165 440,143 715,143 715,165 850,165"/>
+      <text x="577" y="140" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.6)">req_sync_b HIGH</text>
+
+      <!-- ack_b (rises after req_sync_b, falls after req_sync_b falls) -->
+      <polyline stroke="rgba(74,222,128,.8)" stroke-width="2" points="130,206 485,206 485,180 760,180 760,206 850,206"/>
+      <text x="622" y="177" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.7)">ack_b HIGH</text>
+
+      <!-- sync delay for ack (2 CLK_A cycles) -->
+      <rect x="485" y="214" width="80" height="40" rx="0" fill="rgba(74,222,128,.04)" stroke="none"/>
+      <text x="525" y="238" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(74,222,128,.4)">2-FF delay</text>
+
+      <!-- ack_sync_a -->
+      <polyline stroke="rgba(74,222,128,.7)" stroke-width="2" points="130,248 565,248 565,224 840,224 840,248 850,248"/>
+      <text x="700" y="221" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.6)">ack_sync_a HIGH → SRC de-asserts REQ</text>
+
+      <!-- data_b (captured when req_sync_b rises) -->
+      <rect x="485" y="266" width="365" height="18" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.35)" stroke-width="1"/>
+      <text x="667" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#a78bfa">DATA_NEW captured in CLK_B domain ✓</text>
+      <rect x="130" y="266" width="355" height="18" rx="3" fill="rgba(148,163,184,.04)" stroke="rgba(148,163,184,.1)" stroke-width="1"/>
+      <text x="307" y="279" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" fill="rgba(148,163,184,.3)">invalid / old</text>
+
+      <!-- phase labels at top -->
+      <text x="240" y="14" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(148,163,184,.4)" font-weight="700">PRE</text>
+      <text x="490" y="14" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.7)" font-weight="700">PH1+2 — REQ↑ → ACK↑</text>
+      <text x="700" y="14" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.7)" font-weight="700">PH3+4 — REQ↓ → ACK↓</text>
+      <line x1="350" y1="6" x2="350" y2="290" stroke="rgba(45,212,191,.2)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="630" y1="6" x2="630" y2="290" stroke="rgba(74,222,128,.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════ FSM DIAGRAM ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">Controller FSM — Both Domains</div>
+  <div class="sec-s">Source FSM (CLK_A) and Destination FSM (CLK_B) drive the 4-phase handshake</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+
+    <!-- SRC FSM -->
+    <div class="box">
+      <div style="font-family:'Orbitron',sans-serif;font-size:.8rem;color:#2dd4bf;font-weight:700;margin-bottom:1rem;text-align:center">SOURCE FSM (CLK_A)</div>
+      <svg viewBox="0 0 380 300" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%">
+        <defs>
+          <marker id="fs" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(45,212,191,.8)"/></marker>
+        </defs>
+        <!-- IDLE -->
+        <circle cx="190" cy="50" r="38" fill="rgba(45,212,191,.07)" stroke="rgba(45,212,191,.5)" stroke-width="2"/>
+        <text x="190" y="46" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="#2dd4bf" font-weight="700">IDLE</text>
+        <text x="190" y="60" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(45,212,191,.5)">req_a=0</text>
+
+        <!-- ASSERT_REQ -->
+        <circle cx="80" cy="180" r="42" fill="rgba(45,212,191,.08)" stroke="rgba(45,212,191,.5)" stroke-width="2"/>
+        <text x="80" y="173" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#2dd4bf" font-weight="700">ASSERT</text>
+        <text x="80" y="185" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#2dd4bf" font-weight="700">REQ</text>
+        <text x="80" y="197" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(45,212,191,.5)">req_a=1</text>
+
+        <!-- WAIT_ACK -->
+        <circle cx="300" cy="180" r="42" fill="rgba(45,212,191,.08)" stroke="rgba(45,212,191,.5)" stroke-width="2"/>
+        <text x="300" y="173" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#2dd4bf" font-weight="700">WAIT</text>
+        <text x="300" y="185" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#2dd4bf" font-weight="700">ACK</text>
+        <text x="300" y="197" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(45,212,191,.5)">req_a=1</text>
+
+        <!-- DEASSERT_REQ -->
+        <circle cx="190" cy="270" r="38" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.4)" stroke-width="2"/>
+        <text x="190" y="265" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#4ade80" font-weight="700">DE-ASSERT</text>
+        <text x="190" y="278" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(74,222,128,.5)">req_a=0</text>
+
+        <!-- transitions -->
+        <!-- IDLE → ASSERT_REQ -->
+        <path d="M165 78 L110 148" stroke="rgba(45,212,191,.6)" stroke-width="1.5" marker-end="url(#fs)"/>
+        <text x="122" y="108" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.7)">send_req</text>
+
+        <!-- ASSERT_REQ → WAIT_ACK -->
+        <path d="M122 180 L258 180" stroke="rgba(45,212,191,.6)" stroke-width="1.5" marker-end="url(#fs)"/>
+        <text x="190" y="173" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(45,212,191,.7)">always</text>
+
+        <!-- WAIT_ACK → DEASSERT_REQ -->
+        <path d="M272 208 L220 248" stroke="rgba(74,222,128,.6)" stroke-width="1.5" marker-end="url(#fs)"/>
+        <text x="258" y="238" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.7)">ack_sync_a=1</text>
+
+        <!-- WAIT_ACK self loop -->
+        <path d="M338 155 Q380 130 338 175" stroke="rgba(45,212,191,.4)" stroke-width="1.5" marker-end="url(#fs)"/>
+        <text x="386" y="155" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(148,163,184,.4)">wait</text>
+
+        <!-- DEASSERT → IDLE -->
+        <path d="M215 242 L265 78" stroke="rgba(74,222,128,.5)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#fs)"/>
+        <text x="258" y="165" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.5)">ack_sync_a=0</text>
+      </svg>
+    </div>
+
+    <!-- DST FSM -->
+    <div class="box">
+      <div style="font-family:'Orbitron',sans-serif;font-size:.8rem;color:#a78bfa;font-weight:700;margin-bottom:1rem;text-align:center">DESTINATION FSM (CLK_B)</div>
+      <svg viewBox="0 0 380 300" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%">
+        <defs>
+          <marker id="fd" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(167,139,250,.8)"/></marker>
+        </defs>
+        <!-- IDLE -->
+        <circle cx="190" cy="50" r="38" fill="rgba(167,139,250,.07)" stroke="rgba(167,139,250,.5)" stroke-width="2"/>
+        <text x="190" y="46" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="#a78bfa" font-weight="700">IDLE</text>
+        <text x="190" y="60" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(167,139,250,.5)">ack_b=0</text>
+
+        <!-- CAPTURE -->
+        <circle cx="80" cy="180" r="42" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.5)" stroke-width="2"/>
+        <text x="80" y="173" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="9" fill="#a78bfa" font-weight="700">CAPTURE</text>
+        <text x="80" y="185" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(167,139,250,.6)">latch data</text>
+        <text x="80" y="197" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(167,139,250,.5)">ack_b=0</text>
+
+        <!-- ASSERT_ACK -->
+        <circle cx="300" cy="180" r="42" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.45)" stroke-width="2"/>
+        <text x="300" y="173" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#4ade80" font-weight="700">ASSERT</text>
+        <text x="300" y="185" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#4ade80" font-weight="700">ACK</text>
+        <text x="300" y="197" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(74,222,128,.5)">ack_b=1</text>
+
+        <!-- DEASSERT_ACK -->
+        <circle cx="190" cy="270" r="38" fill="rgba(167,139,250,.07)" stroke="rgba(167,139,250,.4)" stroke-width="2"/>
+        <text x="190" y="265" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="8" fill="#a78bfa" font-weight="700">DE-ASSERT</text>
+        <text x="190" y="278" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(167,139,250,.5)">ack_b=0</text>
+
+        <!-- transitions -->
+        <!-- IDLE → CAPTURE -->
+        <path d="M165 78 L110 148" stroke="rgba(167,139,250,.6)" stroke-width="1.5" marker-end="url(#fd)"/>
+        <text x="118" y="107" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(167,139,250,.7)">req_sync_b=1</text>
+
+        <!-- CAPTURE → ASSERT_ACK -->
+        <path d="M122 180 L258 180" stroke="rgba(74,222,128,.6)" stroke-width="1.5" marker-end="url(#fd)"/>
+        <text x="190" y="173" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(74,222,128,.7)">always</text>
+
+        <!-- ASSERT_ACK → DEASSERT (wait for req_sync_b=0) -->
+        <path d="M272 208 L220 248" stroke="rgba(167,139,250,.6)" stroke-width="1.5" marker-end="url(#fd)"/>
+        <text x="262" y="236" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(167,139,250,.7)">req_sync_b=0</text>
+
+        <!-- ASSERT_ACK self loop -->
+        <path d="M338 155 Q380 130 338 175" stroke="rgba(74,222,128,.4)" stroke-width="1.5" marker-end="url(#fd)"/>
+        <text x="386" y="155" text-anchor="middle" font-family="Outfit,sans-serif" font-size="7.5" fill="rgba(148,163,184,.4)">wait</text>
+
+        <!-- DEASSERT → IDLE -->
+        <path d="M215 242 L265 78" stroke="rgba(167,139,250,.5)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#fd)"/>
+        <text x="268" y="165" text-anchor="middle" font-family="Outfit,sans-serif" font-size="8" fill="rgba(167,139,250,.5)">→ IDLE</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PORT LIST ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">IP Interface — Port List</div>
+  <div class="sec-s">Top-level ports for the parameterizable Req-Ack synchronizer module</div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Port</th><th>Width</th><th>Domain</th><th>Dir</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>clk_a</td><td>1</td><td style="color:#2dd4bf">CLK_A</td><td class="in">IN</td><td class="td-d">Source clock — rising-edge active</td></tr>
+        <tr><td>rst_a_n</td><td>1</td><td style="color:#2dd4bf">CLK_A</td><td class="in">IN</td><td class="td-d">Active-low synchronous reset in source domain</td></tr>
+        <tr><td>send_req</td><td>1</td><td style="color:#2dd4bf">CLK_A</td><td class="in">IN</td><td class="td-d">Pulse high for 1 cycle to initiate a transfer. Ignored while busy</td></tr>
+        <tr><td>data_a</td><td>N</td><td style="color:#2dd4bf">CLK_A</td><td class="in">IN</td><td class="td-d">Data to transfer — must be stable from send_req until transfer_done</td></tr>
+        <tr><td>transfer_done</td><td>1</td><td style="color:#2dd4bf">CLK_A</td><td class="out">OUT</td><td class="td-d">High for 1 CLK_A cycle when ACK handshake completes</td></tr>
+        <tr><td>busy</td><td>1</td><td style="color:#2dd4bf">CLK_A</td><td class="out">OUT</td><td class="td-d">High while a transfer is in progress</td></tr>
+        <tr><td>clk_b</td><td>1</td><td style="color:#a78bfa">CLK_B</td><td class="in">IN</td><td class="td-d">Destination clock — rising-edge active</td></tr>
+        <tr><td>rst_b_n</td><td>1</td><td style="color:#a78bfa">CLK_B</td><td class="in">IN</td><td class="td-d">Active-low synchronous reset in destination domain</td></tr>
+        <tr><td>data_b</td><td>N</td><td style="color:#a78bfa">CLK_B</td><td class="out">OUT</td><td class="td-d">Captured data in destination domain — valid when data_valid_b is high</td></tr>
+        <tr><td>data_valid_b</td><td>1</td><td style="color:#a78bfa">CLK_B</td><td class="out">OUT</td><td class="td-d">High for 1 CLK_B cycle when data_b has been captured from source</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ VERILOG RTL ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">Verilog RTL</div>
+  <div class="sec-s">Full synthesizable implementation — 2-FF synchronizers + FSMs for both domains</div>
+
+  <div class="cb">
+    <div class="cb-hdr">
+      <span class="cb-lang">Verilog</span>
+      <span class="cb-file">req_ack_sync.v</span>
+      <button class="copy-btn" onclick="copyCode(this,'v1')">Copy</button>
+    </div>
+    <pre id="v1"><span class="kw">module</span> <span class="fn">req_ack_sync</span> #(
+    <span class="kw">parameter</span> DATA_W = <span class="num">8</span>
+) (
+    <span class="cm">// Source domain (CLK_A)</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>             clk_a, rst_a_n,
+    <span class="kw">input</span>  <span class="kw">wire</span>             send_req,
+    <span class="kw">input</span>  <span class="kw">wire</span> [DATA_W-<span class="num">1</span>:<span class="num">0</span>] data_a,
+    <span class="kw">output</span> <span class="kw">reg</span>              transfer_done,
+    <span class="kw">output</span> <span class="kw">wire</span>             busy,
+    <span class="cm">// Destination domain (CLK_B)</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>             clk_b, rst_b_n,
+    <span class="kw">output</span> <span class="kw">reg</span>  [DATA_W-<span class="num">1</span>:<span class="num">0</span>] data_b,
+    <span class="kw">output</span> <span class="kw">reg</span>              data_valid_b
+);
+
+<span class="cm">// ── Source FSM states ───────────────────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="num">1</span>:<span class="num">0</span>] S_IDLE=<span class="num">2'd0</span>, S_ASSERT=<span class="num">2'd1</span>, S_WAIT=<span class="num">2'd2</span>, S_DEASSERT=<span class="num">2'd3</span>;
+<span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] src_state;
+
+<span class="cm">// ── Destination FSM states ──────────────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="num">1</span>:<span class="num">0</span>] D_IDLE=<span class="num">2'd0</span>, D_CAP=<span class="num">2'd1</span>, D_ACK=<span class="num">2'd2</span>, D_DEACK=<span class="num">2'd3</span>;
+<span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>] dst_state;
+
+<span class="cm">// ── Raw handshake signals ───────────────────────────────────────</span>
+<span class="kw">reg</span>              req_a;      <span class="cm">// driven by source FSM</span>
+<span class="kw">reg</span>              ack_b;      <span class="cm">// driven by dest FSM</span>
+<span class="kw">reg</span> [DATA_W-<span class="num">1</span>:<span class="num">0</span>] data_latch; <span class="cm">// locked at send_req, released after done</span>
+
+<span class="cm">// ── 2-FF synchronizer: req_a → CLK_B domain ────────────────────</span>
+<span class="kw">reg</span> ff1_req_b, ff2_req_b;   <span class="cm">// synthesis attribute: async_reg</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_b_n)
+    <span class="kw">if</span> (!rst_b_n) {ff1_req_b, ff2_req_b} <= <span class="num">2'b0</span>;
+    <span class="kw">else</span>          {ff2_req_b, ff1_req_b} <= {ff1_req_b, req_a};
+<span class="kw">wire</span> req_sync_b = ff2_req_b;
+
+<span class="cm">// ── 2-FF synchronizer: ack_b → CLK_A domain ────────────────────</span>
+<span class="kw">reg</span> ff1_ack_a, ff2_ack_a;   <span class="cm">// synthesis attribute: async_reg</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk_a <span class="kw">or</span> <span class="kw">negedge</span> rst_a_n)
+    <span class="kw">if</span> (!rst_a_n) {ff1_ack_a, ff2_ack_a} <= <span class="num">2'b0</span>;
+    <span class="kw">else</span>          {ff2_ack_a, ff1_ack_a} <= {ff1_ack_a, ack_b};
+<span class="kw">wire</span> ack_sync_a = ff2_ack_a;
+
+<span class="cm">// ── Source FSM (CLK_A) ──────────────────────────────────────────</span>
+<span class="kw">assign</span> busy = (src_state != S_IDLE);
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk_a <span class="kw">or</span> <span class="kw">negedge</span> rst_a_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_a_n) <span class="kw">begin</span>
+        src_state <= S_IDLE; req_a <= <span class="num">0</span>; data_latch <= <span class="num">0</span>; transfer_done <= <span class="num">0</span>;
+    <span class="kw">end else begin</span>
+        transfer_done <= <span class="num">0</span>;
+        <span class="kw">case</span> (src_state)
+            S_IDLE: <span class="kw">if</span> (send_req) <span class="kw">begin</span>
+                        data_latch <= data_a;
+                        req_a      <= <span class="num">1</span>;
+                        src_state  <= S_ASSERT;
+                    <span class="kw">end</span>
+            S_ASSERT: src_state <= S_WAIT; <span class="cm">// let req_a propagate 1 cycle</span>
+            S_WAIT:   <span class="kw">if</span> (ack_sync_a) <span class="kw">begin</span>
+                          req_a     <= <span class="num">0</span>;
+                          src_state <= S_DEASSERT;
+                      <span class="kw">end</span>
+            S_DEASSERT: <span class="kw">if</span> (!ack_sync_a) <span class="kw">begin</span> <span class="cm">// wait for ACK to fall</span>
+                            transfer_done <= <span class="num">1</span>;
+                            src_state     <= S_IDLE;
+                        <span class="kw">end</span>
+        <span class="kw">endcase</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// ── Destination FSM (CLK_B) ─────────────────────────────────────</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk_b <span class="kw">or</span> <span class="kw">negedge</span> rst_b_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!rst_b_n) <span class="kw">begin</span>
+        dst_state <= D_IDLE; ack_b <= <span class="num">0</span>; data_b <= <span class="num">0</span>; data_valid_b <= <span class="num">0</span>;
+    <span class="kw">end else begin</span>
+        data_valid_b <= <span class="num">0</span>;
+        <span class="kw">case</span> (dst_state)
+            D_IDLE: <span class="kw">if</span> (req_sync_b) <span class="kw">begin</span>
+                        data_b    <= data_latch; <span class="cm">// data_latch is stable here</span>
+                        dst_state <= D_CAP;
+                    <span class="kw">end</span>
+            D_CAP: <span class="kw">begin</span>
+                       data_valid_b <= <span class="num">1</span>;
+                       ack_b        <= <span class="num">1</span>;
+                       dst_state    <= D_ACK;
+                   <span class="kw">end</span>
+            D_ACK: <span class="kw">if</span> (!req_sync_b) <span class="kw">begin</span> <span class="cm">// REQ has fallen (source de-asserted)</span>
+                       dst_state <= D_DEACK;
+                   <span class="kw">end</span>
+            D_DEACK: <span class="kw">begin</span>
+                         ack_b     <= <span class="num">0</span>;
+                         dst_state <= D_IDLE;
+                     <span class="kw">end</span>
+        <span class="kw">endcase</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+</div>
+
+<!-- ═══════════════ RULES ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">Critical Design Rules</div>
+  <div class="sec-s">Violating any of these causes hard-to-debug intermittent failures in silicon</div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3)">🚫</div>
+      <div>
+        <h5>Never sync a multi-bit bus</h5>
+        <p>Each bit resolves independently — you can capture a half-old, half-new bus. Only sync single-bit REQ and ACK.</p>
+      </div>
+    </div>
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3)">🔒</div>
+      <div>
+        <h5>Lock data before asserting REQ</h5>
+        <p>Data must be stable on the bus before req_a goes high and must not change until transfer_done is received.</p>
+      </div>
+    </div>
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3)">⏱</div>
+      <div>
+        <h5>Minimum 2 clock cycles per sync</h5>
+        <p>Never reduce to a 1-FF chain to save area. One extra cycle is the MTBF insurance — removing it causes failures at scale.</p>
+      </div>
+    </div>
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3)">📌</div>
+      <div>
+        <h5>Mark async_reg in synthesis</h5>
+        <p>Annotate the 2-FF chain registers with <code style="font-family:var(--mono);font-size:.75rem;color:#f59e0b">ASYNC_REG</code> / <code style="font-family:var(--mono);font-size:.75rem;color:#f59e0b">async_reg</code> so the tool keeps them close in placement and doesn't retime them.</p>
+      </div>
+    </div>
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3)">📊</div>
+      <div>
+        <h5>Use for low-throughput transfers</h5>
+        <p>One word every ~10+ cycles. For bulk streaming data, use a Gray-coded async FIFO — Req-Ack is not designed for continuous flow.</p>
+      </div>
+    </div>
+    <div class="rule">
+      <div class="rule-icon" style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3)">⚡</div>
+      <div>
+        <h5>Clock ratio doesn't matter</h5>
+        <p>Req-Ack works correctly regardless of CLK_A vs CLK_B frequency ratio — including when one is much faster or completely asynchronous.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ WHEN TO USE ═══════════════ -->
+<div class="sec" style="padding-top:0">
+  <div class="sec-t">Req-Ack vs Other CDC Techniques</div>
+  <div class="sec-s">Choose the right synchronizer for your use case</div>
+  <div class="vs-grid">
+    <div class="vs-card" style="border-color:rgba(45,212,191,.25)">
+      <h4 style="color:#2dd4bf">✓ Use Req-Ack when</h4>
+      <ul>
+        <li>Transferring <b>multi-bit data</b> at low rate</li>
+        <li>You need <b>guaranteed acknowledgment</b></li>
+        <li>Clock domains are completely <b>asynchronous</b></li>
+        <li>Transfer rate: <b>&lt;1 word per 10 cycles</b></li>
+        <li>Control path signals crossing domains</li>
+      </ul>
+    </div>
+    <div class="vs-card" style="border-color:rgba(167,139,250,.25)">
+      <h4 style="color:#a78bfa">✓ Use 2-FF Sync when</h4>
+      <ul>
+        <li>Crossing a <b>single-bit</b> signal only</li>
+        <li>Enable, reset, or flag signals</li>
+        <li>No multi-bit data involved</li>
+        <li>No acknowledgment needed</li>
+        <li>Fastest solution — 2-cycle latency</li>
+      </ul>
+    </div>
+    <div class="vs-card" style="border-color:rgba(56,189,248,.25)">
+      <h4 style="color:#38bdf8">✓ Use Async FIFO when</h4>
+      <ul>
+        <li><b>High-bandwidth</b> data streaming</li>
+        <li>Producer and consumer run independently</li>
+        <li>Audio, video, network packet streams</li>
+        <li>Back-pressure / flow control needed</li>
+        <li><b>1 word per destination clock</b> throughput</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- related -->
+<div class="sec" style="padding-top:0;padding-bottom:3rem">
+  <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:12px;padding:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <div style="font-size:.75rem;font-weight:700;color:#2dd4bf;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.3rem">Related</div>
+      <div style="font-size:.95rem;font-weight:700">CDC Lab — Metastability, Pulse Sync, MTBF Calculator</div>
+      <div style="font-size:.82rem;color:var(--slate);margin-top:.2rem">Interactive animations for all CDC techniques</div>
+    </div>
+    <a href="/tools/cdc-lab/" style="display:inline-flex;align-items:center;gap:.5rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);color:#2dd4bf;font-size:.85rem;font-weight:700;padding:.6rem 1.2rem;border-radius:8px;white-space:nowrap">
+      Open CDC Lab →
+    </a>
+  </div>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/tools/" style="color:#2dd4bf">Tools</a> · <a href="/tools/cdc-lab/" style="color:var(--slate)">CDC Lab</a> · <a href="/" style="color:var(--slate)">Home</a></footer>
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Top</button>
+
+<script>
+window.addEventListener('scroll',()=>{
+  document.getElementById('btt').style.display=window.scrollY>400?'block':'none';
+});
+function copyCode(btn,id){
+  const t=document.getElementById(id).innerText;
+  navigator.clipboard.writeText(t).then(()=>{
+    btn.textContent='Copied!';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);
+  });
+}
+</script>
+</body>
+</html>
