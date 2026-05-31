@@ -130,7 +130,7 @@
 
     <div id="cvs-wrap">
       <canvas id="cvs"></canvas>
-      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Select</b>: drag to move<br>④ Click Input switch to toggle<br>⑤ Del = delete selected</div>
+      <div id="hint"><b>How to use:</b><br>① Click gate → click canvas to place<br>② <b>Wire</b>: click green output dot<br>   then click blue input dot<br>③ <b>Move</b>: Select tool → drag<br>④ Click Input switch to toggle<br>⑤ <b>Right-click</b> any component = delete<br>⑥ Or: click to select → Del key</div>
     </div>
   </div>
 
@@ -630,31 +630,28 @@ cvs.addEventListener('mousedown', e => {
   if (tool === 'wire') {
     const ph = portAt(x, y);
     if (!conn) {
-      // Start: must click an output port
       if (ph && ph.kind==='out') {
         conn = {fromId: ph.c.id, mx:x, my:y};
-        draw();
+      } else {
+        // Clicking gate body in wire mode = select it (so Del key works)
+        const c = compAt(x, y);
+        sel = c ? c.id : null;
       }
     } else {
-      // Finish: must click an input port of a different component
       if (ph && ph.kind==='in' && ph.c.id !== conn.fromId) {
         const dup = wires.find(w => w.to===ph.c.id && w.toPort===ph.idx);
         if (!dup) {
           wires.push({id:uid++, from:conn.fromId, to:ph.c.id, toPort:ph.idx});
           simulate();
         }
-        conn = null; draw();
+        conn = null;
+      } else if (ph && ph.kind==='out') {
+        conn = {fromId: ph.c.id, mx:x, my:y}; // redirect wire to new source
       } else if (!ph) {
-        // Click on empty space = cancel
-        conn = null; draw();
-      }
-      // Click another output port = start new wire from there
-      else if (ph && ph.kind==='out') {
-        conn = {fromId: ph.c.id, mx:x, my:y};
-        draw();
+        conn = null; // cancel on empty space
       }
     }
-    return;
+    draw(); return;
   }
 
   // ── SELECT ──────────────────────────────────────────────
@@ -711,9 +708,21 @@ cvs.addEventListener('mouseup', e => {
   }
 });
 
+// Right-click: delete component under cursor (any mode), else cancel wire
 cvs.addEventListener('contextmenu', e => {
   e.preventDefault();
-  conn=null; sel=null; draw();
+  const {x, y} = pt(e);
+  const c = compAt(x, y);
+  if (c) {
+    // Delete the component and all its wires immediately
+    comps = comps.filter(x => x.id !== c.id);
+    wires = wires.filter(w => w.from !== c.id && w.to !== c.id);
+    if (sel === c.id) sel = null;
+    simulate();
+  } else {
+    conn = null; // cancel wire draw
+  }
+  draw();
 });
 
 /* ═══════════════════════════════════════════════════════════
