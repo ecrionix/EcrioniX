@@ -210,6 +210,10 @@
         ⚡ Full Adder
         <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">A+B+Cin → Sum, Cout</div>
       </button>
+      <button class="tool-btn" onclick="load7SegDecoder()" style="border-color:rgba(251,191,36,.25);color:#fbbf24;text-align:left;margin-top:.2rem">
+        📺 7-Seg Decoder
+        <div style="font-size:.62rem;opacity:.6;margin-top:.1rem">4-bit → a,b,c,d,e,f,g</div>
+      </button>
 
       <div class="pal-sep"></div>
       <div class="pal-label">File</div>
@@ -1610,6 +1614,96 @@ function buildTTTable(){const rows=1<<ttInputs;const tbl=document.getElementById
 function detectPattern(out_idx){const t=[];for(let i=0;i<(1<<ttInputs);i++)t[i]=ttOutputs[`o${i}_${out_idx}`]||0;if(ttInputs===2){if(t[1]&&t[2]&&!t[0]&&!t[3])return{type:'XOR'};if(!t[1]&&!t[2]&&t[0]&&t[3])return{type:'XNOR'}}return null}
 function minimizeBoolean(out_idx){const pat=detectPattern(out_idx);if(pat)return pat;const ones=[];for(let i=0;i<(1<<ttInputs);i++)if(ttOutputs[`o${i}_${out_idx}`])ones.push(i);if(!ones.length)return[];const vars=[];for(let i=0;i<ttInputs;i++)vars.push(String.fromCharCode(65+i));let terms=ones.map(i=>({val:i,mask:(1<<ttInputs)-1,used:false}));let processed=terms;for(let pass=0;pass<ttInputs;pass++){const next=[];for(let i=0;i<processed.length;i++)for(let j=i+1;j<processed.length;j++){const a=processed[i],b=processed[j];if(a.mask===b.mask){const diff=a.val^b.val;if(!(diff&(diff-1))){const new_mask=a.mask^diff;const new_val=a.val&new_mask;const nt={val:new_val,mask:new_mask,used:false};if(!next.some(x=>x.val===nt.val&&x.mask===nt.mask))next.push(nt);a.used=b.used=true}}}next.forEach(t=>{if(!processed.some(x=>x.val===t.val&&x.mask===t.mask&&!x.used))processed.push(t)});if(!next.length)break}return processed.filter(t=>!t.used).concat(terms.filter(t=>!t.used)).map(t=>({val:t.val,mask:t.mask}))}
 function termToExpr(t,n){let s='';for(let i=n-1;i>=0;i--){if(!(t.mask&(1<<i)))continue;const lit=(t.val>>i)&1;s+=(lit?'':'-')+String.fromCharCode(65+i)}return s||'1'}
+/* ─── 4-bit to 7-Segment Decoder Template ─── */
+function load7SegDecoder(){
+  stopAutoRun();
+  comps=[]; wires=[]; sel=null; conn=null; uid=1; tick=0;
+  const cx=snap(cvs.width/2-300), cy=snap(cvs.height/2-100);
+
+  // 4 inputs (D0, D1, D2, D3)
+  const D0={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy), value:0};
+  const D1={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+70), value:0};
+  const D2={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+140), value:0};
+  const D3={id:uid++, type:'INPUT', x:snap(cx), y:snap(cy+210), value:0};
+
+  comps=[D0,D1,D2,D3];
+
+  // NOT gates for inverted inputs
+  const notD0={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+20), value:0};
+  const notD1={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+90), value:0};
+  const notD2={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+160), value:0};
+  const notD3={id:uid++, type:'NOT', x:snap(cx+80), y:snap(cy+230), value:0};
+  comps.push(notD0,notD1,notD2,notD3);
+  wires.push({id:uid++, from:D0.id, to:notD0.id, toPort:0});
+  wires.push({id:uid++, from:D1.id, to:notD1.id, toPort:0});
+  wires.push({id:uid++, from:D2.id, to:notD2.id, toPort:0});
+  wires.push({id:uid++, from:D3.id, to:notD3.id, toPort:0});
+
+  // 7 outputs (a-g) - each driven by an OR gate combining its minterms
+  let x=cx+200, y=cy;
+  const segs=['a','b','c','d','e','f','g'];
+  const outputs={};
+
+  // For each segment, create AND gates for its minterms, then OR them
+  const segMinterms={
+    // segment a: D3·D1 + D3·D2·D0 + D2·D1·D0' → rows 8,9,13,15,5,6,7,0 (need proper minimization)
+    a: [{inputs:[D3,D1]}, {inputs:[D3,D2,D0]}, {inputs:[D2,D1,notD0]}],
+    b: [{inputs:[D3,notD2,notD0]}, {inputs:[D2,D1,notD0]}],
+    c: [{inputs:[D3,D1,D0]}],
+    d: [{inputs:[D3,D2,notD1]}, {inputs:[D3,D1,D0]}, {inputs:[D2,notD1,D0]}],
+    e: [{inputs:[D3,notD1]}, {inputs:[notD2,D0]}],
+    f: [{inputs:[D3,D2,notD0]}, {inputs:[D3,D1,D0]}, {inputs:[notD2,D1,notD0]}],
+    g: [{inputs:[D3,D2,D1]}, {inputs:[D2,D1,notD0]}, {inputs:[D3,D0]}]
+  };
+
+  for(let si=0;si<segs.length;si++){
+    const seg=segs[si];
+    const minterms=segMinterms[seg];
+    const andGates=[];
+
+    // Create AND gates for each minterm
+    for(let m=0;m<minterms.length;m++){
+      const minterm=minterms[m];
+      const and={id:uid++, type:'AND', x:snap(x), y:snap(y+m*60), value:0};
+      andGates.push(and);
+      comps.push(and);
+
+      // Wire inputs to AND gate
+      for(let i=0;i<minterm.inputs.length;i++){
+        wires.push({id:uid++, from:minterm.inputs[i].id, to:and.id, toPort:i});
+      }
+    }
+
+    // OR gate to combine minterms
+    let orGate=andGates[0];
+    if(andGates.length>1){
+      orGate={id:uid++, type:'OR', x:snap(x+80), y:snap(y+andGates.length*30), value:0};
+      comps.push(orGate);
+      for(let a=0;a<andGates.length;a++){
+        wires.push({id:uid++, from:andGates[a].id, to:orGate.id, toPort:a});
+      }
+    }
+
+    // OUTPUT for segment
+    const out={id:uid++, type:'OUTPUT', x:snap(x+180), y:snap(y+30), value:0};
+    comps.push(out);
+    outputs[seg]=out;
+    wires.push({id:uid++, from:orGate.id, to:out.id, toPort:0});
+
+    y+=120;
+  }
+
+  // Optional: place 7-segment display to show output
+  const seg7={id:uid++, type:'SEG7', x:snap(cx+600), y:snap(cy+80), value:0};
+  comps.push(seg7);
+  const seg_order=['a','b','c','d','e','f','g'];
+  for(let i=0;i<7;i++){
+    wires.push({id:uid++, from:outputs[seg_order[i]].id, to:seg7.id, toPort:i});
+  }
+
+  simulate(); draw();
+}
+
 function generateCircuitFromTT(){stopAutoRun();comps=[];wires=[];const inp_names=[];for(let i=0;i<ttInputs;i++)inp_names.push(String.fromCharCode(65+i));const cx=snap(cvs.width/2-220),cy=snap(cvs.height/2-80);let x=cx,y=cy;const inputs={};for(const name of inp_names){inputs[name]={id:uid++,type:'INPUT',x:x,y:y,value:0};comps.push(inputs[name]);y+=70}const not_gates={},all_gates={};x=cx+100;for(let out_idx=0;out_idx<ttOutputCount;out_idx++){const pat=detectPattern(out_idx);const oname=String.fromCharCode(88+out_idx);let y2=cy+out_idx*200;if(pat&&pat.type){const gate={id:uid++,type:pat.type,x:snap(x+80),y:snap(y2+40),value:0};all_gates[`${oname}_${pat.type}`]=gate;comps.push(gate);const vars=['A','B','C','D','E'];for(let vi=0;vi<ttInputs;vi++)wires.push({id:uid++,from:inputs[vars[vi]].id,to:gate.id,toPort:vi});const out={id:uid++,type:'OUTPUT',x:snap(x+280),y:snap(y2+40),value:0};comps.push(out);wires.push({id:uid++,from:gate.id,to:out.id,toPort:0});continue}const epi=minimizeBoolean(out_idx);if(!epi.length)continue;for(let t=0;t<epi.length;t++){const term=epi[t];const expr=termToExpr(term,ttInputs);const literals=[];for(let i=0;i<expr.length;){if(expr[i]==='-'){literals.push({var:expr[i+1],neg:true});i+=2}else{literals.push({var:expr[i],neg:false});i++}}const and_inputs=[];for(let li=0;li<literals.length;li++){const lit=literals[li];if(lit.neg){const not_key=lit.var+'_NOT';if(!not_gates[not_key]){const not_gate={id:uid++,type:'NOT',x:snap(x-60),y:snap(inputs[lit.var].y),value:0};not_gates[not_key]=not_gate;comps.push(not_gate);wires.push({id:uid++,from:inputs[lit.var].id,to:not_gate.id,toPort:0})}and_inputs.push({src:not_gates[not_key],port:0})}else{and_inputs.push({src:inputs[lit.var],port:0})}}const gate={id:uid++,type:'AND',x:snap(x),y:snap(y2),value:0};all_gates[`${oname}_AND${t}`]=gate;comps.push(gate);y2+=70;for(let ai=0;ai<and_inputs.length;ai++)wires.push({id:uid++,from:and_inputs[ai].src.id,to:gate.id,toPort:ai})}if(epi.length>1){const or_gate={id:uid++,type:'OR',x:snap(x+160),y:snap(cy+out_idx*200+70),value:0};all_gates[`${oname}_OR`]=or_gate;comps.push(or_gate);for(let t=0;t<epi.length;t++)wires.push({id:uid++,from:all_gates[`${oname}_AND${t}`].id,to:or_gate.id,toPort:t})}const out={id:uid++,type:'OUTPUT',x:snap(x+300),y:snap(cy+out_idx*200+70),value:0};comps.push(out);const src_gate=epi.length>1?all_gates[`${oname}_OR`]:all_gates[`${oname}_AND0`];if(src_gate)wires.push({id:uid++,from:src_gate.id,to:out.id,toPort:0})}simulate();draw();closeTruthTable();document.getElementById('sb-mode').textContent='✓ Generated — '+ttOutputCount+' output(s)';setTimeout(updateModeLabel,3000)}
 
 function loadDemo() {
