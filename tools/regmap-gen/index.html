@@ -113,6 +113,20 @@ pre.rtl .num{color:#fbbf24}
 pre.rtl .cm{color:#475569;font-style:italic}
 pre.rtl .pt{color:#38bdf8}
 
+/* REGISTER + FIELD BLOCKS */
+.reg-block{border:1px solid var(--bdr);border-radius:10px;margin-bottom:1rem;overflow:hidden;background:var(--bg)}
+.reg-head{display:flex;gap:.5rem;align-items:center;background:var(--bg3);padding:.5rem .6rem;flex-wrap:wrap}
+.reg-head input{background:var(--bg);border:1px solid var(--bdr);border-radius:5px;padding:.35rem .5rem;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.8rem;outline:none}
+.reg-head input:focus{border-color:var(--teal)}
+.reg-head .rn{font-weight:700;min-width:120px;color:var(--teal)}
+.reg-head .ro{width:58px}
+.reg-head .rd{flex:1;min-width:120px}
+.reg-body{padding:.55rem .6rem}
+.bits-cell{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--purple);white-space:nowrap;text-align:center}
+.fld-add{font-size:.72rem;font-weight:600;color:var(--green);background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-radius:6px;padding:.3rem .7rem;cursor:pointer;margin-top:.5rem;font-family:'Outfit',sans-serif}
+.fld-add:hover{background:rgba(74,222,128,.16)}
+.warn{color:var(--red);font-size:.74rem;margin-top:.4rem}
+
 /* MAP PREVIEW */
 .map-chip{display:inline-flex;align-items:center;gap:.4rem;font-family:'JetBrains Mono',monospace;font-size:.72rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:.25rem .55rem;margin:.2rem .25rem 0 0}
 .acc-RW{color:var(--green)}.acc-RO{color:var(--blue)}.acc-WO{color:var(--amber)}.acc-W1C{color:var(--pink)}
@@ -190,17 +204,8 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
       </div>
 
       <div class="panel" style="margin-top:1.2rem">
-        <div class="panel-title">② Registers</div>
-        <div class="tbl-scroll">
-          <table class="regs">
-            <thead>
-              <tr>
-                <th>Name</th><th>Offset</th><th>Width</th><th>Access</th><th>Reset</th><th>Description</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="regBody"></tbody>
-          </table>
-        </div>
+        <div class="panel-title">② Registers &amp; Fields</div>
+        <div id="regContainer"></div>
         <div class="btn-row">
           <button class="btn btn-add" onclick="addReg()">＋ Add Register</button>
           <button class="btn btn-gen" onclick="gen()">⚙ Generate RTL</button>
@@ -229,7 +234,8 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
 <!-- CONTENT -->
 <div class="section">
   <h2>How it works</h2>
-  <p>This tool builds a standard <b>APB3 slave</b> wrapper around your register file. Each row you add becomes an address-decoded register inside a synchronous write block and a combinational read multiplexer. <code>PREADY</code> is tied high (zero wait states) and <code>PSLVERR</code> is tied low — the typical configuration for a simple peripheral.</p>
+  <p>This tool builds a standard <b>APB3 slave</b> wrapper around your register file. Each <b>register</b> sits at an address offset and contains one or more named <b>bit-fields</b>. Fields auto-pack from the LSB upward — the <b>Bits</b> column shows the computed <code>[msb:lsb]</code> range. Each field becomes its own storage element and hardware port, assembled into the register word inside a synchronous write block and a combinational read multiplexer. <code>PREADY</code> is tied high (zero wait states) and <code>PSLVERR</code> is tied low.</p>
+  <p>For example, a <code>CTRL</code> register with fields <code>ENABLE[0]</code>, <code>MODE[2:1]</code> and <code>START[3]</code> generates <code>ctrl_enable_q</code>, <code>ctrl_mode_q</code> and a <code>ctrl_start_o</code> pulse — each driven from / read into the correct slice of <code>PWDATA</code>/<code>PRDATA</code>.</p>
 
   <h3>Register access types</h3>
   <div class="acc-legend">
@@ -258,155 +264,184 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
 <script>
 'use strict';
 
-// ── State ──
+// ── State: registers contain bit-fields ──
 let regs = [
-  {name:'CTRL',       offset:'00', width:32, access:'RW',  reset:'00000000', desc:'Control register'},
-  {name:'STATUS',     offset:'04', width:32, access:'RO',  reset:'00000000', desc:'Status from hardware'},
-  {name:'INT_ENABLE', offset:'08', width:8,  access:'RW',  reset:'00',       desc:'Interrupt enable mask'},
-  {name:'INT_STATUS', offset:'0C', width:8,  access:'W1C', reset:'00',       desc:'Interrupt status (write 1 to clear)'},
+  {name:'CTRL', offset:'00', desc:'Control register', fields:[
+    {name:'ENABLE', width:1, access:'RW', reset:'0', desc:'Enable the block'},
+    {name:'MODE',   width:2, access:'RW', reset:'0', desc:'Operating mode'},
+    {name:'START',  width:1, access:'WO', reset:'0', desc:'Write 1 to start'},
+  ]},
+  {name:'STATUS', offset:'04', desc:'Status register', fields:[
+    {name:'BUSY', width:1, access:'RO', reset:'0', desc:'Block is busy'},
+    {name:'DONE', width:1, access:'RO', reset:'0', desc:'Operation done'},
+  ]},
+  {name:'INT_STATUS', offset:'08', desc:'Interrupt status', fields:[
+    {name:'OVERFLOW',  width:1, access:'W1C', reset:'0', desc:'Overflow, write 1 to clear'},
+    {name:'UNDERFLOW', width:1, access:'W1C', reset:'0', desc:'Underflow, write 1 to clear'},
+  ]},
 ];
 
 const ACCESS = ['RW','RO','WO','W1C'];
 
-function renderTable(){
-  const tb = document.getElementById('regBody');
-  tb.innerHTML = '';
-  regs.forEach((r,i)=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      `<td><input value="${r.name}" oninput="upd(${i},'name',this.value)" style="min-width:90px"></td>`+
-      `<td><input value="${r.offset}" oninput="upd(${i},'offset',this.value)" style="width:60px"></td>`+
-      `<td><input type="number" min="1" value="${r.width}" oninput="upd(${i},'width',this.value)" style="width:54px"></td>`+
-      `<td><select onchange="upd(${i},'access',this.value)">`+
-        ACCESS.map(a=>`<option ${a===r.access?'selected':''}>${a}</option>`).join('')+
-      `</select></td>`+
-      `<td><input value="${r.reset}" oninput="upd(${i},'reset',this.value)" style="width:72px"></td>`+
-      `<td><input value="${r.desc}" oninput="upd(${i},'desc',this.value)" style="min-width:120px"></td>`+
-      `<td><button class="del-btn" onclick="delReg(${i})">✕</button></td>`;
-    tb.appendChild(tr);
+// Pack fields LSB-first, returning {…field, lsb, msb}
+function packFields(reg){
+  let lsb = 0;
+  return reg.fields.map(f=>{
+    const w = Math.max(1, parseInt(f.width)||1);
+    const o = {...f, width:w, lsb, msb:lsb+w-1};
+    lsb += w; return o;
+  });
+}
+function regWidth(reg){ return reg.fields.reduce((a,f)=>a+Math.max(1,parseInt(f.width)||1),0); }
+
+// ── Render register/field editor ──
+function renderRegs(){
+  const c = document.getElementById('regContainer'); c.innerHTML='';
+  const DW = +document.getElementById('dataW').value;
+  regs.forEach((reg,ri)=>{
+    const packed = packFields(reg);
+    const block = document.createElement('div'); block.className='reg-block';
+    let html =
+      `<div class="reg-head">`+
+        `<input class="rn" value="${reg.name}" oninput="updReg(${ri},'name',this.value)" placeholder="REG_NAME">`+
+        `<span style="color:#64748b;font-size:.72rem">@0x</span>`+
+        `<input class="ro" value="${reg.offset}" oninput="updReg(${ri},'offset',this.value)" placeholder="00">`+
+        `<input class="rd" value="${reg.desc}" oninput="updReg(${ri},'desc',this.value)" placeholder="register description">`+
+        `<button class="del-btn" onclick="delReg(${ri})">✕</button>`+
+      `</div>`+
+      `<div class="reg-body"><div class="tbl-scroll"><table class="regs"><thead><tr>`+
+        `<th>Field</th><th>Width</th><th>Bits</th><th>Access</th><th>Reset</th><th>Description</th><th></th>`+
+      `</tr></thead><tbody>`;
+    reg.fields.forEach((f,fi)=>{
+      const p = packed[fi];
+      const bits = p.msb===p.lsb ? `[${p.lsb}]` : `[${p.msb}:${p.lsb}]`;
+      html +=
+        `<tr>`+
+        `<td><input value="${f.name}" oninput="updFld(${ri},${fi},'name',this.value)" style="min-width:88px"></td>`+
+        `<td><input type="number" min="1" value="${f.width}" oninput="updFld(${ri},${fi},'width',this.value)" onchange="renderRegs()" style="width:52px"></td>`+
+        `<td class="bits-cell">${bits}</td>`+
+        `<td><select onchange="updFld(${ri},${fi},'access',this.value)">`+
+          ACCESS.map(a=>`<option ${a===f.access?'selected':''}>${a}</option>`).join('')+
+        `</select></td>`+
+        `<td><input value="${f.reset}" oninput="updFld(${ri},${fi},'reset',this.value)" style="width:56px"></td>`+
+        `<td><input value="${f.desc}" oninput="updFld(${ri},${fi},'desc',this.value)" style="min-width:110px"></td>`+
+        `<td><button class="del-btn" onclick="delFld(${ri},${fi})">✕</button></td>`+
+        `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+    const tot = regWidth(reg);
+    if(tot>DW) html += `<div class="warn">⚠ Fields total ${tot} bits — exceeds data width ${DW}</div>`;
+    html += `<button class="fld-add" onclick="addFld(${ri})">＋ Add Field</button></div>`;
+    block.innerHTML = html;
+    c.appendChild(block);
   });
 }
 
-function upd(i,k,v){ regs[i][k] = (k==='width') ? Math.max(1,parseInt(v)||1) : v; gen(); }
+function updReg(ri,k,v){ regs[ri][k]=v; gen(); }
+function updFld(ri,fi,k,v){
+  regs[ri].fields[fi][k] = (k==='width') ? Math.max(1,parseInt(v)||1) : v;
+  gen();
+}
+function delReg(ri){ regs.splice(ri,1); renderRegs(); gen(); }
+function delFld(ri,fi){ regs[ri].fields.splice(fi,1); renderRegs(); gen(); }
 
 function addReg(){
-  const dw = +document.getElementById('dataW').value;
-  const step = dw/8;
+  const dw = +document.getElementById('dataW').value, step = dw/8;
   let next = 0;
   regs.forEach(r=>{ const o=parseInt(r.offset,16); if(!isNaN(o)) next=Math.max(next,o+step); });
   regs.push({name:'REG'+regs.length, offset:next.toString(16).toUpperCase().padStart(2,'0'),
-             width:dw, access:'RW', reset:'0', desc:''});
-  renderTable(); gen();
+             desc:'', fields:[{name:'FIELD0',width:1,access:'RW',reset:'0',desc:''}]});
+  renderRegs(); gen();
+}
+function addFld(ri){
+  regs[ri].fields.push({name:'field'+regs[ri].fields.length, width:1, access:'RW', reset:'0', desc:''});
+  renderRegs(); gen();
 }
 
-function delReg(i){ regs.splice(i,1); renderTable(); gen(); }
-
-// ── Map preview chips ──
+// ── Map preview ──
 function renderMap(){
-  const el = document.getElementById('mapPreview');
-  el.innerHTML = regs.map(r=>
-    `<span class="map-chip"><b class="acc-${r.access}">0x${(r.offset||'0').toUpperCase()}</b> ${r.name} `+
-    `<span style="color:#64748b">[${r.width}b ${r.access}]</span></span>`
-  ).join('');
+  document.getElementById('mapPreview').innerHTML = regs.map(r=>{
+    const w = regWidth(r);
+    return `<span class="map-chip"><b style="color:#a78bfa">0x${(r.offset||'0').toUpperCase()}</b> ${r.name} `+
+           `<span style="color:#64748b">[${r.fields.length}f / ${w}b]</span></span>`;
+  }).join('');
 }
 
-// ── RTL generation ──
+// ── RTL helpers ──
 function vec(w){ return w>1 ? `[${w-1}:0] ` : ''; }
-function rdPad(sig,w,DW){ return w>=DW ? sig : `{ {(DATA_WIDTH-${w}){1'b0}}, ${sig} }`; }
+function bsel(msb,lsb){ return msb===lsb ? `[${lsb}]` : `[${msb}:${lsb}]`; }
+function sig(reg,fld){ return (reg.name+'_'+fld.name).toLowerCase(); }
 
 function buildRTL(){
   const mod = (document.getElementById('modName').value||'my_periph').trim().replace(/[^a-zA-Z0-9_]/g,'_');
   const DW  = +document.getElementById('dataW').value;
   const AW  = +document.getElementById('addrW').value;
 
-  // Hardware-side ports
-  const hwPorts = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase(), w=r.width;
-    if(r.access==='RW'||r.access==='WO') hwPorts.push(`  output ${vec(w)}${n}_o`);
-    else if(r.access==='RO')             hwPorts.push(`  input  ${vec(w)}${n}_i`);
-    else if(r.access==='W1C'){           hwPorts.push(`  input  ${vec(w)}${n}_set_i`);
-                                         hwPorts.push(`  output ${vec(w)}${n}_o`); }
+  const hwPorts=[], localparams=[], decls=[], resetLines=[], w1cSet=[], writeCase=[], readCase=[], assigns=[];
+
+  regs.forEach(reg=>{
+    const U = reg.name.toUpperCase();
+    localparams.push(`localparam [ADDR_WIDTH-1:0] ${U}_ADDR = ${AW}'h${(reg.offset||'0').toUpperCase()};`);
+    const packed = packFields(reg);
+
+    packed.forEach(f=>{
+      const s = sig(reg,f), w = f.width;
+      if(f.access==='RW'||f.access==='WO'||f.access==='W1C'){
+        decls.push(`reg ${vec(w)}${s}_q;`);
+        resetLines.push(`      ${s}_q <= ${w}'h${(f.reset||'0').toUpperCase()};`);
+      }
+      if(f.access==='RW'||f.access==='WO')      hwPorts.push(`  output ${vec(w)}${s}_o`);
+      else if(f.access==='RO')                  hwPorts.push(`  input  ${vec(w)}${s}_i`);
+      else if(f.access==='W1C'){                hwPorts.push(`  input  ${vec(w)}${s}_set_i`);
+                                                hwPorts.push(`  output ${vec(w)}${s}_o`); }
+      if(f.access==='W1C') w1cSet.push(`      ${s}_q <= ${s}_q | ${s}_set_i;`);
+      if(f.access==='RW'||f.access==='WO'||f.access==='W1C')
+        assigns.push(`assign ${s}_o = ${s}_q;`);
+    });
+
+    const wlines = [];
+    packed.forEach(f=>{
+      const s = sig(reg,f), sel = bsel(f.msb,f.lsb);
+      if(f.access==='RW'||f.access==='WO') wlines.push(`        ${s}_q <= PWDATA${sel};`);
+      else if(f.access==='W1C')            wlines.push(`        ${s}_q <= (${s}_q | ${s}_set_i) & ~PWDATA${sel};`);
+    });
+    if(wlines.length){
+      writeCase.push(`          ${U}_ADDR: begin`);
+      wlines.forEach(l=>writeCase.push('  '+l));
+      writeCase.push(`          end`);
+    }
+
+    const rlines = [];
+    packed.forEach(f=>{
+      const s = sig(reg,f), sel = bsel(f.msb,f.lsb);
+      if(f.access==='RO')                        rlines.push(`        PRDATA${sel} = ${s}_i;`);
+      else if(f.access==='RW'||f.access==='W1C') rlines.push(`        PRDATA${sel} = ${s}_q;`);
+    });
+    if(rlines.length){
+      readCase.push(`      ${U}_ADDR: begin`);
+      rlines.forEach(l=>readCase.push('  '+l));
+      readCase.push(`      end`);
+    }
   });
 
-  const localparams = regs.map(r=>
-    `localparam [ADDR_WIDTH-1:0] ${r.name.toUpperCase()}_ADDR = ${AW}'h${(r.offset||'0').toUpperCase()};`
-  );
-
-  // Register declarations
-  const decls = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase(), w=r.width;
-    if(r.access==='RW'||r.access==='WO'||r.access==='W1C')
-      decls.push(`reg ${vec(w)}${n}_q;`);
-  });
-
-  // Reset block
-  const resetLines = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase(), w=r.width;
-    if(r.access==='RW'||r.access==='WO'||r.access==='W1C')
-      resetLines.push(`      ${n}_q <= ${w}'h${(r.reset||'0').toUpperCase()};`);
-  });
-
-  // W1C default-set lines (run every cycle unless overwritten by a W1C write)
-  const w1cSet = [];
-  regs.forEach(r=>{
-    if(r.access==='W1C'){ const n=r.name.toLowerCase();
-      w1cSet.push(`      ${n}_q <= ${n}_q | ${n}_set_i;`); }
-  });
-
-  // Write case
-  const writeCase = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase(), w=r.width, U=r.name.toUpperCase();
-    if(r.access==='RW'||r.access==='WO')
-      writeCase.push(`          ${U}_ADDR: ${n}_q <= PWDATA[${w-1}:0];`);
-    else if(r.access==='W1C')
-      writeCase.push(`          ${U}_ADDR: ${n}_q <= (${n}_q | ${n}_set_i) & ~PWDATA[${w-1}:0];`);
-  });
-
-  // Read case
-  const readCase = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase(), w=r.width, U=r.name.toUpperCase();
-    let src;
-    if(r.access==='RW'||r.access==='WO'||r.access==='W1C') src = `${n}_q`;
-    else if(r.access==='RO') src = `${n}_i`;
-    if(r.access==='WO')
-      readCase.push(`      ${U}_ADDR: PRDATA = {DATA_WIDTH{1'b0}}; // write-only`);
-    else
-      readCase.push(`      ${U}_ADDR: PRDATA = ${rdPad(src,w,DW)};`);
-  });
-
-  // Assemble port list
   const apbPorts = [
-    '  input                      PCLK',
-    '  input                      PRESETn',
-    '  input  [ADDR_WIDTH-1:0]    PADDR',
-    '  input                      PSEL',
-    '  input                      PENABLE',
-    '  input                      PWRITE',
-    '  input  [DATA_WIDTH-1:0]    PWDATA',
+    '  input                       PCLK',
+    '  input                       PRESETn',
+    '  input  [ADDR_WIDTH-1:0]     PADDR',
+    '  input                       PSEL',
+    '  input                       PENABLE',
+    '  input                       PWRITE',
+    '  input  [DATA_WIDTH-1:0]     PWDATA',
     '  output reg [DATA_WIDTH-1:0] PRDATA',
-    '  output                     PREADY',
-    '  output                     PSLVERR'
+    '  output                      PREADY',
+    '  output                      PSLVERR'
   ];
   const allPorts = apbPorts.concat(hwPorts);
-
-  // hw output assigns
-  const assigns = [];
-  regs.forEach(r=>{
-    const n=r.name.toLowerCase();
-    if(r.access==='RW'||r.access==='WO'||r.access==='W1C')
-      assigns.push(`assign ${n}_o = ${n}_q;`);
-  });
-
   const dt = new Date().toISOString().slice(0,10);
 
   let s = '';
   s += `//==============================================================\n`;
-  s += `// ${mod} — APB3 Slave Register Block\n`;
+  s += `// ${mod} — APB3 Slave Register Block (with bit-fields)\n`;
   s += `// Auto-generated by EcrioniX APB Register Map Generator\n`;
   s += `// ecrionix.org/tools/regmap-gen/   ·   ${dt}\n`;
   s += `//==============================================================\n`;
@@ -416,27 +451,23 @@ function buildRTL(){
   s += `)(\n`;
   s += allPorts.join(',\n') + `\n);\n\n`;
 
-  s += `  // ---- Register address map ----\n`;
-  s += `  ` + localparams.join('\n  ') + `\n\n`;
-
-  s += `  // ---- Register storage ----\n`;
-  s += `  ` + decls.join('\n  ') + `\n\n`;
-
+  s += `  // ---- Register address map ----\n  ` + localparams.join('\n  ') + `\n\n`;
+  s += `  // ---- Field storage ----\n  ` + (decls.length?decls.join('\n  '):'// (no writable fields)') + `\n\n`;
   s += `  wire wr_en = PSEL & PENABLE & PWRITE;\n\n`;
 
   s += `  // ---- Synchronous write / update ----\n`;
   s += `  always @(posedge PCLK or negedge PRESETn) begin\n`;
   s += `    if (!PRESETn) begin\n`;
-  s += resetLines.join('\n') + `\n`;
+  s += (resetLines.length?resetLines.join('\n'):'      // nothing to reset') + `\n`;
   s += `    end else begin\n`;
   if(w1cSet.length){
-    s += `      // W1C status bits: latch hardware set events\n`;
+    s += `      // W1C fields: latch hardware set events\n`;
     s += w1cSet.join('\n') + `\n`;
   }
   s += `      if (wr_en) begin\n`;
   s += `        case (PADDR)\n`;
-  s += writeCase.join('\n') + `\n`;
-  s += `          default: ; // no write\n`;
+  s += (writeCase.length?writeCase.join('\n'):'          // no writable registers') + `\n`;
+  s += `          default: ;\n`;
   s += `        endcase\n`;
   s += `      end\n`;
   s += `    end\n`;
@@ -446,7 +477,7 @@ function buildRTL(){
   s += `  always @(*) begin\n`;
   s += `    PRDATA = {DATA_WIDTH{1'b0}};\n`;
   s += `    case (PADDR)\n`;
-  s += readCase.join('\n') + `\n`;
+  s += (readCase.length?readCase.join('\n'):'      // no readable registers') + `\n`;
   s += `      default: PRDATA = {DATA_WIDTH{1'b0}};\n`;
   s += `    endcase\n`;
   s += `  end\n\n`;
@@ -456,15 +487,13 @@ function buildRTL(){
   s += `  assign PSLVERR = 1'b0;\n\n`;
 
   if(assigns.length){
-    s += `  // ---- Hardware-side outputs ----\n`;
-    s += `  ` + assigns.join('\n  ') + `\n\n`;
+    s += `  // ---- Hardware-side field outputs ----\n  ` + assigns.join('\n  ') + `\n\n`;
   }
-
   s += `endmodule\n`;
   return s;
 }
 
-// ── Syntax highlight (lightweight) ──
+// ── Highlight ──
 function highlight(code){
   const esc = code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   return esc
@@ -495,11 +524,10 @@ function downloadRTL(){
   URL.revokeObjectURL(url); toast('✓ Downloaded '+mod+'.v');
 }
 
-// back to top
 addEventListener('scroll',()=>document.getElementById('btt').classList.toggle('show',scrollY>400));
 
 // init
-renderTable(); gen();
+renderRegs(); gen();
 </script>
 </body>
 </html>
