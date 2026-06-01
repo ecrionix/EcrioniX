@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How a Boot ROM Works — Interactive Reset, Vector Table &amp; Boot Chain | EcrioniX</title>
+<meta name="description" content="How a boot ROM works, explained with an interactive CPU boot trace you can step through. Reset vector, ARM Cortex-M vector table, first-stage bootloader, secure boot and the chain of trust — with a small worked example.">
+<meta name="keywords" content="boot rom, how boot rom works, reset vector, first stage bootloader, ARM cortex-m vector table, secure boot chain of trust, mask rom, SoC boot sequence, initial stack pointer reset handler, boot process explained">
+<link rel="canonical" href="https://ecrionix.org/boot-rom-explained/">
+<meta property="og:title" content="How a Boot ROM Works — Interactive Boot Trace | EcrioniX">
+<meta property="og:description" content="Step through a CPU booting from ROM: reset vector, vector table, bootloader hand-off and secure boot chain of trust.">
+<meta property="og:url" content="https://ecrionix.org/boot-rom-explained/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How a Boot ROM Works — Interactive">
+<meta name="twitter:description" content="Step through a CPU booting from ROM, with the vector table and chain of trust.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"How a Boot ROM Works — Reset Vector, Vector Table and the Boot Chain","description":"An interactive explainer on how a boot ROM starts a CPU: reset vector, vector table, first-stage bootloader and secure-boot chain of trust, with a small worked example.","url":"https://ecrionix.org/boot-rom-explained/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"Boot ROM Explained","item":"https://ecrionix.org/boot-rom-explained/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is a boot ROM?","acceptedAnswer":{"@type":"Answer","text":"A boot ROM is a small, read-only, immutable memory (a mask ROM patterned into the silicon at the foundry) that holds the very first code a CPU runs after reset. Its job is to bring the chip to a known state, find the next stage of software such as a bootloader, copy it into RAM and jump to it."}},
+   {"@type":"Question","name":"What is the reset vector?","acceptedAnswer":{"@type":"Answer","text":"The reset vector is the fixed address the CPU fetches its first instruction from when it comes out of reset. It is hard-wired into the silicon. On many CPUs it is address 0; on ARM Cortex-M the CPU instead loads the initial stack pointer from 0x00000000 and the reset handler address from 0x00000004."}},
+   {"@type":"Question","name":"Why is the boot ROM read-only and immutable?","acceptedAnswer":{"@type":"Answer","text":"Because it is the root of trust. An immutable ROM cannot be corrupted by malware or a bad flash write, it is guaranteed to be present the instant power stabilises (before flash and DRAM controllers are initialised), and mask ROM is cheap and dense in silicon. Secure boot starts here: the ROM verifies the next stage is cryptographically signed before running it."}},
+   {"@type":"Question","name":"What is the boot chain or chain of trust?","acceptedAnswer":{"@type":"Answer","text":"Booting proceeds in stages: the immutable boot ROM (stage 0) verifies and loads a bootloader (stage 1) such as U-Boot, which loads the kernel or RTOS (stage 2), which starts applications. Each stage authenticates the next, so the immutable ROM anchors a chain of trust from power-on to the operating system."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--pink:#f472b6;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;overflow-x:hidden}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+
+.hero{position:relative;overflow:hidden;padding:4.5rem 1.5rem 3rem;text-align:center}
+.hero-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 25% 30%,rgba(74,222,128,.12),transparent 55%),radial-gradient(ellipse at 80% 50%,rgba(56,189,248,.1),transparent 55%)}
+.hero-eyebrow{position:relative;display:inline-block;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green);padding:.4rem 1.1rem;border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.06em;margin-bottom:1.3rem}
+.hero h1{position:relative;font-size:clamp(2rem,5vw,3.2rem);font-weight:900;line-height:1.13;color:#f8fafc;max-width:880px;margin:0 auto .9rem}
+.hero h1 .g{background:linear-gradient(135deg,#4ade80,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{position:relative;color:var(--sl);font-size:1.1rem;max-width:660px;margin:0 auto}
+
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem}
+.section{padding:2.8rem 0;border-bottom:1px solid var(--bdr)}
+.sec-label{font-size:.72rem;font-weight:700;color:var(--green);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.5rem}
+.sec-title{font-size:clamp(1.4rem,3.2vw,2rem);font-weight:800;color:#f1f5f9;margin-bottom:.7rem;line-height:1.2}
+.section p{color:var(--sl);font-size:1rem;margin-bottom:.9rem;line-height:1.8}
+.section p b{color:#e2e8f0}
+.section ul{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.85}.section ul b{color:#e2e8f0}
+
+/* interactive sim */
+.sim{background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;padding:1.3rem;margin:1.4rem 0}
+.sim-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:1rem}
+@media(max-width:760px){.sim-grid{grid-template-columns:1fr}}
+.romtbl{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:.76rem}
+.romtbl th{background:var(--bg3);color:var(--green);padding:.35rem .4rem;border:1px solid var(--bdr);font-size:.64rem}
+.romtbl td{border:1px solid var(--bdr);padding:.3rem .45rem;color:#cbd5e1}
+.romtbl tr.active td{background:rgba(74,222,128,.16);color:#4ade80}
+.regs{font-family:'JetBrains Mono',monospace;font-size:.82rem;background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:.8rem}
+.regs .r{display:flex;justify-content:space-between;padding:.2rem 0;border-bottom:1px solid rgba(148,163,184,.06)}
+.regs .r b{color:#38bdf8}
+.regs .v{color:#fbbf24}
+.uart{margin-top:.7rem;background:#000;border:1px solid var(--bdr);border-radius:8px;padding:.6rem .8rem;font-family:'JetBrains Mono',monospace;color:#4ade80;min-height:2.2rem;font-size:.95rem;letter-spacing:.05em}
+.uart .cur{opacity:.5}
+.simbtns{display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap}
+.sb{border:1px solid;border-radius:8px;padding:.5rem 1rem;font-family:'Outfit',sans-serif;font-weight:700;font-size:.84rem;cursor:pointer;background:transparent}
+.sb.step{color:var(--green);border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.1)}
+.sb.run{color:var(--blue);border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.1)}
+.sb.rst{color:var(--red);border-color:rgba(248,113,113,.3)}
+.explain{font-size:.82rem;color:#94a3b8;margin-top:.7rem;min-height:2.4rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:.55rem .7rem}
+.explain b{color:#e2e8f0}
+
+.vtbl{font-family:'JetBrains Mono',monospace;font-size:.8rem;background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;margin:1.2rem 0}
+.vtbl .row{display:flex;border-bottom:1px solid var(--bdr)}
+.vtbl .row:last-child{border-bottom:none}
+.vtbl .a{width:160px;padding:.5rem .7rem;color:#a78bfa;background:rgba(167,139,250,.06)}
+.vtbl .d{flex:1;padding:.5rem .7rem;color:#cbd5e1}
+.vtbl .d b{color:#4ade80}
+
+.chain{display:flex;align-items:stretch;gap:.5rem;flex-wrap:wrap;margin:1.4rem 0}
+.stage{flex:1;min-width:150px;background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:.9rem;text-align:center;position:relative}
+.stage .s{font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em}
+.stage h3{font-size:.92rem;margin:.25rem 0;color:#f1f5f9}
+.stage p{font-size:.74rem;color:var(--sl);margin:0;line-height:1.5}
+.stage.rom{border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.05)}
+
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .kw{color:#c084fc}.code .cm{color:#475569;font-style:italic}.code .fn{color:#38bdf8}
+
+.callout{border-radius:14px;padding:1.2rem 1.5rem;margin:1.4rem 0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.87rem;margin:0;color:var(--sl)}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/tools/">Tools</a><a href="/digital-electronics/">Digital</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><span>Boot ROM Explained</span></div>
+
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-eyebrow">🔌 INTERACTIVE EXPLAINER</div>
+  <h1>How a <span class="g">Boot ROM</span> Works</h1>
+  <p>The very first code a chip ever runs lives in immutable silicon. Step through a CPU booting from ROM — instruction by instruction — then see the real ARM vector table and the secure-boot chain of trust.</p>
+</div>
+
+<div class="container">
+
+<div class="section">
+  <div class="sec-label">The Core Idea</div>
+  <div class="sec-title">A CPU only knows one trick</div>
+  <p>When a chip powers on, everything is garbage — registers, RAM, no operating system. A CPU can do exactly one thing: <b>fetch the instruction at an address and execute it.</b> So designers hard-wire one question into the silicon: <i>"At reset, which address do I fetch my first instruction from?"</i></p>
+  <p>That fixed address is the <b>reset vector</b>, and the code there is the <b>Boot ROM</b> — a small, <b>read-only, immutable</b> memory (a <i>mask ROM</i> patterned into the chip at the foundry). It's the first code that ever runs, and because it can't be changed, it's the trusted starting point for the whole system.</p>
+</div>
+
+<div class="section">
+  <div class="sec-label">Practical Session</div>
+  <div class="sec-title">Watch a tiny CPU boot from ROM</div>
+  <p>Here's a toy 8-bit CPU. At reset, the silicon forces <code>PC = 0x00</code> — that's the reset vector. The Boot ROM at 0x00 sets up the stack, prints two characters over UART, then jumps to RAM (the "loaded app"). Press <b>Step</b> to advance one instruction, or <b>Run</b> to watch it boot.</p>
+
+  <div class="sim">
+    <div class="sim-grid">
+      <div>
+        <table class="romtbl" id="rom">
+          <thead><tr><th>Addr</th><th>Bytes</th><th>Instruction</th><th>Meaning</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="regs">
+          <div class="r"><b>PC</b> <span class="v" id="rPC">0x00</span></div>
+          <div class="r"><b>SP</b> <span class="v" id="rSP">0x??</span></div>
+          <div class="r"><b>R0</b> <span class="v" id="rR0">0x??</span></div>
+          <div class="r"><b>State</b> <span class="v" id="rST">RESET</span></div>
+        </div>
+        <div class="uart" id="uart"><span class="cur">UART ▮</span></div>
+        <div class="simbtns">
+          <button class="sb step" onclick="bStep()">▶ Step</button>
+          <button class="sb run" onclick="bRun()">⏩ Run</button>
+          <button class="sb rst" onclick="bReset()">⟲ Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="explain" id="explain">Press <b>Step</b> — the CPU comes out of reset with <code>PC = 0x00</code> and fetches its first instruction from the Boot ROM.</div>
+  </div>
+  <p style="font-size:.85rem;color:#64748b">In a real chip, the last step wouldn't just print “HI” — it would <b>copy a bootloader from flash/SD into RAM and jump to it.</b> Same idea, bigger payload.</p>
+</div>
+
+<div class="section">
+  <div class="sec-label">The Real World</div>
+  <div class="sec-title">ARM Cortex-M: the reset vector is a table</div>
+  <p>A Cortex-M makes this even cleaner. At address <code>0x0000_0000</code> it doesn't place an instruction — it places a <b>vector table</b>. The hardware automatically loads the first two entries on reset, so the stack and entry point are set before a single line of your code runs:</p>
+  <div class="vtbl">
+    <div class="row"><div class="a">0x0000_0000</div><div class="d">Initial <b>Stack Pointer</b> &nbsp;→ CPU loads into SP automatically</div></div>
+    <div class="row"><div class="a">0x0000_0004</div><div class="d">Reset Handler address &nbsp;→ CPU loads into <b>PC</b> automatically</div></div>
+    <div class="row"><div class="a">0x0000_0008</div><div class="d">NMI handler</div></div>
+    <div class="row"><div class="a">0x0000_000C</div><div class="d">HardFault handler</div></div>
+    <div class="row"><div class="a">…</div><div class="d">other interrupt vectors</div></div>
+  </div>
+  <p>So on a Cortex-M the boot sequence's first two steps are literally done by the silicon: <code>SP ← [0x0]</code>, then <code>PC ← [0x4]</code> and off it runs.</p>
+
+  <p>A real SoC boot-ROM reset handler then does roughly this:</p>
+  <pre class="code"><span class="kw">void</span> <span class="fn">Reset_Handler</span>(<span class="kw">void</span>) {
+    <span class="fn">init_clocks</span>();                 <span class="cm">// PLL, set core frequency</span>
+    <span class="fn">copy_data_section</span>();           <span class="cm">// init .data from flash → RAM</span>
+    <span class="fn">zero_bss</span>();                    <span class="cm">// clear .bss</span>
+    sec = <span class="fn">read_boot_pins</span>();        <span class="cm">// boot source? SD / eMMC / UART</span>
+    <span class="fn">load_next_stage</span>(sec, <span class="kw">0x20000000</span>); <span class="cm">// DMA bootloader into RAM</span>
+    <span class="fn">verify_signature</span>(<span class="kw">0x20000000</span>);  <span class="cm">// secure boot: is it authentic?</span>
+    <span class="fn">jump</span>(<span class="kw">0x20000000</span>);              <span class="cm">// hand control to the bootloader</span>
+}</pre>
+</div>
+
+<div class="section">
+  <div class="sec-label">The Big Picture</div>
+  <div class="sec-title">The boot chain &amp; chain of trust</div>
+  <p>Each stage is bigger and more capable than the last — but <b>only the Boot ROM is immutable</b>, so the chain of trust is anchored there:</p>
+  <div class="chain">
+    <div class="stage rom"><div class="s">Stage 0</div><h3>Boot ROM</h3><p>Silicon, immutable, trusted root. Verifies stage 1.</p></div>
+    <div class="stage"><div class="s">Stage 1</div><h3>Bootloader</h3><p>Flash → RAM (e.g. U-Boot). Verifies the kernel.</p></div>
+    <div class="stage"><div class="s">Stage 2</div><h3>Kernel / RTOS</h3><p>Linux or an RTOS, running in RAM.</p></div>
+    <div class="stage"><div class="s">Stage 3</div><h3>Applications</h3><p>Your software.</p></div>
+  </div>
+  <div class="callout" style="background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.22)">
+    <p style="margin:0;color:var(--sl)"><b style="color:#38bdf8">Why ROM, not flash or RAM, for stage 0?</b> It's <b>immutable</b> (can't be corrupted → safe root of trust), it's <b>guaranteed present at reset</b> (flash and DRAM controllers aren't initialised yet), and mask ROM is <b>cheap and dense</b> in silicon — one transistor presence/absence per bit. Secure boot begins here: the ROM refuses to run a bootloader that isn't cryptographically signed.</p>
+  </div>
+</div>
+
+<div class="section" style="border-bottom:none">
+  <div class="sec-label">Reference</div>
+  <div class="sec-title">FAQ</div>
+  <div class="faq-item"><h3>What is a boot ROM?</h3><p>A small, read-only, immutable mask ROM holding the first code a CPU runs after reset. It sets up the chip, loads the next-stage bootloader into RAM, and jumps to it.</p></div>
+  <div class="faq-item"><h3>What is the reset vector?</h3><p>The fixed, silicon-wired address the CPU fetches its first instruction from at power-on. On many CPUs it's address 0; on Cortex-M the CPU loads SP from 0x0 and PC from 0x4.</p></div>
+  <div class="faq-item"><h3>Why is the boot ROM immutable?</h3><p>It's the root of trust — it can't be corrupted, it's always present before flash/DRAM are ready, and it anchors secure boot by verifying the next stage's signature.</p></div>
+  <div class="faq-item"><h3>What is the chain of trust?</h3><p>Boot ROM → bootloader → kernel → apps, where each stage authenticates the next, all anchored to the immutable ROM.</p></div>
+  <p style="margin-top:1.3rem">Related: <a href="/tools/cache-sim/">Cache Simulator</a> · <a href="/tools/fsm-designer/">FSM Designer</a> · <a href="/digital-electronics/">Digital Electronics</a> · <a href="/transistor-evolution/">Transistor Evolution</a></p>
+</div>
+
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a> · <a href="/vlsi/">VLSI</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+'use strict';
+// Toy boot ROM program
+const PROG=[
+  {addr:'0x00',bytes:'A1 1F',ins:'LDSP 0x1F',mean:'set stack pointer',
+   run:s=>{s.sp='0x1F';}, why:'<b>LDSP 0x1F</b> — the stack pointer is set to the top of RAM. The machine now has a usable stack.'},
+  {addr:'0x02',bytes:'B0 48',ins:"MOV R0,'H'",mean:'load byte 0x48',
+   run:s=>{s.r0="0x48";}, why:"<b>MOV R0,'H'</b> — load the ASCII code for 'H' (0x48) into R0."},
+  {addr:'0x04',bytes:'C0 F0',ins:'ST R0,[0xF0]',mean:'write R0 to UART',
+   run:s=>{s.uart+='H';}, why:'<b>ST R0,[0xF0]</b> — 0xF0 is the UART transmit register. Writing R0 there prints <b>H</b>.'},
+  {addr:'0x06',bytes:'B0 49',ins:"MOV R0,'I'",mean:'load byte 0x49',
+   run:s=>{s.r0="0x49";}, why:"<b>MOV R0,'I'</b> — load 'I' (0x49) into R0."},
+  {addr:'0x08',bytes:'C0 F0',ins:'ST R0,[0xF0]',mean:'write R0 to UART',
+   run:s=>{s.uart+='I';}, why:'<b>ST R0,[0xF0]</b> — prints <b>I</b>. The ROM has done its minimal I/O.'},
+  {addr:'0x0A',bytes:'D0 10',ins:'JMP 0x10',mean:'jump to RAM (app)',
+   run:s=>{s.pcHex='0x10'; s.state='APP';}, why:'<b>JMP 0x10</b> — hand control to code in RAM. In a real chip this is the bootloader you just copied from flash. The boot ROM is done.'},
+];
+let st={};
+function bReset(){
+  st={ip:0, sp:'0x??', r0:'0x??', uart:'', state:'RESET', pcHex:'0x00'};
+  renderRom(); renderRegs();
+  $('explain').innerHTML='Press <b>Step</b> — the CPU comes out of reset with <code>PC = 0x00</code> and fetches its first instruction from the Boot ROM.';
+  stopRun();
+}
+function $(id){return document.getElementById(id);}
+function renderRom(){
+  const tb=$('rom').querySelector('tbody'); tb.innerHTML='';
+  PROG.forEach((p,i)=>{
+    const tr=document.createElement('tr'); if(i===st.ip && st.state!=='APP'&&st.state!=='DONE') tr.className='active';
+    tr.innerHTML=`<td>${p.addr}</td><td>${p.bytes}</td><td>${p.ins}</td><td>${p.mean}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function renderRegs(){
+  $('rPC').textContent = st.pcHex;
+  $('rSP').textContent = st.sp;
+  $('rR0').textContent = st.r0;
+  $('rST').textContent = st.state;
+  $('uart').innerHTML = (st.uart||'') + '<span class="cur">▮</span>';
+}
+function bStep(){
+  if(st.state==='APP'||st.state==='DONE'){ st.state='DONE'; $('explain').innerHTML='✅ Boot complete — control has been handed to the application in RAM. Press <b>Reset</b> to watch it boot again.'; renderRegs(); return; }
+  const p=PROG[st.ip];
+  st.state='FETCH→EXEC';
+  p.run(st);
+  $('explain').innerHTML = `<b>cycle ${st.ip+1}:</b> fetch <code>[${p.addr}]=${p.bytes}</code> → ${p.why}`;
+  st.ip++;
+  if(st.state!=='APP'){ st.pcHex='0x'+(st.ip*2).toString(16).toUpperCase().padStart(2,'0'); }
+  renderRom(); renderRegs();
+}
+let runT=null;
+function bRun(){ if(runT){stopRun();return;} bReset(); runT=setInterval(()=>{ if(st.state==='DONE'){stopRun();return;} bStep(); }, 900); }
+function stopRun(){ if(runT){clearInterval(runT);runT=null;} }
+addEventListener('scroll',()=>{var b=$('btt');if(b)b.classList.toggle('show',scrollY>400);});
+bReset();
+</script>
+</body>
+</html>
