@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AXI4-Lite to APB Bridge — Architecture, FSM, Timing &amp; Verilog RTL | EcrioniX</title>
+<meta name="description" content="Complete AXI4-Lite to APB3 bridge architecture: block diagram, bridge FSM, write/read timing waveforms, full synthesizable Verilog RTL, and port descriptions. Convert AXI transactions to APB peripheral accesses.">
+<meta name="keywords" content="axi to apb bridge, axi4-lite to apb bridge, apb bridge verilog, axi apb bridge rtl, axi lite apb bridge fsm, apb3 bridge timing, axi to apb converter, soc peripheral bridge, amba bridge">
+<link rel="canonical" href="https://ecrionix.org/tools/axi-apb-bridge/">
+<meta property="og:title" content="AXI4-Lite to APB Bridge — Architecture &amp; Verilog RTL | EcrioniX">
+<meta property="og:description" content="Block diagram, FSM, timing waveforms and synthesizable Verilog for an AXI4-Lite to APB3 bridge.">
+<meta property="og:url" content="https://ecrionix.org/tools/axi-apb-bridge/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AXI4-Lite to APB Bridge — Architecture &amp; Verilog RTL">
+<meta name="twitter:description" content="Block diagram, FSM, timing waveforms and synthesizable Verilog for an AXI4-Lite to APB3 bridge.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"AXI4-Lite to APB Bridge — Architecture, FSM, Timing and Verilog RTL","description":"Complete architecture of an AXI4-Lite to APB3 bridge with block diagram, FSM, timing and synthesizable Verilog.","url":"https://ecrionix.org/tools/axi-apb-bridge/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"Tools","item":"https://ecrionix.org/tools/"},
+   {"@type":"ListItem","position":3,"name":"AXI4-Lite to APB Bridge","item":"https://ecrionix.org/tools/axi-apb-bridge/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"Why do you need an AXI to APB bridge?","acceptedAnswer":{"@type":"Answer","text":"High-performance SoC fabrics use AXI for the CPU and high-bandwidth masters, but most simple peripherals (UART, GPIO, timers, register blocks) use the lightweight APB bus. An AXI-to-APB bridge converts AXI4-Lite read/write transactions into APB3 accesses so these low-speed peripherals can sit on an AXI-based system without each needing a full AXI interface."}},
+   {"@type":"Question","name":"What is the difference between AXI4-Lite and APB?","acceptedAnswer":{"@type":"Answer","text":"AXI4-Lite has five independent channels (write address, write data, write response, read address, read data) with VALID/READY handshakes and supports outstanding transactions. APB is a single, non-pipelined bus with a two-phase (setup then access) transfer, PSEL/PENABLE/PREADY signalling and no burst or outstanding support. APB is much simpler and cheaper for low-bandwidth control registers."}},
+   {"@type":"Question","name":"How does the bridge FSM work?","acceptedAnswer":{"@type":"Answer","text":"The bridge idles until it sees an AXI write (AWVALID and WVALID) or read (ARVALID). It latches the address and data, drives the APB setup phase (PSEL=1, PENABLE=0), then the access phase (PENABLE=1), waits for PREADY, and finally returns an AXI write response (BVALID) or read data (RVALID). It handles one transaction at a time."}},
+   {"@type":"Question","name":"Is the bridge RTL synthesizable?","acceptedAnswer":{"@type":"Answer","text":"Yes. The design is a single synchronous always block with a 4-state FSM, registered outputs and standard handshake logic. It uses only synthesizable constructs and works with Vivado, Quartus, Yosys and Synopsys DC. BRESP and RRESP propagate the APB PSLVERR as a SLVERR response."}}
+ ]}
+]}
+</script>
+<style>
+:root{
+ --bg:#020617;--bg2:#0a0f1e;--bg3:#0e1628;--bdr:rgba(148,163,184,.12);
+ --teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;
+ --amber:#fbbf24;--orange:#fb923c;--red:#f87171;--pink:#f472b6;
+ --sl:#94a3b8;--text:#e2e8f0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.65}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.84rem}.nav-links a:hover{color:#fff}
+
+.bc{padding:.55rem 1.5rem;font-size:.76rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+
+.hero{padding:3.2rem 1.5rem 2.2rem;text-align:center;position:relative;overflow:hidden;border-bottom:1px solid var(--bdr)}
+.hero-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 25% 15%,rgba(56,189,248,.12),transparent 55%),radial-gradient(ellipse at 80% 60%,rgba(45,212,191,.08),transparent 55%)}
+.hero-eyebrow{position:relative;display:inline-block;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.3);color:var(--blue);padding:.35rem 1rem;border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.06em;margin-bottom:1rem}
+.hero h1{position:relative;font-size:clamp(1.8rem,4.5vw,2.9rem);font-weight:800;line-height:1.12;color:#f8fafc;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,var(--blue),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{position:relative;color:var(--sl);font-size:1.05rem;max-width:720px;margin:0 auto 1.4rem}
+.hero-cta{position:relative;display:inline-flex;gap:.7rem;flex-wrap:wrap;justify-content:center}
+.hbtn{display:inline-flex;align-items:center;gap:.45rem;padding:.6rem 1.3rem;border-radius:10px;font-size:.9rem;font-weight:700}
+.hbtn.p{background:linear-gradient(135deg,rgba(56,189,248,.16),rgba(45,212,191,.12));border:1px solid rgba(56,189,248,.4);color:var(--blue)}
+.hbtn.s{background:var(--bg3);border:1px solid var(--bdr);color:var(--sl)}
+
+.section{max-width:1000px;margin:0 auto;padding:2.6rem 1.5rem;border-bottom:1px solid var(--bdr)}
+.sec-label{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);margin-bottom:.4rem}
+.sec-title{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;color:#f1f5f9;margin-bottom:.6rem}
+.section p{color:var(--sl);margin-bottom:.8rem}
+.section p b{color:#e2e8f0}
+
+.diagram{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;overflow-x:auto;margin:1.4rem 0}
+.diagram svg{display:block;margin:0 auto;min-width:560px}
+.dia-cap{text-align:center;font-size:.78rem;color:#64748b;margin-top:.7rem}
+
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:1rem 0;min-width:520px}
+.tbl-scroll{overflow-x:auto;border:1px solid var(--bdr);border-radius:10px}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.55rem .7rem;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--bdr)}
+td{border-bottom:1px solid rgba(148,163,184,.07);padding:.5rem .7rem;vertical-align:top}
+td.mono{font-family:'JetBrains Mono',monospace;color:#cbd5e1;white-space:nowrap}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+@media(max-width:760px){.two{grid-template-columns:1fr}.diagram svg{min-width:480px}}
+
+.card{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem}
+.card h3{font-size:.95rem;color:#f1f5f9;margin-bottom:.4rem}
+.card p{font-size:.85rem;margin:0}
+
+.code-wrap{position:relative;margin:1.2rem 0}
+.code-wrap pre{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem 1rem;overflow:auto;max-height:560px;font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.55;color:#cbd5e1;white-space:pre;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.code-wrap pre .kw{color:#c084fc}.code-wrap pre .num{color:#fbbf24}.code-wrap pre .cm{color:#475569;font-style:italic}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:var(--bg3);border:1px solid var(--bdr);color:var(--sl);border-radius:7px;padding:.35rem .8rem;font-size:.74rem;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{color:#fff;border-color:var(--teal)}
+
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.86rem;margin:0;color:var(--sl)}
+
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}#btt:hover{background:#475569}
+.toast{position:fixed;bottom:1.4rem;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--teal);color:var(--teal);padding:.55rem 1.1rem;border-radius:8px;font-size:.82rem;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s;z-index:300}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/tools/">Tools</a>
+    <a href="/digital-electronics/">Digital</a>
+    <a href="/vlsi/">VLSI</a>
+  </div>
+</nav>
+
+<div class="bc">
+  <a href="/">Home</a><span>›</span>
+  <a href="/tools/">Tools</a><span>›</span>
+  <span>AXI4-Lite to APB Bridge</span>
+</div>
+
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-eyebrow">🔌 AMBA BRIDGE · ARCHITECTURE</div>
+  <h1>AXI4-Lite to <span class="g">APB Bridge</span></h1>
+  <p>How a high-speed AXI4-Lite master talks to simple APB peripherals — the full block diagram, bridge FSM, write &amp; read timing, and synthesizable Verilog RTL.</p>
+  <div class="hero-cta">
+    <a class="hbtn p" href="/tools/regmap-gen/">⚙ Generate a register block with this bridge →</a>
+    <a class="hbtn s" href="#rtl">View RTL ↓</a>
+  </div>
+</div>
+
+<!-- ░░ BLOCK DIAGRAM ░░ -->
+<div class="section">
+  <div class="sec-label">System View</div>
+  <div class="sec-title">Where the bridge sits</div>
+  <p>The CPU and high-bandwidth masters drive an <b>AXI4-Lite</b> bus. Low-speed control peripherals — UART, GPIO, timers, register blocks — live on the much simpler <b>APB</b> bus. The bridge is the translator between the two domains.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 920 360" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <defs>
+        <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#64748b"/></marker>
+        <marker id="ahb" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#38bdf8"/></marker>
+        <marker id="aht" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
+      </defs>
+
+      <!-- AXI Master -->
+      <rect x="20" y="120" width="150" height="120" rx="10" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1.6"/>
+      <text x="95" y="170" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700">AXI4-Lite</text>
+      <text x="95" y="190" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700">Master</text>
+      <text x="95" y="212" text-anchor="middle" fill="#64748b" font-size="10">CPU / Interconnect</text>
+
+      <!-- Bridge -->
+      <rect x="350" y="70" width="220" height="220" rx="12" fill="rgba(56,189,248,.08)" stroke="#38bdf8" stroke-width="2"/>
+      <text x="460" y="100" text-anchor="middle" fill="#38bdf8" font-size="15" font-weight="700">axil_to_apb</text>
+      <text x="460" y="118" text-anchor="middle" fill="#64748b" font-size="10">Bridge FSM</text>
+      <rect x="378" y="135" width="164" height="40" rx="7" fill="rgba(2,6,23,.6)" stroke="rgba(56,189,248,.3)"/>
+      <text x="460" y="160" text-anchor="middle" fill="#cbd5e1" font-size="11">latch addr / data</text>
+      <rect x="378" y="185" width="164" height="40" rx="7" fill="rgba(2,6,23,.6)" stroke="rgba(56,189,248,.3)"/>
+      <text x="460" y="210" text-anchor="middle" fill="#cbd5e1" font-size="11">setup → access</text>
+      <rect x="378" y="235" width="164" height="40" rx="7" fill="rgba(2,6,23,.6)" stroke="rgba(56,189,248,.3)"/>
+      <text x="460" y="260" text-anchor="middle" fill="#cbd5e1" font-size="11">return B / R resp</text>
+
+      <!-- APB slaves -->
+      <rect x="750" y="55" width="150" height="58" rx="9" fill="rgba(45,212,191,.1)" stroke="#2dd4bf" stroke-width="1.5"/>
+      <text x="825" y="80" text-anchor="middle" fill="#2dd4bf" font-size="12" font-weight="700">APB Slave</text>
+      <text x="825" y="98" text-anchor="middle" fill="#64748b" font-size="10">UART</text>
+      <rect x="750" y="151" width="150" height="58" rx="9" fill="rgba(45,212,191,.1)" stroke="#2dd4bf" stroke-width="1.5"/>
+      <text x="825" y="176" text-anchor="middle" fill="#2dd4bf" font-size="12" font-weight="700">APB Slave</text>
+      <text x="825" y="194" text-anchor="middle" fill="#64748b" font-size="10">GPIO / Timer</text>
+      <rect x="750" y="247" width="150" height="58" rx="9" fill="rgba(45,212,191,.1)" stroke="#2dd4bf" stroke-width="1.5"/>
+      <text x="825" y="272" text-anchor="middle" fill="#2dd4bf" font-size="12" font-weight="700">APB Slave</text>
+      <text x="825" y="290" text-anchor="middle" fill="#64748b" font-size="10">Register Block</text>
+
+      <!-- AXI channels (master <-> bridge) -->
+      <line x1="170" y1="150" x2="348" y2="150" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#ahb)"/>
+      <text x="258" y="143" text-anchor="middle" fill="#38bdf8" font-size="9">AW · W</text>
+      <line x1="170" y1="180" x2="348" y2="180" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#ahb)"/>
+      <text x="258" y="173" text-anchor="middle" fill="#38bdf8" font-size="9">AR</text>
+      <line x1="348" y1="210" x2="172" y2="210" stroke="#64748b" stroke-width="1.4" marker-end="url(#ah)"/>
+      <text x="258" y="225" text-anchor="middle" fill="#94a3b8" font-size="9">B · R</text>
+
+      <!-- APB bus (bridge -> slaves) -->
+      <line x1="570" y1="150" x2="748" y2="84" stroke="#2dd4bf" stroke-width="1.4" marker-end="url(#aht)"/>
+      <line x1="570" y1="180" x2="748" y2="180" stroke="#2dd4bf" stroke-width="1.4" marker-end="url(#aht)"/>
+      <line x1="570" y1="210" x2="748" y2="276" stroke="#2dd4bf" stroke-width="1.4" marker-end="url(#aht)"/>
+      <text x="660" y="150" text-anchor="middle" fill="#2dd4bf" font-size="9">APB</text>
+
+      <text x="95" y="285" text-anchor="middle" fill="#475569" font-size="9.5">high speed · pipelined</text>
+      <text x="825" y="330" text-anchor="middle" fill="#475569" font-size="9.5">low speed · simple · cheap</text>
+    </svg>
+    <div class="dia-cap">Figure 1 — AXI4-Lite master → axil_to_apb bridge → APB peripherals</div>
+  </div>
+</div>
+
+<!-- ░░ WHY ░░ -->
+<div class="section">
+  <div class="sec-label">Motivation</div>
+  <div class="sec-title">Why a bridge at all?</div>
+  <div class="two">
+    <div class="card">
+      <h3 style="color:#a78bfa">AXI4-Lite — the system bus</h3>
+      <p>Five independent channels, VALID/READY handshakes, outstanding transactions. Great for CPUs and DMA, but heavy: every peripheral would need address-decode, response logic and 5 channels of plumbing.</p>
+    </div>
+    <div class="card">
+      <h3 style="color:#2dd4bf">APB — the peripheral bus</h3>
+      <p>One address, one data path, a two-phase (setup → access) transfer, no bursts, no outstanding. Tiny gate count. Perfect for registers, GPIO, UART — anything low-bandwidth.</p>
+    </div>
+  </div>
+  <p style="margin-top:1.2rem">Putting one bridge between the two means dozens of simple peripherals share a single AXI port. You pay the AXI cost <b>once</b>, at the bridge, instead of in every peripheral.</p>
+</div>
+
+<!-- ░░ FSM ░░ -->
+<div class="section">
+  <div class="sec-label">Control</div>
+  <div class="sec-title">Bridge state machine</div>
+  <p>The bridge handles one transaction at a time. It waits in <code>IDLE</code>, drives the APB setup and access phases in <code>ACCESS</code>, then issues the AXI response.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <defs><marker id="fa" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+
+      <!-- states -->
+      <circle cx="110" cy="150" r="52" fill="rgba(56,189,248,.1)" stroke="#38bdf8" stroke-width="2"/>
+      <text x="110" y="155" text-anchor="middle" fill="#38bdf8" font-size="15" font-weight="700">IDLE</text>
+
+      <circle cx="370" cy="150" r="52" fill="rgba(251,191,36,.1)" stroke="#fbbf24" stroke-width="2"/>
+      <text x="370" y="148" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700">ACCESS</text>
+      <text x="370" y="165" text-anchor="middle" fill="#64748b" font-size="9">PSEL,PENABLE</text>
+
+      <circle cx="660" cy="80" r="48" fill="rgba(74,222,128,.1)" stroke="#4ade80" stroke-width="2"/>
+      <text x="660" y="78" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">WRRESP</text>
+      <text x="660" y="94" text-anchor="middle" fill="#64748b" font-size="9">BVALID</text>
+
+      <circle cx="660" cy="225" r="48" fill="rgba(244,114,182,.1)" stroke="#f472b6" stroke-width="2"/>
+      <text x="660" y="223" text-anchor="middle" fill="#f472b6" font-size="13" font-weight="700">RDRESP</text>
+      <text x="660" y="239" text-anchor="middle" fill="#64748b" font-size="9">RVALID</text>
+
+      <!-- transitions -->
+      <path d="M162,150 L316,150" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="239" y="140" text-anchor="middle" fill="#cbd5e1" font-size="10">AWVALID&amp;WVALID</text>
+      <text x="239" y="166" text-anchor="middle" fill="#94a3b8" font-size="10">or ARVALID</text>
+
+      <path d="M410,112 Q520,60 614,82" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="520" y="78" text-anchor="middle" fill="#4ade80" font-size="10">PREADY &amp; write</text>
+
+      <path d="M410,188 Q520,240 614,223" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="520" y="232" text-anchor="middle" fill="#f472b6" font-size="10">PREADY &amp; read</text>
+
+      <path d="M660,128 Q700,150 360,202" fill="none" stroke="#94a3b8" stroke-width="1.3" marker-end="url(#fa)" opacity="0"/>
+      <path d="M612,92 Q360,30 130,98" fill="none" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#fa)"/>
+      <text x="370" y="40" text-anchor="middle" fill="#94a3b8" font-size="10">BREADY → IDLE</text>
+
+      <path d="M612,235 Q360,290 130,202" fill="none" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#fa)"/>
+      <text x="370" y="285" text-anchor="middle" fill="#94a3b8" font-size="10">RREADY → IDLE</text>
+
+      <!-- self loop on ACCESS for wait -->
+      <path d="M345,103 Q370,70 395,103" fill="none" stroke="#475569" stroke-width="1.3" marker-end="url(#fa)"/>
+      <text x="370" y="64" text-anchor="middle" fill="#475569" font-size="9">!PREADY</text>
+    </svg>
+    <div class="dia-cap">Figure 2 — Bridge FSM: IDLE → ACCESS → WRRESP / RDRESP → IDLE</div>
+  </div>
+</div>
+
+<!-- ░░ TIMING ░░ -->
+<div class="section">
+  <div class="sec-label">Timing</div>
+  <div class="sec-title">Write transaction waveform</div>
+  <p>An AXI write is accepted, then translated into an APB <b>setup</b> cycle (<code>PSEL=1, PENABLE=0</code>) followed by the <b>access</b> cycle (<code>PENABLE=1</code>). When <code>PREADY</code> is high the bridge raises <code>BVALID</code>.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" font-family="JetBrains Mono,monospace">
+      <!-- clock -->
+      <text x="8" y="34" fill="#64748b" font-size="11">ACLK</text>
+      <g stroke="#38bdf8" stroke-width="1.5" fill="none">
+        <path d="M120,40 V20 H160 V40 H200 V20 H240 V40 H280 V20 H320 V40 H360 V20 H400 V40 H440 V20 H480 V40 H520 V20 H560 V40 H600 V20 H640 V40 H680 V20 H720 V40 H760 V20 H800 V40"/>
+      </g>
+      <!-- column guides -->
+      <g stroke="rgba(148,163,184,.08)" stroke-width="1">
+        <line x1="160" y1="15" x2="160" y2="290"/><line x1="240" y1="15" x2="240" y2="290"/>
+        <line x1="320" y1="15" x2="320" y2="290"/><line x1="400" y1="15" x2="400" y2="290"/>
+        <line x1="480" y1="15" x2="480" y2="290"/><line x1="560" y1="15" x2="560" y2="290"/>
+        <line x1="640" y1="15" x2="640" y2="290"/><line x1="720" y1="15" x2="720" y2="290"/>
+      </g>
+
+      <!-- helper rows: label, then signal -->
+      <!-- AWVALID/WVALID high cols 1-2 -->
+      <text x="8" y="74" fill="#a78bfa" font-size="11">AWVALID</text>
+      <path d="M120,80 V60 H240 V80 H800" fill="none" stroke="#a78bfa" stroke-width="1.6"/>
+
+      <text x="8" y="104" fill="#a78bfa" font-size="11">AWREADY</text>
+      <path d="M120,110 H200 V90 H240 V110 H800" fill="none" stroke="#a78bfa" stroke-width="1.6"/>
+
+      <text x="8" y="134" fill="#2dd4bf" font-size="11">PSEL</text>
+      <path d="M120,140 H240 V120 H480 V140 H800" fill="none" stroke="#2dd4bf" stroke-width="1.6"/>
+
+      <text x="8" y="164" fill="#2dd4bf" font-size="11">PENABLE</text>
+      <path d="M120,170 H320 V150 H480 V170 H800" fill="none" stroke="#2dd4bf" stroke-width="1.6"/>
+
+      <text x="8" y="194" fill="#fbbf24" font-size="11">PWRITE</text>
+      <path d="M120,200 H240 V180 H480 V200 H800" fill="none" stroke="#fbbf24" stroke-width="1.6"/>
+
+      <text x="8" y="224" fill="#4ade80" font-size="11">PREADY</text>
+      <path d="M120,230 H400 V210 H480 V230 H800" fill="none" stroke="#4ade80" stroke-width="1.6"/>
+
+      <text x="8" y="254" fill="#f87171" font-size="11">BVALID</text>
+      <path d="M120,260 H480 V240 H600 V260 H800" fill="none" stroke="#f87171" stroke-width="1.6"/>
+
+      <!-- phase labels -->
+      <text x="280" y="284" text-anchor="middle" fill="#2dd4bf" font-size="9.5">SETUP</text>
+      <text x="440" y="284" text-anchor="middle" fill="#fbbf24" font-size="9.5">ACCESS</text>
+      <text x="540" y="284" text-anchor="middle" fill="#f87171" font-size="9.5">B RESP</text>
+    </svg>
+    <div class="dia-cap">Figure 3 — APB write: SETUP (PSEL) → ACCESS (PENABLE) → PREADY → BVALID</div>
+  </div>
+</div>
+
+<!-- ░░ SIGNALS ░░ -->
+<div class="section">
+  <div class="sec-label">Interface</div>
+  <div class="sec-title">Port descriptions</div>
+  <div class="two">
+    <div>
+      <h3 style="color:#a78bfa;font-size:1rem;margin-bottom:.5rem">AXI4-Lite slave side</h3>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th>Channel</th><th>Signals</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">Write addr</td><td class="mono">AWADDR, AWVALID, AWREADY</td></tr>
+          <tr><td class="mono">Write data</td><td class="mono">WDATA, WSTRB, WVALID, WREADY</td></tr>
+          <tr><td class="mono">Write resp</td><td class="mono">BRESP, BVALID, BREADY</td></tr>
+          <tr><td class="mono">Read addr</td><td class="mono">ARADDR, ARVALID, ARREADY</td></tr>
+          <tr><td class="mono">Read data</td><td class="mono">RDATA, RRESP, RVALID, RREADY</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3 style="color:#2dd4bf;font-size:1rem;margin-bottom:.5rem">APB master side</h3>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th>Signal</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">PADDR</td><td>Address to peripheral</td></tr>
+          <tr><td class="mono">PSEL</td><td>Slave select (setup+access)</td></tr>
+          <tr><td class="mono">PENABLE</td><td>Access phase strobe</td></tr>
+          <tr><td class="mono">PWRITE</td><td>1=write, 0=read</td></tr>
+          <tr><td class="mono">PWDATA</td><td>Write data</td></tr>
+          <tr><td class="mono">PRDATA</td><td>Read data back</td></tr>
+          <tr><td class="mono">PREADY</td><td>Slave ready / done</td></tr>
+          <tr><td class="mono">PSLVERR</td><td>Slave error → BRESP/RRESP</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ RTL ░░ -->
+<div class="section" id="rtl">
+  <div class="sec-label">Implementation</div>
+  <div class="sec-title">Synthesizable Verilog RTL</div>
+  <p>A single synchronous always block with the 4-state FSM. Registered outputs, one outstanding transaction, and <code>PSLVERR</code> mapped to <code>BRESP</code>/<code>RRESP</code>. This is the exact bridge emitted by the <a href="/tools/regmap-gen/">register map generator</a> in AXI4-Lite mode.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">📋 Copy</button>
+    <pre id="rtlcode">//==============================================================
+// axil_to_apb — AXI4-Lite slave to APB3 master bridge
+// Single outstanding transaction. PREADY-driven access phase.
+//==============================================================
+module axil_to_apb #(
+  parameter ADDR_WIDTH = 8,
+  parameter DATA_WIDTH = 32
+)(
+  input                          ACLK,
+  input                          ARESETn,
+  // ---- AXI4-Lite slave ----
+  input      [ADDR_WIDTH-1:0]    S_AXI_AWADDR,
+  input                          S_AXI_AWVALID,
+  output reg                     S_AXI_AWREADY,
+  input      [DATA_WIDTH-1:0]    S_AXI_WDATA,
+  input      [(DATA_WIDTH/8)-1:0] S_AXI_WSTRB,
+  input                          S_AXI_WVALID,
+  output reg                     S_AXI_WREADY,
+  output reg [1:0]               S_AXI_BRESP,
+  output reg                     S_AXI_BVALID,
+  input                          S_AXI_BREADY,
+  input      [ADDR_WIDTH-1:0]    S_AXI_ARADDR,
+  input                          S_AXI_ARVALID,
+  output reg                     S_AXI_ARREADY,
+  output reg [DATA_WIDTH-1:0]    S_AXI_RDATA,
+  output reg [1:0]               S_AXI_RRESP,
+  output reg                     S_AXI_RVALID,
+  input                          S_AXI_RREADY,
+  // ---- APB3 master ----
+  output reg [ADDR_WIDTH-1:0]    PADDR,
+  output reg                     PSEL,
+  output reg                     PENABLE,
+  output reg                     PWRITE,
+  output reg [DATA_WIDTH-1:0]    PWDATA,
+  input      [DATA_WIDTH-1:0]    PRDATA,
+  input                          PREADY,
+  input                          PSLVERR
+);
+  localparam IDLE=3'd0, ACCESS=3'd1, WRRESP=3'd2, RDRESP=3'd3;
+  reg [2:0] state;
+  reg       is_write;
+
+  always @(posedge ACLK or negedge ARESETn) begin
+    if (!ARESETn) begin
+      state <= IDLE; is_write <= 1'b0;
+      PSEL <= 1'b0; PENABLE <= 1'b0; PWRITE <= 1'b0;
+      PADDR <= {ADDR_WIDTH{1'b0}}; PWDATA <= {DATA_WIDTH{1'b0}};
+      S_AXI_AWREADY <= 1'b0; S_AXI_WREADY <= 1'b0;
+      S_AXI_BVALID  <= 1'b0; S_AXI_BRESP  <= 2'b00;
+      S_AXI_ARREADY <= 1'b0; S_AXI_RVALID <= 1'b0;
+      S_AXI_RDATA   <= {DATA_WIDTH{1'b0}}; S_AXI_RRESP <= 2'b00;
+    end else begin
+      S_AXI_AWREADY <= 1'b0; S_AXI_WREADY <= 1'b0; S_AXI_ARREADY <= 1'b0;
+      case (state)
+        IDLE: begin
+          PENABLE <= 1'b0;
+          if (S_AXI_AWVALID && S_AXI_WVALID) begin
+            is_write <= 1'b1;
+            PADDR  <= S_AXI_AWADDR; PWDATA <= S_AXI_WDATA;
+            PWRITE <= 1'b1; PSEL <= 1'b1;
+            S_AXI_AWREADY <= 1'b1; S_AXI_WREADY <= 1'b1;
+            state <= ACCESS;
+          end else if (S_AXI_ARVALID) begin
+            is_write <= 1'b0;
+            PADDR  <= S_AXI_ARADDR; PWRITE <= 1'b0; PSEL <= 1'b1;
+            S_AXI_ARREADY <= 1'b1;
+            state <= ACCESS;
+          end
+        end
+        ACCESS: begin
+          PENABLE <= 1'b1;                       // setup -> access phase
+          if (PENABLE && PREADY) begin
+            PSEL <= 1'b0; PENABLE <= 1'b0;
+            if (is_write) begin
+              S_AXI_BVALID <= 1'b1; S_AXI_BRESP <= PSLVERR ? 2'b10 : 2'b00;
+              state <= WRRESP;
+            end else begin
+              S_AXI_RVALID <= 1'b1; S_AXI_RDATA <= PRDATA;
+              S_AXI_RRESP  <= PSLVERR ? 2'b10 : 2'b00;
+              state <= RDRESP;
+            end
+          end
+        end
+        WRRESP: if (S_AXI_BREADY) begin S_AXI_BVALID <= 1'b0; state <= IDLE; end
+        RDRESP: if (S_AXI_RREADY) begin S_AXI_RVALID <= 1'b0; state <= IDLE; end
+        default: state <= IDLE;
+      endcase
+    end
+  end
+endmodule</pre>
+  </div>
+  <p style="font-size:.82rem;color:#64748b">Need this wired to real registers? The <a href="/tools/regmap-gen/">APB / AXI Register Map Generator</a> emits this bridge plus a matching register block and top wrapper in one click.</p>
+</div>
+
+<!-- ░░ FAQ ░░ -->
+<div class="section" style="border-bottom:none">
+  <div class="sec-label">Reference</div>
+  <div class="sec-title">FAQ</div>
+  <div class="faq-item"><h3>Why do you need an AXI to APB bridge?</h3><p>SoC fabrics use AXI for the CPU and high-bandwidth masters, but simple peripherals use the lightweight APB bus. The bridge converts AXI4-Lite transactions into APB accesses so low-speed peripherals attach to an AXI system without each needing a full AXI interface.</p></div>
+  <div class="faq-item"><h3>AXI4-Lite vs APB — what's the difference?</h3><p>AXI4-Lite has five independent channels with VALID/READY handshakes and outstanding support. APB is a single non-pipelined bus with a two-phase setup/access transfer and no bursts — far simpler and cheaper for control registers.</p></div>
+  <div class="faq-item"><h3>How does the bridge FSM work?</h3><p>It idles until an AXI write (AWVALID &amp; WVALID) or read (ARVALID), latches address/data, drives the APB setup then access phase, waits for PREADY, and returns BVALID (write) or RVALID + RDATA (read).</p></div>
+  <div class="faq-item"><h3>Is the RTL synthesizable?</h3><p>Yes — one synchronous always block, registered outputs, standard handshakes. BRESP/RRESP propagate APB PSLVERR as SLVERR. Works with Vivado, Quartus, Yosys and Synopsys DC.</p></div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/tools/regmap-gen/">Register Map Generator</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a> · <a href="/digital-electronics/">Digital Electronics</a>
+</footer>
+
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<div class="toast" id="toast"></div>
+
+<script>
+// syntax highlight the RTL block
+(function(){
+  const pre=document.getElementById('rtlcode');
+  let h=pre.textContent.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  h=h.replace(/(\/\/[^\n]*)/g,'<span class="cm">$1</span>')
+     .replace(/\b(module|endmodule|parameter|localparam|input|output|reg|wire|assign|always|begin|end|case|endcase|default|posedge|negedge|if|else)\b/g,'<span class="kw">$1</span>')
+     .replace(/\b(\d+'[hbd][0-9a-fA-FxXzZ_]+)\b/g,'<span class="num">$1</span>');
+  pre.innerHTML=h;
+})();
+function copyCode(btn){
+  const t=document.getElementById('rtlcode').textContent;
+  navigator.clipboard.writeText(t).then(()=>{ btn.textContent='✓ Copied'; setTimeout(()=>btn.textContent='📋 Copy',1500); });
+}
+addEventListener('scroll',()=>document.getElementById('btt').classList.toggle('show',scrollY>400));
+</script>
+</body>
+</html>
