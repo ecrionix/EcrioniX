@@ -7,8 +7,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>APB Register Map Generator — RTL Verilog | EcrioniX</title>
-<meta name="description" content="Free online APB register map generator. Define registers (RW, RO, WO, W1C) with width, offset and reset value, then auto-generate a synthesizable APB slave Verilog RTL module. No install.">
-<meta name="keywords" content="apb register map generator, register map rtl, apb slave verilog, register block generator, rdl to rtl, csr generator, apb3 slave, register width access RW RO W1C, soc register generator, verilog register file generator">
+<meta name="description" content="Free online APB &amp; AXI4-Lite register map generator. Define registers and bit-fields (RW, RO, WO, W1C), then auto-generate synthesizable Verilog — APB3 slave or AXI4-Lite with an AXI-to-APB bridge — plus a register datasheet PDF. No install.">
+<meta name="keywords" content="apb register map generator, axi4-lite register map, axi to apb bridge verilog, register map rtl, apb slave verilog, register block generator, csr generator, apb3 slave, axi lite slave, register bit fields RW RO WO W1C, soc register generator, verilog register file generator, register datasheet generator">
 <link rel="canonical" href="https://ecrionix.org/tools/regmap-gen/">
 <meta property="og:title" content="APB Register Map Generator — RTL Verilog | EcrioniX">
 <meta property="og:description" content="Define your registers, click generate, get a synthesizable APB slave Verilog module. Supports RW, RO, WO and W1C access types.">
@@ -171,9 +171,9 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
 
 <div class="hero">
   <div class="hero-bg"></div>
-  <div class="hero-eyebrow">⚙ RTL GENERATOR · APB3 SLAVE</div>
-  <h1>APB <span class="g">Register Map</span> Generator</h1>
-  <p>Define your control &amp; status registers — width, offset, access type, reset value — and instantly generate a clean, synthesizable APB slave Verilog RTL module.</p>
+  <div class="hero-eyebrow">⚙ RTL GENERATOR · APB3 &amp; AXI4-LITE</div>
+  <h1>APB / AXI <span class="g">Register Map</span> Generator</h1>
+  <p>Define your control &amp; status registers with named bit-fields — width, offset, access, reset — and generate synthesizable Verilog: an APB3 slave, or AXI4-Lite with a built-in AXI→APB bridge. Plus a one-click register datasheet PDF.</p>
 </div>
 
 <div class="wrap">
@@ -198,6 +198,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
             <label>Addr Width (bits)</label>
             <select id="addrW" onchange="gen()">
               <option>4</option><option>6</option><option selected>8</option><option>12</option><option>16</option>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label>Bus Interface</label>
+            <select id="busIf" onchange="gen()">
+              <option value="APB">APB3 Slave</option>
+              <option value="AXIL">AXI4-Lite (+ AXI→APB bridge)</option>
             </select>
           </div>
         </div>
@@ -373,8 +380,8 @@ function vec(w){ return w>1 ? `[${w-1}:0] ` : ''; }
 function bsel(msb,lsb){ return msb===lsb ? `[${lsb}]` : `[${msb}:${lsb}]`; }
 function sig(reg,fld){ return (reg.name+'_'+fld.name).toLowerCase(); }
 
-function buildRTL(){
-  const mod = (document.getElementById('modName').value||'my_periph').trim().replace(/[^a-zA-Z0-9_]/g,'_');
+function buildApbRegBlock(modName){
+  const mod = modName;
   const DW  = +document.getElementById('dataW').value;
   const AW  = +document.getElementById('addrW').value;
 
@@ -492,6 +499,181 @@ function buildRTL(){
   }
   s += `endmodule\n`;
   return s;
+}
+
+// Collect hardware-side ports (shared by reg block + AXI top)
+function collectHw(){
+  const ports=[], names=[];
+  regs.forEach(reg=>{
+    packFields(reg).forEach(f=>{
+      const s=sig(reg,f), w=f.width;
+      if(f.access==='RW'||f.access==='WO'){ ports.push(`  output ${vec(w)}${s}_o`); names.push(s+'_o'); }
+      else if(f.access==='RO'){ ports.push(`  input  ${vec(w)}${s}_i`); names.push(s+'_i'); }
+      else if(f.access==='W1C'){ ports.push(`  input  ${vec(w)}${s}_set_i`); names.push(s+'_set_i');
+                                 ports.push(`  output ${vec(w)}${s}_o`); names.push(s+'_o'); }
+    });
+  });
+  return {ports,names};
+}
+
+// Generic AXI4-Lite → APB3 bridge (independent of the register map)
+function buildAxilToApb(){
+  return `//==============================================================
+// axil_to_apb — AXI4-Lite slave to APB3 master bridge
+// Single outstanding transaction. PREADY-driven access phase.
+//==============================================================
+module axil_to_apb #(
+  parameter ADDR_WIDTH = 8,
+  parameter DATA_WIDTH = 32
+)(
+  input                          ACLK,
+  input                          ARESETn,
+  // ---- AXI4-Lite slave ----
+  input      [ADDR_WIDTH-1:0]    S_AXI_AWADDR,
+  input                          S_AXI_AWVALID,
+  output reg                     S_AXI_AWREADY,
+  input      [DATA_WIDTH-1:0]    S_AXI_WDATA,
+  input      [(DATA_WIDTH/8)-1:0] S_AXI_WSTRB,
+  input                          S_AXI_WVALID,
+  output reg                     S_AXI_WREADY,
+  output reg [1:0]               S_AXI_BRESP,
+  output reg                     S_AXI_BVALID,
+  input                          S_AXI_BREADY,
+  input      [ADDR_WIDTH-1:0]    S_AXI_ARADDR,
+  input                          S_AXI_ARVALID,
+  output reg                     S_AXI_ARREADY,
+  output reg [DATA_WIDTH-1:0]    S_AXI_RDATA,
+  output reg [1:0]               S_AXI_RRESP,
+  output reg                     S_AXI_RVALID,
+  input                          S_AXI_RREADY,
+  // ---- APB3 master ----
+  output reg [ADDR_WIDTH-1:0]    PADDR,
+  output reg                     PSEL,
+  output reg                     PENABLE,
+  output reg                     PWRITE,
+  output reg [DATA_WIDTH-1:0]    PWDATA,
+  input      [DATA_WIDTH-1:0]    PRDATA,
+  input                          PREADY,
+  input                          PSLVERR
+);
+  localparam IDLE=3'd0, ACCESS=3'd1, WRRESP=3'd2, RDRESP=3'd3;
+  reg [2:0] state;
+  reg       is_write;
+
+  always @(posedge ACLK or negedge ARESETn) begin
+    if (!ARESETn) begin
+      state <= IDLE; is_write <= 1'b0;
+      PSEL <= 1'b0; PENABLE <= 1'b0; PWRITE <= 1'b0; PADDR <= {ADDR_WIDTH{1'b0}}; PWDATA <= {DATA_WIDTH{1'b0}};
+      S_AXI_AWREADY <= 1'b0; S_AXI_WREADY <= 1'b0; S_AXI_BVALID <= 1'b0; S_AXI_BRESP <= 2'b00;
+      S_AXI_ARREADY <= 1'b0; S_AXI_RVALID <= 1'b0; S_AXI_RDATA <= {DATA_WIDTH{1'b0}}; S_AXI_RRESP <= 2'b00;
+    end else begin
+      S_AXI_AWREADY <= 1'b0; S_AXI_WREADY <= 1'b0; S_AXI_ARREADY <= 1'b0;
+      case (state)
+        IDLE: begin
+          PENABLE <= 1'b0;
+          if (S_AXI_AWVALID && S_AXI_WVALID) begin
+            is_write <= 1'b1;
+            PADDR <= S_AXI_AWADDR; PWDATA <= S_AXI_WDATA; PWRITE <= 1'b1; PSEL <= 1'b1;
+            S_AXI_AWREADY <= 1'b1; S_AXI_WREADY <= 1'b1;   // accept AW + W
+            state <= ACCESS;
+          end else if (S_AXI_ARVALID) begin
+            is_write <= 1'b0;
+            PADDR <= S_AXI_ARADDR; PWRITE <= 1'b0; PSEL <= 1'b1;
+            S_AXI_ARREADY <= 1'b1;                          // accept AR
+            state <= ACCESS;
+          end
+        end
+        ACCESS: begin
+          PENABLE <= 1'b1;                                  // setup -> access phase
+          if (PENABLE && PREADY) begin
+            PSEL <= 1'b0; PENABLE <= 1'b0;
+            if (is_write) begin
+              S_AXI_BVALID <= 1'b1; S_AXI_BRESP <= PSLVERR ? 2'b10 : 2'b00;
+              state <= WRRESP;
+            end else begin
+              S_AXI_RVALID <= 1'b1; S_AXI_RDATA <= PRDATA; S_AXI_RRESP <= PSLVERR ? 2'b10 : 2'b00;
+              state <= RDRESP;
+            end
+          end
+        end
+        WRRESP: if (S_AXI_BREADY) begin S_AXI_BVALID <= 1'b0; state <= IDLE; end
+        RDRESP: if (S_AXI_RREADY) begin S_AXI_RVALID <= 1'b0; state <= IDLE; end
+        default: state <= IDLE;
+      endcase
+    end
+  end
+endmodule
+`;
+}
+
+// AXI4-Lite top wrapper: bridge + register block
+function buildAxilTop(mod){
+  const DW = +document.getElementById('dataW').value;
+  const AW = +document.getElementById('addrW').value;
+  const hw = collectHw();
+  const axiPorts = [
+    '  input                       ACLK',
+    '  input                       ARESETn',
+    '  input  [ADDR_WIDTH-1:0]     S_AXI_AWADDR',
+    '  input                       S_AXI_AWVALID',
+    '  output                      S_AXI_AWREADY',
+    '  input  [DATA_WIDTH-1:0]     S_AXI_WDATA',
+    '  input  [(DATA_WIDTH/8)-1:0] S_AXI_WSTRB',
+    '  input                       S_AXI_WVALID',
+    '  output                      S_AXI_WREADY',
+    '  output [1:0]                S_AXI_BRESP',
+    '  output                      S_AXI_BVALID',
+    '  input                       S_AXI_BREADY',
+    '  input  [ADDR_WIDTH-1:0]     S_AXI_ARADDR',
+    '  input                       S_AXI_ARVALID',
+    '  output                      S_AXI_ARREADY',
+    '  output [DATA_WIDTH-1:0]     S_AXI_RDATA',
+    '  output [1:0]                S_AXI_RRESP',
+    '  output                      S_AXI_RVALID',
+    '  input                       S_AXI_RREADY'
+  ];
+  const allPorts = axiPorts.concat(hw.ports);
+
+  let s = '';
+  s += `//==============================================================\n`;
+  s += `// ${mod} — AXI4-Lite top (axil_to_apb + ${mod}_regs)\n`;
+  s += `//==============================================================\n`;
+  s += `module ${mod} #(\n  parameter ADDR_WIDTH = ${AW},\n  parameter DATA_WIDTH = ${DW}\n)(\n`;
+  s += allPorts.join(',\n') + `\n);\n\n`;
+  s += `  // Internal APB bus\n`;
+  s += `  wire [ADDR_WIDTH-1:0] m_paddr;\n`;
+  s += `  wire                  m_psel, m_penable, m_pwrite, m_pready, m_pslverr;\n`;
+  s += `  wire [DATA_WIDTH-1:0] m_pwdata, m_prdata;\n\n`;
+
+  s += `  axil_to_apb #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_bridge (\n`;
+  s += `    .ACLK(ACLK), .ARESETn(ARESETn),\n`;
+  s += `    .S_AXI_AWADDR(S_AXI_AWADDR), .S_AXI_AWVALID(S_AXI_AWVALID), .S_AXI_AWREADY(S_AXI_AWREADY),\n`;
+  s += `    .S_AXI_WDATA(S_AXI_WDATA), .S_AXI_WSTRB(S_AXI_WSTRB), .S_AXI_WVALID(S_AXI_WVALID), .S_AXI_WREADY(S_AXI_WREADY),\n`;
+  s += `    .S_AXI_BRESP(S_AXI_BRESP), .S_AXI_BVALID(S_AXI_BVALID), .S_AXI_BREADY(S_AXI_BREADY),\n`;
+  s += `    .S_AXI_ARADDR(S_AXI_ARADDR), .S_AXI_ARVALID(S_AXI_ARVALID), .S_AXI_ARREADY(S_AXI_ARREADY),\n`;
+  s += `    .S_AXI_RDATA(S_AXI_RDATA), .S_AXI_RRESP(S_AXI_RRESP), .S_AXI_RVALID(S_AXI_RVALID), .S_AXI_RREADY(S_AXI_RREADY),\n`;
+  s += `    .PADDR(m_paddr), .PSEL(m_psel), .PENABLE(m_penable), .PWRITE(m_pwrite),\n`;
+  s += `    .PWDATA(m_pwdata), .PRDATA(m_prdata), .PREADY(m_pready), .PSLVERR(m_pslverr)\n`;
+  s += `  );\n\n`;
+
+  s += `  ${mod}_regs #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_regs (\n`;
+  s += `    .PCLK(ACLK), .PRESETn(ARESETn),\n`;
+  s += `    .PADDR(m_paddr), .PSEL(m_psel), .PENABLE(m_penable), .PWRITE(m_pwrite),\n`;
+  s += `    .PWDATA(m_pwdata), .PRDATA(m_prdata), .PREADY(m_pready), .PSLVERR(m_pslverr)`;
+  if (hw.names.length) s += `,\n` + hw.names.map(n=>`    .${n}(${n})`).join(',\n') + `\n`;
+  else s += `\n`;
+  s += `  );\n\nendmodule\n`;
+  return s;
+}
+
+// Dispatcher: APB only, or AXI4-Lite (bridge + reg block + top)
+function buildRTL(){
+  const mod = (document.getElementById('modName').value||'my_periph').trim().replace(/[^a-zA-Z0-9_]/g,'_');
+  const iface = document.getElementById('busIf').value;
+  if (iface === 'AXIL') {
+    return buildAxilToApb() + '\n\n' + buildApbRegBlock(mod+'_regs') + '\n\n' + buildAxilTop(mod);
+  }
+  return buildApbRegBlock(mod);
 }
 
 // ── Highlight ──
@@ -650,8 +832,10 @@ function buildManualHTML(){
     </div>
   </header>
 
-  <h2>APB Interface</h2>
-  <p style="font-size:12.5px;color:#333;margin:6px 0;">Standard APB3 slave. A write commits when <span class="mono">PSEL &amp; PENABLE &amp; PWRITE</span> is asserted; reads return the addressed register on <span class="mono">PRDATA</span>. <span class="mono">PREADY</span> is always high (zero wait states) and <span class="mono">PSLVERR</span> is tied low. Reserved bits read as 0 and ignore writes.</p>
+  <h2>Bus Interface</h2>
+  ${(document.getElementById('busIf').value==='AXIL')
+    ? `<p style="font-size:12.5px;color:#333;margin:6px 0;">Top-level <b>AXI4-Lite</b> slave. An internal <span class="mono">axil_to_apb</span> bridge converts AXI4-Lite read/write transactions into APB3 accesses to the register block. Single outstanding transaction; <span class="mono">BRESP</span>/<span class="mono">RRESP</span> reflect the APB <span class="mono">PSLVERR</span> status. Reserved bits read as 0 and ignore writes.</p>`
+    : `<p style="font-size:12.5px;color:#333;margin:6px 0;">Standard <b>APB3</b> slave. A write commits when <span class="mono">PSEL &amp; PENABLE &amp; PWRITE</span> is asserted; reads return the addressed register on <span class="mono">PRDATA</span>. <span class="mono">PREADY</span> is always high (zero wait states) and <span class="mono">PSLVERR</span> is tied low. Reserved bits read as 0 and ignore writes.</p>`}
 
   <h2>1. Register Summary</h2>
   <table class="summary">
