@@ -33,7 +33,10 @@
    {"@type":"Question","name":"What is a systolic array?","acceptedAnswer":{"@type":"Answer","text":"A systolic array is a grid of small processing elements (MAC units) through which data flows rhythmically, like a heartbeat. Each element multiplies its two incoming values, adds the product to a running accumulator, and passes the values on to its neighbours. Because each input is reused across many elements instead of being re-fetched from memory, a systolic array performs matrix multiplication with very high efficiency. Google's TPU is built around a large systolic array."}},
    {"@type":"Question","name":"How does a systolic array do matrix multiplication?","acceptedAnswer":{"@type":"Answer","text":"To compute C = A x B, the rows of A are fed into the left edge of the grid and the columns of B into the top edge, both skewed in time. As the values march right and down through the array, the processing element at position (i,j) accumulates the dot product of row i of A and column j of B - which is exactly C[i][j]. After enough cycles every element holds one entry of the result."}},
    {"@type":"Question","name":"Why are systolic arrays used in AI chips?","acceptedAnswer":{"@type":"Answer","text":"Neural networks are dominated by matrix multiplication, and the main cost in hardware is moving data from memory. A systolic array maximises data reuse: each value entering the grid is used by an entire row or column of MAC units before leaving, so memory traffic is minimised. This makes it extremely efficient in operations per watt, which is why it sits at the heart of accelerators like the TPU."}},
-   {"@type":"Question","name":"What is a MAC unit?","acceptedAnswer":{"@type":"Answer","text":"A MAC (multiply-accumulate) unit is the basic building block of an AI chip: a multiplier followed by an adder that keeps a running sum, computing acc = acc + a x b in one step. A systolic array is a grid of thousands of these units working together."}}
+   {"@type":"Question","name":"What is a MAC unit?","acceptedAnswer":{"@type":"Answer","text":"A MAC (multiply-accumulate) unit is the basic building block of an AI chip: a multiplier followed by an adder that keeps a running sum, computing acc = acc + a x b in one step. A systolic array is a grid of thousands of these units working together."}},
+   {"@type":"Question","name":"What is the difference between output-stationary and weight-stationary systolic arrays?","acceptedAnswer":{"@type":"Answer","text":"In an output-stationary array each result (partial sum) stays fixed in its processing element while inputs stream through, which is what this lab demonstrates. In a weight-stationary array the weights are pre-loaded into the processing elements and held there while activations stream through, maximising weight reuse - the classic TPU style for inference. Row-stationary balances the reuse of weights, inputs and partial sums."}},
+   {"@type":"Question","name":"How many cycles does a systolic array take?","acceptedAnswer":{"@type":"Answer","text":"For an N by N array with inner dimension K, the array completes the full matrix product in approximately 2N + K minus 2 cycles, because it performs an entire diagonal of multiply-accumulate operations every cycle rather than one multiply at a time."}},
+   {"@type":"Question","name":"Who invented the systolic array?","acceptedAnswer":{"@type":"Answer","text":"The systolic array was introduced in 1978 by H. T. Kung and Charles Leiserson. The name comes from systole, the rhythmic contraction of the heart, because data pulses through the array in a regular beat. It became central to AI hardware decades later when Google built the Tensor Processing Unit (TPU) around a large systolic array."}}
  ]}
 ]}
 </script>
@@ -95,7 +98,20 @@ code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padd
 .section{max-width:880px;margin:0 auto;padding:1.8rem 1.5rem;border-top:1px solid var(--bdr)}
 .section h2{font-size:1.3rem;color:#f1f5f9;font-weight:800;margin-bottom:.6rem}
 .section p{color:var(--sl);margin-bottom:.8rem;line-height:1.8}.section p b{color:#e2e8f0}
-.section ul{color:var(--sl);margin:0 0 1rem 1.2rem;line-height:1.85}.section ul b{color:#e2e8f0}
+.section ul,.section ol{color:var(--sl);margin:0 0 1rem 1.2rem;line-height:1.85}.section ul b{color:#e2e8f0}
+.section table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+.section th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .7rem;border:1px solid var(--bdr);font-size:.72rem}
+.section td{border:1px solid var(--bdr);padding:.45rem .7rem;color:var(--sl);vertical-align:top}
+.section td b{color:#e2e8f0}
+.section .mono{font-family:'JetBrains Mono',monospace}
+.tracetbl td{text-align:center;font-family:'JetBrains Mono',monospace}
+.tracetbl td.note{text-align:left;font-family:'Outfit',sans-serif;color:#64748b;font-size:.78rem}
+.kbox{background:var(--bg2);border:1px solid rgba(74,222,128,.3);border-radius:12px;padding:1rem 1.3rem;margin:1.2rem 0}
+.kbox h3{color:var(--green);margin:0 0 .4rem;font-size:1rem}.kbox p{margin:0}
+.gloss{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:1rem 0}
+@media(max-width:620px){.gloss{grid-template-columns:1fr}}
+.gloss div{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.6rem .8rem;font-size:.84rem;color:var(--sl)}
+.gloss b{color:#e2e8f0;display:block;font-size:.82rem}
 .faq-item{border:1px solid var(--bdr);border-radius:10px;padding:.9rem 1.1rem;margin-bottom:.6rem;background:var(--bg2)}
 .faq-item h3{color:#f1f5f9;font-size:.93rem;margin:0 0 .35rem}.faq-item p{font-size:.85rem;margin:0;color:var(--sl)}
 footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
@@ -175,10 +191,116 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
 </div>
 
 <div class="section">
+  <h2>Anatomy of a processing element (PE)</h2>
+  <p>Each cell in the grid is a <b>processing element</b>, and inside it is almost nothing — which is the point. A PE contains just:</p>
+  <ul>
+    <li>A <b>multiplier</b> that multiplies the value arriving from the left (<code>a</code>) by the value arriving from the top (<code>b</code>).</li>
+    <li>An <b>adder</b> and a small <b>accumulator register</b> that keeps the running sum: <code>acc ← acc + a×b</code>.</li>
+    <li>Two <b>pipeline registers</b> that latch <code>a</code> and <code>b</code> and pass them to the right and bottom neighbours on the next clock edge.</li>
+  </ul>
+  <p>That tiny footprint is why you can fit a <b>huge</b> number of them on one die. A PE is deliberately "dumb": it has no instruction fetch, no branch logic, no cache — none of the machinery a CPU core carries. It just multiplies, adds, and forwards, every single clock cycle. Replace a few thousand complex CPU cores with hundreds of thousands of these trivial PEs and you get an enormous jump in multiply-accumulates per second per watt — exactly what matrix-heavy neural networks crave.</p>
+  <div class="kbox">
+    <h3>✅ The key insight</h3>
+    <p>A systolic array trades <b>flexibility</b> (a PE can only MAC) for <b>density and efficiency</b> (you can have a sea of them, all busy, with almost no control overhead and minimal memory traffic).</p>
+  </div>
+</div>
+
+<div class="section">
+  <h2>A worked example — 2×2, cycle by cycle</h2>
+  <p>Let's trace the array computing <code>A × B</code> with the lab's default 2×2 values, so you can see exactly what each PE does on each clock cycle.</p>
+  <p class="mono" style="color:#cbd5e1">A = [[2, 1], [0, 3]] &nbsp;&nbsp; B = [[1, 4], [2, 1]] &nbsp;→&nbsp; expected C = [[4, 9], [6, 3]]</p>
+  <table class="tracetbl">
+    <thead><tr><th>Cycle</th><th>P00</th><th>P01</th><th>P10</th><th>P11</th><th class="note">What's happening</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>2×1 → 2</td><td>–</td><td>–</td><td>–</td><td class="note">A[0][0] meets B[0][0] at the top-left PE</td></tr>
+      <tr><td>1</td><td>1×2 → 4</td><td>2×4 → 8</td><td>0×1 → 0</td><td>–</td><td class="note">data has marched one step right &amp; down</td></tr>
+      <tr><td>2</td><td>–</td><td>1×1 → 9</td><td>3×2 → 6</td><td>0×4 → 0</td><td class="note">the wavefront sweeps diagonally across</td></tr>
+      <tr><td>3</td><td>–</td><td>–</td><td>–</td><td>3×1 → 3</td><td class="note">last term lands in the bottom-right PE</td></tr>
+    </tbody>
+  </table>
+  <p>Read the accumulators after cycle 3: <b>P00 = 4</b>, <b>P01 = 9</b>, <b>P10 = 6</b>, <b>P11 = 3</b> — exactly <code>C = [[4, 9], [6, 3]]</code>. Notice how each value of A and B was <b>reused</b> as it travelled through more than one PE, and how the active MACs form a <b>diagonal wavefront</b> sweeping across the grid. Step the lab above with these numbers and watch the green flashes trace that same diagonal.</p>
+</div>
+
+<div class="section">
+  <h2>The skew: why inputs enter staggered</h2>
+  <p>If you fed every row of A and every column of B in at the same time, the values wouldn't meet at the right PEs at the right moments — the dot products would add up the wrong terms. The fix is <b>skewing</b>: each row of A is delayed by its row index, and each column of B by its column index.</p>
+  <table>
+    <thead><tr><th>Stream</th><th>Cycle 0</th><th>Cycle 1</th><th>Cycle 2</th></tr></thead>
+    <tbody>
+      <tr><td><b>A row 0</b> (into PE row 0)</td><td>A[0][0]</td><td>A[0][1]</td><td>A[0][2]</td></tr>
+      <tr><td><b>A row 1</b> (delayed 1)</td><td>–</td><td>A[1][0]</td><td>A[1][1]</td></tr>
+      <tr><td><b>A row 2</b> (delayed 2)</td><td>–</td><td>–</td><td>A[2][0]</td></tr>
+    </tbody>
+  </table>
+  <p>That staircase is exactly what you see on the left and top edges of the lab. Formally, <code>A[i][k]</code> enters row <code>i</code> at cycle <code>k + i</code>, and <code>B[k][j]</code> enters column <code>j</code> at cycle <code>k + j</code>. They therefore arrive together at PE(i, j) at cycle <code>k + i + j</code>, so every term of the dot product <code>Σ A[i][k]·B[k][j]</code> lands in the correct accumulator at a distinct cycle. The whole machine finishes in <code>2N + K − 2</code> cycles — far fewer than the <code>N²·K</code> multiplies done one-at-a-time on a scalar CPU, because the array does a whole diagonal of MACs every cycle.</p>
+</div>
+
+<div class="section">
+  <h2>Dataflows: output-, weight- and row-stationary</h2>
+  <p>This lab shows an <b>output-stationary</b> array — each PE's accumulator (one element of C) stays put while inputs stream through. But "stationary" can apply to different operands, and the choice changes which data gets reused most, which matters because <b>data movement, not arithmetic, dominates energy</b>.</p>
+  <table>
+    <thead><tr><th>Dataflow</th><th>What stays put</th><th>Best reuse / used by</th></tr></thead>
+    <tbody>
+      <tr><td><b>Output-stationary</b></td><td>The partial sum (output) in each PE</td><td>Reuses partial sums; what this lab shows</td></tr>
+      <tr><td><b>Weight-stationary</b></td><td>The weights, pre-loaded into the PEs</td><td>Reuses weights heavily; classic TPU style</td></tr>
+      <tr><td><b>Row-stationary</b></td><td>A balance of weights, inputs &amp; sums</td><td>Balances all reuse; the Eyeriss research design</td></tr>
+    </tbody>
+  </table>
+  <p>In a <b>weight-stationary</b> TPU, the weight matrix is loaded into the array first and held there; activations then stream through and results drop out the bottom. Because the same weights are reused across an entire batch of inputs, weight memory traffic almost disappears — ideal when weights are large and reused many times, as in inference.</p>
+</div>
+
+<div class="section">
+  <h2>From this toy grid to a real TPU</h2>
+  <p>The lab uses a 2×2 or 3×3 array so you can follow every value. Real accelerators scale the <b>exact same structure</b> up dramatically:</p>
+  <ul>
+    <li><b>Size</b> — Google's first TPU used a <b>256×256</b> systolic array: 65,536 MAC units doing 8-bit multiply-accumulates, capable of tens of trillions of operations per second.</li>
+    <li><b>Precision</b> — instead of the integers here, real arrays run <b>INT8</b>, <b>FP8</b> or <b>BF16</b>, packing far more MACs into the same silicon and bandwidth.</li>
+    <li><b>Feeding it</b> — a 256×256 array is hungry; it's fed from on-chip SRAM backed by <b>HBM</b> delivering terabytes per second, because the array is useless if it starves for data.</li>
+    <li><b>Utilisation</b> — a big square array is most efficient when the matrices are large and "square-ish". Small or oddly-shaped layers leave PEs idle, so real compilers tile and pad work to keep the array busy.</li>
+  </ul>
+  <p>So the mental model is simple: <b>this lab is a TPU's compute core in miniature.</b> Everything else — HBM, the on-chip buffers, the compiler — exists to keep an array like this fed and busy.</p>
+</div>
+
+<div class="section">
+  <h2>Where systolic arrays struggle</h2>
+  <p>They're not a universal answer. Their weaknesses are the flip side of their strengths:</p>
+  <ul>
+    <li><b>Shape sensitivity</b> — a fixed N×N array runs at peak only for well-matched matrix sizes. Tiny matrices, tall-thin shapes, or batch size 1 (common in real-time LLM inference) leave many PEs idle, so <b>real utilisation can be far below peak TOPS</b>.</li>
+    <li><b>Low flexibility</b> — a PE only does multiply-accumulate. Operations that aren't matrix multiply (activations, softmax, normalisation, control flow) need separate hardware around the array.</li>
+    <li><b>Fill and drain latency</b> — those <code>2N + K − 2</code> cycles include time to fill the pipeline and drain it; for a single small multiply that overhead is relatively large (great for big streaming workloads, less so for one tiny op).</li>
+  </ul>
+  <p>This is why a GPU — with thousands of <i>programmable</i> cores — stays popular for fast-changing research, while fixed systolic ASICs win on efficiency for stable, large, matrix-dominated workloads.</p>
+</div>
+
+<div class="section">
+  <h2>A short history</h2>
+  <p>The systolic array isn't new. It was introduced in <b>1978</b> by <b>H. T. Kung</b> and <b>Charles Leiserson</b>, who coined the name from <i>systole</i> — the rhythmic contraction of the heart — because data pulses through the array in a regular beat. For decades it was mostly an elegant academic idea, used in signal-processing chips.</p>
+  <p>Then deep learning made <b>matrix multiplication the most important computation on Earth</b>, and the systolic array's near-perfect data reuse suddenly made it the ideal engine. Google's <b>Tensor Processing Unit (TPU)</b>, deployed from 2015, put a large systolic array at its heart — and a 40-year-old idea became the backbone of modern AI infrastructure. A reminder that in computer architecture, the right idea sometimes just has to wait for the right workload.</p>
+</div>
+
+<div class="section">
+  <h2>Glossary</h2>
+  <div class="gloss">
+    <div><b>MAC</b>Multiply-accumulate: <code>acc += a×b</code>, the core operation.</div>
+    <div><b>PE</b>Processing element — one cell of the array, holding one MAC.</div>
+    <div><b>Systole</b>The "heartbeat" — data pulses through one step per cycle.</div>
+    <div><b>Skew</b>Staggering inputs in time so they meet at the right PE.</div>
+    <div><b>Output-stationary</b>The result stays in each PE; inputs stream through.</div>
+    <div><b>Weight-stationary</b>Weights are held in PEs; activations stream through.</div>
+    <div><b>GEMM</b>General Matrix Multiply — the workload an array accelerates.</div>
+    <div><b>Utilisation</b>Fraction of PEs actually busy; real perf depends on it.</div>
+  </div>
+</div>
+
+<div class="section">
   <h2>FAQ</h2>
   <div class="faq-item"><h3>What is a systolic array?</h3><p>A grid of MAC units through which data flows rhythmically; each reuses its inputs and passes them to neighbours, computing matrix multiply very efficiently. The TPU is built on one.</p></div>
   <div class="faq-item"><h3>How does it multiply matrices?</h3><p>Rows of A enter the left, columns of B enter the top (skewed in time). PE(i,j) accumulates the dot product of row i and column j = C[i][j].</p></div>
   <div class="faq-item"><h3>Why use it in AI chips?</h3><p>It maximises data reuse and minimises memory traffic — the main energy cost — giving excellent operations-per-watt for the matrix math that dominates neural networks.</p></div>
+  <div class="faq-item"><h3>What is a MAC unit?</h3><p>A multiply-accumulate unit — a multiplier plus an adder/accumulator computing <code>acc += a×b</code> in one step. A systolic array is a grid of thousands of them.</p></div>
+  <div class="faq-item"><h3>What is the difference between output-stationary and weight-stationary?</h3><p>Output-stationary keeps each result (partial sum) fixed in its PE while inputs stream through — what this lab shows. Weight-stationary pre-loads the weights into the PEs and streams activations through, maximising weight reuse — the classic TPU style for inference.</p></div>
+  <div class="faq-item"><h3>How many cycles does it take?</h3><p>For an N×N array multiplying with inner dimension K, the array produces the full result in about <code>2N + K − 2</code> cycles, doing a whole diagonal of multiply-accumulates every cycle instead of one multiply at a time.</p></div>
+  <div class="faq-item"><h3>Who invented the systolic array?</h3><p>H. T. Kung and Charles Leiserson described it in 1978. It became central to AI hardware decades later when Google built the TPU around a large systolic array.</p></div>
   <p style="margin-top:1.2rem">Related: <a href="/what-is-an-ai-chip/">What Is an AI Chip?</a> · <a href="/tools/gpu-lab/">GPU Lab</a> · <a href="/ai-semiconductor-boom/">AI Semiconductor Boom</a></p>
 </div>
 
