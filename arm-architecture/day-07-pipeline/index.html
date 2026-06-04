@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 7: The ARM Pipeline — Fetch, Decode, Execute &amp; Hazards | ARM from Scratch</title>
+<meta name="description" content="Day 7 of ARM architecture from scratch. How an ARM pipeline works: the classic fetch–decode–execute stages, why throughput beats latency, the 3-stage and 5-stage pipelines, pipeline hazards (data, control, structural), branch penalties, and why PC reads ahead. Beginner-friendly with diagrams.">
+<meta name="keywords" content="ARM pipeline, fetch decode execute, ARM 3 stage pipeline, ARM 5 stage pipeline, pipeline hazards, branch penalty ARM, why PC is current instruction plus 8, instruction pipelining beginner, ARM throughput latency">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-07-pipeline/">
+<meta property="og:title" content="Day 7: The ARM Pipeline — Fetch, Decode, Execute &amp; Hazards">
+<meta property="og:description" content="How an ARM pipeline overlaps instructions, the stages, hazards and branch penalties.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-07-pipeline/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 7: The ARM Pipeline — ARM from Scratch">
+<meta name="twitter:description" content="Fetch-decode-execute, hazards, branch penalty, and why PC reads ahead.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 7: The ARM Pipeline - Fetch, Decode, Execute and Hazards","description":"Lesson 7 of a from-scratch ARM course: instruction pipelining, the fetch-decode-execute stages, 3-stage and 5-stage pipelines, hazards and branch penalties.","url":"https://ecrionix.org/arm-architecture/day-07-pipeline/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 7: The Pipeline","item":"https://ecrionix.org/arm-architecture/day-07-pipeline/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is instruction pipelining?","acceptedAnswer":{"@type":"Answer","text":"Pipelining overlaps the steps of executing instructions so that while one instruction is executing, the next is being decoded and a third is being fetched - like an assembly line. Each instruction still takes several cycles end to end (latency), but a finished instruction can come out every cycle (throughput), greatly increasing performance."}},
+   {"@type":"Question","name":"What are the stages of the classic ARM pipeline?","acceptedAnswer":{"@type":"Answer","text":"The classic 3-stage ARM pipeline (ARM7) has Fetch, Decode and Execute. The 5-stage pipeline (ARM9 and similar) splits this into Fetch, Decode, Execute, Memory and Writeback, adding a stage to access data memory and a stage to write results back to the register file."}},
+   {"@type":"Question","name":"Why does the ARM program counter read as the current instruction plus 8?","acceptedAnswer":{"@type":"Answer","text":"In the classic 3-stage ARM pipeline, by the time an instruction executes, the PC has already moved on to fetch instructions two ahead. Since each ARM instruction is 4 bytes, the PC reads as the current instruction's address plus 8. This is a famous quirk of ARM state and is why PC-relative calculations account for the offset."}},
+   {"@type":"Question","name":"What is a pipeline hazard?","acceptedAnswer":{"@type":"Answer","text":"A hazard is a situation that prevents the next instruction from executing in the following cycle. Data hazards occur when an instruction needs a result not yet produced; control hazards occur on branches when the pipeline has already fetched the wrong instructions; structural hazards occur when two instructions need the same hardware resource. Pipelines handle these with stalls, forwarding and branch prediction."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.55rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top;text-align:center}
+td.l{text-align:left}td b{color:#e2e8f0}
+.pipe td{font-family:'JetBrains Mono',monospace;font-weight:700}
+.f{background:rgba(56,189,248,.18);color:#38bdf8}.de{background:rgba(167,139,250,.18);color:#a78bfa}.ex{background:rgba(74,222,128,.18);color:#4ade80}.me{background:rgba(251,191,36,.18);color:#fbbf24}.wb{background:rgba(244,114,182,.18);color:#f472b6}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 7</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 7 · THE INSTRUCTION SET</span>
+  <h1>The Pipeline — How an Instruction Actually Flows</h1>
+  <p class="lead">We've met the registers and the data. Now: how does the CPU <i>execute</i> instructions fast? The answer is the <b>pipeline</b> — an assembly line for instructions, and the single most important idea behind processor performance.</p>
+
+  <h2>1. The assembly-line idea</h2>
+  <p>Executing one instruction takes several steps: <b>fetch</b> it from memory, <b>decode</b> what it means, then <b>execute</b> it. Done one-at-a-time, the fetch and decode hardware sits idle while the execute hardware works, and vice-versa. Wasteful.</p>
+  <p>So pipelining <b>overlaps</b> them: while instruction 1 executes, instruction 2 is being decoded, and instruction 3 is being fetched — three instructions in flight at once, every stage busy every cycle.</p>
+  <div class="box analogy">
+    <h3>💡 Laundry analogy</h3>
+    <p style="margin:0">One load = wash → dry → fold. Don't wait for load 1 to be folded before washing load 2! Start washing load 2 the moment load 1 moves to the dryer. Same total time per load, but you finish a load far more often. That "far more often" is <b>throughput</b>.</p>
+  </div>
+
+  <h2>2. Latency vs throughput</h2>
+  <p>This distinction is the whole point:</p>
+  <ul>
+    <li><b>Latency</b> — how long <i>one</i> instruction takes start-to-finish (still several cycles).</li>
+    <li><b>Throughput</b> — how often a <i>finished</i> instruction pops out. With a full pipeline: <b>one per cycle</b>, even though each took several.</li>
+  </ul>
+  <p>Pipelining doesn't make a single instruction faster — it makes the <b>stream</b> of instructions flow at roughly one per clock. That's a several-times speedup for the same hardware.</p>
+
+  <h2>3. The classic ARM pipelines</h2>
+  <p>Early ARM (ARM7) used a <b>3-stage</b> pipeline:</p>
+  <table class="pipe">
+    <thead><tr><th class="l">Cycle →</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Instr 1</td><td class="f">F</td><td class="de">D</td><td class="ex">E</td><td></td><td></td></tr>
+      <tr><td class="l">Instr 2</td><td></td><td class="f">F</td><td class="de">D</td><td class="ex">E</td><td></td></tr>
+      <tr><td class="l">Instr 3</td><td></td><td></td><td class="f">F</td><td class="de">D</td><td class="ex">E</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:.85rem;color:#64748b"><span style="color:#38bdf8">F</span>=Fetch · <span style="color:#a78bfa">D</span>=Decode · <span style="color:#4ade80">E</span>=Execute. From cycle 3 on, one instruction completes every cycle.</p>
+  <p>ARM9 and later use a <b>5-stage</b> pipeline, splitting out memory and writeback:</p>
+  <table class="pipe">
+    <thead><tr><th class="l">Stage</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Names</td><td class="f">Fetch</td><td class="de">Decode</td><td class="ex">Execute</td><td class="me">Memory</td><td class="wb">Writeback</td></tr>
+    </tbody>
+  </table>
+  <p><b>Memory</b> handles load/store data access; <b>Writeback</b> writes the result into the register file. Modern Cortex-A cores go much deeper (10+ stages), <b>superscalar</b> (several instructions per cycle) and <b>out-of-order</b> — but the principle is identical.</p>
+
+  <h2>4. The famous "PC + 8" quirk</h2>
+  <p>Here's a classic ARM gotcha that the pipeline explains. In the 3-stage pipeline, when an instruction is <b>executing</b>, the PC has already moved on to fetch the instruction <b>two ahead</b>. Since ARM instructions are 4 bytes, <b>the PC reads as the current instruction's address + 8</b>.</p>
+  <div class="code"><span class="cm">; if this instruction is at address 0x1000 ...</span>
+<span class="i">MOV</span> <span class="r">r0</span>, <span class="r">pc</span>     <span class="cm">; r0 becomes 0x1008, not 0x1000  (+8 due to pipeline)</span></div>
+  <p>This is why PC-relative address calculations account for the offset. (In Thumb state it's +4; the assembler usually handles it for you, but now you know <i>why</i>.)</p>
+
+  <h2>5. When the pipeline stalls — hazards</h2>
+  <p>The dream of "one instruction per cycle" breaks when an instruction can't proceed. These are <b>hazards</b>:</p>
+  <ul>
+    <li><b>Data hazard</b> — an instruction needs a result the previous one hasn't produced yet. Fixed by <b>forwarding</b> (routing the result early) or, failing that, a <b>stall</b> (bubble).</li>
+    <li><b>Control hazard</b> — a <b>branch</b>. The pipeline already fetched the next sequential instructions, but the branch goes elsewhere — so those wrong instructions must be <b>flushed</b>, costing cycles (the <b>branch penalty</b>).</li>
+    <li><b>Structural hazard</b> — two instructions need the same hardware resource in the same cycle.</li>
+  </ul>
+  <p>To soften control hazards, modern cores use <b>branch prediction</b> — guessing the branch outcome and speculatively fetching ahead. A correct guess = no penalty; a wrong guess = flush and refill.</p>
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">A pipeline is an instruction assembly line: deeper pipelines = higher clock speeds and throughput, but <b>bigger penalties when a branch is mispredicted</b> (more stages to flush). Processor design is largely the art of keeping the pipeline <b>full</b>.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 7 takeaways</h3>
+    <ul>
+      <li>Pipelining <b>overlaps</b> fetch/decode/execute → ~one instruction finishes per cycle.</li>
+      <li><b>Latency</b> (per instruction) stays; <b>throughput</b> rises dramatically.</li>
+      <li>ARM7 = 3-stage (F/D/E); ARM9 = 5-stage (adds Memory, Writeback).</li>
+      <li><b>PC reads as current + 8</b> in classic ARM state because of the pipeline.</li>
+      <li><b>Hazards</b> (data, control, structural) stall the pipeline; forwarding &amp; branch prediction fight back.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Does pipelining reduce the latency of a single instruction?</li>
+    <li>In the 3-stage pipeline, why does <code>MOV r0, pc</code> give current address + 8?</li>
+    <li>Why does a deeper pipeline make branch mispredictions more expensive?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is pipelining?</h3><p>Overlapping the fetch/decode/execute steps of consecutive instructions like an assembly line, so a finished instruction emerges roughly every cycle.</p></div>
+  <div class="faq-item"><h3>What are the ARM pipeline stages?</h3><p>Classic 3-stage: Fetch, Decode, Execute. 5-stage: Fetch, Decode, Execute, Memory, Writeback.</p></div>
+  <div class="faq-item"><h3>Why is PC current + 8?</h3><p>In the 3-stage pipeline the PC has already advanced two 4-byte instructions ahead when the current one executes.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-06-instruction-sets/"><span class="lab">Previous</span><div class="ti">← Day 6: Instruction sets</div></a>
+    <a class="next" href="/arm-architecture/day-08-data-processing-instructions/"><span class="lab">Up next</span><div class="ti">Day 8: Data-processing instructions →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>
