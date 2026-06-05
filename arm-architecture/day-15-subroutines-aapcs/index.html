@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 15: ARM Subroutines &amp; the AAPCS Calling Convention | ARM from Scratch</title>
+<meta name="description" content="Day 15 of ARM architecture from scratch. Subroutines and the AAPCS calling convention: BL/BX LR for call and return, argument and return registers (r0–r3), caller-saved vs callee-saved registers, passing extra arguments on the stack, returning 64-bit values, and nested calls. With examples.">
+<meta name="keywords" content="ARM subroutines, AAPCS calling convention, BL BX LR, ARM function call, caller saved callee saved, r0 r3 arguments, ARM ABI, nested function calls ARM, calling C from assembly">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-15-subroutines-aapcs/">
+<meta property="og:title" content="Day 15: ARM Subroutines &amp; the AAPCS Calling Convention">
+<meta property="og:description" content="BL/BX LR, argument &amp; return registers, caller- vs callee-saved, nested calls, and why a calling standard matters.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-15-subroutines-aapcs/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 15: ARM Subroutines &amp; AAPCS — ARM from Scratch">
+<meta name="twitter:description" content="Calls &amp; returns, r0–r3 args, caller/callee-saved registers, the AAPCS standard.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 15: ARM Subroutines and the AAPCS Calling Convention","description":"Lesson 15 of a from-scratch ARM course: subroutines, BL and BX LR for call and return, the AAPCS argument and return registers, caller-saved versus callee-saved registers, passing extra arguments on the stack and nested calls.","url":"https://ecrionix.org/arm-architecture/day-15-subroutines-aapcs/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 15: Subroutines & the AAPCS","item":"https://ecrionix.org/arm-architecture/day-15-subroutines-aapcs/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the AAPCS?","acceptedAnswer":{"@type":"Answer","text":"The AAPCS, the ARM Architecture Procedure Call Standard, is the agreed convention for how functions call each other on ARM: which registers carry arguments and return values, which registers a called function must preserve, how the stack is used and how values larger than a register are passed. Following it lets code from different files, compilers and languages link and interoperate."}},
+   {"@type":"Question","name":"Which registers hold function arguments in ARM?","acceptedAnswer":{"@type":"Answer","text":"Under the AAPCS, the first four arguments are passed in registers r0, r1, r2 and r3, and the return value comes back in r0 (with r1 for a 64-bit result). Any further arguments are passed on the stack. r0 to r3 are also scratch (caller-saved) registers."}},
+   {"@type":"Question","name":"What is the difference between caller-saved and callee-saved registers?","acceptedAnswer":{"@type":"Answer","text":"Caller-saved (scratch) registers, r0 to r3 and r12, may be freely overwritten by a called function, so the caller must save them if it needs them after the call. Callee-saved registers, r4 to r11, must be preserved by the called function, which pushes them on entry and pops them before returning. This split divides the saving responsibility cleanly."}},
+   {"@type":"Question","name":"How do you call and return from a function in ARM?","acceptedAnswer":{"@type":"Answer","text":"You call with BL target, which jumps to the function and saves the return address in the link register (LR). The function returns with BX LR, or by popping the saved LR into the PC. For nested calls the function must save LR on the stack first, because a further BL would overwrite it."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 15</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 15 · THE INSTRUCTION SET</span>
+  <h1>Subroutines &amp; the AAPCS Calling Convention</h1>
+  <p class="lead">A function call sounds simple — jump there, jump back. But how does the caller pass arguments, get a result, and trust its registers survive? The answer is a shared rulebook: the <b>AAPCS</b>. Master it and your assembly can call C, and C can call yours.</p>
+
+  <h2>1. Call and return</h2>
+  <p>From Day 12: <b>BL</b> calls (jump + save return address in <b>LR</b>), and you return with <b>BX LR</b> (or by popping LR into PC):</p>
+  <div class="code"><span class="i">BL</span> myfunc       <span class="cm">; call: LR = address of next instruction, then jump</span>
+<span class="cm">; ... execution continues here after myfunc returns ...</span>
+
+<span class="lb">myfunc:</span>
+<span class="cm">; ... do work ...</span>
+<span class="i">BX</span> <span class="r">lr</span>           <span class="cm">; return to wherever we were called from</span></div>
+
+  <h2>2. The problem a convention solves</h2>
+  <p>If everyone invented their own way to pass arguments and use registers, no two pieces of code could call each other. So ARM defines the <b>AAPCS</b> (ARM Architecture Procedure Call Standard) — the contract every compiler and library follows. Obey it and your code <b>interoperates</b> with the whole ecosystem.</p>
+
+  <h2>3. The register roles</h2>
+  <table>
+    <thead><tr><th>Registers</th><th>Role</th><th>Who preserves</th></tr></thead>
+    <tbody>
+      <tr><td class="m">r0–r3</td><td>arguments 1–4; <b>r0</b> (&amp; r1) = return value; scratch</td><td class="cs">caller-saved</td></tr>
+      <tr><td class="m">r4–r11</td><td>local variables</td><td class="ce">callee-saved</td></tr>
+      <tr><td class="m">r12 (IP)</td><td>scratch / intra-call temp</td><td class="cs">caller-saved</td></tr>
+      <tr><td class="m">r13 (SP)</td><td>stack pointer</td><td>special</td></tr>
+      <tr><td class="m">r14 (LR)</td><td>return address</td><td>special</td></tr>
+      <tr><td class="m">r15 (PC)</td><td>program counter</td><td>special</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Caller-saved vs callee-saved</h3>
+  <ul>
+    <li><span class="cs">Caller-saved (r0–r3, r12)</span> — a called function may freely clobber these. If the <b>caller</b> needs their values after the call, the <b>caller</b> must save them first.</li>
+    <li><span class="ce">Callee-saved (r4–r11)</span> — the <b>called</b> function must leave these exactly as it found them, so it pushes any it uses on entry and pops them before returning.</li>
+  </ul>
+  <div class="box analogy">
+    <h3>💡 Why two kinds?</h3>
+    <p style="margin:0">It splits the work fairly. Scratch registers (r0–r3) are for quick throwaway use — no one saves them, so calls are cheap. Long-lived values go in r4–r11, which the callee promises to protect, so the caller can rely on them surviving any call.</p>
+  </div>
+
+  <h2>4. Passing arguments &amp; returning values</h2>
+  <div class="code"><span class="cm">; int sum = add(10, 20);</span>
+<span class="i">MOV</span> <span class="r">r0</span>, #<span class="n">10</span>     <span class="cm">; arg1 in r0</span>
+<span class="i">MOV</span> <span class="r">r1</span>, #<span class="n">20</span>     <span class="cm">; arg2 in r1</span>
+<span class="i">BL</span>  add          <span class="cm">; call</span>
+<span class="cm">; result now in r0</span>
+
+<span class="lb">add:</span>
+<span class="i">ADD</span> <span class="r">r0</span>, <span class="r">r0</span>, <span class="r">r1</span>  <span class="cm">; r0 = r0 + r1</span>
+<span class="i">BX</span>  <span class="r">lr</span>           <span class="cm">; return value is in r0</span></div>
+  <ul>
+    <li><b>First four args</b> → r0, r1, r2, r3. <b>More than four</b> → passed on the <b>stack</b>.</li>
+    <li><b>Return value</b> → r0 (a <b>64-bit</b> result uses r0:r1).</li>
+  </ul>
+
+  <h2>5. Nested calls — save LR!</h2>
+  <p>Here's the catch that bites beginners. <code>BL</code> overwrites <b>LR</b>. So if your function calls another function, the second <code>BL</code> destroys your own return address — unless you <b>save LR on the stack</b> first (Day 14):</p>
+  <div class="code"><span class="lb">outer:</span>
+<span class="i">PUSH</span> {<span class="r">r4</span>, <span class="r">lr</span>}    <span class="cm">; save LR (and any callee regs we use)</span>
+<span class="i">BL</span>   inner          <span class="cm">; this would clobber LR — but we saved it</span>
+<span class="cm">; ... more work ...</span>
+<span class="i">POP</span>  {<span class="r">r4</span>, <span class="r">pc</span>}    <span class="cm">; restore and return (saved LR → PC)</span></div>
+  <p>A <b>leaf</b> function (one that calls nothing) can skip this and just <code>BX LR</code>. Any function that makes a call must preserve LR. This is the single most common cause of "my function returns to the wrong place."</p>
+
+  <h2>6. The complete function template</h2>
+  <div class="code"><span class="lb">func:</span>
+<span class="i">PUSH</span> {<span class="r">r4</span>-<span class="r">r6</span>, <span class="r">lr</span>}   <span class="cm">; prologue: save callee-saved regs + LR</span>
+<span class="cm">; r0-r3 = args; use r4-r6 for locals; call others freely</span>
+<span class="cm">; ... body ...</span>
+<span class="cm">; put result in r0</span>
+<span class="i">POP</span>  {<span class="r">r4</span>-<span class="r">r6</span>, <span class="r">pc</span>}   <span class="cm">; epilogue: restore + return</span></div>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">The AAPCS is the <b>handshake</b> between functions: <b>r0–r3</b> carry args, <b>r0</b> returns the result, <b>r4–r11</b> are protected by the callee, and <b>LR</b> holds the return address — which you must <b>save on the stack before any nested call</b>. Follow it and your assembly and C interoperate perfectly.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 15 takeaways</h3>
+    <ul>
+      <li><b>BL</b> calls (saves LR); <b>BX LR</b> / <code>POP {…,pc}</code> returns.</li>
+      <li><b>AAPCS</b> is the standard that lets all ARM code interoperate.</li>
+      <li><b>r0–r3</b> = args + return (caller-saved); <b>r4–r11</b> = callee-saved; <b>r12</b> scratch.</li>
+      <li>&gt;4 args go on the <b>stack</b>; 64-bit result in <b>r0:r1</b>.</li>
+      <li><b>Save LR</b> before nested calls or your return address is lost.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Where does the first argument go, and where does the return value come back?</li>
+    <li>Which registers must a called function preserve?</li>
+    <li>Why must a non-leaf function push LR?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is the AAPCS?</h3><p>The ARM Architecture Procedure Call Standard — the convention for argument/return registers, register preservation and stack use that lets ARM code interoperate.</p></div>
+  <div class="faq-item"><h3>Caller-saved vs callee-saved?</h3><p>Caller-saved (r0–r3, r12) can be clobbered by the callee; callee-saved (r4–r11) must be preserved by the called function.</p></div>
+  <div class="faq-item"><h3>Why save LR?</h3><p>BL overwrites LR, so a function that calls another must push LR first or it loses its own return address.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-14-the-stack/"><span class="lab">Previous</span><div class="ti">← Day 14: The stack</div></a>
+    <a class="next" href="/arm-architecture/"><span class="lab">Up next · publishing soon</span><div class="ti">Day 16: Thumb instruction set — see roadmap →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>
