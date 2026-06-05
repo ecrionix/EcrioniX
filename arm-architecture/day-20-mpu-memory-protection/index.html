@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 20: The MPU — Memory Protection on ARM | ARM from Scratch</title>
+<meta name="description" content="Day 20 of ARM architecture from scratch. The Memory Protection Unit (MPU): how it divides the address space into regions with access permissions and attributes, the difference between an MPU and an MMU, how it catches bad accesses with a fault, and why it matters for safety, security and RTOS task isolation.">
+<meta name="keywords" content="ARM MPU, memory protection unit, MPU vs MMU, memory regions access permissions, MemManage fault, RTOS task isolation, execute never XN, Cortex-M MPU, embedded safety security">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-20-mpu-memory-protection/">
+<meta property="og:title" content="Day 20: The MPU — Memory Protection on ARM">
+<meta property="og:description" content="How the Memory Protection Unit divides memory into regions with permissions, catches bad accesses, and isolates RTOS tasks — and how it differs from an MMU.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-20-mpu-memory-protection/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 20: The MPU — ARM from Scratch">
+<meta name="twitter:description" content="Memory regions, access permissions, MPU vs MMU, faults, and RTOS task isolation.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 20: The MPU - Memory Protection on ARM","description":"Lesson 20 of a from-scratch ARM course: the Memory Protection Unit, dividing the address space into regions with access permissions and attributes, the difference between an MPU and an MMU, memory faults, and task isolation for safety and security.","url":"https://ecrionix.org/arm-architecture/day-20-mpu-memory-protection/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 20: The MPU","item":"https://ecrionix.org/arm-architecture/day-20-mpu-memory-protection/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is an MPU in ARM?","acceptedAnswer":{"@type":"Answer","text":"An MPU, or Memory Protection Unit, is an optional hardware block that divides the address space into a small number of regions and enforces access permissions and memory attributes on each one. If software makes a disallowed access, such as writing to read-only memory or running code from a data region, the MPU raises a fault before the access completes."}},
+   {"@type":"Question","name":"What is the difference between an MPU and an MMU?","acceptedAnswer":{"@type":"Answer","text":"An MPU only enforces permissions and attributes on a few fixed regions of the existing physical address space; it does no address translation. An MMU does full virtual-to-physical address translation using page tables, giving each process its own virtual address space plus protection. MPUs suit real-time microcontrollers like Cortex-M, while MMUs are used in application processors like Cortex-A that run rich operating systems."}},
+   {"@type":"Question","name":"Why use an MPU?","acceptedAnswer":{"@type":"Answer","text":"An MPU improves safety, security and reliability. It can mark code as read-only and execute, data as no-execute, and isolate one RTOS task from another so a bug in one task cannot corrupt another's memory. It catches stack overflows, null-pointer writes and stray accesses immediately as faults, which is invaluable in safety-critical and secure embedded systems."}},
+   {"@type":"Question","name":"What happens when the MPU detects a violation?","acceptedAnswer":{"@type":"Answer","text":"The MPU blocks the access and triggers a memory management fault, MemManage, which vectors to a fault handler. The handler can inspect fault status registers to see what went wrong and where, then recover, terminate the offending task, or reset the system, instead of letting corrupted memory cause unpredictable behaviour."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 20</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 20 · SYSTEM &amp; MEMORY</span>
+  <h1>The MPU — Memory Protection</h1>
+  <p class="lead">A single stray pointer can corrupt memory and crash a system in ways that are agony to debug. The <b>Memory Protection Unit</b> stops that at the hardware level: it polices <i>who may touch which memory and how</i>, turning a silent corruption into an instant, catchable <b>fault</b>. It's the foundation of safe and secure embedded software.</p>
+
+  <h2>1. The problem: nothing stops a bad access</h2>
+  <p>By default, any code can write anywhere — over a constant table, into a peripheral, off the end of the stack, even through a null pointer at address 0. The bug doesn't crash <i>where</i> it happens; it corrupts something and the system fails mysteriously later. The MPU's job is to make illegal accesses fail <b>immediately and visibly</b>.</p>
+
+  <h2>2. What the MPU does: regions + permissions</h2>
+  <p>The <b>MPU</b> divides the address space into a small number of <b>regions</b> (typically 8 or 16). For each region you define a base address, a size, and a set of rules:</p>
+  <table>
+    <thead><tr><th>Attribute</th><th>Controls</th></tr></thead>
+    <tbody>
+      <tr><td><b>Access permission</b></td><td>no-access / read-only / read-write, and whether unprivileged code may access it</td></tr>
+      <tr><td><b>Execute-never (XN)</b></td><td>whether instructions may be fetched from the region (data regions → XN)</td></tr>
+      <tr><td><b>Memory type</b></td><td>normal vs device/strongly-ordered (controls caching &amp; reordering)</td></tr>
+      <tr><td><b>Shareability/cache</b></td><td>cache &amp; coherency behaviour for the region</td></tr>
+    </tbody>
+  </table>
+  <p>Classic safe setup: <b>flash = read-only + executable</b>, <b>RAM = read-write + execute-never</b>, <b>peripherals = read-write + device + XN</b>. Now a wild jump into data, or a write into code, is impossible.</p>
+
+  <h2>3. The fault: caught, not corrupted</h2>
+  <p>If software violates a region's rules, the MPU <b>blocks the access</b> and raises a <b>MemManage fault</b>, vectoring to a fault handler (an exception, per Day 17). The handler reads fault-status registers to learn what and where:</p>
+  <div class="code">void MemManage_Handler(void) {
+    uint32_t cfsr = SCB->CFSR;       <span class="cm">// what kind of fault</span>
+    uint32_t addr = SCB->MMFAR;      <span class="cm">// faulting address (if valid)</span>
+    <span class="cm">// log it, kill the offending task, or reset — don't run on corrupted state</span>
+}</div>
+  <div class="box analogy">
+    <h3>💡 A smoke detector for memory</h3>
+    <p style="margin:0">Without an MPU, a memory bug is a slow gas leak — you only notice when something explodes far away. The MPU is a smoke detector wired to each room: the instant something's wrong, it goes off <i>at the source</i>, so you know exactly which line and which address.</p>
+  </div>
+
+  <h2>4. MPU vs MMU — don't confuse them</h2>
+  <table>
+    <thead><tr><th></th><th>MPU</th><th>MMU</th></tr></thead>
+    <tbody>
+      <tr><td><b>Address translation</b></td><td>none — uses physical addresses</td><td class="ce">virtual → physical (page tables)</td></tr>
+      <tr><td><b>Granularity</b></td><td>a few fixed regions</td><td>fine-grained pages (e.g. 4 KB)</td></tr>
+      <tr><td><b>Per-process address space</b></td><td>no</td><td class="ce">yes</td></tr>
+      <tr><td><b>Typical core</b></td><td>Cortex-M / Cortex-R</td><td>Cortex-A</td></tr>
+      <tr><td><b>Runs</b></td><td>bare-metal / RTOS</td><td>Linux, rich OSes</td></tr>
+    </tbody>
+  </table>
+  <p>An MPU only <b>protects</b>; an MMU also <b>translates</b>, giving every process its own virtual view of memory. That's <a href="/arm-architecture/">a later lesson</a> in the course — the MPU is the lightweight, deterministic cousin built for real-time systems.</p>
+
+  <h2>5. Why it matters: isolation</h2>
+  <ul>
+    <li><b>RTOS task isolation</b> — reconfigure MPU regions on each context switch so a bug in one task can't scribble on another's stack or data.</li>
+    <li><b>Privilege separation</b> — run application tasks unprivileged with no access to system control, so they can't disable interrupts or reprogram peripherals they shouldn't.</li>
+    <li><b>Catch stack overflow</b> — place a no-access "guard" region just past a stack so an overflow faults instead of silently corrupting.</li>
+    <li><b>Safety standards</b> — IEC 61508 / ISO 26262 functional-safety designs lean on the MPU for freedom-from-interference between software components.</li>
+  </ul>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">The MPU is a hardware <b>access policy</b> over a handful of memory <b>regions</b>: each gets read/write/execute permissions and attributes, and any violation becomes an instant <b>MemManage fault</b> instead of silent corruption. Unlike an <b>MMU</b>, it does <i>no translation</i> — it just protects — which makes it perfect for real-time isolation, privilege separation and safety.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 20 takeaways</h3>
+    <ul>
+      <li>The <b>MPU</b> splits memory into a few <b>regions</b> with permissions + attributes.</li>
+      <li>Mark code <b>RO+exec</b>, data <b>RW+execute-never</b>, peripherals <b>device+XN</b>.</li>
+      <li>A violation → <b>MemManage fault</b>, caught at the source (not silent corruption).</li>
+      <li><b>MPU protects only; MMU also translates</b> (virtual memory + per-process spaces).</li>
+      <li>Key uses: <b>RTOS task isolation</b>, privilege separation, stack-overflow guards, safety.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>What three things do you define for each MPU region?</li>
+    <li>Name the one capability an MMU has that an MPU does not.</li>
+    <li>How would you use the MPU to catch a stack overflow?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is an MPU?</h3><p>A hardware block that enforces access permissions and attributes on a few memory regions, faulting on any disallowed access.</p></div>
+  <div class="faq-item"><h3>MPU vs MMU?</h3><p>An MPU only protects fixed physical regions; an MMU also translates virtual→physical addresses with page tables for per-process spaces.</p></div>
+  <div class="faq-item"><h3>Why use one?</h3><p>Safety, security and reliability — task isolation, privilege separation, and catching stray accesses as faults.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-19-memory-map-buses/"><span class="lab">Previous</span><div class="ti">← Day 19: Memory map &amp; buses</div></a>
+    <a class="next" href="/arm-architecture/"><span class="lab">Up next · publishing soon</span><div class="ti">Day 21: The MMU &amp; virtual memory — see roadmap →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>

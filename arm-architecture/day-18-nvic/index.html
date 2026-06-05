@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 18: The NVIC — Interrupts on Cortex-M | ARM from Scratch</title>
+<meta name="description" content="Day 18 of ARM architecture from scratch. The Nested Vectored Interrupt Controller (NVIC) on Cortex-M: hardware vector fetch, automatic register stacking, configurable priorities and preemption, tail-chaining and late arrival, and why writing a Cortex-M ISR is just a normal C function.">
+<meta name="keywords" content="NVIC, Cortex-M interrupts, nested vectored interrupt controller, interrupt priority preemption, tail chaining, automatic stacking, exception stack frame, SysTick, PendSV, Cortex-M ISR C function">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-18-nvic/">
+<meta property="og:title" content="Day 18: The NVIC — Interrupts on Cortex-M">
+<meta property="og:description" content="Hardware vectoring, automatic stacking, configurable priorities, preemption and tail-chaining — why a Cortex-M ISR is just a C function.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-18-nvic/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 18: The NVIC — ARM from Scratch">
+<meta name="twitter:description" content="Cortex-M's interrupt controller: auto-stacking, priorities, preemption, tail-chaining.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 18: The NVIC - Interrupts on Cortex-M","description":"Lesson 18 of a from-scratch ARM course: the Nested Vectored Interrupt Controller on Cortex-M, hardware vector fetch, automatic register stacking, configurable priorities and preemption, tail-chaining and late arrival, and writing an ISR as a plain C function.","url":"https://ecrionix.org/arm-architecture/day-18-nvic/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 18: The NVIC","item":"https://ecrionix.org/arm-architecture/day-18-nvic/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the NVIC?","acceptedAnswer":{"@type":"Answer","text":"The NVIC, or Nested Vectored Interrupt Controller, is the interrupt controller built into every ARM Cortex-M processor. It manages all interrupt sources, fetches the correct handler address from a vector table in hardware, supports configurable priorities with nesting and preemption, and automatically saves and restores processor state, so an interrupt service routine can be written as an ordinary C function."}},
+   {"@type":"Question","name":"Why can a Cortex-M ISR be a plain C function?","acceptedAnswer":{"@type":"Answer","text":"Because the NVIC and core automatically push the caller-saved registers (r0 to r3, r12, LR, PC and xPSR) onto the stack on entry and pop them on exit. Since the AAPCS caller-saved set is preserved by hardware, the handler does not need special assembly wrappers, so it follows the normal calling convention and can be written in standard C."}},
+   {"@type":"Question","name":"What is tail-chaining?","acceptedAnswer":{"@type":"Answer","text":"Tail-chaining is an NVIC optimisation where, if a second interrupt is pending when one handler finishes, the core skips the pop-then-push of the stack frame and goes directly into the next handler. This removes redundant stacking work between back-to-back interrupts and significantly lowers latency."}},
+   {"@type":"Question","name":"How do interrupt priorities work on Cortex-M?","acceptedAnswer":{"@type":"Answer","text":"Each interrupt has a configurable priority number where a lower number means higher priority. A higher-priority interrupt can preempt a running lower-priority handler, creating nested interrupts. Priority is split into preemption and sub-priority fields, and the number of implemented priority bits varies by device, commonly three to eight bits."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 18</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 18 · SYSTEM &amp; MEMORY</span>
+  <h1>The NVIC — Interrupts on Cortex-M</h1>
+  <p class="lead">Yesterday's classic-ARM interrupts needed hand-written assembly wrappers to save state. Cortex-M throws all of that away. Its built-in <b>NVIC</b> does the vectoring, the register saving, and the prioritising <b>in hardware</b> — so an interrupt handler becomes nothing more than a normal C function. This is the single biggest reason Cortex-M is so beginner-friendly.</p>
+
+  <h2>1. What the NVIC is</h2>
+  <p>The <b>NVIC</b> — <b>N</b>ested <b>V</b>ectored <b>I</b>nterrupt <b>C</b>ontroller — is a standard block inside <i>every</i> Cortex-M core. "Nested" = interrupts can interrupt each other by priority. "Vectored" = the hardware fetches the right handler address directly. It manages dozens to hundreds of interrupt sources plus core system exceptions.</p>
+
+  <h2>2. The Cortex-M vector table</h2>
+  <p>Unlike classic ARM (where each vector was a <i>branch instruction</i>), a Cortex-M vector table is a plain array of <b>function-pointer addresses</b>. Slot 0 is even special: it holds the <b>initial stack pointer</b>, loaded automatically at reset before any code runs.</p>
+  <div class="code"><span class="cm">// Cortex-M vector table = array of addresses (not instructions)</span>
+__vectors:
+  .word _estack          <span class="cm">// 0x00  initial SP value</span>
+  .word Reset_Handler    <span class="cm">// 0x04  reset</span>
+  .word NMI_Handler      <span class="cm">// 0x08  non-maskable interrupt</span>
+  .word HardFault_Handler<span class="cm">// 0x0C  hard fault</span>
+  <span class="cm">// ... system exceptions ...</span>
+  .word SysTick_Handler  <span class="cm">// system tick timer</span>
+  .word TIM2_IRQHandler  <span class="cm">// first device interrupt</span>
+  <span class="cm">// ... up to ~240 device IRQs ...</span></div>
+
+  <h2>3. Automatic stacking — the magic</h2>
+  <p>When an interrupt fires, the core <b>automatically pushes</b> 8 registers onto the stack: the AAPCS caller-saved set <b>r0–r3, r12, LR, PC, and xPSR</b>. On return it pops them back. Because these are exactly the registers a C function is allowed to clobber, <b>the handler doesn't need any special wrapper</b>:</p>
+  <div class="code"><span class="cm">// A complete, correct Cortex-M interrupt handler — just C:</span>
+void TIM2_IRQHandler(void) {
+    TIM2->SR &= ~TIM_SR_UIF;   <span class="cm">// clear the interrupt flag (always!)</span>
+    toggle_led();
+}</div>
+  <div class="box analogy">
+    <h3>💡 The valet that parks your state</h3>
+    <p style="margin:0">Classic ARM made <i>you</i> save and restore registers in assembly. The NVIC is like a valet: it parks all the volatile state for you on entry and brings it back on exit. You just write the handler logic — in C.</p>
+  </div>
+
+  <h2>4. Priorities &amp; preemption</h2>
+  <p>Every interrupt gets a <b>priority number</b>, and the golden rule is counter-intuitive: <b>lower number = higher priority</b>. A higher-priority interrupt can <b>preempt</b> a running lower-priority handler, nesting on top of it; equal-or-lower ones wait.</p>
+  <ul>
+    <li>Priority is split into a <b>preemption</b> field (decides nesting) and a <b>sub-priority</b> field (breaks ties).</li>
+    <li>The number of priority bits is <b>device-specific</b> (often 3–8 bits → 8–256 levels).</li>
+    <li>You set it with CMSIS: <code>NVIC_SetPriority(TIM2_IRQn, 2);</code> then <code>NVIC_EnableIRQ(TIM2_IRQn);</code></li>
+  </ul>
+
+  <h2>5. Tail-chaining &amp; late arrival</h2>
+  <p>The NVIC has two clever latency optimisations:</p>
+  <table>
+    <thead><tr><th>Feature</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><b>Tail-chaining</b></td><td>If another interrupt is pending when a handler ends, the core <b>skips the pop+push</b> of the stack frame and jumps straight into the next handler.</td></tr>
+      <tr><td><b>Late arrival</b></td><td>If a higher-priority interrupt arrives <i>during</i> the stacking of a lower one, the core re-targets to the higher handler without redoing the stacking.</td></tr>
+    </tbody>
+  </table>
+  <p>Both eliminate redundant memory traffic, giving Cortex-M its famously deterministic, low interrupt latency — typically a fixed <b>12 cycles</b> to enter a handler.</p>
+
+  <h2>6. Special system handlers</h2>
+  <ul>
+    <li><b>SysTick</b> — a simple 24-bit countdown timer in the core, the classic heartbeat for an RTOS scheduler tick.</li>
+    <li><b>PendSV</b> — a deliberately lowest-priority, software-pendable exception used by RTOSes to perform <b>context switches</b> safely after all other interrupts finish.</li>
+    <li><b>SVC</b> — the supervisor call, the gateway from unprivileged thread code into the OS kernel.</li>
+  </ul>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">The NVIC moves interrupt plumbing into <b>hardware</b>: it vectors directly to your handler, <b>auto-stacks</b> the caller-saved registers (so an ISR is plain C), supports <b>numbered priorities with preemption</b> (lower = higher), and uses <b>tail-chaining</b> for back-to-back interrupts. That's why Cortex-M interrupt handling is both fast and easy.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 18 takeaways</h3>
+    <ul>
+      <li>The <b>NVIC</b> is built into every Cortex-M; it vectors, stacks and prioritises in hardware.</li>
+      <li>The vector table is an array of <b>addresses</b>; slot 0 is the initial <b>SP</b>.</li>
+      <li><b>Auto-stacking</b> of r0–r3, r12, LR, PC, xPSR → an ISR is just a C function.</li>
+      <li><b>Lower priority number = higher priority</b>; higher ones <b>preempt</b> (nesting).</li>
+      <li><b>Tail-chaining</b> / late-arrival cut latency; entry is a deterministic ~12 cycles.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Which 8 registers does the NVIC stack automatically, and why those?</li>
+    <li>Does priority 1 preempt priority 5, or the other way round?</li>
+    <li>What does tail-chaining save between two back-to-back interrupts?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is the NVIC?</h3><p>The Nested Vectored Interrupt Controller built into Cortex-M — it handles vectoring, auto-stacking and prioritised, nestable interrupts in hardware.</p></div>
+  <div class="faq-item"><h3>Why is a Cortex-M ISR just C?</h3><p>The hardware auto-saves the caller-saved registers (r0–r3, r12, LR, PC, xPSR), so no assembly wrapper is needed.</p></div>
+  <div class="faq-item"><h3>What is tail-chaining?</h3><p>Skipping the unstack/restack between back-to-back interrupts, lowering latency.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-17-exceptions-interrupts/"><span class="lab">Previous</span><div class="ti">← Day 17: Exceptions &amp; interrupts</div></a>
+    <a class="next" href="/arm-architecture/day-19-memory-map-buses/"><span class="lab">Next</span><div class="ti">Day 19: Memory map &amp; buses →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>

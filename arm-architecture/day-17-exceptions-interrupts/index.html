@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 17: ARM Exceptions &amp; Interrupts — IRQ, FIQ &amp; the Vector Table | ARM from Scratch</title>
+<meta name="description" content="Day 17 of ARM architecture from scratch. How ARM handles exceptions and interrupts: the difference between an exception and an interrupt, IRQ vs FIQ, the exception vector table, what the core does automatically on entry (banked registers, mode switch, saving the return address), priorities, and returning cleanly.">
+<meta name="keywords" content="ARM exceptions, ARM interrupts, IRQ FIQ, vector table ARM, exception handling, interrupt service routine, banked registers, exception return, SPSR, ARM exception priorities">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-17-exceptions-interrupts/">
+<meta property="og:title" content="Day 17: ARM Exceptions &amp; Interrupts — IRQ, FIQ &amp; the Vector Table">
+<meta property="og:description" content="Exceptions vs interrupts, IRQ vs FIQ, the vector table, what the core does on entry, and how to return cleanly.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-17-exceptions-interrupts/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 17: Exceptions &amp; Interrupts — ARM from Scratch">
+<meta name="twitter:description" content="IRQ vs FIQ, the vector table, automatic entry behaviour, priorities and exception return.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 17: ARM Exceptions and Interrupts - IRQ, FIQ and the Vector Table","description":"Lesson 17 of a from-scratch ARM course: exceptions versus interrupts, IRQ and FIQ, the exception vector table, automatic entry behaviour including banked registers and saved return address, priorities and exception return.","url":"https://ecrionix.org/arm-architecture/day-17-exceptions-interrupts/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 17: Exceptions & Interrupts","item":"https://ecrionix.org/arm-architecture/day-17-exceptions-interrupts/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the difference between an exception and an interrupt?","acceptedAnswer":{"@type":"Answer","text":"An exception is any event that diverts the processor from normal execution to a handler - this includes reset, undefined instructions, memory aborts, software interrupts and hardware interrupts. An interrupt is one kind of exception, raised by external hardware such as a timer or peripheral. So every interrupt is an exception, but not every exception is an interrupt."}},
+   {"@type":"Question","name":"What is the difference between IRQ and FIQ in ARM?","acceptedAnswer":{"@type":"Answer","text":"IRQ is the normal interrupt request; FIQ is the Fast Interrupt reQuest, given higher priority and designed for low latency. FIQ has more banked registers (r8 to r14), so its handler can run without saving and restoring as many registers, and its vector sits last in the table so the handler can start right there. FIQ is typically reserved for the single most time-critical interrupt source."}},
+   {"@type":"Question","name":"What is the exception vector table?","acceptedAnswer":{"@type":"Answer","text":"The vector table is a fixed array of entries, one per exception type, that the core jumps to when that exception occurs. In classic ARM each entry is one instruction - usually a branch to the real handler - covering reset, undefined instruction, software interrupt, prefetch abort, data abort, IRQ and FIQ. It usually lives at address 0 and tells the processor where each handler is."}},
+   {"@type":"Question","name":"What does the ARM core do automatically when an exception occurs?","acceptedAnswer":{"@type":"Answer","text":"On entry the core switches to the appropriate mode, saves the current status register into the SPSR of that mode, stores the return address in the banked link register, disables further interrupts as needed, and jumps to the matching vector. Thanks to banked registers it does this with minimal overhead. Your handler then runs, and a special return instruction restores both the PC and the status register."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 17</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 17 · SYSTEM &amp; MEMORY</span>
+  <h1>Exceptions &amp; Interrupts — IRQ, FIQ &amp; the Vector Table</h1>
+  <p class="lead">Until now your code ran top to bottom. But real systems must <b>react</b> — a timer fires, a button is pressed, an instruction faults. The mechanism that lets the processor drop everything, handle the event, and resume exactly where it left off is the <b>exception</b>. Get this right and your firmware comes alive.</p>
+
+  <h2>1. Exception vs interrupt</h2>
+  <p>People use the words interchangeably, but there's a hierarchy:</p>
+  <ul>
+    <li>An <b>exception</b> is <i>any</i> event that diverts the core from normal flow to a special handler — reset, an undefined instruction, a memory abort, a software interrupt (<code>SVC</code>), or a hardware interrupt.</li>
+    <li>An <b>interrupt</b> is one <i>kind</i> of exception — raised by <b>external hardware</b> (timer, UART, GPIO).</li>
+  </ul>
+  <p>So: <b>every interrupt is an exception, but not every exception is an interrupt.</b></p>
+
+  <h2>2. The classic ARM exceptions</h2>
+  <table>
+    <thead><tr><th>Exception</th><th>Cause</th><th>Mode entered</th></tr></thead>
+    <tbody>
+      <tr><td><b>Reset</b></td><td>power-on / hard reset</td><td class="m">Supervisor</td></tr>
+      <tr><td><b>Undefined</b></td><td>unknown instruction</td><td class="m">Undefined</td></tr>
+      <tr><td><b>SVC (SWI)</b></td><td>software interrupt — call into the OS</td><td class="m">Supervisor</td></tr>
+      <tr><td><b>Prefetch abort</b></td><td>bad instruction fetch</td><td class="m">Abort</td></tr>
+      <tr><td><b>Data abort</b></td><td>bad data access</td><td class="m">Abort</td></tr>
+      <tr><td><b>IRQ</b></td><td>normal hardware interrupt</td><td class="m">IRQ</td></tr>
+      <tr><td><b>FIQ</b></td><td>fast hardware interrupt</td><td class="m">FIQ</td></tr>
+    </tbody>
+  </table>
+  <p>These tie straight back to the <a href="/arm-architecture/day-05-operating-modes/">operating modes from Day 5</a> — each exception drops the core into a specific privileged mode.</p>
+
+  <h2>3. The vector table</h2>
+  <p>When an exception fires, the core doesn't search for a handler — it jumps to a <b>fixed address</b> reserved for that exception. The block of these fixed addresses is the <b>vector table</b>, usually at address <code>0x00000000</code>. In classic ARM each slot holds <b>one instruction</b>, almost always a branch to the real handler:</p>
+  <div class="code"><span class="cm">; Classic ARM vector table (one instruction per entry)</span>
+<span class="lb">_vectors:</span>
+<span class="i">B</span> reset_handler      <span class="cm">; 0x00  Reset</span>
+<span class="i">B</span> undef_handler      <span class="cm">; 0x04  Undefined instruction</span>
+<span class="i">B</span> svc_handler        <span class="cm">; 0x08  Software interrupt (SVC)</span>
+<span class="i">B</span> pabort_handler     <span class="cm">; 0x0C  Prefetch abort</span>
+<span class="i">B</span> dabort_handler     <span class="cm">; 0x10  Data abort</span>
+<span class="cm">; 0x14  (reserved)</span>
+<span class="i">B</span> irq_handler        <span class="cm">; 0x18  IRQ</span>
+<span class="i">B</span> fiq_handler        <span class="cm">; 0x1C  FIQ  ← last, so the handler can start right here</span></div>
+  <p>FIQ sits <b>last</b> on purpose: there's nothing after it, so the FIQ handler code can begin <i>immediately at the vector</i> with no extra branch — shaving cycles off the fastest interrupt.</p>
+
+  <h2>4. IRQ vs FIQ — why two?</h2>
+  <table>
+    <thead><tr><th></th><th>IRQ</th><th>FIQ (Fast Interrupt)</th></tr></thead>
+    <tbody>
+      <tr><td><b>Priority</b></td><td>normal</td><td class="ce">higher</td></tr>
+      <tr><td><b>Banked registers</b></td><td>r13, r14</td><td class="ce">r8–r14 (more)</td></tr>
+      <tr><td><b>Latency</b></td><td>low</td><td class="ce">lowest</td></tr>
+      <tr><td><b>Typical use</b></td><td>most peripherals</td><td>the one most time-critical source</td></tr>
+    </tbody>
+  </table>
+  <p>FIQ has <b>extra banked registers</b> (r8–r14), so its handler has private scratch registers it can use <i>without pushing/popping</i> the interrupted code's values — less save/restore means lower latency. You typically reserve FIQ for a single critical source (e.g. a motor controller) and route everything else through IRQ.</p>
+
+  <h2>5. What the core does automatically on entry</h2>
+  <p>The hardware does several things for you the instant an exception is taken:</p>
+  <ol>
+    <li><b>Switches mode</b> (e.g. into IRQ mode), changing which banked SP/LR are visible.</li>
+    <li><b>Saves CPSR → SPSR</b> of the new mode, so the old processor state is preserved.</li>
+    <li><b>Saves the return address</b> into the mode's banked <b>LR</b>.</li>
+    <li><b>Disables further interrupts</b> as appropriate (e.g. masks IRQ; FIQ masks both).</li>
+    <li><b>Jumps to the vector</b> for that exception.</li>
+  </ol>
+  <p>Banked registers (Day 5) are what make this cheap — the handler gets its own SP and LR without touching the interrupted program's.</p>
+
+  <h2>6. Returning from an exception</h2>
+  <p>Returning isn't a plain <code>BX LR</code>, because you must restore <b>both</b> the PC <i>and</i> the saved status (SPSR → CPSR) <b>atomically</b>, and adjust for pipeline offset. ARM provides special forms:</p>
+  <div class="code"><span class="lb">irq_handler:</span>
+<span class="i">SUB</span>  <span class="r">lr</span>, <span class="r">lr</span>, #<span class="n">4</span>      <span class="cm">; adjust return address (IRQ)</span>
+<span class="i">PUSH</span> {<span class="r">r0</span>-<span class="r">r3</span>, <span class="r">lr</span>}   <span class="cm">; save scratch regs we'll use</span>
+<span class="cm">; ... handle the interrupt (clear the peripheral flag!) ...</span>
+<span class="i">LDM</span>  <span class="r">sp</span>!, {<span class="r">r0</span>-<span class="r">r3</span>, <span class="r">pc</span>}^ <span class="cm">; return: restore regs, PC, and CPSR (the ^)</span></div>
+  <p>The <code>^</code> on the load-to-PC tells the core to also restore <b>CPSR from SPSR</b>. On <b>Cortex-M</b> this is all handled differently and far more automatically — which is exactly <a href="/arm-architecture/day-18-nvic/">tomorrow's topic, the NVIC</a>.</p>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">An exception is a <b>hardware-driven function call</b>: the core saves your state, switches to a privileged mode, and jumps to a fixed <b>vector</b>. <b>IRQ</b> is the everyday interrupt; <b>FIQ</b> is the privileged fast lane with extra banked registers. Your handler does the work and returns by restoring <b>both</b> PC and CPSR together.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 17 takeaways</h3>
+    <ul>
+      <li>An <b>interrupt</b> is one kind of <b>exception</b>; both divert the core to a handler.</li>
+      <li>The <b>vector table</b> (at 0x0) holds one entry per exception type.</li>
+      <li><b>FIQ</b> &gt; IRQ: higher priority, more banked registers, lowest latency, vector last.</li>
+      <li>On entry the core auto-saves CPSR→SPSR, return→LR, switches mode, masks interrupts.</li>
+      <li>Return restores <b>PC + CPSR</b> together (e.g. <code>LDM sp!, {…, pc}^</code>).</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Why is every interrupt an exception but not vice-versa?</li>
+    <li>Name two reasons FIQ has lower latency than IRQ.</li>
+    <li>What does the <code>^</code> do on an exception-return <code>LDM</code>?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>Exception vs interrupt?</h3><p>An exception is any diversion to a handler (reset, fault, SVC, interrupt); an interrupt is specifically a hardware-raised exception.</p></div>
+  <div class="faq-item"><h3>IRQ vs FIQ?</h3><p>FIQ is the fast, higher-priority interrupt with extra banked registers (r8–r14) and its vector last, for the most time-critical source.</p></div>
+  <div class="faq-item"><h3>What's the vector table?</h3><p>A fixed array of per-exception entries (usually at 0x0) the core jumps to when an exception occurs.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-16-thumb-instruction-set/"><span class="lab">Previous</span><div class="ti">← Day 16: The Thumb instruction set</div></a>
+    <a class="next" href="/arm-architecture/day-18-nvic/"><span class="lab">Next</span><div class="ti">Day 18: The NVIC →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>

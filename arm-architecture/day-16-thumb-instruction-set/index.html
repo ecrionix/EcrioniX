@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 16: The Thumb Instruction Set &amp; Code Density | ARM from Scratch</title>
+<meta name="description" content="Day 16 of ARM architecture from scratch. The Thumb 16-bit instruction set and why code density matters: how Thumb halves code size, the trade-offs versus 32-bit ARM, Thumb-2's mixed 16/32-bit encoding, the T bit and BX for state switching, and why Cortex-M is Thumb-only.">
+<meta name="keywords" content="ARM Thumb instruction set, Thumb-2, code density, 16-bit instructions, T bit, BX state switch, Cortex-M Thumb only, ARM vs Thumb, interworking">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-16-thumb-instruction-set/">
+<meta property="og:title" content="Day 16: The Thumb Instruction Set &amp; Code Density">
+<meta property="og:description" content="How Thumb's 16-bit encoding halves code size, the trade-offs, Thumb-2, and why Cortex-M is Thumb-only.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-16-thumb-instruction-set/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 16: Thumb &amp; Code Density — ARM from Scratch">
+<meta name="twitter:description" content="16-bit Thumb, code density trade-offs, Thumb-2, the T bit and state switching.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 16: The Thumb Instruction Set and Code Density","description":"Lesson 16 of a from-scratch ARM course: the Thumb 16-bit instruction set, code density, the trade-offs versus 32-bit ARM, Thumb-2 mixed encoding, the T bit and state switching, and why Cortex-M is Thumb-only.","url":"https://ecrionix.org/arm-architecture/day-16-thumb-instruction-set/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 16: The Thumb Instruction Set","item":"https://ecrionix.org/arm-architecture/day-16-thumb-instruction-set/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the Thumb instruction set?","acceptedAnswer":{"@type":"Answer","text":"Thumb is a compressed instruction set where most instructions are 16 bits wide instead of the usual 32 bits in ARM state. It was created to shrink code size, which is critical in memory-constrained embedded systems, at a small cost in the number of registers and operations each instruction can reach."}},
+   {"@type":"Question","name":"Why does code density matter?","acceptedAnswer":{"@type":"Answer","text":"Smaller code means less flash or ROM to store the program, lower cost, and often better instruction-cache and fetch efficiency on narrow memory buses. In embedded devices where memory dominates the bill of materials, Thumb can cut code size by around 25 to 35 percent versus 32-bit ARM."}},
+   {"@type":"Question","name":"What is Thumb-2?","acceptedAnswer":{"@type":"Answer","text":"Thumb-2 extends Thumb with a mix of 16-bit and 32-bit instructions, so common operations stay small while complex ones remain fully capable. It gives nearly the performance of 32-bit ARM with nearly the code density of Thumb, and it is the instruction set used by Cortex-M cores."}},
+   {"@type":"Question","name":"How does the processor switch between ARM and Thumb state?","acceptedAnswer":{"@type":"Answer","text":"The T bit in the program status register selects the state. A BX or BLX instruction switches state based on the least significant bit of the target address: bit 0 set means Thumb, clear means ARM. Cortex-M cores run only Thumb (Thumb-2) and never enter classic ARM state."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 16</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 16 · THE INSTRUCTION SET</span>
+  <h1>The Thumb Instruction Set &amp; Code Density</h1>
+  <p class="lead">A 32-bit instruction is powerful but big — and in an embedded chip with a few kilobytes of flash, <b>every byte costs money</b>. Thumb is ARM's answer: squeeze most instructions into <b>16 bits</b> and watch your program shrink by a third. Here's how it works, what it trades away, and why almost every microcontroller you'll meet runs it.</p>
+
+  <h2>1. The problem: code costs memory</h2>
+  <p>In classic ARM state, every instruction is exactly <b>32 bits</b> (4 bytes). That's clean and flexible, but a 10,000-instruction program needs 40 KB of flash just to store it. On a tiny microcontroller, flash is often the single most expensive part of the chip. <b>Code density</b> — how much program fits per byte — directly drives cost, power, and how much your code-fetch traffic clogs a narrow memory bus.</p>
+
+  <h2>2. The idea: 16-bit instructions</h2>
+  <p>Thumb re-encodes the most common operations into <b>16 bits</b>. Half the width means roughly <b>half the storage</b> for those instructions. ARM achieved this by accepting sensible limits on the common case:</p>
+  <ul>
+    <li>Most Thumb instructions reach only the <b>low registers r0–r7</b> (a few reach high registers).</li>
+    <li><b>Smaller immediates</b> and offsets than 32-bit ARM.</li>
+    <li><b>No per-instruction condition codes</b> — Thumb mostly drops the conditional-execution field from Day 11 (you use conditional branches instead).</li>
+    <li>The <b>barrel shifter</b> isn't folded into every data-processing instruction the way it is in ARM.</li>
+  </ul>
+  <p>The bet pays off because real programs are dominated by simple moves, adds, loads, stores and branches — exactly what Thumb encodes compactly.</p>
+
+  <h2>3. The trade-off in one table</h2>
+  <table>
+    <thead><tr><th></th><th>ARM (32-bit)</th><th>Thumb (16-bit)</th></tr></thead>
+    <tbody>
+      <tr><td><b>Instruction size</b></td><td class="m">32 bits</td><td class="m">16 bits (mostly)</td></tr>
+      <tr><td><b>Code size</b></td><td>baseline</td><td class="ce">~25–35% smaller</td></tr>
+      <tr><td><b>Registers reached</b></td><td>all r0–r15</td><td>mostly r0–r7</td></tr>
+      <tr><td><b>Conditional exec</b></td><td>every instruction</td><td>branches only</td></tr>
+      <tr><td><b>Raw performance</b></td><td>slightly higher</td><td>slightly lower (more instructions)</td></tr>
+    </tbody>
+  </table>
+  <div class="box analogy">
+    <h3>💡 Shorthand vs longhand</h3>
+    <p style="margin:0">Thumb is like writing in shorthand. Each note is smaller so your notebook lasts longer, but occasionally you need a full sentence (a 32-bit instruction) for something complex. <b>Thumb-2</b> lets you mix both freely — and that's the winning combination.</p>
+  </div>
+
+  <h2>4. Thumb-2: the best of both worlds</h2>
+  <p>Pure Thumb was too restrictive for serious work, so ARM created <b>Thumb-2</b>: a single instruction stream that <b>mixes 16-bit and 32-bit encodings</b>. Common operations stay 16 bits (great density); when an operation needs a big immediate, a high register, or extra power, the assembler emits a 32-bit Thumb instruction instead. The result is <b>~98% of ARM's performance with ~75% of the code size</b>. This is exactly the instruction set the entire <b>Cortex-M</b> family runs — and they run <i>nothing else</i>.</p>
+  <div class="code"><span class="cm">; Same source, two encodings chosen automatically by the assembler:</span>
+<span class="i">ADDS</span> <span class="r">r0</span>, <span class="r">r1</span>, <span class="r">r2</span>     <span class="cm">; 16-bit Thumb (low regs, simple)</span>
+<span class="i">ADD</span>  <span class="r">r0</span>, <span class="r">r1</span>, #<span class="n">0x12345</span> <span class="cm">; 32-bit Thumb-2 (big immediate needs the wide form)</span></div>
+
+  <h2>5. Switching state: the T bit</h2>
+  <p>On cores that support both, a single bit — the <b>T bit</b> in the program status register — selects ARM or Thumb state. You don't set it directly; you switch with an <b>interworking branch</b>:</p>
+  <ul>
+    <li><code>BX Rn</code> / <code>BLX</code> use <b>bit 0 of the target address</b> to pick state: <b>1 = Thumb</b>, <b>0 = ARM</b>.</li>
+    <li>That's why function pointers to Thumb code have their low bit set — it's a state tag, not part of the address.</li>
+  </ul>
+  <div class="code"><span class="i">LDR</span> <span class="r">r0</span>, =thumb_func+1  <span class="cm">; +1 sets bit0 → request Thumb state</span>
+<span class="i">BX</span>  <span class="r">r0</span>               <span class="cm">; branch and switch to Thumb</span></div>
+  <p>On <b>Cortex-M</b> there's nothing to switch — the core is <b>Thumb-only</b>. The T bit is effectively always 1, and trying to enter ARM state faults. On Cortex-A/R you can interwork between the two.</p>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">Thumb trades a little flexibility for a lot of <b>code density</b> by shrinking instructions to 16 bits. <b>Thumb-2</b> removes the downside by mixing 16- and 32-bit forms, giving near-ARM performance at far smaller size — which is why every Cortex-M microcontroller is Thumb-only.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 16 takeaways</h3>
+    <ul>
+      <li><b>Thumb</b> = mostly 16-bit instructions → ~25–35% smaller code.</li>
+      <li>Trade-offs: low registers, smaller immediates, no per-instruction conditionals.</li>
+      <li><b>Thumb-2</b> mixes 16/32-bit → near-ARM speed + near-Thumb density.</li>
+      <li>The <b>T bit</b> selects state; <b>BX/BLX</b> switch using target bit 0.</li>
+      <li><b>Cortex-M is Thumb-only</b> — it never enters classic ARM state.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Roughly how much smaller is Thumb code than 32-bit ARM, and why?</li>
+    <li>What does Thumb-2 add that plain Thumb lacked?</li>
+    <li>What does bit 0 of a BX target address select?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is Thumb?</h3><p>A mostly-16-bit ARM instruction set designed for code density, at a small cost in registers and per-instruction power.</p></div>
+  <div class="faq-item"><h3>What is Thumb-2?</h3><p>A mixed 16/32-bit extension giving near-ARM performance with near-Thumb size; it's what Cortex-M runs.</p></div>
+  <div class="faq-item"><h3>How do you switch ARM/Thumb state?</h3><p>The T bit selects it; BX/BLX set it from bit 0 of the target address. Cortex-M is Thumb-only.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-15-subroutines-aapcs/"><span class="lab">Previous</span><div class="ti">← Day 15: Subroutines &amp; AAPCS</div></a>
+    <a class="next" href="/arm-architecture/day-17-exceptions-interrupts/"><span class="lab">Next</span><div class="ti">Day 17: Exceptions &amp; interrupts →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>
