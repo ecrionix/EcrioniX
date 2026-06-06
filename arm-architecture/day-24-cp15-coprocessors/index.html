@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 24: System Control — CP15 &amp; Coprocessors | ARM from Scratch</title>
+<meta name="description" content="Day 24 of ARM architecture from scratch. The CP15 system control coprocessor: how MRC and MCR read and write system registers, what CP15 controls (MMU, caches, TLB, IDs, performance counters), the coprocessor concept, and how AArch64 replaced it with named system registers and MRS/MSR.">
+<meta name="keywords" content="ARM CP15, system control coprocessor, MRC MCR, coprocessor ARM, system registers, SCTLR, MMU cache control, AArch64 system registers MRS MSR, CP14 CP10 CP11">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-24-cp15-coprocessors/">
+<meta property="og:title" content="Day 24: System Control — CP15 &amp; Coprocessors">
+<meta property="og:description" content="How CP15 controls the MMU, caches and TLB via MRC/MCR — and how AArch64 replaced it with named system registers.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-24-cp15-coprocessors/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 24: CP15 &amp; Coprocessors — ARM from Scratch">
+<meta name="twitter:description" content="The system control coprocessor: MRC/MCR, MMU/cache/TLB control, and the AArch64 MRS/MSR replacement.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 24: System Control - CP15 and Coprocessors","description":"Lesson 24 of a from-scratch ARM course: the CP15 system control coprocessor, MRC and MCR to access system registers, what CP15 governs including the MMU caches TLB and IDs, the coprocessor concept, and how AArch64 replaced it with named system registers and MRS/MSR.","url":"https://ecrionix.org/arm-architecture/day-24-cp15-coprocessors/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 24: CP15 & Coprocessors","item":"https://ecrionix.org/arm-architecture/day-24-cp15-coprocessors/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is CP15 in ARM?","acceptedAnswer":{"@type":"Answer","text":"CP15 is the system control coprocessor in classic 32-bit ARM. It is not for computation but holds the control and status registers that configure the processor, including enabling the MMU and caches, setting the page-table base, managing the TLB, and reading the processor ID and feature registers."}},
+   {"@type":"Question","name":"What are MRC and MCR instructions?","acceptedAnswer":{"@type":"Answer","text":"MRC moves a value from a coprocessor register to an ARM general-purpose register, and MCR moves a value from an ARM register to a coprocessor register. They are how software reads and writes CP15 system registers, specifying the coprocessor number, opcodes and register identifiers to select the exact system register."}},
+   {"@type":"Question","name":"What does CP15 control?","acceptedAnswer":{"@type":"Answer","text":"CP15 controls core system behaviour: the system control register SCTLR that enables the MMU, caches and alignment checking; the translation table base registers for the MMU; TLB and cache maintenance operations; the domain and fault status registers; processor identification; and performance monitoring counters."}},
+   {"@type":"Question","name":"How does AArch64 handle system registers?","acceptedAnswer":{"@type":"Answer","text":"AArch64 drops the coprocessor model and instead gives system registers proper names, accessed with the MRS instruction to read and MSR to write, for example MRS x0, SCTLR_EL1. It is cleaner and self-documenting, but the underlying idea is the same as CP15: special instructions reach a separate space of control registers."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 24</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 24 · SYSTEM &amp; MEMORY</span>
+  <h1>System Control — CP15 &amp; Coprocessors</h1>
+  <p class="lead">We've turned on the MMU, configured caches, set up the MPU. But <i>how</i> do you actually flip those switches? The general-purpose registers r0–r15 can't do it. The control panel lives somewhere else entirely: the <b>CP15 system control coprocessor</b>. This is where the OS configures the machine itself.</p>
+
+  <h2>1. The coprocessor concept</h2>
+  <p>Classic ARM kept the core instruction set small and pushed extra functions into up to <b>16 coprocessors</b> (CP0–CP15), accessed by dedicated instructions. The most important is <b>CP15</b>, the <b>system control coprocessor</b> — not for math, but the home of every register that <b>configures the processor</b>. (Other coprocessor numbers historically covered things like the floating-point/SIMD units, CP10/CP11, and debug, CP14.)</p>
+  <div class="box analogy">
+    <h3>💡 The cockpit panel</h3>
+    <p style="margin:0">If r0–r15 are the pilot's hands flying the plane, CP15 is the overhead switch panel: fuel pumps, hydraulics, pressurisation. You don't touch it every second, but nothing works until it's set correctly — and only the captain (privileged code) is allowed to.</p>
+  </div>
+
+  <h2>2. Reading &amp; writing CP15: MRC / MCR</h2>
+  <p>You can't <code>MOV</code> into a coprocessor register. Instead two special instructions bridge the worlds:</p>
+  <table>
+    <thead><tr><th>Instruction</th><th>Direction</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="m">MRC</td><td>CP15 → Rd</td><td><b>M</b>ove to <b>R</b>egister from <b>C</b>oprocessor (read)</td></tr>
+      <tr><td class="m">MCR</td><td>Rd → CP15</td><td><b>M</b>ove to <b>C</b>oprocessor from <b>R</b>egister (write)</td></tr>
+    </tbody>
+  </table>
+  <p>Each access names the coprocessor and a set of opcodes/register IDs that select the exact system register (written <code>c0</code>, <code>c1</code>, …):</p>
+  <div class="code"><span class="cm">; Read the System Control Register (SCTLR) into r0</span>
+<span class="i">MRC</span> p15, <span class="n">0</span>, <span class="r">r0</span>, c1, c0, <span class="n">0</span>
+<span class="i">ORR</span> <span class="r">r0</span>, <span class="r">r0</span>, #<span class="n">1</span>        <span class="cm">; set bit 0 = MMU enable</span>
+<span class="i">MCR</span> p15, <span class="n">0</span>, <span class="r">r0</span>, c1, c0, <span class="n">0</span> <span class="cm">; write it back → MMU now on</span></div>
+  <p>That three-instruction read-modify-write is literally how an OS turns on the MMU.</p>
+
+  <h2>3. What CP15 controls</h2>
+  <ul>
+    <li><b>SCTLR</b> (System Control Register) — master switches: MMU enable, D-cache enable, I-cache enable, alignment checking, branch prediction.</li>
+    <li><b>TTBR0/TTBR1</b> — translation table base registers for the MMU (Day 21).</li>
+    <li><b>TLB &amp; cache maintenance</b> — invalidate the TLB, clean/invalidate cache lines (Day 22).</li>
+    <li><b>DACR / fault status</b> — domain access control and the fault address/status after an abort.</li>
+    <li><b>MIDR / ID registers</b> — read the processor's identity and feature set.</li>
+    <li><b>PMU</b> — performance monitor counters (cycles, cache misses) for profiling.</li>
+  </ul>
+  <p>In short: if it configures <i>the processor itself</i> rather than computing a value, it's in CP15.</p>
+
+  <h2>4. Privilege — and why it matters</h2>
+  <p>CP15 is almost entirely <b>privileged</b>: user-mode code (Day 5) cannot touch it. That's deliberate — letting an app disable the MMU or rewrite the page-table base would destroy all isolation. Only the kernel, running privileged, configures the system. An unprivileged CP15 access faults straight to the OS.</p>
+
+  <h2>5. AArch64: from coprocessors to named registers</h2>
+  <p>The coprocessor encoding was powerful but cryptic — <code>c1, c0, 0</code> tells you nothing. <b>AArch64</b> (the 64-bit world, coming up next phase) <b>dropped the coprocessor model</b> and gave system registers real <b>names</b>, accessed with <b>MRS</b> (read) and <b>MSR</b> (write):</p>
+  <div class="code"><span class="cm">// AArch64 — same idea, self-documenting names + exception-level suffix</span>
+<span class="i">MRS</span> <span class="r">x0</span>, SCTLR_EL1     <span class="cm">// read System Control Register (EL1)</span>
+<span class="i">ORR</span> <span class="r">x0</span>, <span class="r">x0</span>, #<span class="n">1</span>        <span class="cm">// set MMU enable</span>
+<span class="i">MSR</span> SCTLR_EL1, <span class="r">x0</span>     <span class="cm">// write it back</span></div>
+  <p>The mechanism is the same as CP15 — special instructions reaching a separate control-register space — just far more readable, with an <b>exception-level suffix</b> (<code>_EL1</code>, <code>_EL2</code>…) instead of secure/mode juggling.</p>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0"><b>CP15</b> is the processor's <b>control panel</b> in 32-bit ARM — the registers that enable the MMU, caches and TLB and report identity. You reach them only with <b>MRC</b> (read) / <b>MCR</b> (write), only from <b>privileged</b> code. <b>AArch64</b> keeps the concept but swaps the coprocessor encoding for <b>named system registers</b> via <b>MRS/MSR</b>.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 24 takeaways</h3>
+    <ul>
+      <li><b>CP15</b> = the system control coprocessor: configures the processor, not data.</li>
+      <li>Accessed only via <b>MRC</b> (read) / <b>MCR</b> (write), specifying cN register IDs.</li>
+      <li>It controls <b>SCTLR</b> (MMU/cache enables), <b>TTBR</b>, TLB/cache maintenance, IDs, PMU.</li>
+      <li>It's <b>privileged</b> — user code can't touch it, preserving isolation.</li>
+      <li><b>AArch64</b> replaces it with <b>named registers</b> + <b>MRS/MSR</b> (e.g. SCTLR_EL1).</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Why can't you use MOV to enable the MMU?</li>
+    <li>Which instruction reads a CP15 register, and which writes one?</li>
+    <li>What's the AArch64 equivalent of MRC/MCR?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is CP15?</h3><p>The system control coprocessor in 32-bit ARM, holding the registers that configure the MMU, caches, TLB and report processor identity.</p></div>
+  <div class="faq-item"><h3>MRC vs MCR?</h3><p>MRC reads a coprocessor register into an ARM register; MCR writes an ARM register into a coprocessor register.</p></div>
+  <div class="faq-item"><h3>What changed in AArch64?</h3><p>The coprocessor model was dropped for named system registers accessed with MRS/MSR (e.g. SCTLR_EL1).</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-23-trustzone/"><span class="lab">Previous</span><div class="ti">← Day 23: TrustZone</div></a>
+    <a class="next" href="/arm-architecture/day-25-arm-boot-process/"><span class="lab">Next</span><div class="ti">Day 25: The ARM boot process →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 22: Caches in ARM — L1, L2 &amp; Why They Matter | ARM from Scratch</title>
+<meta name="description" content="Day 22 of ARM architecture from scratch. How caches work on ARM: the memory wall, the cache hierarchy L1/L2/L3, cache lines, hits and misses, temporal and spatial locality, write-back vs write-through, the Harvard split I-cache and D-cache, and cache coherency in multicore systems.">
+<meta name="keywords" content="ARM cache, L1 L2 cache, cache hierarchy, cache line, cache hit miss, temporal spatial locality, write back write through, I-cache D-cache, cache coherency, memory wall ARM Cortex">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-22-caches/">
+<meta property="og:title" content="Day 22: Caches in ARM — L1, L2 &amp; Why They Matter">
+<meta property="og:description" content="The memory wall, the L1/L2/L3 hierarchy, cache lines, locality, write policies, the I/D split and coherency.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-22-caches/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 22: Caches in ARM — ARM from Scratch">
+<meta name="twitter:description" content="Cache hierarchy, lines, hits/misses, locality, write-back vs write-through, coherency.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 22: Caches in ARM - L1, L2 and Why They Matter","description":"Lesson 22 of a from-scratch ARM course: the memory wall, the L1/L2/L3 cache hierarchy, cache lines, hits and misses, temporal and spatial locality, write-back versus write-through, the split instruction and data caches, and cache coherency in multicore systems.","url":"https://ecrionix.org/arm-architecture/day-22-caches/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 22: Caches in ARM","item":"https://ecrionix.org/arm-architecture/day-22-caches/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"Why do processors need caches?","acceptedAnswer":{"@type":"Answer","text":"Because main memory is far slower than the CPU. A core can execute an instruction in well under a nanosecond, but a DRAM access takes tens to hundreds of cycles. This gap is the memory wall. A cache is a small, very fast memory close to the core that holds recently and likely-soon-needed data, so most accesses are served quickly instead of stalling on DRAM."}},
+   {"@type":"Question","name":"What is a cache line?","acceptedAnswer":{"@type":"Answer","text":"A cache line is the fixed-size block, commonly 64 bytes on ARM, that the cache loads and stores as a unit. When you read a single byte that misses, the whole line around it is fetched, which exploits spatial locality because nearby data is often used soon after."}},
+   {"@type":"Question","name":"What is the difference between write-back and write-through caches?","acceptedAnswer":{"@type":"Answer","text":"A write-through cache writes data to both the cache and main memory on every store, keeping memory always up to date but using more bandwidth. A write-back cache writes only to the cache and marks the line dirty, writing it back to memory only when the line is evicted. Write-back is faster and is the common policy, at the cost of more complex coherency."}},
+   {"@type":"Question","name":"What is cache coherency?","acceptedAnswer":{"@type":"Answer","text":"In a multicore processor each core has its own cache, so the same memory location could have different values in different caches. Cache coherency is the hardware mechanism, using protocols like MESI and ARM's snoop control or interconnect, that ensures all cores see a single consistent value, invalidating or updating other copies when one core writes."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1.1rem;margin:1.2rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto;min-width:480px}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.6rem}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 22</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 22 · SYSTEM &amp; MEMORY</span>
+  <h1>Caches in ARM — and Why They Matter</h1>
+  <p class="lead">Your CPU core is a sprinter; main memory (DRAM) is a slow postal service. If the core waited on DRAM for every access, a multi-GHz chip would crawl. The cache is the fix — and understanding it is the single biggest lever for writing <b>fast</b> code on any ARM system.</p>
+
+  <h2>1. The memory wall</h2>
+  <p>A modern ARM core can issue an instruction in a fraction of a nanosecond. A <b>DRAM access</b> takes <b>tens to hundreds of cycles</b>. That growing gap is the <b>memory wall</b>: the processor is starved waiting for data. Caches exist to hide that latency.</p>
+
+  <h2>2. The cache hierarchy</h2>
+  <p>Rather than one cache, ARM uses a <b>hierarchy</b> — small/fast near the core, large/slow further out:</p>
+  <table>
+    <thead><tr><th>Level</th><th>Typical size</th><th>Typical latency</th><th>Scope</th></tr></thead>
+    <tbody>
+      <tr><td><b>L1</b></td><td>32–64 KB</td><td class="ce">~1–4 cycles</td><td>per core, split I/D</td></tr>
+      <tr><td><b>L2</b></td><td>256 KB–1 MB</td><td>~10–20 cycles</td><td>per core or cluster</td></tr>
+      <tr><td><b>L3</b></td><td>2–32 MB</td><td>~30–50 cycles</td><td>shared across cores</td></tr>
+      <tr><td><b>DRAM</b></td><td>GBs</td><td style="color:#f87171">~100–300 cycles</td><td>main memory</td></tr>
+    </tbody>
+  </table>
+  <p>Each level catches what the one above missed. A well-behaved program finds almost everything in L1/L2 and rarely pays the DRAM price.</p>
+
+  <h2>3. Why caches work: locality</h2>
+  <p>Caches would be useless if access were random. They work because real programs have <b>locality</b>:</p>
+  <ul>
+    <li><b>Temporal locality</b> — if you used an address, you'll likely use it again soon (a loop counter, a hot variable).</li>
+    <li><b>Spatial locality</b> — if you used an address, you'll likely use its neighbours soon (walking an array).</li>
+  </ul>
+  <div class="box analogy">
+    <h3>💡 The desk and the library</h3>
+    <p style="margin:0">DRAM is the library across campus. The cache is your desk. You keep the books you're using (temporal) and the next few on the shelf (spatial) right on your desk, so you rarely walk to the library. Write code that "stays on the desk" and it flies.</p>
+  </div>
+
+  <h2>4. Cache lines, hits &amp; misses</h2>
+  <p>The cache doesn't store single bytes — it works in <b>cache lines</b>, typically <b>64 bytes</b> on ARM. Touch one byte that isn't cached (a <b>miss</b>) and the whole 64-byte line is fetched. The next 63 bytes are now free to access (a <b>hit</b>) — that's spatial locality paying off.</p>
+  <div class="code"><span class="cm">// Cache-friendly: walks memory in order (uses every byte of each line)</span>
+<span class="i">for</span> (i = <span class="n">0</span>; i &lt; N; i++) sum += a[i];
+
+<span class="cm">// Cache-hostile: huge stride → one useful byte per fetched line</span>
+<span class="i">for</span> (i = <span class="n">0</span>; i &lt; N; i += <span class="n">4096</span>) sum += a[i];</div>
+  <p>Same work, wildly different speed — the second version misses on almost every access. This is why <b>data layout</b> often matters more than clever algorithms.</p>
+
+  <h2>5. Write policies</h2>
+  <p>What happens on a <b>store</b>?</p>
+  <ul>
+    <li><b>Write-through</b> — write to cache <i>and</i> memory every time. Simple, always consistent, but uses more bandwidth.</li>
+    <li><b>Write-back</b> — write only to the cache, mark the line <b>dirty</b>, and flush to memory only on eviction. Faster and the common choice — but needs coherency care.</li>
+  </ul>
+
+  <h2>6. The Harvard split &amp; coherency</h2>
+  <p>At <b>L1</b>, ARM usually splits the cache into a separate <b>I-cache</b> (instructions) and <b>D-cache</b> (data) — a Harvard arrangement that lets the core fetch an instruction and a data word in the same cycle. (A subtle consequence: <a href="/arm-architecture/day-25-arm-boot-process/">self-modifying or freshly loaded code</a> needs explicit cache maintenance so the I-cache sees the new bytes.)</p>
+  <p>In a <b>multicore</b> chip, each core has its own L1/L2, so the same address could hold different values in different caches. <b>Cache coherency</b> hardware — protocols like <b>MESI</b> plus ARM's snoop/interconnect — keeps every core seeing one consistent value, invalidating stale copies when a core writes. This is the foundation for the multicore lessons ahead.</p>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">Caches hide the <b>memory wall</b> by keeping hot data in small fast memory close to the core, organised as a <b>hierarchy</b> (L1→L2→L3→DRAM). They win because of <b>locality</b>, transfer data in <b>64-byte lines</b>, use <b>write-back</b> for speed, split <b>I/D</b> at L1, and rely on <b>coherency</b> to stay consistent across cores. Write cache-friendly code and everything gets faster.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 22 takeaways</h3>
+    <ul>
+      <li>The <b>memory wall</b>: DRAM is ~100×+ slower than the core; caches hide it.</li>
+      <li><b>Hierarchy</b>: L1 (fast, small) → L2 → L3 → DRAM (slow, big).</li>
+      <li>Caches work via <b>temporal</b> &amp; <b>spatial locality</b>; they move <b>64-byte lines</b>.</li>
+      <li><b>Write-back</b> (dirty + flush on evict) is faster than write-through.</li>
+      <li>L1 is usually <b>split I/D</b>; <b>coherency</b> keeps multicore caches consistent.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>What two kinds of locality make caches effective?</li>
+    <li>Why can a 64-byte line make sequential array access so fast?</li>
+    <li>What problem does cache coherency solve?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>Why do we need caches?</h3><p>DRAM is far slower than the core (the memory wall); caches keep hot data close so most accesses are fast.</p></div>
+  <div class="faq-item"><h3>What is a cache line?</h3><p>The fixed block (≈64 bytes on ARM) loaded as a unit, exploiting spatial locality.</p></div>
+  <div class="faq-item"><h3>Write-back vs write-through?</h3><p>Write-through updates memory on every store; write-back updates only the cache and flushes dirty lines on eviction (faster).</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-21-mmu-virtual-memory/"><span class="lab">Previous</span><div class="ti">← Day 21: The MMU &amp; virtual memory</div></a>
+    <a class="next" href="/arm-architecture/day-23-trustzone/"><span class="lab">Next</span><div class="ti">Day 23: TrustZone →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a> &nbsp;·&nbsp; <a href="/tools/cache-sim/">Try the Cache Simulator →</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>

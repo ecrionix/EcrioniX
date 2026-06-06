@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 25: The ARM Boot Process End to End | ARM from Scratch</title>
+<meta name="description" content="Day 25 of ARM architecture from scratch. The ARM boot process from power-on to OS: the boot ROM and reset vector, the bootloader stages (BL1/BL2/BL31, U-Boot), setting up the stack, clocks, DRAM and the C runtime, the vector table, the chain of trust in secure boot, and how Cortex-M boot differs.">
+<meta name="keywords" content="ARM boot process, boot ROM, reset vector, bootloader, U-Boot, BL1 BL2 BL31, secure boot chain of trust, C runtime startup, Cortex-M boot, vector table, how ARM boots">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-25-arm-boot-process/">
+<meta property="og:title" content="Day 25: The ARM Boot Process End to End">
+<meta property="og:description" content="From the reset vector and boot ROM through bootloader stages, runtime setup and secure boot, to handing control to the OS.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-25-arm-boot-process/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 25: The ARM Boot Process — ARM from Scratch">
+<meta name="twitter:description" content="Reset vector, boot ROM, bootloader stages, runtime setup, secure boot — power-on to OS.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"Day 25: The ARM Boot Process End to End","description":"Lesson 25 of a from-scratch ARM course: the ARM boot process from power-on to OS, the boot ROM and reset vector, bootloader stages, setting up the stack clocks DRAM and C runtime, the vector table, secure boot and the chain of trust, and how Cortex-M boot differs.","url":"https://ecrionix.org/arm-architecture/day-25-arm-boot-process/","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 25: The ARM Boot Process","item":"https://ecrionix.org/arm-architecture/day-25-arm-boot-process/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What happens first when an ARM processor powers on?","acceptedAnswer":{"@type":"Answer","text":"On reset the core starts executing from a fixed reset address held in immutable on-chip boot ROM. That boot ROM is the first code to run; it does minimal setup and then loads and jumps to the next bootloader stage. The reset vector is the very first entry of the exception vector table."}},
+   {"@type":"Question","name":"Why are there multiple bootloader stages?","acceptedAnswer":{"@type":"Answer","text":"Early boot runs from tiny, fast on-chip SRAM before external DRAM is initialised, so it must stay small. A first small stage sets up clocks and DRAM, then loads a larger, more capable bootloader such as U-Boot from flash into DRAM, which in turn loads the operating system. Splitting boot into stages handles these size and hardware-init constraints."}},
+   {"@type":"Question","name":"What does the C runtime startup code do?","acceptedAnswer":{"@type":"Answer","text":"Before main can run, startup code sets the stack pointer, copies initialised data from flash to RAM, zeroes the BSS section for uninitialised variables, sets up the vector table, configures clocks and the MMU or MPU, and then calls main. This establishes the environment that compiled C code assumes exists."}},
+   {"@type":"Question","name":"What is secure boot and the chain of trust?","acceptedAnswer":{"@type":"Answer","text":"Secure boot ensures only authentic, untampered software runs. The immutable boot ROM verifies the cryptographic signature of the next stage before executing it, that stage verifies the next, and so on. This unbroken chain of trust, rooted in hardware, extends from power-on up to the operating system and underpins TrustZone."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.7rem}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1.1rem;margin:1.2rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto;min-width:480px}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.6rem}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 25</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 25 · SYSTEM &amp; MEMORY</span>
+  <h1>The ARM Boot Process — End to End</h1>
+  <p class="lead">You press power. A few seconds later, Linux is at a login prompt. In between, a careful relay race runs: from a single hardwired address, through tiny on-chip code that wakes up DRAM, through bootloaders, to the kernel — each stage building the world the next one needs. This lesson ties the whole course together.</p>
+
+  <h2>1. Power-on: the reset vector</h2>
+  <p>When the core comes out of reset it has almost nothing — caches off, MMU off, no stack, DRAM not even initialised. It does exactly one thing: start fetching from a <b>fixed reset address</b>, the <b>reset vector</b> (the first entry of the vector table, Day 17). That address points into immutable, on-chip <b>boot ROM</b> — the only code guaranteed to be present and trustworthy.</p>
+
+  <h2>2. Why boot happens in stages</h2>
+  <p>The boot ROM is tiny and runs from small, fast on-chip <b>SRAM</b> because external <b>DRAM isn't working yet</b> — DRAM controllers need configuration before they're usable. So boot is a <b>relay of increasingly capable stages</b>, each loading the next:</p>
+  <div class="figure">
+    <svg viewBox="0 0 560 150" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="9.5">
+      <text x="280" y="16" text-anchor="middle" fill="#e2e8f0" font-size="11.5" font-weight="700">The boot relay (Cortex-A / Linux-class)</text>
+      <g>
+        <rect x="14" y="40" width="96" height="50" rx="7" fill="rgba(248,113,113,.08)" stroke="#f87171"/><text x="62" y="60" text-anchor="middle" fill="#f87171" font-weight="700">Boot ROM</text><text x="62" y="74" text-anchor="middle" fill="#64748b">immutable</text><text x="62" y="85" text-anchor="middle" fill="#64748b">(on-chip)</text>
+        <rect x="128" y="40" width="96" height="50" rx="7" fill="rgba(251,191,36,.08)" stroke="#fbbf24"/><text x="176" y="60" text-anchor="middle" fill="#fbbf24" font-weight="700">BL1/BL2</text><text x="176" y="74" text-anchor="middle" fill="#64748b">init clocks</text><text x="176" y="85" text-anchor="middle" fill="#64748b">+ DRAM</text>
+        <rect x="242" y="40" width="96" height="50" rx="7" fill="rgba(56,189,248,.08)" stroke="#38bdf8"/><text x="290" y="60" text-anchor="middle" fill="#38bdf8" font-weight="700">U-Boot</text><text x="290" y="74" text-anchor="middle" fill="#64748b">load kernel</text><text x="290" y="85" text-anchor="middle" fill="#64748b">from flash</text>
+        <rect x="356" y="40" width="96" height="50" rx="7" fill="rgba(167,139,250,.08)" stroke="#a78bfa"/><text x="404" y="60" text-anchor="middle" fill="#a78bfa" font-weight="700">Kernel</text><text x="404" y="74" text-anchor="middle" fill="#64748b">Linux boots</text><text x="404" y="85" text-anchor="middle" fill="#64748b">drivers, MMU</text>
+        <rect x="470" y="40" width="80" height="50" rx="7" fill="rgba(74,222,128,.08)" stroke="#4ade80"/><text x="510" y="63" text-anchor="middle" fill="#4ade80" font-weight="700">User</text><text x="510" y="77" text-anchor="middle" fill="#64748b">login</text>
+      </g>
+      <g fill="#475569"><text x="120" y="68">→</text><text x="234" y="68">→</text><text x="348" y="68">→</text><text x="462" y="68">→</text></g>
+      <text x="280" y="118" text-anchor="middle" fill="#64748b">Each stage verifies &amp; loads the next; size &amp; capability grow left to right.</text>
+    </svg>
+    <div class="fig-cap">Figure — Boot as a relay: tiny immutable ROM → low-level init → full bootloader → OS → userspace.</div>
+  </div>
+
+  <h2>3. The C runtime: making main() possible</h2>
+  <p>Compiled C assumes a working environment — a stack, initialised globals, zeroed variables. Something must build that <i>before</i> <code>main()</code>. That's the <b>startup / C runtime (crt0)</b> code, and it ties together everything from earlier lessons:</p>
+  <ol>
+    <li><b>Set the stack pointer</b> (Day 14) so functions can run.</li>
+    <li><b>Copy <code>.data</code></b> (initialised globals) from flash to RAM.</li>
+    <li><b>Zero <code>.bss</code></b> (uninitialised globals) — C guarantees they start at 0.</li>
+    <li><b>Install the vector table</b> (Day 17) and configure clocks.</li>
+    <li><b>Enable MMU/MPU &amp; caches</b> via CP15 / system registers (Days 20–24).</li>
+    <li><b>Call <code>main()</code></b> — your program finally runs.</li>
+  </ol>
+  <div class="code"><span class="cm">; Simplified Cortex-M reset handler (startup code)</span>
+<span class="lb">Reset_Handler:</span>
+<span class="i">LDR</span>  <span class="r">sp</span>, =_estack       <span class="cm">; 1. stack pointer</span>
+<span class="i">BL</span>   copy_data           <span class="cm">; 2. .data flash → RAM</span>
+<span class="i">BL</span>   zero_bss            <span class="cm">; 3. clear .bss</span>
+<span class="i">BL</span>   SystemInit          <span class="cm">; 4-5. clocks, caches, etc.</span>
+<span class="i">BL</span>   main                <span class="cm">; 6. into your code</span></div>
+
+  <h2>4. Secure boot: the chain of trust</h2>
+  <p>How do you know none of those stages was swapped for malware? <b>Secure boot.</b> The immutable boot ROM holds (or knows) a root public key. It <b>verifies the cryptographic signature</b> of the next stage before running it; that stage verifies the next; and so on — an unbroken <b>chain of trust</b> rooted in hardware, all the way to the OS. This is the foundation under <a href="/arm-architecture/day-23-trustzone/">TrustZone</a>: the Secure world is brought up first, verified.</p>
+
+  <h2>5. Cortex-M boot: much simpler</h2>
+  <p>A microcontroller has no DRAM to train and no Linux to load, so its boot is tiny. At reset the Cortex-M core (Day 18) does two things automatically from the vector table: load <b>slot 0 → the initial stack pointer</b>, and <b>slot 1 → the reset handler</b>. The reset handler runs the C-runtime steps above and calls <code>main()</code>. Power-on to your code in microseconds — no bootloader relay required.</p>
+
+  <div class="box analogy">
+    <h3>💡 Waking a city</h3>
+    <p style="margin:0">Boot is like powering up a city at dawn. First a single guaranteed generator (boot ROM) starts. It powers the substations (clocks, DRAM). Those light the districts (bootloader, kernel). Finally the shops open for the public (userspace). You can't open shops before the power plant — order is everything.</p>
+  </div>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">Boot is a <b>relay from a single hardwired address</b>: the <b>reset vector</b> → immutable <b>boot ROM</b> → bootloader stages that wake up clocks/DRAM and load the OS, with <b>C-runtime startup</b> building the stack/globals/vectors so <code>main()</code> can run. <b>Secure boot</b> verifies each stage in a hardware-rooted <b>chain of trust</b>. Cortex-M does a tiny version: SP + reset handler straight from the vector table.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 25 takeaways</h3>
+    <ul>
+      <li>Reset → execute from the fixed <b>reset vector</b> in immutable <b>boot ROM</b>.</li>
+      <li>Boot is <b>staged</b> because DRAM/clocks aren't ready and early SRAM is tiny.</li>
+      <li><b>C-runtime startup</b>: SP, copy .data, zero .bss, vectors, MMU/caches, then <code>main()</code>.</li>
+      <li><b>Secure boot</b> = each stage verifies the next → hardware-rooted chain of trust.</li>
+      <li><b>Cortex-M</b> boots in microseconds: SP + reset handler from the vector table.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Why can't the first boot code just run from external DRAM?</li>
+    <li>List two things C-runtime startup must do before <code>main()</code>.</li>
+    <li>What makes secure boot a "chain" rather than a single check?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What runs first at power-on?</h3><p>The core fetches from the fixed reset vector into immutable on-chip boot ROM — the first trusted code.</p></div>
+  <div class="faq-item"><h3>Why multiple bootloader stages?</h3><p>Early code is tiny and runs before DRAM works; a small stage inits clocks/DRAM, then loads a bigger loader (U-Boot), then the OS.</p></div>
+  <div class="faq-item"><h3>What is the chain of trust?</h3><p>Each boot stage cryptographically verifies the next, rooted in immutable hardware, so only authentic software runs.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-24-cp15-coprocessors/"><span class="lab">Previous</span><div class="ti">← Day 24: CP15 &amp; coprocessors</div></a>
+    <a class="next" href="/arm-architecture/"><span class="lab">Up next · publishing soon</span><div class="ti">Day 26: AArch64 — the 64-bit register model →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a> &nbsp;·&nbsp; <a href="/boot-rom-explained/">Deep dive: how a boot ROM works →</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+</body>
+</html>
