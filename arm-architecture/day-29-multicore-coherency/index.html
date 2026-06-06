@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 29: ARM Multicore, Cache Coherency &amp; big.LITTLE Explained | ARM from Scratch</title>
+<meta name="description" content="Day 29 of ARM architecture from scratch. A deep guide to ARM multicore systems: SMP, why per-core caches need cache coherency (MESI/MOESI) and the interconnect, the memory ordering model with DMB/DSB/ISB barriers, atomic operations with LDXR/STXR and the LSE instructions, and heterogeneous big.LITTLE / DynamIQ designs. With code, tables and FAQs.">
+<meta name="keywords" content="ARM multicore, cache coherency, MESI MOESI, SMP, memory ordering barriers, DMB DSB ISB, atomic operations LDXR STXR, LSE atomics, big.LITTLE, DynamIQ, ARM interconnect CCI CMN, heterogeneous computing">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-29-multicore-coherency/">
+<meta property="og:title" content="Day 29: ARM Multicore, Cache Coherency &amp; big.LITTLE">
+<meta property="og:description" content="SMP, cache coherency (MESI), the interconnect, memory barriers DMB/DSB/ISB, atomics, and big.LITTLE/DynamIQ.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-29-multicore-coherency/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 29: Multicore &amp; Coherency — ARM from Scratch">
+<meta name="twitter:description" content="SMP, cache coherency, memory barriers, atomics, and big.LITTLE heterogeneous cores.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-06","dateModified":"2026-06-06","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 29: ARM Multicore, Cache Coherency and big.LITTLE Explained","description":"Lesson 29 of a from-scratch ARM course: multicore SMP systems, cache coherency and protocols like MESI, the interconnect, the weak memory ordering model with DMB/DSB/ISB barriers, atomic operations with LDXR/STXR and LSE, and heterogeneous big.LITTLE and DynamIQ designs.","url":"https://ecrionix.org/arm-architecture/day-29-multicore-coherency/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 29: Multicore & Coherency","item":"https://ecrionix.org/arm-architecture/day-29-multicore-coherency/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is cache coherency?","acceptedAnswer":{"@type":"Answer","text":"In a multicore processor each core has its own cache, so the same memory address can be cached with different values in different cores. Cache coherency is the hardware mechanism, using protocols such as MESI or MOESI and a coherent interconnect, that ensures every core sees a single consistent value, invalidating or updating other copies whenever one core writes."}},
+   {"@type":"Question","name":"What is the MESI protocol?","acceptedAnswer":{"@type":"Answer","text":"MESI is a cache coherency protocol where each cache line is tagged with one of four states: Modified (this cache has the only, dirty copy), Exclusive (this cache has the only, clean copy), Shared (multiple caches hold the same clean copy), or Invalid (the line is stale). Transitions between these states keep all caches consistent as cores read and write."}},
+   {"@type":"Question","name":"Why does ARM need memory barriers?","acceptedAnswer":{"@type":"Answer","text":"ARM uses a weakly ordered memory model, meaning the hardware may reorder memory accesses for performance. Most of the time this is invisible, but when multiple cores or devices communicate through shared memory the order can matter. Barriers like DMB, DSB and ISB force the required ordering so that, for example, data is visible before a flag that signals it is set."}},
+   {"@type":"Question","name":"What is big.LITTLE?","acceptedAnswer":{"@type":"Answer","text":"big.LITTLE is ARM's heterogeneous multiprocessing design that combines high-performance big cores with energy-efficient LITTLE cores in one chip. The scheduler runs light or background tasks on the efficient cores to save power and moves demanding work to the powerful cores when needed. The modern evolution is DynamIQ, which allows flexible clusters mixing different core types."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:var(--green);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.byline a{color:#38bdf8;text-decoration:none;font-weight:600}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1.1rem;margin:1.2rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto;min-width:480px}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.6rem}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 29</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 29 · ADVANCED (64-BIT &amp; BEYOND)</span>
+  <h1>Multicore, Cache Coherency &amp; big.LITTLE</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> <span style="opacity:.5">·</span> <span>Updated Jun 6, 2026</span></div>
+  <p class="lead">Your phone has eight CPU cores; a server SoC can have a hundred. Putting many cores on one chip sounds easy — but making them share memory <i>correctly</i> and <i>efficiently</i> is one of the deepest problems in computer architecture. Today: how ARM cores stay coherent, why memory barriers exist, how locks really work, and the clever big.LITTLE idea that gives you power <i>and</i> battery life.</p>
+
+  <h2>1. From one core to many (SMP)</h2>
+  <p>The simplest multicore arrangement is <b>SMP — Symmetric Multi-Processing</b>: several identical cores share a single view of main memory, and the OS schedules threads across them. More cores means more work done in parallel — <i>if</i> the software is parallel and <i>if</i> the hardware keeps their shared memory consistent. That second "if" is the hard part.</p>
+
+  <h2>2. The coherency problem</h2>
+  <p>Recall from <a href="/arm-architecture/day-22-caches/">Day 22</a> that each core has its own L1 (and often L2) cache. Now imagine two cores both cache address <code>X = 5</code>. Core 0 writes <code>X = 10</code> into <i>its</i> cache. Core 1 still sees the stale <code>5</code> in <i>its</i> cache. Disaster.</p>
+  <div class="figure">
+    <svg viewBox="0 0 560 170" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="10.5">
+      <text x="280" y="16" text-anchor="middle" fill="#e2e8f0" font-size="11.5" font-weight="700">Coherent interconnect keeps caches in sync</text>
+      <rect x="40" y="34" width="120" height="42" rx="7" fill="rgba(56,189,248,.08)" stroke="#38bdf8"/><text x="100" y="52" text-anchor="middle" fill="#38bdf8" font-weight="700">Core 0</text><text x="100" y="68" text-anchor="middle" fill="#64748b" font-size="9">L1: X=10 (Modified)</text>
+      <rect x="400" y="34" width="120" height="42" rx="7" fill="rgba(74,222,128,.08)" stroke="#4ade80"/><text x="460" y="52" text-anchor="middle" fill="#4ade80" font-weight="700">Core 1</text><text x="460" y="68" text-anchor="middle" fill="#64748b" font-size="9">L1: X (Invalid→refetch)</text>
+      <rect x="170" y="92" width="220" height="34" rx="7" fill="rgba(167,139,250,.1)" stroke="#a78bfa"/><text x="280" y="113" text-anchor="middle" fill="#a78bfa" font-weight="700">Coherent Interconnect (snoop)</text>
+      <line x1="100" y1="76" x2="220" y2="92" stroke="#475569"/><line x1="460" y1="76" x2="340" y2="92" stroke="#475569"/>
+      <rect x="210" y="138" width="140" height="26" rx="6" fill="rgba(148,163,184,.08)" stroke="#94a3b8"/><text x="280" y="155" text-anchor="middle" fill="#cbd5e1" font-size="9.5">Shared L3 / DRAM</text>
+      <line x1="280" y1="126" x2="280" y2="138" stroke="#475569"/>
+      <text x="280" y="86" text-anchor="middle" fill="#64748b" font-size="9">Core 0's write invalidates Core 1's stale copy</text>
+    </svg>
+    <div class="fig-cap">Figure — When Core 0 writes X, the interconnect invalidates other cached copies so Core 1 can't read stale data.</div>
+  </div>
+
+  <h2>3. Cache coherency &amp; MESI</h2>
+  <p><b>Cache coherency</b> hardware solves this automatically. Caches <b>snoop</b> a shared <b>coherent interconnect</b> (ARM's CCI/CMN families) and follow a protocol — classically <b>MESI</b> — that tags every cache line with one of four states:</p>
+  <table>
+    <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b>M</b> — Modified</td><td>this cache has the only copy, and it's dirty (newer than memory)</td></tr>
+      <tr><td><b>E</b> — Exclusive</td><td>this cache has the only copy, and it's clean</td></tr>
+      <tr><td><b>S</b> — Shared</td><td>multiple caches hold the same clean copy</td></tr>
+      <tr><td><b>I</b> — Invalid</td><td>the line is stale and must be refetched</td></tr>
+    </tbody>
+  </table>
+  <p>When a core writes, the protocol moves its line to <b>Modified</b> and forces every other copy to <b>Invalid</b> — so no one ever reads stale data. (ARM also uses <b>MOESI</b>, which adds an <b>Owned</b> state to share dirty data more efficiently.) All of this is invisible to your code; it Just Works — but it has a performance cost, which is why <b>false sharing</b> (two cores hammering different variables that happen to sit in the same cache line) can quietly wreck scaling.</p>
+
+  <h2>4. Memory ordering &amp; barriers</h2>
+  <p>For speed, ARM uses a <b>weakly ordered memory model</b>: the hardware may <b>reorder</b> loads and stores as long as a single thread's own logic looks correct. On one core that's invisible. Across cores it can break hand-written synchronization — e.g., another core might see your "data ready" flag set <i>before</i> the data it points to is actually visible.</p>
+  <p><b>Memory barriers</b> enforce the order you need:</p>
+  <table>
+    <thead><tr><th>Barrier</th><th>Forces</th></tr></thead>
+    <tbody>
+      <tr><td class="m">DMB</td><td><b>Data Memory Barrier</b> — orders memory accesses before/after it</td></tr>
+      <tr><td class="m">DSB</td><td><b>Data Synchronization Barrier</b> — waits until prior accesses actually complete</td></tr>
+      <tr><td class="m">ISB</td><td><b>Instruction Synchronization Barrier</b> — flushes the pipeline so newly-changed context takes effect</td></tr>
+    </tbody>
+  </table>
+  <div class="code"><span class="cm">// Producer: write data, then publish the flag — order matters!</span>
+<span class="i">STR</span>  <span class="r">x1</span>, [<span class="r">x0</span>]        <span class="cm">// write the data</span>
+<span class="i">DMB</span>  ISH               <span class="cm">// ensure data is visible BEFORE the flag</span>
+<span class="i">STR</span>  <span class="r">x2</span>, [<span class="r">x3</span>]        <span class="cm">// set "ready" flag</span></div>
+  <p>In practice you rarely write barriers by hand — you use the C/C++ atomics or OS primitives that emit them correctly. But knowing they exist explains a whole category of "impossible" multithreading bugs.</p>
+
+  <h2>5. Atomics — how locks are built</h2>
+  <p>A lock or counter shared by cores needs <b>atomic</b> read-modify-write. Classic ARM provides <b>load-exclusive / store-exclusive</b>:</p>
+  <div class="code"><span class="lb">atomic_inc:</span>
+<span class="i">LDXR</span> <span class="r">w1</span>, [<span class="r">x0</span>]       <span class="cm">// load-exclusive: read &amp; mark address</span>
+<span class="i">ADD</span>  <span class="r">w1</span>, <span class="r">w1</span>, #<span class="n">1</span>
+<span class="i">STXR</span> <span class="r">w2</span>, <span class="r">w1</span>, [<span class="r">x0</span>]   <span class="cm">// store-exclusive: succeeds only if no one else wrote</span>
+<span class="i">CBNZ</span> <span class="r">w2</span>, atomic_inc    <span class="cm">// w2!=0 → someone interfered, retry</span></div>
+  <p>If another core touched the address in between, the store-exclusive <b>fails</b> and you retry — guaranteeing atomicity. ARMv8.1 added the <b>LSE (Large System Extensions)</b> single-instruction atomics (<code>LDADD</code>, <code>SWP</code>, <code>CAS</code>) that scale far better on many-core systems by doing the operation near the data rather than bouncing the cache line between cores.</p>
+
+  <h2>6. big.LITTLE &amp; DynamIQ</h2>
+  <p>Not all work needs a powerful core. Checking email shouldn't drain the same power as gaming. ARM's answer is <b>heterogeneous multiprocessing</b>:</p>
+  <ul>
+    <li><b>big cores</b> — wide, out-of-order, high performance, higher power (e.g. Cortex-X/A7xx).</li>
+    <li><b>LITTLE cores</b> — smaller, in-order, very energy-efficient (e.g. Cortex-A5xx).</li>
+  </ul>
+  <p>The OS scheduler runs light/background tasks on the efficient cores and migrates demanding threads to the big cores on demand — big performance when you need it, long battery life when you don't. The modern evolution, <b>DynamIQ</b>, puts mixed core types in a shared, coherent cluster with a common L3, allowing flexible combinations (e.g. 1 prime + 3 big + 4 little) — exactly the layout in today's flagship phone SoCs.</p>
+  <div class="box analogy">
+    <h3>💡 A kitchen brigade</h3>
+    <p style="margin:0">big.LITTLE is like a restaurant kitchen: the head chef (big core) handles the complex dishes fast but is expensive to keep busy, while prep cooks (LITTLE cores) handle the steady, simple work cheaply. The manager (scheduler) assigns each task to the right person — and the whole kitchen shares one pantry (coherent memory).</p>
+  </div>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">Multicore = many cores sharing memory (<b>SMP</b>). Per-core caches need <b>coherency</b> (<b>MESI/MOESI</b> over a snooping <b>interconnect</b>) so no one reads stale data. ARM's <b>weak memory model</b> reorders accesses, so cross-core code needs <b>barriers (DMB/DSB/ISB)</b> and <b>atomics (LDXR/STXR or LSE)</b> for correct locks. <b>big.LITTLE/DynamIQ</b> mixes powerful and efficient cores for performance <i>and</i> battery life.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 29 takeaways</h3>
+    <ul>
+      <li><b>SMP</b>: identical cores share memory; the OS schedules across them.</li>
+      <li><b>Cache coherency</b> (MESI: Modified/Exclusive/Shared/Invalid) stops stale reads.</li>
+      <li>Beware <b>false sharing</b> — unrelated vars in one cache line kill scaling.</li>
+      <li>ARM is <b>weakly ordered</b>; use <b>DMB/DSB/ISB</b> barriers for cross-core ordering.</li>
+      <li>Atomics via <b>LDXR/STXR</b> retry loops, or scalable <b>LSE</b> instructions.</li>
+      <li><b>big.LITTLE/DynamIQ</b> = heterogeneous big + efficient cores, coherent cluster.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>What do the four MESI states mean?</li>
+    <li>Why does a weakly ordered model need memory barriers?</li>
+    <li>How does store-exclusive (STXR) guarantee atomicity?</li>
+    <li>What problem does big.LITTLE solve?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is cache coherency?</h3><p>Hardware that keeps per-core caches consistent so every core sees one value for each address, via protocols like MESI over a coherent interconnect.</p></div>
+  <div class="faq-item"><h3>What is MESI?</h3><p>A coherency protocol tagging each cache line Modified, Exclusive, Shared or Invalid to coordinate reads and writes across cores.</p></div>
+  <div class="faq-item"><h3>Why memory barriers?</h3><p>ARM may reorder memory accesses; barriers (DMB/DSB/ISB) enforce ordering when cores or devices communicate through shared memory.</p></div>
+  <div class="faq-item"><h3>What is big.LITTLE?</h3><p>A heterogeneous design pairing high-performance big cores with energy-efficient LITTLE cores; DynamIQ is its flexible modern evolution.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-28-floating-point-vfp/"><span class="lab">Previous</span><div class="ti">← Day 28: Floating point (VFP)</div></a>
+    <a class="next" href="/arm-architecture/day-30-performance-optimization/"><span class="lab">Next</span><div class="ti">Day 30: Performance &amp; optimisation →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a> &nbsp;·&nbsp; <a href="/tools/cache-sim/">Try the Cache Simulator →</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a>
+<div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85"><a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot; <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a> &middot; <a href="/legal/disclaimer.html" style="color:#94a3b8;text-decoration:none">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 28: ARM Floating Point — The VFP / FPU &amp; IEEE 754 Explained | ARM from Scratch</title>
+<meta name="description" content="Day 28 of ARM architecture from scratch. A deep guide to floating-point on ARM: why hardware floating point exists, IEEE 754 single, double and half precision, the VFP/FPU register file shared with NEON, the FPCR and FPSR control/status registers, rounding modes and denormals, soft-float vs hard-float ABIs, and performance tips. With code, tables and FAQs.">
+<meta name="keywords" content="ARM floating point, VFP, FPU ARM, IEEE 754, single double half precision, FPCR FPSR, rounding modes, denormals flush to zero, soft float hard float ABI, ARM FP registers, floating point performance">
+<link rel="canonical" href="https://ecrionix.org/arm-architecture/day-28-floating-point-vfp/">
+<meta property="og:title" content="Day 28: ARM Floating Point — VFP / FPU &amp; IEEE 754">
+<meta property="og:description" content="Why hardware FP, IEEE 754 precisions, the VFP register file, FPCR/FPSR, rounding, denormals, and soft- vs hard-float ABIs.">
+<meta property="og:url" content="https://ecrionix.org/arm-architecture/day-28-floating-point-vfp/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 28: Floating Point (VFP) — ARM from Scratch">
+<meta name="twitter:description" content="IEEE 754, the VFP/FPU registers, FPCR/FPSR, rounding modes, denormals, soft- vs hard-float.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-06","dateModified":"2026-06-06","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 28: ARM Floating Point - The VFP / FPU and IEEE 754 Explained","description":"Lesson 28 of a from-scratch ARM course: hardware floating point, IEEE 754 single, double and half precision, the VFP/FPU register file shared with NEON, the FPCR and FPSR registers, rounding modes and denormals, and soft-float versus hard-float ABIs.","url":"https://ecrionix.org/arm-architecture/day-28-floating-point-vfp/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"ARM Architecture from Scratch","url":"https://ecrionix.org/arm-architecture/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"ARM Architecture Course","item":"https://ecrionix.org/arm-architecture/"},
+   {"@type":"ListItem","position":3,"name":"Day 28: Floating Point (VFP)","item":"https://ecrionix.org/arm-architecture/day-28-floating-point-vfp/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the VFP in ARM?","acceptedAnswer":{"@type":"Answer","text":"VFP, the Vector Floating Point unit, is ARM's hardware floating-point unit (FPU). It executes IEEE 754 floating-point arithmetic directly in hardware, far faster than emulating it in software. In AArch64 the floating-point and NEON SIMD units share the same V register file, and the scalar floating-point registers are accessed as S (32-bit), D (64-bit) and H (16-bit) views."}},
+   {"@type":"Question","name":"What is IEEE 754?","acceptedAnswer":{"@type":"Answer","text":"IEEE 754 is the standard that defines how floating-point numbers are represented and computed. It specifies formats such as half precision (16-bit), single precision (32-bit, called float) and double precision (64-bit, called double), each split into a sign, exponent and fraction, plus rules for rounding, infinities, and not-a-number (NaN) values."}},
+   {"@type":"Question","name":"What is the difference between soft-float and hard-float?","acceptedAnswer":{"@type":"Answer","text":"Hard-float means the compiler emits real floating-point instructions that run on the hardware FPU and passes floating-point arguments in FP registers. Soft-float means floating-point operations are emulated by library routines in integer code, used when no FPU is present. Hard-float is much faster; the two are different ABIs and cannot be freely mixed."}},
+   {"@type":"Question","name":"What are floating-point rounding modes?","acceptedAnswer":{"@type":"Answer","text":"Because most real numbers cannot be represented exactly, results must be rounded. IEEE 754 defines several rounding modes, including round to nearest (ties to even), round toward zero, round toward positive infinity, and round toward negative infinity. On ARM the active mode is selected in the FPCR control register, and round to nearest even is the default."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:780px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:var(--green);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.byline a{color:#38bdf8;text-decoration:none;font-weight:600}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}
+p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.2rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}
+td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.cs{color:#38bdf8;font-weight:700}.ce{color:#4ade80;font-weight:700}
+.code{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;color:#cbd5e1;white-space:pre;margin:1rem 0;font-variant-ligatures:none}
+.code .cm{color:#475569}.code .i{color:#c084fc}.code .r{color:#38bdf8}.code .n{color:#fbbf24}.code .lb{color:#f472b6}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/arm-architecture/">Course</a><a href="/tools/">Tools</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/arm-architecture/">ARM Course</a><span>›</span><span>Day 28</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 28 · ADVANCED (64-BIT &amp; BEYOND)</span>
+  <h1>Floating Point — The VFP Unit</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> <span style="opacity:.5">·</span> <span>Updated Jun 6, 2026</span></div>
+  <p class="lead">Everything so far has been integers. But graphics, physics, audio, scientific code and AI all live in the world of <b>real numbers with fractions</b> — and that needs <b>floating point</b>. Today we'll see how ARM does fractional math in hardware via the <b>VFP/FPU</b>, what IEEE 754 actually stores, and the subtle pitfalls (rounding, denormals, ABIs) that trip up real engineers.</p>
+
+  <h2>1. Why hardware floating point?</h2>
+  <p>You <i>can</i> do fractional math with integers (fixed-point), and tiny microcontrollers without an FPU must emulate floats in software — slow, hundreds of cycles per operation. A hardware <b>FPU (Floating-Point Unit)</b> executes a float add or multiply in just a few cycles. For any workload heavy in decimals — 3D transforms, DSP, neural nets — a hardware FPU is the difference between smooth and unusable.</p>
+  <p>On ARM this unit is historically called the <b>VFP (Vector Floating Point)</b>. In modern AArch64 it's tightly integrated with <a href="/arm-architecture/day-27-neon-simd/">NEON (Day 27)</a> — they <b>share the same V register file</b>.</p>
+
+  <h2>2. IEEE 754 — how a float is stored</h2>
+  <p>Floating point follows the <b>IEEE 754</b> standard. A number is stored as three fields — a <b>sign</b>, an <b>exponent</b>, and a <b>fraction (mantissa)</b> — essentially scientific notation in binary: <code>value = ±1.fraction × 2^exponent</code>.</p>
+  <table>
+    <thead><tr><th>Precision</th><th>Bits</th><th>Sign / Exp / Frac</th><th>ARM name</th></tr></thead>
+    <tbody>
+      <tr><td><b>Half</b></td><td>16</td><td>1 / 5 / 10</td><td class="m">H</td></tr>
+      <tr><td><b>Single</b> (float)</td><td>32</td><td>1 / 8 / 23</td><td class="m">S</td></tr>
+      <tr><td><b>Double</b> (double)</td><td>64</td><td>1 / 11 / 52</td><td class="m">D</td></tr>
+    </tbody>
+  </table>
+  <p>More exponent bits → larger range; more fraction bits → more precision. The standard also defines special values: <b>±0</b>, <b>±∞</b> (infinity), and <b>NaN</b> (Not-a-Number, e.g. from 0/0). <b>Half precision</b> has surged in importance because machine-learning inference often uses 16-bit floats to halve memory and double throughput.</p>
+  <div class="box analogy">
+    <h3>💡 The "1.5 isn't 1.5" gotcha</h3>
+    <p style="margin:0">Because the fraction is finite binary, many decimals can't be stored exactly — classically <code>0.1 + 0.2 ≠ 0.3</code> exactly. This isn't a bug; it's the nature of IEEE 754. Never compare floats with <code>==</code>; compare within a small tolerance (epsilon).</p>
+  </div>
+
+  <h2>3. The floating-point register file</h2>
+  <p>In AArch64 the FP and NEON units share <b>32 registers V0–V31</b>. For <i>scalar</i> floating point you access them through width-specific views:</p>
+  <ul>
+    <li><b>H0–H31</b> — 16-bit (half) views</li>
+    <li><b>S0–S31</b> — 32-bit (single) views</li>
+    <li><b>D0–D31</b> — 64-bit (double) views</li>
+    <li><b>Q0–Q31 / V0–V31</b> — the full 128-bit registers used by NEON vectors</li>
+  </ul>
+  <p>So <code>S5</code>, <code>D5</code> and <code>V5</code> are the same physical register viewed at different widths — exactly mirroring how X and W share GPRs in <a href="/arm-architecture/day-26-aarch64-register-model/">Day 26</a>.</p>
+  <div class="code"><span class="i">FADD</span> <span class="r">s0</span>, <span class="r">s1</span>, <span class="r">s2</span>   <span class="cm">// single-precision add: s0 = s1 + s2</span>
+<span class="i">FMUL</span> <span class="r">d0</span>, <span class="r">d1</span>, <span class="r">d2</span>   <span class="cm">// double-precision multiply</span>
+<span class="i">FMADD</span> <span class="r">d0</span>, <span class="r">d1</span>, <span class="r">d2</span>, <span class="r">d3</span> <span class="cm">// fused multiply-add: d0 = d1*d2 + d3 (one rounding)</span>
+<span class="i">SCVTF</span> <span class="r">s0</span>, <span class="r">w0</span>      <span class="cm">// convert integer w0 to float s0</span></div>
+  <p>Note <b>FMADD</b> — a <b>fused multiply-add</b> computes <code>a*b+c</code> with a single rounding, which is both faster and more accurate than separate multiply then add. It's the backbone of dot products and matrix math.</p>
+
+  <h2>4. Control &amp; status: FPCR and FPSR</h2>
+  <p>Two special registers govern FP behaviour:</p>
+  <ul>
+    <li><b>FPCR (Floating-Point Control Register)</b> — selects the <b>rounding mode</b> and behaviour switches like <b>flush-to-zero</b> for denormals.</li>
+    <li><b>FPSR (Floating-Point Status Register)</b> — sticky <b>exception flags</b> recording whether an operation was inexact, overflowed, underflowed, divided by zero, or was invalid.</li>
+  </ul>
+
+  <h3>Rounding modes</h3>
+  <p>Since results rarely fit exactly, IEEE 754 defines how to round. The FPCR selects one:</p>
+  <ul>
+    <li><b>Round to nearest, ties to even</b> — the default and the right choice for almost everything.</li>
+    <li>Round toward zero (truncate), toward +∞, toward −∞ — for specialised numeric needs.</li>
+  </ul>
+
+  <h3>Denormals (subnormals)</h3>
+  <p>Numbers extremely close to zero are represented as <b>denormals</b>. They preserve accuracy near zero but can be <b>very slow</b> on some hardware. Performance-critical audio/DSP code often sets <b>flush-to-zero</b> in FPCR, trading a sliver of accuracy for consistent speed.</p>
+
+  <h2>5. Soft-float vs hard-float — an ABI you must match</h2>
+  <p>This catches many embedded developers. There are two ways floating point reaches the hardware, and they're <b>incompatible ABIs</b>:</p>
+  <table>
+    <thead><tr><th></th><th>Hard-float</th><th>Soft-float</th></tr></thead>
+    <tbody>
+      <tr><td><b>FP ops</b></td><td class="ce">real FPU instructions</td><td>emulated in software libraries</td></tr>
+      <tr><td><b>FP args passed in</b></td><td>FP registers (S/D)</td><td>integer registers</td></tr>
+      <tr><td><b>Speed</b></td><td class="ce">fast</td><td style="color:#f87171">slow</td></tr>
+      <tr><td><b>Needs FPU?</b></td><td>yes</td><td>no</td></tr>
+    </tbody>
+  </table>
+  <p>Every object you link must use the <b>same</b> float ABI — mixing a hard-float library with soft-float code produces subtle, maddening bugs or link errors. On chips with an FPU (all AArch64), <b>hard-float</b> is standard. On the smallest MCUs without an FPU, soft-float is the only option. A middle option, <b>softfp</b>, uses the FPU but passes args in integer registers for compatibility.</p>
+
+  <h2>6. FP and performance</h2>
+  <ul>
+    <li><b>Prefer single precision</b> when accuracy allows — half the memory bandwidth and often double the throughput of double precision.</li>
+    <li><b>Use FMA</b> (fused multiply-add) for dot products and polynomials.</li>
+    <li><b>Vectorize</b> with NEON to do multiple floats per instruction (Day 27).</li>
+    <li><b>Watch denormals</b> in DSP; enable flush-to-zero if a tiny accuracy loss is acceptable.</li>
+    <li><b>Avoid needless int↔float conversions</b> in hot loops — they cost cycles.</li>
+  </ul>
+
+  <div class="box key">
+    <h3>✅ The mental model</h3>
+    <p style="margin:0">The <b>VFP/FPU</b> does fractional math in hardware using <b>IEEE 754</b> (sign + exponent + fraction) at <b>half (H)</b>, <b>single (S)</b> and <b>double (D)</b> precision, in registers that <b>share NEON's V file</b>. <b>FPCR</b> sets rounding and denormal behaviour; <b>FPSR</b> records exception flags. Match your <b>hard-/soft-float ABI</b> everywhere, never compare floats with <code>==</code>, and prefer <b>single precision + FMA</b> for speed.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 28 takeaways</h3>
+    <ul>
+      <li>A hardware <b>FPU (VFP)</b> does float math in a few cycles vs hundreds in software.</li>
+      <li><b>IEEE 754</b>: sign + exponent + fraction; half (16), single (32), double (64).</li>
+      <li>FP registers <b>share NEON's V file</b>; scalar views are H/S/D.</li>
+      <li><b>FPCR</b> = rounding + flush-to-zero; <b>FPSR</b> = sticky exception flags.</li>
+      <li>Match <b>hard-float vs soft-float</b> ABIs; never compare floats with <code>==</code>.</li>
+      <li>For speed: single precision, <b>FMA</b>, NEON vectorization, mind denormals.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Name the three IEEE 754 fields and the three common precisions.</li>
+    <li>Why are S5, D5 and V5 related?</li>
+    <li>What does the FPCR control, and what does the FPSR record?</li>
+    <li>Why must all linked code agree on hard- vs soft-float?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>What is the VFP/FPU?</h3><p>ARM's hardware floating-point unit; it executes IEEE 754 math directly and shares the V register file with NEON in AArch64.</p></div>
+  <div class="faq-item"><h3>What is IEEE 754?</h3><p>The standard for representing floats as sign/exponent/fraction, with half, single and double precision plus rules for rounding, infinities and NaN.</p></div>
+  <div class="faq-item"><h3>Soft-float vs hard-float?</h3><p>Hard-float uses real FPU instructions and FP registers for arguments; soft-float emulates FP in software. They are incompatible ABIs.</p></div>
+  <div class="faq-item"><h3>Why doesn't 0.1 + 0.2 equal 0.3?</h3><p>Those decimals can't be stored exactly in finite binary, so compare floats within a tolerance, not with ==.</p></div>
+
+  <div class="pager">
+    <a href="/arm-architecture/day-27-neon-simd/"><span class="lab">Previous</span><div class="ti">← Day 27: NEON &amp; SIMD</div></a>
+    <a class="next" href="/arm-architecture/day-29-multicore-coherency/"><span class="lab">Next</span><div class="ti">Day 29: Multicore &amp; coherency →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/arm-architecture/">← Back to the full course roadmap</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/arm-architecture/">ARM Course</a> · <a href="/tools/">Tools</a> · <a href="/digital-electronics/">Digital Electronics</a>
+<div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85"><a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot; <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a> &middot; <a href="/legal/disclaimer.html" style="color:#94a3b8;text-decoration:none">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',()=>{var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
