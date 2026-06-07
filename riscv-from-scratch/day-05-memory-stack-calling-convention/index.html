@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 5: RISC-V Memory, the Stack &amp; Calling Convention — Explained Simply | Build a CPU</title>
+<meta name="description" content="Day 5 of building a RISC-V CPU from scratch. A beginner-friendly guide to memory and the stack: how memory is a byte-addressable array, little-endian and alignment, the memory map (code, data, heap, stack), how the stack grows downward and how push/pop work with sp, and the RISC-V calling convention — argument and return registers, caller-saved vs callee-saved, and a function prologue/epilogue. With a memory-map diagram and copyable code.">
+<meta name="keywords" content="RISC-V memory, the stack, stack pointer sp, push pop stack, RISC-V calling convention, caller saved callee saved, function prologue epilogue, little endian alignment, memory map, ra return address, a0 a7 arguments, RISC-V for beginners">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-05-memory-stack-calling-convention/">
+<meta property="og:title" content="Day 5: RISC-V Memory, the Stack &amp; Calling Convention">
+<meta property="og:description" content="How memory works, the memory map, how the stack grows and push/pop, and the calling convention — function prologue/epilogue explained simply.">
+<meta property="og:url" content="https://ecrionix.org/riscv-from-scratch/day-05-memory-stack-calling-convention/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Day 5: Memory, Stack &amp; Calling Convention — Build a CPU">
+<meta name="twitter:description" content="Memory map, the stack, sp, and the RISC-V calling convention explained simply.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-07","dateModified":"2026-06-07","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 5: RISC-V Memory, the Stack and Calling Convention - Explained Simply","description":"Lesson 5 of building a RISC-V CPU from scratch: how memory is a byte-addressable array, little-endian and alignment, the memory map, how the stack grows downward and push/pop with sp, and the RISC-V calling convention with argument/return registers, caller-saved versus callee-saved, and a function prologue and epilogue.","url":"https://ecrionix.org/riscv-from-scratch/day-05-memory-stack-calling-convention/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+ {"@type":"BreadcrumbList","itemListElement":[
+   {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+   {"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},
+   {"@type":"ListItem","position":3,"name":"Day 5: Memory, Stack & Calling Convention","item":"https://ecrionix.org/riscv-from-scratch/day-05-memory-stack-calling-convention/"}
+ ]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"How is memory organised in RISC-V?","acceptedAnswer":{"@type":"Answer","text":"Memory is a large, byte-addressable array: every byte has its own 32-bit address, giving a 4 GB address space in RV32. Values are stored little-endian (the least significant byte first), and a 32-bit word normally sits at an address that is a multiple of 4, which is called alignment."}},
+   {"@type":"Question","name":"What is the stack in RISC-V?","acceptedAnswer":{"@type":"Answer","text":"The stack is a region of memory used as a last-in-first-out scratchpad for function calls. The stack pointer register sp points to the top of the stack, and the stack grows downward, toward lower addresses. To push, you subtract from sp and store; to pop, you load and add back to sp."}},
+   {"@type":"Question","name":"What is the RISC-V calling convention?","acceptedAnswer":{"@type":"Answer","text":"The calling convention is the agreed set of rules that lets separately written functions work together. Arguments are passed in a0 to a7, results returned in a0 and a1, the return address is kept in ra, and the stack pointer is sp. Registers are split into caller-saved (t0 to t6, a0 to a7) that a function may overwrite, and callee-saved (s0 to s11, sp) that a function must preserve."}},
+   {"@type":"Question","name":"What is a function prologue and epilogue?","acceptedAnswer":{"@type":"Answer","text":"A prologue is the code at the start of a function that makes room on the stack and saves the return address and any callee-saved registers it will use. The epilogue at the end restores those values and the stack pointer, then returns. They are needed so a function can safely call other functions without losing its own return address or corrupting registers."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}.byline a{color:#38bdf8;text-decoration:none;font-weight:600}
+.lead{color:var(--sl);font-size:1.08rem;margin-bottom:1.4rem}
+h2{font-size:1.4rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .7rem;padding-top:.6rem}
+h3{font-size:1.08rem;font-weight:700;color:var(--blue);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1.1rem;margin:1.2rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto;min-width:300px}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.6rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1.1rem 0;overflow:hidden;background:#05080f}
+.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}
+.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}
+.cc-btns{display:flex;gap:.4rem}
+.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}
+.cc-btns button:hover{background:#1e3050;color:#fff}
+.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre;font-variant-ligatures:none}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.96rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.6rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.4rem;flex-wrap:wrap}
+.pager a,.pager span{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.92rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}.pager .disabled{opacity:.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}
+#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Verilog Sim</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 5</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 5 · THE RISC-V ISA</span>
+  <h1>Memory, the Stack &amp; Calling Convention</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> <span style="opacity:.5">·</span> <span>Updated Jun 7, 2026</span></div>
+  <p class="lead">Registers are fast but few — only 32. Real programs need to store far more, and to call functions that call other functions. For that we need <b>memory</b>, the <b>stack</b>, and a shared rulebook called the <b>calling convention</b>. This is the last ISA concept before Day 6's assembly, and it's the one that makes "functions" actually work.</p>
+
+  <h2>1. Memory is just a giant numbered shelf</h2>
+  <p>Forget anything complicated. <b>Memory is one enormous array of bytes</b>, and every byte has a number — its <b>address</b>. In RV32, addresses are 32 bits, so there are up to <b>4 GB</b> of byte-slots (2³² of them). To use memory you give an address and either read or write — exactly the <a href="/riscv-from-scratch/day-04-rv32i-instruction-set/">load/store instructions</a> from Day 4.</p>
+  <h3>Two details that bite beginners</h3>
+  <ul>
+    <li><b>Little-endian</b> — a 32-bit word is stored with its <i>least</i>-significant byte at the lowest address. It's a convention; just know RISC-V uses it.</li>
+    <li><b>Alignment</b> — a 32-bit word normally sits at an address that's a multiple of 4 (a half-word at a multiple of 2). Aligned accesses are simplest for the hardware.</li>
+  </ul>
+
+  <h2>2. The memory map</h2>
+  <p>Memory isn't a free-for-all; a program divides its address space into regions. Roughly, from low addresses up:</p>
+  <div class="figure">
+    <svg viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="10">
+      <text x="150" y="14" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">A program's memory map</text>
+      <text x="20" y="34" fill="#64748b" font-size="8">high address</text>
+      <rect x="70" y="38" width="160" height="34" rx="4" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/><text x="150" y="54" text-anchor="middle" fill="#a78bfa" font-weight="700">Stack</text><text x="150" y="66" text-anchor="middle" fill="#64748b" font-size="7.5">grows DOWN ↓ (sp)</text>
+      <text x="150" y="88" text-anchor="middle" fill="#475569" font-size="14">↓   ↑</text>
+      <rect x="70" y="96" width="160" height="30" rx="4" fill="rgba(74,222,128,.1)" stroke="#4ade80"/><text x="150" y="115" text-anchor="middle" fill="#4ade80" font-weight="700">Heap (grows up ↑)</text>
+      <rect x="70" y="130" width="160" height="30" rx="4" fill="rgba(56,189,248,.1)" stroke="#38bdf8"/><text x="150" y="149" text-anchor="middle" fill="#38bdf8" font-weight="700">Data (globals)</text>
+      <rect x="70" y="164" width="160" height="30" rx="4" fill="rgba(251,146,60,.1)" stroke="#fb923c"/><text x="150" y="183" text-anchor="middle" fill="#fb923c" font-weight="700">Text (your code)</text>
+      <text x="20" y="204" fill="#64748b" font-size="8">low address</text>
+      <text x="150" y="222" text-anchor="middle" fill="#64748b" font-size="8">stack &amp; heap grow toward each other</text>
+    </svg>
+    <div class="fig-cap">Figure — Code and globals at the bottom; the heap grows up, the stack grows down from the top.</div>
+  </div>
+  <ul>
+    <li><b>Text</b> — your program's instructions.</li>
+    <li><b>Data</b> — global variables.</li>
+    <li><b>Heap</b> — dynamically allocated memory (grows <i>up</i>).</li>
+    <li><b>Stack</b> — function scratch space (grows <i>down</i>).</li>
+  </ul>
+
+  <h2>3. The stack — a pile you push and pop</h2>
+  <p>The <b>stack</b> is a special memory region used like a stack of plates: <b>last in, first out</b>. The <a href="/riscv-from-scratch/day-02-registers-and-rv32i/">register <code>sp</code></a> (x2) always points to the <b>top</b> of the stack. Two surprises for beginners:</p>
+  <ul>
+    <li>The stack <b>grows downward</b> — pushing makes <code>sp</code> <i>smaller</i>.</li>
+    <li>There's no "push" instruction. You <b>push by hand</b>: subtract from <code>sp</code>, then store; <b>pop</b> by loading, then adding back.</li>
+  </ul>
+  <div class="box analogy">
+    <h3>💡 A spring-loaded plate dispenser</h3>
+    <p style="margin:0">Picture a plate dispenser: you press the top plate down to add one (push), and the newest plate is the first you take back (pop). The stack is the same — and <code>sp</code> is your finger marking where the top plate is. Add a plate → <code>sp</code> moves; take it back → <code>sp</code> returns.</p>
+  </div>
+  <div class="codecard">
+    <div class="cc-head"><span class="cc-name">push-pop.s — manual stack operations</span>
+      <div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div>
+    </div>
+<pre data-file="push-pop.s"># Push two registers, then pop them back (stack grows DOWN)
+        addi sp, sp, -8     # make room for 2 words (push)
+        sw   ra, 4(sp)      # save ra  on the stack
+        sw   s0, 0(sp)      # save s0  on the stack
+        # ... do work that may clobber ra and s0 ...
+        lw   s0, 0(sp)      # restore s0  (pop)
+        lw   ra, 4(sp)      # restore ra
+        addi sp, sp, 8      # free the space</pre>
+  </div>
+
+  <h2>4. Why the stack exists: nested function calls</h2>
+  <p>Here's the problem it solves. From Day 4, <code>jal</code> calls a function and saves the return address in <b>ra</b>. But if that function calls <i>another</i> function, the second <code>jal</code> <b>overwrites ra</b> — and now the first function has forgotten where to return! The fix: each function <b>saves ra on the stack</b> before making nested calls, then restores it. The stack lets calls nest arbitrarily deep, each remembering its own return address.</p>
+
+  <h2>5. The calling convention (the shared rulebook)</h2>
+  <p>For functions written by different people (or compilers) to work together, everyone must agree on <b>how arguments are passed, where results go, and which registers must be preserved</b>. That agreement is the <b>calling convention</b> (RISC-V's is similar to <a href="/arm-architecture/day-15-subroutines-aapcs/">ARM's AAPCS</a>). Using the ABI names from Day 2:</p>
+  <table>
+    <thead><tr><th>Register(s)</th><th>Role</th><th>Who preserves it</th></tr></thead>
+    <tbody>
+      <tr><td class="m">a0–a7</td><td>function <b>arguments</b>; <b>a0</b> (&amp; a1) = return value</td><td>caller-saved</td></tr>
+      <tr><td class="m">ra</td><td>return address</td><td>caller-saved (save before nested calls!)</td></tr>
+      <tr><td class="m">t0–t6</td><td>temporaries (scratch)</td><td>caller-saved</td></tr>
+      <tr><td class="m">s0–s11</td><td>saved registers (locals)</td><td><b>callee-saved</b></td></tr>
+      <tr><td class="m">sp</td><td>stack pointer</td><td>callee-saved (must be restored)</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><b>Caller-saved</b> (t, a, ra) — a called function may freely overwrite these. If the caller needs them afterward, <i>the caller</i> saves them first.</li>
+    <li><b>Callee-saved</b> (s0–s11, sp) — the called function must leave them exactly as it found them, so it pushes any it uses and pops them before returning.</li>
+  </ul>
+
+  <h2>6. A real function: prologue &amp; epilogue</h2>
+  <p>Putting it together: a function that calls another function follows a standard pattern — a <b>prologue</b> (save ra and any s-registers), the body, and an <b>epilogue</b> (restore, return):</p>
+  <div class="codecard">
+    <div class="cc-head"><span class="cc-name">func.s — a function that calls another</span>
+      <div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div>
+    </div>
+<pre data-file="func.s"># int outer(int n) { return inner(n) + 1; }
+outer:
+        addi sp, sp, -16    # PROLOGUE: make a stack frame
+        sw   ra, 12(sp)     #   save return address (we'll call -> ra clobbered)
+        sw   s0, 8(sp)      #   save a callee-saved reg we want to use
+        mv   s0, a0         #   keep n in s0 across the call
+
+        # a0 already holds n -> call inner(n)
+        jal  ra, inner      #   inner's result comes back in a0
+
+        addi a0, a0, 1      #   return value = inner(n) + 1
+
+        lw   s0, 8(sp)      # EPILOGUE: restore
+        lw   ra, 12(sp)     #   restore return address
+        addi sp, sp, 16     #   pop the frame
+        ret                 #   jalr x0, 0(ra)  -> return to caller</pre>
+  </div>
+  <p>The <b>frame</b> on the stack (16 bytes here) is this function's private scratch space. Skip saving <code>ra</code> and a non-leaf function returns to the wrong place — the single most common beginner bug. (A <b>leaf</b> function that calls nothing can skip the frame and just <code>ret</code>.)</p>
+
+  <div class="box key">
+    <h3>✅ Day 5 in one line</h3>
+    <p style="margin:0"><b>Memory</b> is a byte-addressable array (little-endian, aligned), split into <b>text/data/heap/stack</b>. The <b>stack</b> (top tracked by <code>sp</code>, grows <i>down</i>) is push/pop scratch space built from <code>sw</code>/<code>lw</code>. The <b>calling convention</b> sets the rules: <b>a0–a7</b> args, <b>a0</b> return, <b>ra</b> return address, <b>s0–s11</b> callee-saved — and any non-leaf function must <b>save ra on the stack</b> in its prologue and restore it in the epilogue.</p>
+  </div>
+
+  <div class="takeaways">
+    <h3>🎯 Day 5 takeaways</h3>
+    <ul>
+      <li>Memory = byte-addressable array; <b>little-endian</b>, words <b>aligned</b> to 4.</li>
+      <li>Memory map: <b>text</b> (code), <b>data</b> (globals), <b>heap</b> (↑), <b>stack</b> (↓).</li>
+      <li>The <b>stack</b> grows down; <code>sp</code> marks the top; push = <code>addi sp,sp,-N</code>+<code>sw</code>, pop = <code>lw</code>+<code>addi sp,sp,N</code>.</li>
+      <li>Non-leaf functions must <b>save ra</b> (and callee-saved regs) so nested calls work.</li>
+      <li>Convention: <b>a0–a7</b> args/return, <b>ra</b> return addr, <b>t</b> caller-saved, <b>s0–s11</b> callee-saved.</li>
+      <li><b>Prologue</b> saves, body runs, <b>epilogue</b> restores + <code>ret</code>.</li>
+    </ul>
+  </div>
+
+  <h2>Quick check</h2>
+  <ol>
+    <li>Which direction does the stack grow, and what does <code>sp</code> point to?</li>
+    <li>How do you "push" a register if there's no push instruction?</li>
+    <li>Why must a function that calls another function save <code>ra</code>?</li>
+    <li>Which registers carry arguments and the return value?</li>
+  </ol>
+
+  <h2>FAQ</h2>
+  <div class="faq-item"><h3>How is memory organised?</h3><p>A byte-addressable array (32-bit addresses → 4 GB), little-endian, with words usually aligned to 4-byte boundaries.</p></div>
+  <div class="faq-item"><h3>What is the stack?</h3><p>A LIFO memory region for function scratch space; <code>sp</code> points to the top and it grows downward. Push/pop are done with sw/lw + adjusting sp.</p></div>
+  <div class="faq-item"><h3>What is the calling convention?</h3><p>The agreed rules: a0–a7 args, a0/a1 return, ra return address, sp stack, and caller- vs callee-saved registers.</p></div>
+  <div class="faq-item"><h3>What is a prologue/epilogue?</h3><p>Start-of-function code that saves ra and callee-saved regs on the stack, and end-of-function code that restores them and returns.</p></div>
+
+  <div class="pager">
+    <a href="/riscv-from-scratch/day-04-rv32i-instruction-set/"><span class="lab">Previous</span><div class="ti">← Day 4: The RV32I instruction set</div></a>
+    <a class="next" href="/riscv-from-scratch/"><span class="lab">Up next · publishing soon</span><div class="ti">Day 6: Writing &amp; running RISC-V assembly →</div></a>
+  </div>
+  <p style="text-align:center;margin-top:1.4rem"><a href="/riscv-from-scratch/">← Back to the full roadmap</a> &nbsp;·&nbsp; <a href="/tools/verilog-simulator/">Open the Verilog simulator →</a></p>
+</div>
+
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85"><a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot; <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a> &middot; <a href="/legal/disclaimer.html" style="color:#94a3b8;text-decoration:none">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
