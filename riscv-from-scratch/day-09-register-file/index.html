@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 9: The RISC-V Register File in Verilog — Build a CPU from Scratch</title>
+<meta name="description" content="Day 9 of building a RISC-V CPU from scratch. Build regfile.v — the 32×32-bit register file with two asynchronous read ports and one synchronous write port. Understand why x0 always reads zero, how write-enable works, and how the register file connects to the ALU and decoder. Includes full port table, annotated Verilog, and a self-checking testbench.">
+<meta name="keywords" content="register file verilog, RISC-V register file, regfile.v, x0 always zero, asynchronous read synchronous write, register file CPU design, RISC-V registers x0-x31, two read ports one write port, CPU build verilog, register file testbench">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-09-register-file/">
+<meta property="og:title" content="Day 9: The RISC-V Register File — Build a CPU in Verilog"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 9: The RISC-V Register File","url":"https://ecrionix.org/riscv-from-scratch/day-09-register-file/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 9","item":"https://ecrionix.org/riscv-from-scratch/day-09-register-file/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Why does x0 always read zero in RISC-V?","acceptedAnswer":{"@type":"Answer","text":"x0 (register 0) is hardwired to zero in RISC-V — writes to it are silently ignored and reads always return 0. This makes many common operations simpler: copying a register is add rd, rs, x0; loading an immediate is addi rd, x0, imm; jumping is jalr x0, addr, 0. Having a zero source eliminates the need for a separate zero-constant circuit."}},
+{"@type":"Question","name":"Why are register file reads asynchronous and writes synchronous?","acceptedAnswer":{"@type":"Answer","text":"Reads are asynchronous (combinational) so that register values are available within the same clock cycle they are requested — the decode and execute stages need them immediately. The write is synchronous (clocked) so it only commits a result at the end of a cycle, after the ALU has computed the correct value, preventing partial or incorrect updates."}},
+{"@type":"Question","name":"How many registers does RISC-V RV32I have?","acceptedAnswer":{"@type":"Answer","text":"RV32I has 32 general-purpose registers, each 32 bits wide — named x0 through x31. x0 is hardwired to zero. The ABI gives them aliases (a0-a7 for function arguments, s0-s11 for saved registers, t0-t6 for temporaries, etc.) but the hardware just sees indices 0-31."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.2rem 0;overflow-x:auto}.figure svg{display:block;margin:0 auto}.fig-cap{text-align:center;font-size:.75rem;color:#64748b;margin-top:.5rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 9</span></div>
+<div class="wrap">
+<span class="daytag">DAY 9 · PHASE 2 — BUILD THE CPU</span>
+<h1>The Register File</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">The register file is the CPU's <b>fastest, smallest memory</b> — 32 registers, each 32 bits, sitting right next to the ALU. Every arithmetic instruction reads two registers and writes one. Getting this module right is critical — it is at the heart of almost every instruction the CPU executes.</p>
+
+<h2>1. What the register file does</h2>
+<p>Every RISC-V instruction that does arithmetic reads up to <b>two source registers</b> (rs1, rs2) and writes one <b>destination register</b> (rd). The register file has two <b>read ports</b> (combinational — instant) and one <b>write port</b> (synchronous — on the clock edge).</p>
+<div class="figure">
+<svg viewBox="0 0 500 120" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="9">
+  <rect x="160" y="20" width="160" height="80" rx="8" fill="rgba(45,212,191,.08)" stroke="#2dd4bf" stroke-width="1.5"/>
+  <text x="240" y="56" text-anchor="middle" fill="#2dd4bf" font-weight="700" font-size="11">REGFILE</text>
+  <text x="240" y="70" text-anchor="middle" fill="#64748b" font-size="8">32 × 32-bit registers</text>
+  <!-- read port 1 -->
+  <line x1="20" y1="40" x2="160" y2="40" stroke="#38bdf8" stroke-width="1.5"/><text x="14" y="37" text-anchor="end" fill="#38bdf8" font-size="8">raddr1[4:0]</text>
+  <line x1="320" y1="40" x2="420" y2="40" stroke="#4ade80" stroke-width="1.5"/><text x="426" y="43" fill="#4ade80" font-size="8">rdata1[31:0]</text>
+  <!-- read port 2 -->
+  <line x1="20" y1="60" x2="160" y2="60" stroke="#38bdf8" stroke-width="1.5"/><text x="14" y="57" text-anchor="end" fill="#38bdf8" font-size="8">raddr2[4:0]</text>
+  <line x1="320" y1="60" x2="420" y2="60" stroke="#4ade80" stroke-width="1.5"/><text x="426" y="63" fill="#4ade80" font-size="8">rdata2[31:0]</text>
+  <!-- write port -->
+  <line x1="20" y1="80" x2="160" y2="80" stroke="#f87171" stroke-width="1.5"/><text x="14" y="77" text-anchor="end" fill="#f87171" font-size="8">waddr/wdata/we</text>
+  <!-- clock -->
+  <line x1="240" y1="100" x2="240" y2="112" stroke="#a78bfa" stroke-width="1.5"/><text x="240" y="118" text-anchor="middle" fill="#a78bfa" font-size="8">clk (write port only)</text>
+</svg>
+<div class="fig-cap">Register file: 2 async read ports (combinational), 1 sync write port (clocked). x0 reads always return 0.</div>
+</div>
+
+<h2>2. Port table</h2>
+<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Meaning</th></tr></thead><tbody>
+<tr><td class="m">clk</td><td>input</td><td>1</td><td>clock — write happens on rising edge</td></tr>
+<tr><td class="m">we</td><td>input</td><td>1</td><td>write enable — 1 = write rd; 0 = hold</td></tr>
+<tr><td class="m">waddr</td><td>input</td><td>5</td><td>destination register index (rd, 0–31)</td></tr>
+<tr><td class="m">wdata</td><td>input</td><td>32</td><td>value to write into rd</td></tr>
+<tr><td class="m">raddr1</td><td>input</td><td>5</td><td>first source register index (rs1)</td></tr>
+<tr><td class="m">rdata1</td><td>output</td><td>32</td><td>value of rs1 (combinational)</td></tr>
+<tr><td class="m">raddr2</td><td>input</td><td>5</td><td>second source register index (rs2)</td></tr>
+<tr><td class="m">rdata2</td><td>output</td><td>32</td><td>value of rs2 (combinational)</td></tr>
+</tbody></table>
+
+<h2>3. regfile.v — the register file</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">regfile.v — 32×32-bit register file</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="regfile.v">// RISC-V Register File: 32 × 32-bit registers
+// 2 asynchronous read ports, 1 synchronous write port
+// x0 (index 0) always reads as zero — writes to x0 are ignored
+module regfile (
+    input  wire        clk,
+    input  wire        we,          // write enable
+    input  wire [4:0]  waddr,       // write address (rd)
+    input  wire [31:0] wdata,       // write data
+    input  wire [4:0]  raddr1,      // read address 1 (rs1)
+    output wire [31:0] rdata1,      // read data 1
+    input  wire [4:0]  raddr2,      // read address 2 (rs2)
+    output wire [31:0] rdata2       // read data 2
+);
+    reg [31:0] regs [0:31];
+    integer i;
+    initial for(i=0;i<32;i=i+1) regs[i]=32'b0; // power-on reset all zero
+
+    // synchronous write — x0 stays zero (waddr==0 is ignored)
+    always @(posedge clk)
+        if (we && waddr != 5'd0) regs[waddr] <= wdata;
+
+    // asynchronous reads — x0 always returns 0
+    assign rdata1 = (raddr1 == 5'd0) ? 32'd0 : regs[raddr1];
+    assign rdata2 = (raddr2 == 5'd0) ? 32'd0 : regs[raddr2];
+endmodule</pre></div>
+
+<h2>4. Testbench</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">tb_regfile.v — testbench</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_regfile.v">`timescale 1ns/1ps
+module tb_regfile;
+    reg        clk=0,we;
+    reg  [4:0] waddr,raddr1,raddr2;
+    reg  [31:0]wdata;
+    wire [31:0]rdata1,rdata2;
+    regfile dut(.clk(clk),.we(we),.waddr(waddr),.wdata(wdata),.raddr1(raddr1),.rdata1(rdata1),.raddr2(raddr2),.rdata2(rdata2));
+    always #5 clk=~clk;
+    integer errors=0;
+    task chk(input [31:0]a,input [31:0]e);
+        if(a!==e)begin $display("FAIL got=%0h exp=%0h",a,e);errors=errors+1;end
+        else $display("ok   %0h",a);
+    endtask
+    initial begin
+        // write 42 into x1
+        we=1;waddr=5'd1;wdata=32'd42;raddr1=5'd1;raddr2=5'd0;
+        @(posedge clk);#1;chk(rdata1,32'd42);  // x1=42
+
+        // write 99 into x5
+        waddr=5'd5;wdata=32'd99;raddr1=5'd5;
+        @(posedge clk);#1;chk(rdata1,32'd99);  // x5=99
+
+        // x0 always reads 0 even if written
+        waddr=5'd0;wdata=32'hDEAD;raddr1=5'd0;
+        @(posedge clk);#1;chk(rdata1,32'd0);   // x0=0
+
+        // simultaneous read x1 and x5
+        we=0;raddr1=5'd1;raddr2=5'd5;#1;
+        chk(rdata1,32'd42);chk(rdata2,32'd99);
+
+        if(errors==0) $display("ALL TESTS PASSED"); else $display("%0d FAILED",errors);
+        $finish;
+    end
+endmodule</pre></div>
+<div class="codecard"><div class="cc-head"><span class="cc-name">expected output</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="expected.txt">ok   0000002a
+ok   00000063
+ok   00000000
+ok   0000002a
+ok   00000063
+ALL TESTS PASSED</pre></div>
+
+<div class="box analogy"><h3>💡 The register file is your CPU's whiteboard</h3><p style="margin:0">Main memory is like a library — big but slow. The register file is the whiteboard right in front of you — tiny (32 slots) but instant. The CPU's job is to bring numbers from memory onto the whiteboard, do math on them, and write results back. You never compute with numbers still in the library.</p></div>
+
+<div class="takeaways"><h3>🎯 Day 9 takeaways</h3><ul>
+<li><b>32 registers × 32 bits</b>: x0–x31. x0 is hardwired to zero.</li>
+<li><b>2 async read ports</b> (combinational) for rs1, rs2 — available within the same cycle.</li>
+<li><b>1 sync write port</b> — writes only on clock edge when <code>we=1</code>.</li>
+<li>Writes to x0 are silently ignored; reads from x0 always return 0.</li>
+<li><b>Next:</b> Day 10 builds the ALU — the module that actually computes.</li>
+</ul></div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>Why does x0 always read zero?</h3><p>It's hardwired to zero so many common operations become simpler — mv rd, rs is add rd, rs, x0; li rd, imm is addi rd, x0, imm. No extra zero-source circuit needed.</p></div>
+<div class="faq-item"><h3>Why async reads, sync write?</h3><p>Reads must be available within the same clock cycle for decode and execute. Writes should only commit after the ALU produces the correct result — that requires a clock edge.</p></div>
+<div class="faq-item"><h3>How many registers does RV32I have?</h3><p>32 general-purpose registers (x0–x31), each 32 bits. x0 = zero; x1 (ra) = return address; x2 (sp) = stack pointer; x10–x17 (a0–a7) = function arguments/return values.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-08-program-counter-instruction-memory/"><span class="lab">Previous</span><div class="ti">← Day 8: Instruction memory</div></a>
+<a class="next" href="/riscv-from-scratch/day-10-the-alu/"><span class="lab">Up next</span><div class="ti">Day 10: The ALU →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body></html>

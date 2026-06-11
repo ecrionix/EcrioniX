@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 8: Instruction Memory & the Fetch Stage — RISC-V CPU in Verilog</title>
+<meta name="description" content="Day 8 of building a RISC-V CPU from scratch. Build imem.v — the instruction memory module (a ROM) — and wire it with the Program Counter to create the complete Instruction Fetch stage. Includes a port table, annotated Verilog, a self-checking testbench that fetches real encoded instructions, and the expected simulation output.">
+<meta name="keywords" content="instruction memory verilog, IMEM RISC-V, instruction fetch stage, ROM verilog, RISC-V CPU verilog, program counter instruction memory, if stage verilog, fetch stage RISC-V, machine code ROM, riscv cpu build">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-08-program-counter-instruction-memory/">
+<meta property="og:title" content="Day 8: Instruction Memory & the Fetch Stage — Build a RISC-V CPU">
+<meta property="og:description" content="Build imem.v and wire it with pc.v to create the complete Instruction Fetch stage, with testbench.">
+<meta property="og:url" content="https://ecrionix.org/riscv-from-scratch/day-08-program-counter-instruction-memory/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png"><meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 8: Instruction Memory and the Fetch Stage","url":"https://ecrionix.org/riscv-from-scratch/day-08-program-counter-instruction-memory/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 8","item":"https://ecrionix.org/riscv-from-scratch/day-08-program-counter-instruction-memory/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is instruction memory in a CPU?","acceptedAnswer":{"@type":"Answer","text":"Instruction memory (IMEM) is the read-only memory that holds the program — the sequence of 32-bit machine code words the CPU fetches and executes. The Program Counter provides the address; IMEM returns the instruction at that address. In a simple single-cycle CPU it is a combinational ROM."}},
+{"@type":"Question","name":"Why is instruction memory purely combinational?","acceptedAnswer":{"@type":"Answer","text":"In a single-cycle CPU the instruction memory only needs to be read, never written during execution. A combinational ROM (implemented as a case statement or an array initialised with $readmemh) returns the instruction word the same cycle the address is presented, with no clock edge needed. This keeps the fetch stage simple."}},
+{"@type":"Question","name":"What is $readmemh in Verilog?","acceptedAnswer":{"@type":"Answer","text":"$readmemh is a Verilog system task that loads a memory array from a file of hex values at simulation start. It is commonly used to initialise instruction memory with a program, loading one 32-bit hex word per line into the memory array."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}
+.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}
+h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+.box.analogy{border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.05)}.box.analogy h3{color:var(--amber);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.2rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto}
+.fig-cap{text-align:center;font-size:.75rem;color:#64748b;margin-top:.5rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}
+.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}
+.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}
+.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}
+.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}
+.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}
+.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 8</span></div>
+<div class="wrap">
+<span class="daytag">DAY 8 · PHASE 2 — BUILD THE CPU</span>
+<h1>Instruction Memory &amp; the Fetch Stage</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Day 7 gave you the full datapath map and the Program Counter. Now we build the other half of the Fetch stage: <b>Instruction Memory</b> (IMEM) — the ROM that holds your program. Wire PC + IMEM together and you have a stage that can continuously fetch instructions. That's the first piece of a working CPU.</p>
+
+<h2>1. What instruction memory does</h2>
+<p>IMEM is the simplest module in the CPU: give it an address, get back a 32-bit instruction. It is <b>purely combinational</b> — no clock, no write port. Think of it as a lookup table: index = address, value = machine code word.</p>
+<div class="figure">
+<svg viewBox="0 0 500 80" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="10">
+  <line x1="20" y1="40" x2="130" y2="40" stroke="#38bdf8" stroke-width="1.5"/><text x="14" y="37" text-anchor="end" fill="#38bdf8" font-size="9">PC (addr)</text>
+  <rect x="130" y="20" width="140" height="40" rx="7" fill="rgba(167,139,250,.1)" stroke="#a78bfa"/>
+  <text x="200" y="38" text-anchor="middle" fill="#a78bfa" font-weight="700">IMEM</text>
+  <text x="200" y="51" text-anchor="middle" fill="#64748b" font-size="8">ROM — program stored here</text>
+  <line x1="270" y1="40" x2="380" y2="40" stroke="#4ade80" stroke-width="1.5"/><text x="386" y="43" fill="#4ade80" font-size="9">instr[31:0]</text>
+  <text x="200" y="13" text-anchor="middle" fill="#64748b" font-size="8">combinational — no clock needed</text>
+</svg>
+<div class="fig-cap">IMEM: address in, 32-bit instruction word out. No clock — it's a read-only lookup.</div>
+</div>
+
+<h2>2. Port table</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td class="m">addr</td><td>input</td><td>32</td><td>byte address of the instruction to fetch (from PC)</td></tr>
+<tr><td class="m">instr</td><td>output</td><td>32</td><td>32-bit machine code word at that address</td></tr>
+</tbody>
+</table>
+<p>We word-index into the array using <code>addr[31:2]</code> (shift right by 2 = divide by 4) because instructions are 4-byte aligned and we store one word per entry.</p>
+
+<h2>3. imem.v — the instruction memory</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">imem.v — instruction memory (ROM)</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="imem.v">// Instruction Memory — combinational ROM, word-addressed
+// Holds up to 256 instructions (1 KB). Pre-load with $readmemh.
+module imem #(parameter DEPTH = 256) (
+    input  wire [31:0] addr,   // byte address from PC
+    output wire [31:0] instr   // 32-bit instruction word
+);
+    reg [31:0] mem [0:DEPTH-1];
+
+    // Load program at simulation start.
+    // Replace "program.hex" with your assembled .hex file.
+    initial $readmemh("program.hex", mem);
+
+    // Word-aligned read: divide byte address by 4
+    assign instr = mem[addr[31:2]];
+endmodule</pre></div>
+
+<h2>4. The Fetch stage — PC + IMEM wired together</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">if_stage.v — Instruction Fetch stage</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="if_stage.v">// Instruction Fetch stage: PC register + IMEM
+// pc_next is driven by the branch/jump logic (just PC+4 for now)
+module if_stage (
+    input  wire        clk,
+    input  wire        rst,
+    input  wire [31:0] pc_next,   // next PC (PC+4 or branch target)
+    output wire [31:0] pc,        // current PC
+    output wire [31:0] instr      // fetched instruction
+);
+    pc   pc_reg  (.clk(clk), .rst(rst), .pc_next(pc_next), .pc(pc));
+    imem imem_mod(.addr(pc), .instr(instr));
+endmodule</pre></div>
+
+<h2>5. Testbench — fetch a real program</h2>
+<p>We pre-load IMEM with a small program encoded as hex words, then check that each instruction fetches in the right order:</p>
+<div class="codecard"><div class="cc-head"><span class="cc-name">program.hex — 4 instructions as machine code</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="program.hex">00500093  // addi x1, x0, 5    (x1 = 5)
+00A00113  // addi x2, x0, 10   (x2 = 10)
+002081B3  // add  x3, x1, x2   (x3 = 15)
+00000013  // nop (addi x0,x0,0)</pre></div>
+<div class="codecard"><div class="cc-head"><span class="cc-name">tb_if_stage.v — testbench</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_if_stage.v">`timescale 1ns/1ps
+module tb_if_stage;
+    reg        clk=0, rst=1;
+    reg [31:0] pc_next;
+    wire[31:0] pc, instr;
+
+    if_stage dut(.clk(clk),.rst(rst),.pc_next(pc_next),.pc(pc),.instr(instr));
+    always #5 clk=~clk;
+
+    integer errors=0;
+    task check(input [31:0] epc, input [31:0] einstr);
+        if(pc!==epc||instr!==einstr)begin
+            $display("FAIL pc=%0h instr=%0h (exp pc=%0h instr=%0h)",pc,instr,epc,einstr);
+            errors=errors+1;
+        end else $display("ok   pc=%0h instr=%0h",pc,instr);
+    endtask
+
+    initial begin
+        pc_next=0; @(posedge clk); #1; check(32'h0,32'h00500093); // reset, fetch instr 0
+        rst=0;
+        pc_next=32'h4; @(posedge clk); #1; check(32'h4,32'h00A00113);
+        pc_next=32'h8; @(posedge clk); #1; check(32'h8,32'h002081B3);
+        pc_next=32'hC; @(posedge clk); #1; check(32'hC,32'h00000013);
+        if(errors==0) $display("ALL TESTS PASSED"); else $display("%0d FAILED",errors);
+        $finish;
+    end
+endmodule</pre></div>
+<div class="codecard"><div class="cc-head"><span class="cc-name">expected output</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="expected.txt">ok   pc=00000000 instr=00500093
+ok   pc=00000004 instr=00a00113
+ok   pc=00000008 instr=002081b3
+ok   pc=0000000c instr=00000013
+ALL TESTS PASSED</pre></div>
+
+<div class="box key"><h3>✅ Day 8 in one line</h3><p style="margin:0">IMEM is a combinational ROM: <code>addr</code> in → <code>instr</code> out, no clock. Word-index with <code>addr[31:2]</code>. Wired with <code>pc.v</code> it becomes the complete Fetch stage — the CPU can now continuously fetch instructions from a stored program.</p></div>
+
+<div class="takeaways"><h3>🎯 Day 8 takeaways</h3><ul>
+<li>IMEM is a <b>combinational ROM</b> — address in, instruction out, no clock needed.</li>
+<li>Word-align by indexing with <code>addr[31:2]</code> (byte → word address).</li>
+<li>Use <code>$readmemh</code> to load a hex program file at sim start.</li>
+<li>PC + IMEM = <b>complete Fetch stage</b> that fetches one new instruction every cycle.</li>
+<li><b>Next:</b> Day 9 builds the Register File — the CPU's fast scratchpad storage.</li>
+</ul></div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is instruction memory?</h3><p>A read-only memory (ROM) holding the program. The PC supplies the address; IMEM returns the 32-bit instruction word at that address.</p></div>
+<div class="faq-item"><h3>Why combinational?</h3><p>We only ever read IMEM (never write during execution). A combinational ROM returns the instruction the same cycle the address is presented — no clock edge needed.</p></div>
+<div class="faq-item"><h3>What is $readmemh?</h3><p>A Verilog system task that loads a memory array from a hex file at simulation time — used to pre-load the program into IMEM.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-07-datapath-overview/"><span class="lab">Previous</span><div class="ti">← Day 7: Datapath overview</div></a>
+<a class="next" href="/riscv-from-scratch/day-09-register-file/"><span class="lab">Up next</span><div class="ti">Day 9: The register file →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body></html>

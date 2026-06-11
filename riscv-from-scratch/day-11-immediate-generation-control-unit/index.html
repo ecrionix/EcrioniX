@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 11: Immediate Generation &amp; Control Unit — Build a RISC-V CPU</title>
+<meta name="description" content="Day 11 of building a RISC-V CPU from scratch. Build immgen.v — the immediate generator that sign-extends I/S/B/U/J format immediates — and control.v, the control unit that decodes the opcode and drives every mux and enable signal in the datapath. Includes full port tables, annotated Verilog, and self-checking testbenches for both modules.">
+<meta name="keywords" content="RISC-V immediate generator, immgen verilog, control unit RISC-V, control.v verilog, sign extend immediate, I-type S-type B-type U-type J-type immediate, opcode decode verilog, ALUSrc RegWrite MemRead MemWrite, RISC-V control signals, CPU control unit verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-11-immediate-generation-control-unit/">
+<meta property="og:title" content="Day 11: ImmGen &amp; Control Unit — Build a RISC-V CPU"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 11: Immediate Generation and Control Unit","url":"https://ecrionix.org/riscv-from-scratch/day-11-immediate-generation-control-unit/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 11","item":"https://ecrionix.org/riscv-from-scratch/day-11-immediate-generation-control-unit/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is the immediate generator in a RISC-V CPU?","acceptedAnswer":{"@type":"Answer","text":"The immediate generator (ImmGen) extracts and sign-extends the immediate field from a RISC-V instruction word. Different instruction formats (I, S, B, U, J) scatter the immediate bits across different bit positions in the 32-bit instruction. ImmGen reassembles and sign-extends them to a full 32-bit value so the ALU can use them directly."}},
+{"@type":"Question","name":"What does the control unit do in a CPU?","acceptedAnswer":{"@type":"Answer","text":"The control unit reads the opcode (bits 6:0) and funct3 of an instruction and generates binary control signals that steer every mux and enable in the datapath: ALUSrc (rs2 or immediate for ALU input B), RegWrite (write result to register file), MemRead/MemWrite (activate data memory), Branch/Jump (select next PC), WBSel (which result to write back), and ALUOp (which ALU operation to perform)."}},
+{"@type":"Question","name":"What is sign extension?","acceptedAnswer":{"@type":"Answer","text":"Sign extension fills the upper bits of a smaller integer to produce a 32-bit value while preserving the original number's sign. If the most significant bit of the original field is 1 (negative), all extended bits are set to 1. If it is 0 (positive), all extended bits are set to 0. This is essential so that negative immediates (like addi x1, x1, -1) work correctly in 32-bit arithmetic."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 11</span></div>
+<div class="wrap">
+<span class="daytag">DAY 11 · PHASE 2 — BUILD THE CPU</span>
+<h1>Immediate Generation &amp; the Control Unit</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Two modules today — both purely combinational, both critical. <b>ImmGen</b> extracts the scattered immediate bits from any instruction format and sign-extends them to 32 bits. The <b>Control Unit</b> reads the opcode and drives every mux and enable in the datapath. Together they are the brain that makes the datapath execute the right operation for every instruction.</p>
+
+<h2>1. ImmGen — immediate generator</h2>
+<p>Recall from <a href="/riscv-from-scratch/day-03-instruction-formats/">Day 3</a>: RISC-V has 5 instruction formats (I, S, B, U, J) and each scatters the immediate bits differently across the 32-bit instruction word. ImmGen's job is to reassemble them into a single sign-extended 32-bit value.</p>
+<table><thead><tr><th>Format</th><th>Used by</th><th>Immediate bits in instruction</th><th>Signed range</th></tr></thead><tbody>
+<tr><td><b>I</b></td><td>addi, lw, jalr</td><td>inst[31:20]</td><td>−2048 to +2047</td></tr>
+<tr><td><b>S</b></td><td>sw, sh, sb</td><td>inst[31:25] | inst[11:7]</td><td>−2048 to +2047</td></tr>
+<tr><td><b>B</b></td><td>beq, bne, blt</td><td>inst[31,7,30:25,11:8] × 2</td><td>−4096 to +4094</td></tr>
+<tr><td><b>U</b></td><td>lui, auipc</td><td>inst[31:12] placed at bits 31:12</td><td>large constant</td></tr>
+<tr><td><b>J</b></td><td>jal</td><td>inst[31,19:12,20,30:21] × 2</td><td>±1 MB range</td></tr>
+</tbody></table>
+
+<div class="codecard"><div class="cc-head"><span class="cc-name">immgen.v — immediate generator</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="immgen.v">// Immediate Generator — extracts and sign-extends immediates
+// imm_sel: 000=I, 001=S, 010=B, 011=U, 100=J
+module immgen (
+    input  wire [31:0] instr,    // full 32-bit instruction word
+    input  wire [2:0]  imm_sel,  // format select from control unit
+    output reg  [31:0] imm       // sign-extended immediate
+);
+    always @(*) begin
+        case (imm_sel)
+            3'b000: imm = {{20{instr[31]}}, instr[31:20]};           // I
+            3'b001: imm = {{20{instr[31]}}, instr[31:25], instr[11:7]}; // S
+            3'b010: imm = {{19{instr[31]}}, instr[31], instr[7],     // B
+                           instr[30:25], instr[11:8], 1'b0};
+            3'b011: imm = {instr[31:12], 12'b0};                     // U
+            3'b100: imm = {{11{instr[31]}}, instr[31], instr[19:12], // J
+                           instr[20], instr[30:21], 1'b0};
+            default: imm = 32'd0;
+        endcase
+    end
+endmodule</pre></div>
+
+<h2>2. Control Unit</h2>
+<p>The control unit decodes the <b>opcode</b> (bits 6:0) and outputs all the signals that steer the datapath:</p>
+<table><thead><tr><th>Signal</th><th>Width</th><th>Meaning</th></tr></thead><tbody>
+<tr><td class="m">reg_write</td><td>1</td><td>1 = write result to register file (rd)</td></tr>
+<tr><td class="m">alu_src</td><td>1</td><td>0 = ALU B from rs2; 1 = ALU B from immediate</td></tr>
+<tr><td class="m">mem_read</td><td>1</td><td>1 = read from data memory (load instructions)</td></tr>
+<tr><td class="m">mem_write</td><td>1</td><td>1 = write to data memory (store instructions)</td></tr>
+<tr><td class="m">branch</td><td>1</td><td>1 = instruction may take a branch</td></tr>
+<tr><td class="m">jump</td><td>1</td><td>1 = unconditional jump (jal/jalr)</td></tr>
+<tr><td class="m">wb_sel</td><td>2</td><td>00=ALU result, 01=DMEM data, 10=PC+4, 11=upper imm</td></tr>
+<tr><td class="m">alu_op</td><td>4</td><td>operation for ALU (from Day 10 encoding)</td></tr>
+<tr><td class="m">imm_sel</td><td>3</td><td>immediate format select for ImmGen</td></tr>
+</tbody></table>
+
+<div class="codecard"><div class="cc-head"><span class="cc-name">control.v — control unit</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="control.v">// RISC-V Control Unit — decodes opcode, drives datapath
+module control (
+    input  wire [6:0] opcode,
+    input  wire [2:0] funct3,
+    input  wire [6:0] funct7,
+    output reg        reg_write,
+    output reg        alu_src,
+    output reg        mem_read,
+    output reg        mem_write,
+    output reg        branch,
+    output reg        jump,
+    output reg  [1:0] wb_sel,   // 00=ALU,01=MEM,10=PC+4,11=Uimm
+    output reg  [3:0] alu_op,
+    output reg  [2:0] imm_sel
+);
+    localparam R   = 7'b0110011;  // R-type
+    localparam I   = 7'b0010011;  // I-type ALU
+    localparam LOAD= 7'b0000011;  // loads
+    localparam STOR= 7'b0100011;  // stores
+    localparam BR  = 7'b1100011;  // branches
+    localparam JAL = 7'b1101111;  // jal
+    localparam JALR= 7'b1100111;  // jalr
+    localparam LUI = 7'b0110111;  // lui
+    localparam AUIP= 7'b0010111;  // auipc
+
+    always @(*) begin
+        // defaults — safe values
+        {reg_write,alu_src,mem_read,mem_write,branch,jump}=6'b0;
+        wb_sel=2'b00; alu_op=4'b0000; imm_sel=3'b000;
+        case (opcode)
+            R:    begin reg_write=1; alu_src=0; wb_sel=2'b00;
+                    case({funct7[5],funct3})
+                        4'b0000: alu_op=4'b0000; // ADD
+                        4'b1000: alu_op=4'b0001; // SUB
+                        4'b0111: alu_op=4'b0010; // AND
+                        4'b0110: alu_op=4'b0011; // OR
+                        4'b0100: alu_op=4'b0100; // XOR
+                        4'b0010: alu_op=4'b0101; // SLT
+                        4'b0011: alu_op=4'b0110; // SLTU
+                        4'b0001: alu_op=4'b0111; // SLL
+                        4'b0101: alu_op=4'b1000; // SRL
+                        4'b1101: alu_op=4'b1001; // SRA
+                        default: alu_op=4'b0000;
+                    endcase end
+            I:    begin reg_write=1; alu_src=1; wb_sel=2'b00; imm_sel=3'b000;
+                    case(funct3)
+                        3'h0: alu_op=4'b0000; // ADDI
+                        3'h7: alu_op=4'b0010; // ANDI
+                        3'h6: alu_op=4'b0011; // ORI
+                        3'h4: alu_op=4'b0100; // XORI
+                        3'h2: alu_op=4'b0101; // SLTI
+                        3'h3: alu_op=4'b0110; // SLTIU
+                        3'h1: alu_op=4'b0111; // SLLI
+                        3'h5: alu_op=(funct7[5])?4'b1001:4'b1000; // SRAI/SRLI
+                        default: alu_op=4'b0000;
+                    endcase end
+            LOAD: begin reg_write=1; alu_src=1; mem_read=1; wb_sel=2'b01; imm_sel=3'b000; alu_op=4'b0000; end
+            STOR: begin alu_src=1; mem_write=1; imm_sel=3'b001; alu_op=4'b0000; end
+            BR:   begin branch=1; imm_sel=3'b010;
+                    alu_op=(funct3==3'h4||funct3==3'h5)?4'b0101:4'b0001; end
+            JAL:  begin reg_write=1; jump=1; wb_sel=2'b10; imm_sel=3'b100; end
+            JALR: begin reg_write=1; alu_src=1; jump=1; wb_sel=2'b10; imm_sel=3'b000; alu_op=4'b0000; end
+            LUI:  begin reg_write=1; wb_sel=2'b11; imm_sel=3'b011; end
+            AUIP: begin reg_write=1; alu_src=1; wb_sel=2'b00; imm_sel=3'b011; alu_op=4'b0000; end
+            default: ;
+        endcase
+    end
+endmodule</pre></div>
+
+<div class="codecard"><div class="cc-head"><span class="cc-name">tb_control.v — quick smoke test</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_control.v">`timescale 1ns/1ps
+module tb_control;
+    reg [6:0]op; reg[2:0]f3; reg[6:0]f7;
+    wire rw,as,mr,mw,br,jp; wire[1:0]wbs; wire[3:0]ao; wire[2:0]is;
+    control dut(.opcode(op),.funct3(f3),.funct7(f7),
+        .reg_write(rw),.alu_src(as),.mem_read(mr),.mem_write(mw),
+        .branch(br),.jump(jp),.wb_sel(wbs),.alu_op(ao),.imm_sel(is));
+    integer errors=0;
+    task chk(input e_rw,e_as,e_mr,e_mw,e_br,e_jp);
+        if({rw,as,mr,mw,br,jp}!=={e_rw,e_as,e_mr,e_mw,e_br,e_jp})
+            begin $display("FAIL op=%b signals=%b%b%b%b%b%b",op,rw,as,mr,mw,br,jp);errors=errors+1;end
+        else $display("ok   op=%b rw=%b as=%b mr=%b mw=%b br=%b jp=%b",op,rw,as,mr,mw,br,jp);
+    endtask
+    initial begin
+        f3=0;f7=0;
+        op=7'b0110011;#1;chk(1,0,0,0,0,0); // R-type
+        op=7'b0010011;#1;chk(1,1,0,0,0,0); // I-type ALU
+        op=7'b0000011;#1;chk(1,1,1,0,0,0); // LOAD
+        op=7'b0100011;#1;chk(0,1,0,1,0,0); // STORE
+        op=7'b1100011;#1;chk(0,0,0,0,1,0); // BRANCH
+        op=7'b1101111;#1;chk(1,0,0,0,0,1); // JAL
+        if(errors==0) $display("ALL TESTS PASSED"); else $display("%0d FAILED",errors);
+        $finish;
+    end
+endmodule</pre></div>
+<div class="codecard"><div class="cc-head"><span class="cc-name">expected output</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="expected.txt">ok   op=0110011 rw=1 as=0 mr=0 mw=0 br=0 jp=0
+ok   op=0010011 rw=1 as=1 mr=0 mw=0 br=0 jp=0
+ok   op=0000011 rw=1 as=1 mr=1 mw=0 br=0 jp=0
+ok   op=0100011 rw=0 as=1 mr=0 mw=1 br=0 jp=0
+ok   op=1100011 rw=0 as=0 mr=0 mw=0 br=1 jp=0
+ok   op=1101111 rw=1 as=0 mr=0 mw=0 br=0 jp=1
+ALL TESTS PASSED</pre></div>
+
+<div class="takeaways"><h3>🎯 Day 11 takeaways</h3><ul>
+<li><b>ImmGen</b> reassembles scattered immediate bits from I/S/B/U/J formats and sign-extends to 32 bits.</li>
+<li><b>Sign extension</b>: replicate the MSB of the immediate into all upper bits.</li>
+<li>The <b>control unit</b> is purely combinational — opcode in, all control signals out.</li>
+<li>Key signals: <code>alu_src</code> (rs2 vs imm), <code>reg_write</code>, <code>mem_read/write</code>, <code>branch</code>, <code>jump</code>, <code>wb_sel</code>.</li>
+<li><b>Next:</b> Day 12 wires all modules together for R-type and I-type instructions.</li>
+</ul></div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is the immediate generator?</h3><p>It reassembles and sign-extends the immediate field from a 32-bit instruction word. Different instruction formats scatter the immediate bits differently, so ImmGen handles all five formats (I/S/B/U/J).</p></div>
+<div class="faq-item"><h3>What does the control unit do?</h3><p>Reads the opcode and drives all datapath control signals: RegWrite, ALUSrc, MemRead, MemWrite, Branch, Jump, WBSel, ALUOp, ImmSel.</p></div>
+<div class="faq-item"><h3>What is sign extension?</h3><p>Expanding a short integer to 32 bits by filling upper bits with the sign bit (MSB), preserving the value's sign in two's complement arithmetic.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-10-the-alu/"><span class="lab">Previous</span><div class="ti">← Day 10: The ALU</div></a>
+<a class="next" href="/riscv-from-scratch/day-12-r-type-i-type-datapath/"><span class="lab">Up next</span><div class="ti">Day 12: R-type &amp; I-type datapath →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body></html>
