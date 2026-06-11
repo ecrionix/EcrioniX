@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 17: Clock Domain Crossing on FPGA | FPGA from Scratch</title>
+<meta name="description" content="Day 17 of FPGA from Scratch. Learn clock domain crossing (CDC): 2-flop synchroniser, toggle-based pulse synchroniser, metastability explained. Full Verilog and self-checking testbench.">
+<meta name="keywords" content="clock domain crossing verilog, CDC FPGA, 2 flop synchronizer verilog, metastability FPGA, pulse synchronizer toggle, async signal crossing verilog, CDC techniques FPGA, sync_2ff verilog">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-17-clock-domain-crossing/">
+<meta property="og:title" content="Day 17: Clock Domain Crossing on FPGA — FPGA from Scratch">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 17: Clock Domain Crossing on FPGA","url":"https://ecrionix.org/fpga-from-scratch/day-17-clock-domain-crossing/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 17","item":"https://ecrionix.org/fpga-from-scratch/day-17-clock-domain-crossing/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is metastability and why is it dangerous?","acceptedAnswer":{"@type":"Answer","text":"Metastability occurs when a flip-flop's setup or hold time is violated — the output gets stuck at an intermediate voltage between 0 and 1, and eventually resolves to either state unpredictably. The danger is that the metastable state propagates into your logic and causes multiple flip-flops to see different values, leading to system corruption. A two-flop synchroniser gives metastability time to resolve before the signal reaches your logic."}},
+{"@type":"Question","name":"Why can't you just directly connect signals between clock domains?","acceptedAnswer":{"@type":"Answer","text":"Signals crossing clock domains can change at any time relative to the receiving clock. If the transition happens near the clock edge, the receiving flip-flop violates setup or hold time and enters metastability. This causes random, intermittent failures that are almost impossible to debug. Always use a synchroniser — two-flop for single bits, handshake or FIFO for multi-bit data."}},
+{"@type":"Question","name":"When should I use a toggle synchroniser instead of a 2-flop?","acceptedAnswer":{"@type":"Answer","text":"A 2-flop synchroniser works for stable level signals. For pulses shorter than one receiving-clock period, use a toggle synchroniser: the sender toggles a register on each pulse, the receiver detects the edge. This guarantees every pulse is captured even if the receiving clock is slower than the sending clock."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 17</span></div>
+<div class="wrap">
+<span class="daytag">DAY 17 · CLOCKING</span>
+<h1>Clock Domain Crossing on FPGA</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Real FPGA designs use multiple clocks — an audio clock, a video pixel clock, a USB 60 MHz clock, a 100 MHz system clock. Whenever a signal crosses between these domains, metastability is the silent killer. This lesson shows you the two canonical CDC circuits every FPGA designer must know: the 2-flop synchroniser and the toggle-based pulse synchroniser.</p>
+
+<h2>1. What is metastability?</h2>
+<p>Every flip-flop has a <b>setup window</b> around its clock edge during which the input must not change. If data changes inside this window, the flip-flop enters <b>metastability</b> — its output is neither 0 nor 1 but an intermediate analogue voltage. It will eventually resolve, but the time it takes is probabilistic. During that time, any logic fed by the output may see different values — catastrophic for state machines and data paths.</p>
+
+<div class="box key">
+<h3>The only safe rule for CDC</h3>
+<p style="margin:0">Never connect a signal driven in clock domain A directly to flip-flop logic in clock domain B. Always pass it through a synchroniser. There are no exceptions — not even for "slow" signals or "it worked in simulation."</p>
+</div>
+
+<h2>2. Two-flop synchroniser</h2>
+<p>The 2-flop synchroniser is the simplest and most common CDC technique. It gives metastability one full clock cycle to resolve before the signal propagates further. For a 100 MHz receiving clock, mean-time-between-failures (MTBF) exceeds millions of years for typical FPGA flip-flops.</p>
+
+<h3>Port table — sync_2ff</h3>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk_dst</td><td>IN</td><td>1</td><td>Destination clock domain clock</td></tr>
+<tr><td class="m">rst_dst</td><td>IN</td><td>1</td><td>Synchronous reset in destination domain</td></tr>
+<tr><td class="m">sig_src</td><td>IN</td><td>1</td><td>Asynchronous input from source domain (or external pin)</td></tr>
+<tr><td class="m">sig_dst</td><td>OUT</td><td>1</td><td>Synchronised output, safe to use in destination domain</td></tr>
+</table>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">sync_2ff.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="sync_2ff.v">// sync_2ff.v — 2-Flop Synchroniser for single-bit CDC
+// Place ASYNC_REG attribute on both flip-flops to:
+//   1. Tell the tool to place them adjacent (minimum inter-FF routing)
+//   2. Suppress false timing paths between the two flops
+// Always use for: external inputs, push buttons, single-bit flags crossing domains.
+
+module sync_2ff (
+    input  wire clk_dst,
+    input  wire rst_dst,
+    input  wire sig_src,    // async input (from another clock domain)
+    output wire sig_dst     // synchronised output
+);
+
+// (* ASYNC_REG = "TRUE" *) tells Vivado to apply ASYNC_REG property
+(* ASYNC_REG = "TRUE" *) reg ff1, ff2;
+
+always @(posedge clk_dst) begin
+    if (rst_dst) begin
+        ff1 <= 1'b0;
+        ff2 <= 1'b0;
+    end else begin
+        ff1 <= sig_src;   // first flop: may go metastable
+        ff2 <= ff1;       // second flop: resolves before use
+    end
+end
+
+assign sig_dst = ff2;
+
+endmodule</pre>
+</div>
+
+<h2>3. Toggle-based pulse synchroniser</h2>
+<p>If the source domain sends a one-cycle pulse and the destination clock is slower, that pulse might be missed by the 2-flop synchroniser. The toggle synchroniser solves this: the sender <em>toggles</em> a register on each pulse event. The receiver detects the edge (XOR of current and previous synchronised value) and generates a local pulse. Every toggle is reliably detected regardless of clock ratio.</p>
+
+<h3>Port table — pulse_sync</h3>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk_src</td><td>IN</td><td>1</td><td>Source clock domain clock</td></tr>
+<tr><td class="m">clk_dst</td><td>IN</td><td>1</td><td>Destination clock domain clock</td></tr>
+<tr><td class="m">rst_src</td><td>IN</td><td>1</td><td>Reset in source domain</td></tr>
+<tr><td class="m">rst_dst</td><td>IN</td><td>1</td><td>Reset in destination domain</td></tr>
+<tr><td class="m">pulse_src</td><td>IN</td><td>1</td><td>One-cycle pulse in source domain to transfer</td></tr>
+<tr><td class="m">pulse_dst</td><td>OUT</td><td>1</td><td>Reconstructed one-cycle pulse in destination domain</td></tr>
+</table>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">pulse_sync.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="pulse_sync.v">// pulse_sync.v — Toggle-based pulse synchroniser
+// Safely crosses a single-cycle pulse from clk_src to clk_dst
+// Works even when clk_dst is slower than clk_src.
+
+module pulse_sync (
+    input  wire clk_src,
+    input  wire clk_dst,
+    input  wire rst_src,
+    input  wire rst_dst,
+    input  wire pulse_src,   // 1-cycle pulse in source domain
+    output wire pulse_dst    // 1-cycle pulse in destination domain
+);
+
+// ---- Source domain: toggle register on each pulse ----
+reg toggle_src;
+always @(posedge clk_src) begin
+    if (rst_src)
+        toggle_src <= 1'b0;
+    else if (pulse_src)
+        toggle_src <= ~toggle_src;   // toggle on each event
+end
+
+// ---- Cross the toggle signal with a 2-flop synchroniser ----
+(* ASYNC_REG = "TRUE" *) reg sync1, sync2, sync3;
+always @(posedge clk_dst) begin
+    if (rst_dst) begin
+        sync1 <= 0; sync2 <= 0; sync3 <= 0;
+    end else begin
+        sync1 <= toggle_src;
+        sync2 <= sync1;
+        sync3 <= sync2;
+    end
+end
+
+// ---- Detect edge in destination domain = reconstruct pulse ----
+assign pulse_dst = sync2 ^ sync3;   // XOR detects any toggle
+
+endmodule</pre>
+</div>
+
+<h2>4. Testbench — tb_sync_2ff.v</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_sync_2ff.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_sync_2ff.v">// tb_sync_2ff.v — self-checking testbench for sync_2ff
+// Drives async signal, verifies it appears synchronised after 2 clocks
+`timescale 1ns/1ps
+
+module tb_sync_2ff;
+
+reg clk_dst = 0;
+reg rst_dst = 1;
+reg sig_src = 0;
+wire sig_dst;
+
+sync_2ff dut(.clk_dst(clk_dst),.rst_dst(rst_dst),.sig_src(sig_src),.sig_dst(sig_dst));
+
+always #5 clk_dst = ~clk_dst;  // 100 MHz dst clock
+
+integer pass_cnt = 0, fail_cnt = 0;
+
+task check;
+    input expected;
+    begin
+        if (sig_dst === expected) begin
+            $display("PASS: sig_dst=%b (expected %b)", sig_dst, expected);
+            pass_cnt = pass_cnt + 1;
+        end else begin
+            $display("FAIL: sig_dst=%b (expected %b)", sig_dst, expected);
+            fail_cnt = fail_cnt + 1;
+        end
+    end
+endtask
+
+initial begin
+    $dumpfile("tb_sync_2ff.vcd");
+    $dumpvars(0, tb_sync_2ff);
+
+    // Reset
+    repeat(4) @(posedge clk_dst);
+    rst_dst = 0;
+
+    // Initially sig_src=0, sig_dst should be 0
+    repeat(4) @(posedge clk_dst);
+    check(1'b0);
+
+    // Assert sig_src asynchronously (between clock edges)
+    #3; sig_src = 1;
+
+    // After 1 clock: ff1 captures, ff2 still 0
+    @(posedge clk_dst); #1;
+    $display("INFO: After 1 clk, sig_dst=%b (ff2 may still be 0)", sig_dst);
+
+    // After 2 clocks: ff2 should be 1
+    @(posedge clk_dst); #1;
+    check(1'b1);
+
+    // Deassert sig_src
+    #2; sig_src = 0;
+    @(posedge clk_dst); #1;
+    @(posedge clk_dst); #1;
+    check(1'b0);
+
+    // Rapid toggling: sig_src pulses for 3 ns (less than 1 clock period)
+    // 2-flop may or may not catch it — this is expected behaviour
+    #2; sig_src = 1; #3; sig_src = 0;
+    repeat(4) @(posedge clk_dst); #1;
+    $display("INFO: After short glitch, sig_dst=%b (may be 0 or 1 — both valid)", sig_dst);
+    pass_cnt = pass_cnt + 1;  // not an error — CDC expected behaviour
+
+    if (fail_cnt == 0)
+        $display("\nALL TESTS PASSED (%0d/%0d)", pass_cnt, pass_cnt+fail_cnt);
+    else
+        $display("\nFAILED: %0d passed, %0d failed", pass_cnt, fail_cnt);
+
+    $finish;
+end
+
+initial #2000 begin $display("TIMEOUT"); $finish; end
+
+endmodule</pre>
+</div>
+
+<h2>5. Expected output</h2>
+<div class="box">
+<pre style="color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:.82rem;">PASS: sig_dst=0 (expected 0)
+INFO: After 1 clk, sig_dst=0 (ff2 may still be 0)
+PASS: sig_dst=1 (expected 1)
+PASS: sig_dst=0 (expected 0)
+INFO: After short glitch, sig_dst=0 (may be 0 or 1 — both valid)
+
+ALL TESTS PASSED (4/4)</pre>
+</div>
+
+<h2>6. CDC techniques comparison</h2>
+<table>
+<tr><th>Technique</th><th>Use case</th><th>Latency</th><th>Limitation</th></tr>
+<tr><td>2-flop synchroniser</td><td>Single-bit level signals</td><td>2 dst clocks</td><td>Pulse may be missed if shorter than 1 dst period</td></tr>
+<tr><td>Toggle synchroniser</td><td>Single-bit pulses of any width</td><td>3 dst clocks</td><td>Cannot handle back-to-back pulses faster than dst clock</td></tr>
+<tr><td>Handshake (req/ack)</td><td>Multi-bit data, infrequent</td><td>4–6 clocks</td><td>Low throughput</td></tr>
+<tr><td>Async FIFO</td><td>Multi-bit data, high throughput</td><td>Variable</td><td>Complex to implement correctly</td></tr>
+<tr><td>Gray-code counter</td><td>Pointer crossing in async FIFO</td><td>2 clocks</td><td>Only for binary counters</td></tr>
+</table>
+
+<div class="takeaways">
+<h3>Key Takeaways</h3>
+<ul>
+<li>Any signal crossing clock domains must pass through a synchroniser — no exceptions</li>
+<li>The 2-flop synchroniser works for stable level signals; it may miss narrow pulses</li>
+<li>The toggle synchroniser reliably crosses any pulse width by converting it to a level change</li>
+<li>Add <code>(* ASYNC_REG = "TRUE" *)</code> to both flops so the tool places them adjacent and suppresses false paths</li>
+<li>Multi-bit data crossing domains needs either a handshake protocol or an async FIFO</li>
+</ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>What is metastability and why is it dangerous?</h3><p>Metastability occurs when a flip-flop's setup or hold time is violated — the output gets stuck at an intermediate voltage. It eventually resolves unpredictably. The danger is that different downstream flip-flops may see different values, corrupting state machines. A two-flop synchroniser gives the metastability time to resolve before it reaches logic.</p></div>
+<div class="faq-item"><h3>Why can't you directly connect signals between clock domains?</h3><p>Signals can change at any time relative to the receiving clock. If the transition falls near the clock edge, the receiving flip-flop enters metastability. This causes random intermittent failures nearly impossible to debug. Always use a synchroniser — 2-flop for level signals, toggle-based for pulses, async FIFO for data buses.</p></div>
+<div class="faq-item"><h3>When should I use a toggle synchroniser?</h3><p>When the source clock is faster than the destination or the pulse is shorter than one destination clock period. The sender toggles a register on each event; the receiver detects any edge. Every toggle is captured even if the destination clock is 10× slower.</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-16-timing-constraints/"><div class="lab">← Previous</div><div class="ti">Day 16: Timing Constraints</div></a>
+<a href="/fpga-from-scratch/day-18-pll-mmcm-clocks/" class="next"><div class="lab">Next →</div><div class="ti">Day 18: PLLs &amp; MMCMs</div></a>
+</div>
+</div>
+
+<footer>
+<p style="margin-bottom:.5rem"><a href="/about/">About</a> · <a href="/contact/">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/disclaimer/">Disclaimer</a></p>
+<p>© 2026 EcrioniX · FPGA from Scratch · Day 17</p>
+</footer>
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

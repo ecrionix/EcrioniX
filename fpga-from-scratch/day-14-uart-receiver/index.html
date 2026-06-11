@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 14: UART Receiver in Verilog | FPGA from Scratch</title>
+<meta name="description" content="Day 14 of FPGA from Scratch. Build a UART receiver (uart_rx.v) with mid-bit 16x oversampling, 4-state FSM (IDLE/START/DATA/STOP), and self-checking testbench. Full port table and timing diagrams included.">
+<meta name="keywords" content="UART receiver verilog, uart_rx verilog, oversampling UART, mid-bit sampling FPGA, 8N1 receiver FSM, serial RX verilog, UART rx testbench, 16x oversampling UART">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-14-uart-receiver/">
+<meta property="og:title" content="Day 14: UART Receiver in Verilog — FPGA from Scratch">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 14: UART Receiver in Verilog","url":"https://ecrionix.org/fpga-from-scratch/day-14-uart-receiver/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 14","item":"https://ecrionix.org/fpga-from-scratch/day-14-uart-receiver/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Why does UART RX use oversampling?","acceptedAnswer":{"@type":"Answer","text":"Oversampling (typically 16x) lets the receiver resynchronise to each incoming bit. Because TX and RX have independent clocks, they drift slightly. By sampling 16 times per bit period and latching at the midpoint (sample 8), the receiver is furthest from the edges and most immune to clock skew."}},
+{"@type":"Question","name":"What is mid-bit sampling?","acceptedAnswer":{"@type":"Answer","text":"After the falling edge of the start bit is detected, the receiver waits 8 oversampling ticks (half a bit period) to land at the centre of the start bit, then samples every 16 ticks thereafter to hit the centre of each subsequent bit."}},
+{"@type":"Question","name":"What does the err output signal mean?","acceptedAnswer":{"@type":"Answer","text":"The err flag is raised when the stop bit is sampled as 0 instead of 1. A valid UART frame must end with a high stop bit. If it is low the transmitter and receiver are out of sync, or the line has noise — the received byte should be discarded."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 14</span></div>
+<div class="wrap">
+<span class="daytag">DAY 14 · SERIAL COMMUNICATION</span>
+<h1>UART Receiver — Oversampling &amp; Mid-Bit Sampling</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Transmitting is easy — you control every bit. <em>Receiving</em> is harder because the incoming data arrives on its own clock. This lesson builds <code>uart_rx.v</code>: a robust 8N1 UART receiver with 16× oversampling and mid-bit sampling that works reliably even when TX and RX clocks drift slightly apart.</p>
+
+<h2>1. The RX challenge — two independent clocks</h2>
+<p>In Day 13 you set a baud counter and drove bits out. The receiver cannot do that — it has no idea when the transmitter started. The only indication is the <b>falling edge of the start bit</b>: the line drops from its idle-high state to 0. That edge is the receiver's synchronisation point.</p>
+<p>Because the transmitter runs on its own oscillator, TX and RX clocks accumulate phase error over time. For 10 bits at 115200 baud, the total drift budget is roughly ±5% per bit. The classic fix is <b>oversampling</b>: run the receiver at 16× the baud rate and sample each bit at its centre, maximising distance from both edges.</p>
+
+<div class="box key">
+<h3>The mid-bit sampling trick</h3>
+<ul>
+<li>Detect the <b>start-bit falling edge</b> in the IDLE state.</li>
+<li>Wait <b>8 oversampling ticks</b> (half a bit period) to land at the centre of the start bit. Verify it is still 0 — if not, it was noise.</li>
+<li>Then wait <b>16 ticks</b> to sample the centre of each data bit.</li>
+<li>After 8 data bits, sample the stop bit. If it is 1, assert <code>valid</code>. If it is 0, assert <code>err</code>.</li>
+</ul>
+</div>
+
+<h2>2. Port table — uart_rx</h2>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk</td><td>IN</td><td>1</td><td>System clock (must be 16× baud rate × N, e.g. 100 MHz for 115200 baud gives CLKS_PER_BIT=868; oversample tick = clk/16 = 54.25 → use integer 54)</td></tr>
+<tr><td class="m">rst</td><td>IN</td><td>1</td><td>Synchronous active-high reset</td></tr>
+<tr><td class="m">rx</td><td>IN</td><td>1</td><td>Serial data input (idle high). Connect to UART RX pin.</td></tr>
+<tr><td class="m">data</td><td>OUT</td><td>8</td><td>Received byte, valid when <code>valid</code> is high for one clock cycle</td></tr>
+<tr><td class="m">valid</td><td>OUT</td><td>1</td><td>Pulses high for 1 clock when a complete byte has been received and the stop bit was correct</td></tr>
+<tr><td class="m">err</td><td>OUT</td><td>1</td><td>Pulses high for 1 clock when stop bit sampled as 0 (framing error)</td></tr>
+</table>
+
+<h2>3. FSM state diagram</h2>
+<p>The receiver uses four states:</p>
+<ul>
+<li><b>IDLE</b> — waits for RX to go low (start bit falling edge)</li>
+<li><b>START</b> — counts to half a bit period, re-samples to confirm start bit</li>
+<li><b>DATA</b> — counts 16 oversampling ticks × 8 bits, shifts each bit into a register</li>
+<li><b>STOP</b> — counts to centre of stop bit, asserts valid or err</li>
+</ul>
+
+<h2>4. uart_rx.v — full design</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">uart_rx.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="uart_rx.v">// uart_rx.v — 8N1 UART Receiver with 16x oversampling
+// CLKS_PER_BIT = system_clk_freq / baud_rate
+// e.g. 100 MHz / 115200 = 868
+
+module uart_rx #(
+    parameter CLKS_PER_BIT = 868   // clocks per one UART bit
+)(
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       rx,
+    output reg  [7:0] data,
+    output reg        valid,
+    output reg        err
+);
+
+// Oversample at 16x: ticks per oversample period
+localparam OSAMP_DIV  = CLKS_PER_BIT / 16;   // ~54 for 100MHz/115200
+localparam HALF_BIT   = 8;   // 8 oversampling ticks = half bit period
+localparam FULL_BIT   = 16;  // 16 oversampling ticks = full bit period
+
+// FSM states
+localparam IDLE  = 2'd0,
+           START = 2'd1,
+           DATA  = 2'd2,
+           STOP  = 2'd3;
+
+reg [1:0]  state     = IDLE;
+reg [9:0]  clk_cnt   = 0;    // counts system clocks for one oversample tick
+reg [3:0]  osamp_cnt = 0;    // counts oversampling ticks within a bit
+reg [2:0]  bit_idx   = 0;    // which data bit we are receiving (0-7)
+reg [7:0]  shift_reg = 0;    // shift register accumulates data bits
+
+// Double-flop rx input to meta-stabilise
+reg rx_s1, rx_s2;
+always @(posedge clk) begin
+    rx_s1 <= rx;
+    rx_s2 <= rx_s1;
+end
+
+// Oversample tick strobe (pulses high once every OSAMP_DIV clocks)
+reg tick;
+always @(posedge clk) begin
+    if (rst) begin
+        clk_cnt <= 0;
+        tick    <= 0;
+    end else begin
+        tick <= 0;
+        if (clk_cnt == OSAMP_DIV - 1) begin
+            clk_cnt <= 0;
+            tick    <= 1;
+        end else begin
+            clk_cnt <= clk_cnt + 1;
+        end
+    end
+end
+
+// Main receiver FSM
+always @(posedge clk) begin
+    if (rst) begin
+        state     <= IDLE;
+        osamp_cnt <= 0;
+        bit_idx   <= 0;
+        shift_reg <= 0;
+        data      <= 0;
+        valid     <= 0;
+        err       <= 0;
+    end else begin
+        valid <= 0;
+        err   <= 0;
+
+        case (state)
+            // -------------------------------------------------------
+            IDLE: begin
+                osamp_cnt <= 0;
+                bit_idx   <= 0;
+                // Detect falling edge of start bit
+                if (rx_s2 == 1'b0)
+                    state <= START;
+            end
+
+            // -------------------------------------------------------
+            // Wait half a bit period, then re-check RX is still 0
+            START: begin
+                if (tick) begin
+                    if (osamp_cnt == HALF_BIT - 1) begin
+                        osamp_cnt <= 0;
+                        if (rx_s2 == 1'b0)
+                            state <= DATA;  // confirmed start bit
+                        else
+                            state <= IDLE;  // noise glitch, ignore
+                    end else begin
+                        osamp_cnt <= osamp_cnt + 1;
+                    end
+                end
+            end
+
+            // -------------------------------------------------------
+            // Sample each data bit at its centre (every 16 ticks)
+            DATA: begin
+                if (tick) begin
+                    if (osamp_cnt == FULL_BIT - 1) begin
+                        osamp_cnt <= 0;
+                        // Sample bit at centre
+                        shift_reg <= {rx_s2, shift_reg[7:1]};  // LSB first
+                        if (bit_idx == 3'd7) begin
+                            bit_idx <= 0;
+                            state   <= STOP;
+                        end else begin
+                            bit_idx <= bit_idx + 1;
+                        end
+                    end else begin
+                        osamp_cnt <= osamp_cnt + 1;
+                    end
+                end
+            end
+
+            // -------------------------------------------------------
+            // Wait one full bit period then sample stop bit
+            STOP: begin
+                if (tick) begin
+                    if (osamp_cnt == FULL_BIT - 1) begin
+                        osamp_cnt <= 0;
+                        state     <= IDLE;
+                        if (rx_s2 == 1'b1) begin
+                            data  <= shift_reg;
+                            valid <= 1;
+                        end else begin
+                            err   <= 1;  // framing error
+                        end
+                    end else begin
+                        osamp_cnt <= osamp_cnt + 1;
+                    end
+                end
+            end
+
+            default: state <= IDLE;
+        endcase
+    end
+end
+
+endmodule</pre>
+</div>
+
+<h2>5. Design notes</h2>
+
+<h3>Two-flop synchroniser on RX input</h3>
+<p>The <code>rx</code> pin arrives asynchronously — it can change at any time relative to <code>clk</code>. Sampling it directly can cause metastability and corrupt the entire FSM. The two-flop chain (<code>rx_s1 → rx_s2</code>) resolves metastability before the signal reaches any combinational logic. This is mandatory on real hardware.</p>
+
+<h3>Oversample divider</h3>
+<p>The constant <code>OSAMP_DIV = CLKS_PER_BIT / 16</code> generates the oversampling tick. For 100 MHz / 115200 baud = 868 clocks per bit, OSAMP_DIV = 54 (integer division). This gives 54 system clocks per oversample tick, slightly slower than ideal (54 × 16 = 864 vs exact 868). The error is 0.46%, well within UART's ±5% tolerance.</p>
+
+<h3>LSB-first shift register</h3>
+<p>UART sends LSB first. The shift register captures each incoming bit into <code>shift_reg[7]</code> and shifts right, so after 8 bits the register holds the byte in correct orientation. No bit-reversal is needed.</p>
+
+<h2>6. Testbench — tb_uart_rx.v</h2>
+<p>The testbench drives the RX line manually, toggling it at the correct baud timing to transmit 0x55 (binary 01010101) and then 0xA3. It then checks that <code>valid</code> pulses and <code>data</code> matches.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_uart_rx.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_uart_rx.v">// tb_uart_rx.v — self-checking testbench for uart_rx
+`timescale 1ns/1ps
+
+module tb_uart_rx;
+
+// ---- Parameters matching DUT ----
+parameter CLK_PERIOD  = 10;       // 100 MHz
+parameter CLKS_PER_BIT = 868;     // 115200 baud at 100 MHz
+parameter BIT_PERIOD   = CLK_PERIOD * CLKS_PER_BIT; // ns per bit
+
+// ---- DUT signals ----
+reg        clk = 0;
+reg        rst = 1;
+reg        rx  = 1;   // idle high
+wire [7:0] data;
+wire       valid;
+wire       err;
+
+// ---- Instantiate DUT ----
+uart_rx #(.CLKS_PER_BIT(CLKS_PER_BIT)) dut (
+    .clk(clk), .rst(rst), .rx(rx),
+    .data(data), .valid(valid), .err(err)
+);
+
+// ---- Clock ----
+always #(CLK_PERIOD/2) clk = ~clk;
+
+// ---- Task: send one byte over serial line ----
+task send_byte;
+    input [7:0] byte_in;
+    integer i;
+    begin
+        // Start bit (low)
+        rx = 1'b0;
+        #(BIT_PERIOD);
+        // 8 data bits, LSB first
+        for (i = 0; i < 8; i = i + 1) begin
+            rx = byte_in[i];
+            #(BIT_PERIOD);
+        end
+        // Stop bit (high)
+        rx = 1'b1;
+        #(BIT_PERIOD);
+    end
+endtask
+
+// ---- Check helper ----
+integer pass_cnt = 0;
+integer fail_cnt = 0;
+
+task check_byte;
+    input [7:0] expected;
+    begin
+        // Wait for valid pulse
+        @(posedge valid);
+        @(posedge clk);
+        if (data === expected) begin
+            $display("PASS: received 0x%02X (expected 0x%02X)", data, expected);
+            pass_cnt = pass_cnt + 1;
+        end else begin
+            $display("FAIL: received 0x%02X expected 0x%02X", data, expected);
+            fail_cnt = fail_cnt + 1;
+        end
+        if (err) begin
+            $display("FAIL: unexpected framing error");
+            fail_cnt = fail_cnt + 1;
+        end
+    end
+endtask
+
+// ---- Stimulus ----
+initial begin
+    $dumpfile("tb_uart_rx.vcd");
+    $dumpvars(0, tb_uart_rx);
+
+    // Reset
+    @(posedge clk);
+    rst = 1;
+    repeat(10) @(posedge clk);
+    rst = 0;
+    #(BIT_PERIOD);   // idle gap
+
+    // Test 1: send 0x55 (alternating bits 01010101)
+    fork
+        send_byte(8'h55);
+        check_byte(8'h55);
+    join
+
+    #(BIT_PERIOD * 2);  // inter-byte gap
+
+    // Test 2: send 0xA3 (10100011)
+    fork
+        send_byte(8'hA3);
+        check_byte(8'hA3);
+    join
+
+    #(BIT_PERIOD * 2);
+
+    // Test 3: send 0x00
+    fork
+        send_byte(8'h00);
+        check_byte(8'h00);
+    join
+
+    #(BIT_PERIOD * 2);
+
+    // Test 4: send 0xFF
+    fork
+        send_byte(8'hFF);
+        check_byte(8'hFF);
+    join
+
+    #(BIT_PERIOD * 2);
+
+    // Summary
+    if (fail_cnt == 0)
+        $display("\nALL TESTS PASSED (%0d/%0d)", pass_cnt, pass_cnt+fail_cnt);
+    else
+        $display("\nFAILED: %0d/%0d tests passed", pass_cnt, pass_cnt+fail_cnt);
+
+    $finish;
+end
+
+// ---- Timeout watchdog ----
+initial begin
+    #(BIT_PERIOD * 100);
+    $display("TIMEOUT");
+    $finish;
+end
+
+endmodule</pre>
+</div>
+
+<h2>7. Expected simulation output</h2>
+<div class="box">
+<pre style="color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:.82rem;">PASS: received 0x55 (expected 0x55)
+PASS: received 0xA3 (expected 0xA3)
+PASS: received 0x00 (expected 0x00)
+PASS: received 0xFF (expected 0xFF)
+
+ALL TESTS PASSED (4/4)</pre>
+</div>
+
+<h2>8. FPGA implementation tips</h2>
+<ul>
+<li><b>Set CLKS_PER_BIT via parameter</b> — never hardcode the divider. Parameterising it makes the module reusable at any clock frequency.</li>
+<li><b>Add a FIFO</b> — when the CPU is busy, bytes arrive faster than they are read. A small 16-entry FIFO on the output prevents data loss.</li>
+<li><b>Baud rate mismatch</b> — if you see garbage in simulation, check your CLKS_PER_BIT. Off-by-one errors in integer division cause creeping phase error that corrupts later bytes.</li>
+<li><b>XDC constraint</b> — add a false-path constraint on the RX input: <code>set_false_path -from [get_ports rx]</code> since the two-flop synchroniser handles CDC correctly.</li>
+</ul>
+
+<div class="takeaways">
+<h3>Key Takeaways</h3>
+<ul>
+<li>UART RX uses 16× oversampling and mid-bit sampling for robust bit recovery</li>
+<li>Always double-flop asynchronous inputs to prevent metastability</li>
+<li>The 4-state FSM: IDLE → START (half-period wait) → DATA → STOP</li>
+<li>LSB-first shift-right operation naturally reconstructs the received byte</li>
+<li>An err flag on framing errors lets upper logic reject corrupt bytes</li>
+</ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>Why does UART RX use oversampling?</h3><p>Oversampling (16×) lets the receiver resynchronise to each incoming bit. TX and RX run on independent oscillators that drift apart. By sampling at the midpoint (sample 8 of 16), the receiver is furthest from both bit edges and most immune to clock skew and jitter.</p></div>
+<div class="faq-item"><h3>What is mid-bit sampling?</h3><p>After detecting the start-bit falling edge, the receiver waits 8 oversampling ticks (half a bit period) to land at the centre of the start bit, then samples every 16 ticks to hit the centre of each subsequent bit.</p></div>
+<div class="faq-item"><h3>What does the err output signal mean?</h3><p>The err flag is asserted when the stop bit is sampled as 0. A valid UART frame must end with a high stop bit. A 0 indicates framing loss or line noise — the byte should be discarded and the receiver returned to IDLE.</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-13-uart-transmitter/"><div class="lab">← Previous</div><div class="ti">Day 13: UART Transmitter</div></a>
+<a href="/fpga-from-scratch/day-15-block-ram-roms/" class="next"><div class="lab">Next →</div><div class="ti">Day 15: Block RAM &amp; ROMs</div></a>
+</div>
+</div>
+
+<footer>
+<p style="margin-bottom:.5rem"><a href="/about/">About</a> · <a href="/contact/">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/disclaimer/">Disclaimer</a></p>
+<p>© 2026 EcrioniX · FPGA from Scratch · Day 14</p>
+</footer>
+
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 22: I2C Controller in Verilog | FPGA from Scratch</title>
+<meta name="description" content="Day 22 of FPGA from Scratch. Build a complete I2C master controller in Verilog: START/STOP conditions, 7-bit address + R/W bit, data bytes, ACK handling. Open-drain model with self-checking testbench.">
+<meta name="keywords" content="I2C master verilog, i2c_master.v FPGA, I2C protocol verilog, START STOP condition verilog, I2C ACK verilog, open drain I2C verilog, I2C testbench verilog, TWI verilog FPGA">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-22-i2c-controller/">
+<meta property="og:title" content="Day 22: I2C Controller in Verilog — FPGA from Scratch">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 22: I2C Controller in Verilog","url":"https://ecrionix.org/fpga-from-scratch/day-22-i2c-controller/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 22","item":"https://ecrionix.org/fpga-from-scratch/day-22-i2c-controller/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What makes I2C different from SPI?","acceptedAnswer":{"@type":"Answer","text":"I2C uses only 2 wires (SCL and SDA) and can connect up to 127 devices on the same bus using 7-bit addressing. SPI needs 4 wires plus a dedicated CS pin per device. I2C is slower (100 kHz standard, 400 kHz fast, 3.4 MHz high-speed) but much more wiring-efficient for multi-sensor boards."}},
+{"@type":"Question","name":"What is the I2C open-drain requirement?","acceptedAnswer":{"@type":"Answer","text":"I2C is open-drain: devices can only pull the line low — they cannot drive it high. The line is pulled high by an external resistor (typically 4.7 kΩ). In Verilog, model this by driving a tristate: 0 when asserting, high-Z (1'bz) when releasing. The wire OR of all drivers then produces the correct I2C level."}},
+{"@type":"Question","name":"What are START and STOP conditions in I2C?","acceptedAnswer":{"@type":"Answer","text":"START: SDA falls while SCL is high. This is the unique condition that initiates a transaction. STOP: SDA rises while SCL is high. This ends the transaction and releases the bus. All data bits are only allowed to change while SCL is low — any change while SCL is high is interpreted as START or STOP."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 22</span></div>
+<div class="wrap">
+<span class="daytag">DAY 22 · SERIAL COMMUNICATION</span>
+<h1>I2C Master Controller</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">I2C is the go-to protocol for sensor boards — one pair of wires connects dozens of devices, each with its own 7-bit address. Temperature sensors, EEPROM, IMUs, and RTC chips all speak I2C. Building a working I2C master requires understanding the peculiar open-drain bus model and the strict rules about when SDA may change. This lesson constructs a complete write-capable I2C master with ACK detection.</p>
+
+<h2>1. I2C bus fundamentals</h2>
+<p>I2C uses two bidirectional open-drain lines: <b>SCL</b> (clock) and <b>SDA</b> (data). "Open-drain" means every device can only pull a line low — releasing it lets the pull-up resistor bring it high. Any device can hold the bus low; the bus is high only when everyone releases it.</p>
+
+<div class="box key">
+<h3>START and STOP conditions</h3>
+<ul style="margin:0">
+<li><b>START:</b> SDA goes LOW while SCL is HIGH → initiates a transaction</li>
+<li><b>STOP:</b> SDA goes HIGH while SCL is HIGH → terminates a transaction</li>
+<li><b>Data bits:</b> SDA changes only while SCL is LOW. Sampled while SCL is HIGH.</li>
+<li><b>ACK:</b> After each 8-bit byte, the receiver pulls SDA LOW for one clock cycle to acknowledge.</li>
+</ul>
+</div>
+
+<h2>2. A write transaction sequence</h2>
+<p>To write byte 0xAB to a device at address 0x48:</p>
+<ol>
+<li>Generate START condition (SDA↓ while SCL↑)</li>
+<li>Send address byte: 0x48 shifted left + W bit (0) = 0x90</li>
+<li>Check ACK (device pulls SDA low after 9th clock)</li>
+<li>Send data byte: 0xAB</li>
+<li>Check ACK</li>
+<li>Generate STOP condition (SDA↑ while SCL↑)</li>
+</ol>
+
+<h2>3. Port table — i2c_master</h2>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk</td><td>IN</td><td>1</td><td>System clock (e.g. 100 MHz)</td></tr>
+<tr><td class="m">rst</td><td>IN</td><td>1</td><td>Synchronous reset</td></tr>
+<tr><td class="m">start_tx</td><td>IN</td><td>1</td><td>Pulse high to initiate a write transaction</td></tr>
+<tr><td class="m">addr</td><td>IN</td><td>7</td><td>7-bit slave address</td></tr>
+<tr><td class="m">data_byte</td><td>IN</td><td>8</td><td>Data byte to write after address phase</td></tr>
+<tr><td class="m">scl</td><td>OUT</td><td>1</td><td>I2C clock (open-drain model: drives 0 or releases)</td></tr>
+<tr><td class="m">sda_out</td><td>OUT</td><td>1</td><td>SDA drive value (0=pull low, 1=release/high-Z)</td></tr>
+<tr><td class="m">sda_in</td><td>IN</td><td>1</td><td>SDA bus value (read for ACK)</td></tr>
+<tr><td class="m">busy</td><td>OUT</td><td>1</td><td>High while transaction is in progress</td></tr>
+<tr><td class="m">done</td><td>OUT</td><td>1</td><td>Pulses high when transaction completes</td></tr>
+<tr><td class="m">ack_err</td><td>OUT</td><td>1</td><td>Pulses high if slave did not acknowledge (NACK)</td></tr>
+</table>
+
+<h2>4. i2c_master.v</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">i2c_master.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="i2c_master.v">// i2c_master.v — I2C Master: write 1 byte to addressed slave
+// CLK_DIV: system_clk / (4 * i2c_clk)
+// For 100 kHz I2C from 100 MHz: CLK_DIV = 250
+// Each I2C bit takes 4 CLK_DIV periods (quarter-bit resolution)
+
+module i2c_master #(
+    parameter CLK_DIV = 250   // 100 kHz I2C from 100 MHz
+)(
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       start_tx,
+    input  wire [6:0] addr,
+    input  wire [7:0] data_byte,
+    output reg        scl,
+    output reg        sda_out,   // 1=release(high), 0=pull-low
+    input  wire       sda_in,    // actual SDA line value
+    output reg        busy,
+    output reg        done,
+    output reg        ack_err
+);
+
+// Quarter-bit counter
+reg [9:0] div_cnt;
+reg       qbit;   // quarter-bit tick
+
+always @(posedge clk) begin
+    if (rst) begin div_cnt <= 0; qbit <= 0; end
+    else begin
+        qbit <= 0;
+        if (div_cnt == CLK_DIV - 1) begin
+            div_cnt <= 0;
+            qbit    <= 1;
+        end else div_cnt <= div_cnt + 1;
+    end
+end
+
+// FSM — each state advances on qbit ticks
+// We drive SCL with 4 qbits per bit period (LOW-LOW-HIGH-HIGH)
+localparam [4:0]
+    S_IDLE    = 0,
+    S_START1  = 1,  // SDA=1, SCL=1 → SDA=0 (START: SDA↓ while SCL↑)
+    S_START2  = 2,  // SCL=0 (pull clock low after START)
+    S_ADDR    = 3,  // send 7-bit address MSB first (8 bits incl. W)
+    S_ACK1    = 4,  // release SDA, clock high for ACK
+    S_DATA    = 5,  // send 8-bit data
+    S_ACK2    = 6,  // ACK for data byte
+    S_STOP1   = 7,  // SCL↑ then SDA↑ (STOP condition)
+    S_DONE    = 8;
+
+reg [4:0] state;
+reg [3:0] bit_cnt;     // bit counter
+reg [7:0] shift;       // current byte being sent
+reg [1:0] qcnt;        // which quarter of the bit we are in
+reg       ack_ok;
+
+always @(posedge clk) begin
+    if (rst) begin
+        state   <= S_IDLE;
+        scl     <= 1; sda_out <= 1;
+        busy    <= 0; done <= 0; ack_err <= 0;
+        bit_cnt <= 0; shift <= 0; qcnt <= 0; ack_ok <= 0;
+    end else begin
+        done    <= 0;
+        ack_err <= 0;
+
+        case (state)
+            S_IDLE: begin
+                scl <= 1; sda_out <= 1; busy <= 0;
+                if (start_tx) begin
+                    busy  <= 1;
+                    state <= S_START1;
+                    qcnt  <= 0;
+                end
+            end
+
+            // START: SDA falls while SCL is high
+            S_START1: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin scl <= 1; sda_out <= 1; end
+                    1: begin scl <= 1; sda_out <= 0; end  // SDA↓ while SCL=1 = START
+                    2: begin scl <= 0; sda_out <= 0; end  // pull SCL low
+                    3: begin
+                        // load address byte (7-bit addr + W=0) MSB first
+                        shift   <= {addr, 1'b0};
+                        bit_cnt <= 7;
+                        qcnt    <= 0;
+                        state   <= S_ADDR;
+                    end
+                endcase
+            end
+
+            // Send 8 address bits (addr[6:0] + W=0)
+            S_ADDR: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin sda_out <= shift[7]; scl <= 0; end  // set data, SCL low
+                    1: begin scl <= 0; end
+                    2: begin scl <= 1; end  // SCL rises — slave samples SDA
+                    3: begin
+                        scl  <= 1;
+                        qcnt <= 0;
+                        if (bit_cnt == 0) begin
+                            state <= S_ACK1;   // move to ACK phase
+                        end else begin
+                            shift   <= {shift[6:0], 1'b0};
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+                endcase
+            end
+
+            // ACK1: release SDA, clock one bit, check if slave pulls SDA low
+            S_ACK1: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin sda_out <= 1; scl <= 0; end  // release SDA for slave ACK
+                    1: begin scl <= 0; end
+                    2: begin scl <= 1; end
+                    3: begin
+                        ack_ok  <= ~sda_in;   // 0=ACK, 1=NACK
+                        scl     <= 1;
+                        shift   <= data_byte;
+                        bit_cnt <= 7;
+                        qcnt    <= 0;
+                        state   <= S_DATA;
+                    end
+                endcase
+            end
+
+            // Send 8 data bits
+            S_DATA: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin sda_out <= shift[7]; scl <= 0; end
+                    1: begin scl <= 0; end
+                    2: begin scl <= 1; end
+                    3: begin
+                        scl  <= 1; qcnt <= 0;
+                        if (bit_cnt == 0) begin
+                            state <= S_ACK2;
+                        end else begin
+                            shift   <= {shift[6:0], 1'b0};
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+                endcase
+            end
+
+            // ACK2: check data byte ACK
+            S_ACK2: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin sda_out <= 1; scl <= 0; end
+                    1: begin scl <= 0; end
+                    2: begin scl <= 1; end
+                    3: begin
+                        if (~sda_in) ack_ok <= 1; else ack_ok <= 0;
+                        scl  <= 0;
+                        qcnt <= 0;
+                        state <= S_STOP1;
+                    end
+                endcase
+            end
+
+            // STOP: SCL↑ then SDA↑ while SCL high
+            S_STOP1: if (qbit) begin
+                qcnt <= qcnt + 1;
+                case (qcnt)
+                    0: begin sda_out <= 0; scl <= 0; end
+                    1: begin scl <= 1; end
+                    2: begin sda_out <= 1; end  // SDA↑ while SCL=1 = STOP
+                    3: begin
+                        scl  <= 1; qcnt <= 0;
+                        state <= S_DONE;
+                    end
+                endcase
+            end
+
+            S_DONE: begin
+                done    <= 1;
+                ack_err <= ~ack_ok;
+                busy    <= 0;
+                state   <= S_IDLE;
+            end
+        endcase
+    end
+end
+
+endmodule</pre>
+</div>
+
+<h2>5. Testbench — tb_i2c_master.v</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_i2c_master.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_i2c_master.v">// tb_i2c_master.v — verifies START/STOP and ACK for a write transaction
+`timescale 1ns/1ps
+
+module tb_i2c_master;
+
+parameter CLK_DIV = 4;   // fast for simulation
+
+reg       clk = 0;
+reg       rst = 1;
+reg       start_tx = 0;
+reg [6:0] addr      = 7'h48;
+reg [7:0] data_byte = 8'hAB;
+wire      scl;
+wire      sda_out;
+reg       sda_in = 1;   // simulate slave pulling ACK
+wire      busy, done, ack_err;
+
+i2c_master #(.CLK_DIV(CLK_DIV)) dut (
+    .clk(clk),.rst(rst),.start_tx(start_tx),
+    .addr(addr),.data_byte(data_byte),
+    .scl(scl),.sda_out(sda_out),.sda_in(sda_in),
+    .busy(busy),.done(done),.ack_err(ack_err)
+);
+
+always #5 clk = ~clk;
+
+integer pass_cnt = 0, fail_cnt = 0;
+integer scl_rise = 0;
+reg start_detected = 0;
+reg stop_detected  = 0;
+reg sda_prev = 1;
+reg scl_prev = 1;
+
+// Detect START and STOP conditions
+always @(sda_out or scl) begin
+    if (scl && ~sda_out && sda_prev) begin
+        start_detected = 1;
+        $display("[%0t ns] START condition detected", $time);
+    end
+    if (scl && sda_out && ~sda_prev) begin
+        stop_detected = 1;
+        $display("[%0t ns] STOP condition detected", $time);
+    end
+    sda_prev = sda_out;
+end
+
+// Simulate slave ACK: pull SDA low during ACK clocks
+// (simplified: always ACK by tying sda_in=0 during ACK windows)
+initial begin
+    $dumpfile("tb_i2c_master.vcd");
+    $dumpvars(0, tb_i2c_master);
+
+    repeat(4) @(posedge clk);
+    rst = 0;
+    repeat(2) @(posedge clk);
+
+    // Send a write transaction: addr=0x48, data=0xAB
+    // Slave will ACK (sda_in=0 simulated below)
+    @(posedge clk);
+    start_tx = 1;
+    @(posedge clk);
+    start_tx = 0;
+
+    // Simulate slave pulling SDA low for both ACK windows
+    // (Hold sda_in=0 throughout for simplicity — a real slave would
+    //  only pull during the ACK bit. For testbench purposes this works.)
+    sda_in = 0;
+
+    // Wait for done
+    @(posedge done);
+    @(posedge clk);
+
+    // Release sda_in
+    sda_in = 1;
+
+    // Check: START was detected
+    if (start_detected) begin
+        $display("PASS: START condition generated"); pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: START condition NOT detected"); fail_cnt = fail_cnt + 1;
+    end
+
+    // Check: STOP was detected
+    if (stop_detected) begin
+        $display("PASS: STOP condition generated"); pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: STOP condition NOT detected"); fail_cnt = fail_cnt + 1;
+    end
+
+    // Check: no ack_err (slave acknowledged)
+    if (!ack_err) begin
+        $display("PASS: ACK received (no ack_err)"); pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: ack_err asserted unexpectedly"); fail_cnt = fail_cnt + 1;
+    end
+
+    // Check busy released
+    if (!busy) begin
+        $display("PASS: busy deasserted after done"); pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: busy still high after done"); fail_cnt = fail_cnt + 1;
+    end
+
+    if (fail_cnt == 0)
+        $display("\nALL TESTS PASSED (%0d/%0d)", pass_cnt, pass_cnt+fail_cnt);
+    else
+        $display("\nFAILED: %0d passed, %0d failed", pass_cnt, fail_cnt);
+
+    $finish;
+end
+
+initial #500000 begin $display("TIMEOUT"); $finish; end
+
+endmodule</pre>
+</div>
+
+<h2>6. Expected output</h2>
+<div class="box">
+<pre style="color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:.82rem;">[... ns] START condition detected
+[... ns] STOP condition detected
+PASS: START condition generated
+PASS: STOP condition generated
+PASS: ACK received (no ack_err)
+PASS: busy deasserted after done
+
+ALL TESTS PASSED (4/4)</pre>
+</div>
+
+<div class="takeaways">
+<h3>Key Takeaways</h3>
+<ul>
+<li>START = SDA falls while SCL is high; STOP = SDA rises while SCL is high</li>
+<li>Data bits change only while SCL is low; they are sampled when SCL goes high</li>
+<li>I2C is open-drain — drive SDA=0 to pull low, SDA=1 to release (high-Z in real hardware)</li>
+<li>After every 8-bit byte, release SDA and check if slave pulls it low (ACK) — if it stays high that is NACK</li>
+<li>Quarter-bit timing (4 ticks per bit) gives clean control over SCL/SDA transitions</li>
+</ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>What makes I2C different from SPI?</h3><p>I2C uses 2 wires and supports 127 devices on one bus via 7-bit addressing. SPI needs 4 wires plus a CS pin per device. I2C is slower (100–400 kHz typical) but far more wiring-efficient for multi-device boards.</p></div>
+<div class="faq-item"><h3>What is the I2C open-drain requirement?</h3><p>Devices can only pull I2C lines low — they cannot drive high. The line goes high via an external pull-up resistor. In Verilog model this as: 0 to pull low, 1 (or high-Z) to release. This allows multiple devices to share the bus without contention.</p></div>
+<div class="faq-item"><h3>What are START and STOP conditions?</h3><p>START: SDA falls while SCL is high — initiates a transaction. STOP: SDA rises while SCL is high — ends a transaction. All data transitions happen only while SCL is low. Any SDA change while SCL is high is a bus control event.</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-21-spi-master/"><div class="lab">← Previous</div><div class="ti">Day 21: SPI Master</div></a>
+<a href="/fpga-from-scratch/day-23-vga-hdmi-video/" class="next"><div class="lab">Next →</div><div class="ti">Day 23: VGA / HDMI Video</div></a>
+</div>
+</div>
+
+<footer>
+<p style="margin-bottom:.5rem"><a href="/about/">About</a> · <a href="/contact/">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/disclaimer/">Disclaimer</a></p>
+<p>© 2026 EcrioniX · FPGA from Scratch · Day 22</p>
+</footer>
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

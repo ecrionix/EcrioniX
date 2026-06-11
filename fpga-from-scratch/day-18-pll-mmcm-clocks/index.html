@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 18: PLLs &amp; MMCMs — Generating Clocks on FPGA | FPGA from Scratch</title>
+<meta name="description" content="Day 18 of FPGA from Scratch. Learn FPGA PLLs and MMCMs: VCO, M/D/O dividers, phase offsets, jitter. Instantiate Xilinx MMCME2_BASE and PLLE2_BASE to generate 200 MHz and 25 MHz from 100 MHz. Use clk_wiz IP.">
+<meta name="keywords" content="FPGA PLL MMCM verilog, MMCME2_BASE verilog, PLLE2_BASE verilog, clock wizard vivado, generate clocks FPGA, VCO divider FPGA, 100MHz to 200MHz FPGA, clk_wiz wrapper verilog">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-18-pll-mmcm-clocks/">
+<meta property="og:title" content="Day 18: PLLs &amp; MMCMs — Generating Clocks — FPGA from Scratch">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 18: PLLs & MMCMs — Generating Clocks on FPGA","url":"https://ecrionix.org/fpga-from-scratch/day-18-pll-mmcm-clocks/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 18","item":"https://ecrionix.org/fpga-from-scratch/day-18-pll-mmcm-clocks/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is the difference between a PLL and an MMCM?","acceptedAnswer":{"@type":"Answer","text":"Both are clock generation circuits. The MMCM (Mixed-Mode Clock Manager) is the more capable version on Xilinx 7-series: it supports fractional dividers, finer phase resolution (in picoseconds), and dynamic reconfiguration. The PLLE2 is simpler and has lower jitter for integer frequency ratios. For most designs use MMCM via the Clock Wizard IP; use PLLE2 when you need the lowest possible jitter."}},
+{"@type":"Question","name":"Why can't you simulate PLLs behaviourally?","acceptedAnswer":{"@type":"Answer","text":"Behavioural simulation models logic transitions but not analogue circuits. A PLL is fundamentally analogue — it uses a voltage-controlled oscillator, phase detector, and charge pump. These require SPICE-level simulation. The Xilinx unisim models output a fixed clock after a lock time, which is why basic functional simulation works, but the actual jitter, phase noise, and lock dynamics are not modelled."}},
+{"@type":"Question","name":"How do you calculate PLL output frequency?","acceptedAnswer":{"@type":"Answer","text":"Fout = Fin × M / (D × O), where Fin is the input frequency, M is the VCO multiply factor, D is the input divider, and O is the output divider. The VCO must operate within its allowed frequency range (e.g. 600–1200 MHz for Xilinx 7-series). Choose M and D to put the VCO in range, then choose O for the desired output frequency."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 18</span></div>
+<div class="wrap">
+<span class="daytag">DAY 18 · CLOCKING</span>
+<h1>PLLs &amp; MMCMs — Generating Clocks on FPGA</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Your board has a single 100 MHz crystal. Your design needs 200 MHz for the processor, 25 MHz for VGA, and 12.288 MHz for audio. The PLL/MMCM hard block solves this — it synthesises multiple precise clocks from a single reference. This lesson explains the maths, shows you how to instantiate Xilinx MMCME2_BASE and PLLE2_BASE, and explains why you cannot usefully simulate PLLs behaviourally.</p>
+
+<h2>1. How a PLL works — VCO, M, D, O dividers</h2>
+<p>A Phase-Locked Loop (PLL) works by comparing the phase of an output-derived clock to the input reference and adjusting a Voltage-Controlled Oscillator (VCO) until they match. Three programmable dividers let you set the output frequency:</p>
+<ul>
+<li><b>D — Input Divider:</b> Divides the reference clock before the phase detector. Reduces the effective reference frequency.</li>
+<li><b>M — Feedback Multiplier:</b> Multiplies by running the VCO faster. The VCO runs at Fin × M / D.</li>
+<li><b>O — Output Divider:</b> Divides the VCO output to produce the final clock. Each output port has its own O divider.</li>
+</ul>
+
+<div class="box key">
+<h3>Frequency formula</h3>
+<p style="margin:0"><code>Fvco = Fin × M / D</code><br>
+<code>Fout = Fvco / O = Fin × M / (D × O)</code><br><br>
+<b>Constraint:</b> Fvco must be in the valid VCO range. For Xilinx 7-series: <b>600 MHz – 1200 MHz</b>.<br>
+Example: 100 MHz in, 200 MHz out: D=1, M=10, O=5 → Fvco=1000 MHz ✓</p>
+</div>
+
+<h2>2. PLL vs MMCM on Xilinx 7-series</h2>
+<table>
+<tr><th>Feature</th><th>PLLE2_BASE</th><th>MMCME2_BASE</th></tr>
+<tr><td>Output clocks</td><td>6</td><td>7 (CLKOUT0–6)</td></tr>
+<tr><td>Fractional divider</td><td>No</td><td>Yes (CLKOUT0 only, M/D)</td></tr>
+<tr><td>Phase step resolution</td><td>45° steps</td><td>~11 ps (fine phase shift)</td></tr>
+<tr><td>Dynamic reconfig</td><td>No (BASE variant)</td><td>No (BASE variant)</td></tr>
+<tr><td>Jitter</td><td>Lower for integer ratios</td><td>Slightly higher with fractional</td></tr>
+<tr><td>Typical use</td><td>Simple integer multiply/divide</td><td>Audio, video, spread-spectrum</td></tr>
+</table>
+
+<h2>3. Why behavioural simulation doesn't model PLLs</h2>
+<p>The Xilinx unisim simulation model for MMCME2_BASE waits a fixed simulation time (a few hundred nanoseconds), then starts driving its output clocks at the correct frequency. It does <em>not</em> model:</p>
+<ul>
+<li>VCO lock time (which depends on charge pump dynamics)</li>
+<li>Phase noise and jitter</li>
+<li>Lock loss on input frequency change</li>
+<li>Spread-spectrum behaviour</li>
+</ul>
+<p>For functional simulation, treat the PLL as a black box that produces the correct frequency after asserting <code>LOCKED</code>. Design your reset logic to hold all downstream logic in reset until <code>LOCKED</code> is high — this pattern works in both simulation and hardware.</p>
+
+<h2>4. Port table — clk_wiz_wrapper</h2>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk_in</td><td>IN</td><td>1</td><td>Reference clock input (100 MHz from board oscillator)</td></tr>
+<tr><td class="m">reset</td><td>IN</td><td>1</td><td>Active-high PLL reset. Assert briefly at startup then release.</td></tr>
+<tr><td class="m">clk_200</td><td>OUT</td><td>1</td><td>200 MHz output clock (M=10, D=1, O=5)</td></tr>
+<tr><td class="m">clk_25</td><td>OUT</td><td>1</td><td>25 MHz output clock (M=10, D=1, O=40)</td></tr>
+<tr><td class="m">locked</td><td>OUT</td><td>1</td><td>High when PLL is locked. Use to release downstream resets.</td></tr>
+</table>
+
+<h2>5. clk_wiz_wrapper.v — MMCME2_BASE instantiation</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">clk_wiz_wrapper.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="clk_wiz_wrapper.v">// clk_wiz_wrapper.v — Xilinx MMCME2_BASE wrapper
+// Generates 200 MHz and 25 MHz from a 100 MHz reference.
+// Fvco = 100 * 10 / 1 = 1000 MHz (within 600-1200 MHz range)
+// clk_200: Fvco / 5  = 200 MHz
+// clk_25:  Fvco / 40 = 25 MHz
+//
+// In production, replace this with Vivado Clocking Wizard IP
+// (IP Catalog → Clocking Wizard) which generates this instantiation
+// automatically and includes proper UCF/XDC constraints.
+
+module clk_wiz_wrapper (
+    input  wire clk_in,    // 100 MHz input
+    input  wire reset,     // active-high reset
+    output wire clk_200,   // 200 MHz output
+    output wire clk_25,    // 25 MHz output
+    output wire locked     // PLL locked indicator
+);
+
+// Internal wires for MMCM outputs (unbuffered)
+wire clk_200_int, clk_25_int;
+wire clkfb_out, clkfb_in;
+
+// ---- BUFG: global clock buffers ----
+// Route PLL outputs through global clock buffers for low-skew distribution
+BUFG buf_200 (.I(clk_200_int), .O(clk_200));
+BUFG buf_25  (.I(clk_25_int),  .O(clk_25));
+
+// ---- MMCME2_BASE instantiation ----
+MMCME2_BASE #(
+    // Input clock
+    .CLKIN1_PERIOD   (10.0),     // 100 MHz = 10 ns period
+
+    // VCO configuration: Fvco = 100 * 10 / 1 = 1000 MHz
+    .CLKFBOUT_MULT_F (10.0),     // M = 10 (VCO multiply)
+    .DIVCLK_DIVIDE   (1),        // D = 1  (input divider)
+
+    // Output 0: 200 MHz (Fvco / 5)
+    .CLKOUT0_DIVIDE_F(5.0),
+    .CLKOUT0_PHASE   (0.0),
+    .CLKOUT0_DUTY_CYCLE(0.5),
+
+    // Output 1: 25 MHz (Fvco / 40)
+    .CLKOUT1_DIVIDE  (40),
+    .CLKOUT1_PHASE   (0.0),
+    .CLKOUT1_DUTY_CYCLE(0.5),
+
+    // Unused outputs disabled
+    .CLKOUT2_DIVIDE  (1),
+    .CLKOUT3_DIVIDE  (1),
+    .CLKOUT4_DIVIDE  (1),
+    .CLKOUT5_DIVIDE  (1),
+    .CLKOUT6_DIVIDE  (1),
+
+    .BANDWIDTH       ("OPTIMIZED"),
+    .STARTUP_WAIT    ("FALSE"),
+    .REF_JITTER1     (0.010)     // expected input jitter in UI (10 ps)
+) mmcm_inst (
+    // Inputs
+    .CLKIN1   (clk_in),
+    .RST      (reset),
+    .PWRDWN   (1'b0),
+
+    // Feedback (use internal feedback for simplicity)
+    .CLKFBOUT (clkfb_out),
+    .CLKFBIN  (clkfb_out),  // internal feedback loop
+
+    // Outputs
+    .CLKOUT0  (clk_200_int),
+    .CLKOUT1  (clk_25_int),
+    .CLKOUT0B (),
+    .CLKOUT1B (),
+    .CLKOUT2  (),
+    .CLKOUT2B (),
+    .CLKOUT3  (),
+    .CLKOUT3B (),
+    .CLKOUT4  (),
+    .CLKOUT5  (),
+    .CLKOUT6  (),
+    .CLKFBOUTB(),
+
+    // Status
+    .LOCKED   (locked)
+);
+
+endmodule</pre>
+</div>
+
+<h2>6. Using Vivado Clock Wizard IP (recommended workflow)</h2>
+<p>In real projects, use the <b>Clocking Wizard IP</b> rather than instantiating MMCM primitives directly. The wizard validates your frequency targets, computes optimal M/D/O values, and generates XDC constraints automatically.</p>
+<ol>
+<li>Open Vivado IP Catalog → Search "Clocking Wizard"</li>
+<li>Set input frequency (100 MHz), enable output clocks, enter target frequencies</li>
+<li>The tool computes M/D/O and reports achieved frequency and jitter</li>
+<li>Generate → Vivado creates <code>clk_wiz_0.v</code> wrapper + XDC constraints</li>
+<li>Instantiate <code>clk_wiz_0</code> in your top module and gate resets with <code>locked</code></li>
+</ol>
+
+<h2>7. Reset sequencing with locked</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">top_with_pll.v (snippet)</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="top_with_pll.v">// Pattern: hold all logic in reset until PLL is locked
+// Always use this — glitches during PLL lock-up corrupt state machines
+
+module top (
+    input  wire sys_clk,    // 100 MHz board clock
+    input  wire sys_rst_n   // active-low board reset button
+);
+
+wire clk_200, clk_25, locked;
+wire pll_rst = ~sys_rst_n;
+
+clk_wiz_wrapper pll (
+    .clk_in  (sys_clk),
+    .reset   (pll_rst),
+    .clk_200 (clk_200),
+    .clk_25  (clk_25),
+    .locked  (locked)
+);
+
+// Synchronous reset derived from locked signal
+// Logic only runs when PLL is stable
+reg rst_200_r1, rst_200;
+always @(posedge clk_200) begin
+    rst_200_r1 <= ~locked;
+    rst_200    <= rst_200_r1;   // 2-stage sync for safe CDC
+end
+
+// Your 200 MHz logic here, reset with rst_200
+// ...
+
+endmodule</pre>
+</div>
+
+<div class="takeaways">
+<h3>Key Takeaways</h3>
+<ul>
+<li>Fout = Fin × M / (D × O); VCO must stay in its valid range (600–1200 MHz for 7-series)</li>
+<li>Always route PLL outputs through BUFG for global low-skew clock distribution</li>
+<li>Behavioural simulation models PLL frequency but not jitter, lock time, or phase noise</li>
+<li>Hold all downstream logic in reset until <code>locked</code> is asserted</li>
+<li>Prefer Vivado Clock Wizard IP over direct MMCM instantiation — it validates constraints and generates XDC automatically</li>
+</ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>What is the difference between PLL and MMCM?</h3><p>Both generate derived clocks. The MMCM (Mixed-Mode Clock Manager) supports fractional dividers, fine phase shift (~11 ps resolution), and more output ports. The PLLE2 has lower jitter for integer ratios. Use MMCM via Clock Wizard for most designs; PLLE2 for lowest-jitter integer applications.</p></div>
+<div class="faq-item"><h3>Why can't you simulate PLLs behaviourally?</h3><p>PLLs are analogue circuits. Behavioural simulation cannot model VCO lock time, phase noise, or jitter — it just starts the output clock after a fixed simulation delay. Design your reset sequencing to wait for <code>locked</code> — this pattern works in both simulation and hardware.</p></div>
+<div class="faq-item"><h3>How do you calculate PLL output frequency?</h3><p>Fout = Fin × M / (D × O). Choose M and D to put Fvco in the valid range (600–1200 MHz for 7-series), then choose O for the desired output. Example: 100 MHz → 25 MHz: D=1, M=10, O=40 → Fvco=1000 MHz ✓</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-17-clock-domain-crossing/"><div class="lab">← Previous</div><div class="ti">Day 17: Clock Domain Crossing</div></a>
+<a href="/fpga-from-scratch/day-19-dsp-multipliers-mac/" class="next"><div class="lab">Next →</div><div class="ti">Day 19: DSP — Multipliers &amp; MACs</div></a>
+</div>
+</div>
+
+<footer>
+<p style="margin-bottom:.5rem"><a href="/about/">About</a> · <a href="/contact/">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/disclaimer/">Disclaimer</a></p>
+<p>© 2026 EcrioniX · FPGA from Scratch · Day 18</p>
+</footer>
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

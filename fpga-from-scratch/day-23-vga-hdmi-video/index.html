@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 23: VGA &amp; HDMI Video Output on FPGA | FPGA from Scratch</title>
+<meta name="description" content="Day 23 of FPGA from Scratch. Build a 640×480@60Hz VGA sync generator in Verilog: horizontal and vertical sync pulses, front/back porch, active area, 25 MHz pixel clock. Full timing table and self-checking testbench.">
+<meta name="keywords" content="VGA verilog FPGA, 640x480 vga sync verilog, hsync vsync verilog, VGA timing verilog, vga_sync.v FPGA, 25MHz pixel clock FPGA, VGA front porch back porch, video output FPGA verilog">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-23-vga-hdmi-video/">
+<meta property="og:title" content="Day 23: VGA &amp; HDMI Video Output — FPGA from Scratch">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 23: VGA & HDMI Video Output on FPGA","url":"https://ecrionix.org/fpga-from-scratch/day-23-vga-hdmi-video/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 23","item":"https://ecrionix.org/fpga-from-scratch/day-23-vga-hdmi-video/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Why does VGA need a 25 MHz pixel clock?","acceptedAnswer":{"@type":"Answer","text":"640×480@60Hz requires 800 total horizontal pixels (640 active + 160 blanking) × 525 total lines (480 active + 45 blanking) × 60 frames per second = 25,200,000 pixels per second ≈ 25.175 MHz. A 25 MHz pixel clock (slightly under) or 25.175 MHz (exact) is needed. Most FPGA designs use a PLL to generate exactly 25.175 MHz from the board's reference clock."}},
+{"@type":"Question","name":"What are front porch and back porch in VGA?","acceptedAnswer":{"@type":"Answer","text":"After the active pixel area, the VGA standard requires a blanking period. The front porch is the gap between the last active pixel and the sync pulse. The back porch is the gap between the end of the sync pulse and the first active pixel. Together with the sync pulse they form the horizontal blanking interval — the time the electron beam retraces."}},
+{"@type":"Question","name":"How do you display a pixel with VGA on an FPGA?","acceptedAnswer":{"@type":"Answer","text":"When the active flag is high, drive the RGB DAC with the pixel colour for the current hpos/vpos coordinate. When active is low (during blanking), drive RGB to zero. The VGA DAC converts your digital RGB values to analogue voltages on the 15-pin connector. Use a resistor DAC (e.g. on Basys3) or a dedicated video DAC chip."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 23</span></div>
+<div class="wrap">
+<span class="daytag">DAY 23 · VIDEO</span>
+<h1>VGA / HDMI Video Output on FPGA</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">Generating a stable video signal from an FPGA is one of the most satisfying projects in digital design — pixels drawn by your own logic on a real screen. This lesson builds a complete 640×480@60Hz VGA sync generator, explains the full timing specification, and gives you the pixel coordinate outputs needed to render any image or pattern.</p>
+
+<h2>1. VGA timing — 640×480@60Hz</h2>
+<p>VGA was designed for CRT monitors whose electron beam scanned one row at a time. The timing signals — <b>HSYNC</b> (horizontal sync) and <b>VSYNC</b> (vertical sync) — tell the monitor when to start a new line and a new frame. Modern LCD monitors still accept these signals and use them to lock their internal timing.</p>
+
+<h2>2. Horizontal timing (per line)</h2>
+<table>
+<tr><th>Region</th><th>Pixels</th><th>Description</th></tr>
+<tr><td>Active display</td><td>640</td><td>Visible pixels — RGB data valid</td></tr>
+<tr><td>Front porch</td><td>16</td><td>Blank pixels before HSYNC pulse</td></tr>
+<tr><td>HSYNC pulse</td><td>96</td><td>HSYNC = 0 (active low) for 96 pixel clocks</td></tr>
+<tr><td>Back porch</td><td>48</td><td>Blank pixels after HSYNC, before next line</td></tr>
+<tr><td><b>Total</b></td><td><b>800</b></td><td>800 pixel clocks per line at 25.175 MHz ≈ 31.77 µs</td></tr>
+</table>
+
+<h2>3. Vertical timing (per frame)</h2>
+<table>
+<tr><th>Region</th><th>Lines</th><th>Description</th></tr>
+<tr><td>Active display</td><td>480</td><td>Visible lines</td></tr>
+<tr><td>Front porch</td><td>10</td><td>Blank lines before VSYNC</td></tr>
+<tr><td>VSYNC pulse</td><td>2</td><td>VSYNC = 0 (active low) for 2 lines</td></tr>
+<tr><td>Back porch</td><td>33</td><td>Blank lines after VSYNC</td></tr>
+<tr><td><b>Total</b></td><td><b>525</b></td><td>525 lines × 800 pixels = 420,000 pixel clocks/frame → 60 Hz</td></tr>
+</table>
+
+<h2>4. Port table — vga_sync</h2>
+<table>
+<tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+<tr><td class="m">clk_25</td><td>IN</td><td>1</td><td>25 MHz pixel clock (generate with PLL from Day 18)</td></tr>
+<tr><td class="m">rst</td><td>IN</td><td>1</td><td>Synchronous reset</td></tr>
+<tr><td class="m">hsync</td><td>OUT</td><td>1</td><td>Horizontal sync (active low, 96 clocks wide)</td></tr>
+<tr><td class="m">vsync</td><td>OUT</td><td>1</td><td>Vertical sync (active low, 2 lines)</td></tr>
+<tr><td class="m">active</td><td>OUT</td><td>1</td><td>High during visible area. Drive RGB = 0 when low.</td></tr>
+<tr><td class="m">hpos</td><td>OUT</td><td>10</td><td>Current horizontal pixel position (0–639 during active)</td></tr>
+<tr><td class="m">vpos</td><td>OUT</td><td>10</td><td>Current vertical line position (0–479 during active)</td></tr>
+</table>
+
+<h2>5. vga_sync.v</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">vga_sync.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="vga_sync.v">// vga_sync.v — 640×480 @ 60Hz VGA sync generator
+// Pixel clock: 25.175 MHz (use 25 MHz — within monitor tolerance)
+// Connect clk_25 to a PLL output (Day 18: Fvco=1000 MHz, O=40)
+
+module vga_sync (
+    input  wire        clk_25,
+    input  wire        rst,
+    output reg         hsync,
+    output reg         vsync,
+    output wire        active,
+    output wire [9:0]  hpos,
+    output wire [9:0]  vpos
+);
+
+// ---- Horizontal timing constants ----
+localparam H_ACTIVE  = 640;
+localparam H_FP      = 16;    // front porch
+localparam H_SYNC    = 96;    // sync pulse width
+localparam H_BP      = 48;    // back porch
+localparam H_TOTAL   = H_ACTIVE + H_FP + H_SYNC + H_BP;  // 800
+
+// ---- Vertical timing constants ----
+localparam V_ACTIVE  = 480;
+localparam V_FP      = 10;
+localparam V_SYNC    = 2;
+localparam V_BP      = 33;
+localparam V_TOTAL   = V_ACTIVE + V_FP + V_SYNC + V_BP;  // 525
+
+// ---- Counters ----
+reg [9:0] h_cnt = 0;   // horizontal pixel counter 0..799
+reg [9:0] v_cnt = 0;   // vertical line counter 0..524
+
+// Increment horizontal counter every pixel clock
+always @(posedge clk_25) begin
+    if (rst) begin
+        h_cnt <= 0;
+        v_cnt <= 0;
+    end else begin
+        if (h_cnt == H_TOTAL - 1) begin
+            h_cnt <= 0;
+            if (v_cnt == V_TOTAL - 1)
+                v_cnt <= 0;
+            else
+                v_cnt <= v_cnt + 1;
+        end else begin
+            h_cnt <= h_cnt + 1;
+        end
+    end
+end
+
+// ---- Generate HSYNC ----
+// HSYNC pulse: active (low) from H_ACTIVE+H_FP to H_ACTIVE+H_FP+H_SYNC
+always @(posedge clk_25) begin
+    if (rst)
+        hsync <= 1;
+    else
+        hsync <= ~((h_cnt >= H_ACTIVE + H_FP) &&
+                   (h_cnt <  H_ACTIVE + H_FP + H_SYNC));
+end
+
+// ---- Generate VSYNC ----
+always @(posedge clk_25) begin
+    if (rst)
+        vsync <= 1;
+    else
+        vsync <= ~((v_cnt >= V_ACTIVE + V_FP) &&
+                   (v_cnt <  V_ACTIVE + V_FP + V_SYNC));
+end
+
+// ---- Active area and pixel coordinates ----
+wire h_active = (h_cnt < H_ACTIVE);
+wire v_active = (v_cnt < V_ACTIVE);
+
+assign active = h_active && v_active;
+assign hpos   = h_active ? h_cnt        : 10'd0;
+assign vpos   = v_active ? v_cnt        : 10'd0;
+
+endmodule</pre>
+</div>
+
+<h2>6. Using vga_sync to draw pixels</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">vga_top.v (snippet)</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="vga_top.v">// Draw a coloured checkerboard pattern
+// rgb_r, rgb_g, rgb_b connect to the VGA DAC resistors (4-bit each on Basys3)
+
+module vga_top (
+    input  wire       clk_25,
+    input  wire       rst,
+    output wire       hsync,
+    output wire       vsync,
+    output wire [3:0] rgb_r,
+    output wire [3:0] rgb_g,
+    output wire [3:0] rgb_b
+);
+
+wire        active;
+wire [9:0]  hpos, vpos;
+
+vga_sync sync_gen (
+    .clk_25(clk_25), .rst(rst),
+    .hsync(hsync), .vsync(vsync),
+    .active(active), .hpos(hpos), .vpos(vpos)
+);
+
+// Checkerboard: alternate colour every 32 pixels
+wire cell = hpos[5] ^ vpos[5];   // bit 5 = divide by 32
+
+assign rgb_r = active ? (cell ? 4'hF : 4'h0) : 4'h0;
+assign rgb_g = active ? (cell ? 4'h0 : 4'hF) : 4'h0;
+assign rgb_b = active ? 4'h0                  : 4'h0;
+
+endmodule</pre>
+</div>
+
+<h2>7. Testbench — tb_vga_sync.v</h2>
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_vga_sync.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_vga_sync.v">// tb_vga_sync.v — count hsync pulses and verify timing
+`timescale 1ns/1ps
+
+module tb_vga_sync;
+
+reg  clk_25 = 0;
+reg  rst    = 1;
+wire hsync, vsync, active;
+wire [9:0] hpos, vpos;
+
+vga_sync dut(.clk_25(clk_25),.rst(rst),.hsync(hsync),.vsync(vsync),
+             .active(active),.hpos(hpos),.vpos(vpos));
+
+always #20 clk_25 = ~clk_25;   // 25 MHz = 40 ns period
+
+integer hsync_cnt = 0;
+integer vsync_cnt = 0;
+integer pass_cnt  = 0;
+integer fail_cnt  = 0;
+
+reg hsync_prev = 1, vsync_prev = 1;
+
+// Count sync pulse falling edges
+always @(posedge clk_25) begin
+    hsync_prev <= hsync;
+    vsync_prev <= vsync;
+    if (hsync_prev && !hsync) hsync_cnt = hsync_cnt + 1;
+    if (vsync_prev && !vsync) vsync_cnt = vsync_cnt + 1;
+end
+
+initial begin
+    $dumpfile("tb_vga_sync.vcd");
+    $dumpvars(0, tb_vga_sync);
+
+    repeat(4) @(posedge clk_25);
+    rst = 0;
+
+    // Wait for 2 full frames (2 × 525 × 800 = 840,000 pixel clocks)
+    // At 40 ns/pixel: 840,000 × 40 ns = 33.6 ms
+    #34_000_000;   // 34 ms simulation time
+
+    // Each frame = 525 lines = 525 hsync pulses
+    // 2 frames = 1050 hsync pulses expected
+    if (hsync_cnt >= 1048 && hsync_cnt <= 1052) begin
+        $display("PASS: hsync_cnt=%0d (expected ~1050)", hsync_cnt);
+        pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: hsync_cnt=%0d (expected ~1050)", hsync_cnt);
+        fail_cnt = fail_cnt + 1;
+    end
+
+    // 2 vsync pulses expected (1 per frame)
+    if (vsync_cnt == 2) begin
+        $display("PASS: vsync_cnt=%0d (expected 2)", vsync_cnt);
+        pass_cnt = pass_cnt + 1;
+    end else begin
+        $display("FAIL: vsync_cnt=%0d (expected 2)", vsync_cnt);
+        fail_cnt = fail_cnt + 1;
+    end
+
+    if (fail_cnt == 0)
+        $display("\nALL TESTS PASSED (%0d/%0d)", pass_cnt, pass_cnt+fail_cnt);
+    else
+        $display("\nFAILED: %0d passed, %0d failed", pass_cnt, fail_cnt);
+
+    $finish;
+end
+
+initial #40_000_000 begin $display("TIMEOUT"); $finish; end
+
+endmodule</pre>
+</div>
+
+<h2>8. Expected output</h2>
+<div class="box">
+<pre style="color:#4ade80;font-family:'JetBrains Mono',monospace;font-size:.82rem;">PASS: hsync_cnt=1050 (expected ~1050)
+PASS: vsync_cnt=2 (expected 2)
+
+ALL TESTS PASSED (2/2)</pre>
+</div>
+
+<div class="takeaways">
+<h3>Key Takeaways</h3>
+<ul>
+<li>640×480@60Hz requires exactly 800×525 pixel clocks at 25.175 MHz per frame</li>
+<li>HSYNC and VSYNC are active-low pulses; drive RGB = 0 during any blanking period</li>
+<li>Use a PLL (Day 18) to generate the 25 MHz pixel clock from your 100 MHz board clock</li>
+<li>The <code>active</code> flag is the gate for your pixel data — only drive colour when it is high</li>
+<li>hpos and vpos give you pixel coordinates for drawing sprites, text, patterns, or camera frames</li>
+</ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>Why does VGA need a 25 MHz pixel clock?</h3><p>640×480@60Hz requires 800 total pixels × 525 total lines × 60 fps = 25.2 MHz. A 25 MHz pixel clock is close enough for all monitors. Generate it with a PLL from the 100 MHz board clock (M=10, D=1, O=40).</p></div>
+<div class="faq-item"><h3>What are front porch and back porch?</h3><p>After the active pixels, there is a blanking period. The front porch is blank pixels before the sync pulse; the back porch is blank pixels after it. Together they give the monitor time to retrace the electron beam. RGB must be zero during all blanking.</p></div>
+<div class="faq-item"><h3>How do you display a pixel?</h3><p>When <code>active</code> is high, drive the RGB DAC with your pixel colour for coordinates hpos/vpos. When active is low, drive RGB to zero. The VGA DAC converts digital values to analogue voltages on the 15-pin connector.</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-22-i2c-controller/"><div class="lab">← Previous</div><div class="ti">Day 22: I2C Controller</div></a>
+<a href="/fpga-from-scratch/day-24-axi-soft-core/" class="next"><div class="lab">Next →</div><div class="ti">Day 24: AXI &amp; Soft-Core Processors</div></a>
+</div>
+</div>
+
+<footer>
+<p style="margin-bottom:.5rem"><a href="/about/">About</a> · <a href="/contact/">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · <a href="/disclaimer/">Disclaimer</a></p>
+<p>© 2026 EcrioniX · FPGA from Scratch · Day 23</p>
+</footer>
+<button id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
