@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 13: UART Transmitter in Verilog | FPGA from Scratch</title>
+<meta name="description" content="Day 13 of FPGA from Scratch. Build a UART transmitter in Verilog from scratch: understand 8N1 framing (start bit, 8 data bits, stop bit), baud rate division, the FSM that controls transmission, and how to verify the correct bit sequence with a self-checking testbench. Includes full port table, annotated uart_tx.v, and expected output.">
+<meta name="keywords" content="UART transmitter verilog, uart_tx verilog FPGA, 8N1 serial protocol, baud rate divider verilog, UART FSM verilog, serial communication FPGA, start bit stop bit, 115200 baud verilog, UART design testbench, serial tx verilog">
+<link rel="canonical" href="https://ecrionix.org/fpga-from-scratch/day-13-uart-transmitter/">
+<meta property="og:title" content="Day 13: UART Transmitter in Verilog — FPGA from Scratch"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 13: UART Transmitter in Verilog","url":"https://ecrionix.org/fpga-from-scratch/day-13-uart-transmitter/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"FPGA from Scratch","url":"https://ecrionix.org/fpga-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA from Scratch","item":"https://ecrionix.org/fpga-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 13","item":"https://ecrionix.org/fpga-from-scratch/day-13-uart-transmitter/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is UART 8N1?","acceptedAnswer":{"@type":"Answer","text":"8N1 is the most common UART framing format: 8 data bits, No parity, 1 stop bit. Each character is transmitted as: 1 start bit (low), 8 data bits LSB first, then 1 stop bit (high). The line idles high. The baud rate sets how long each bit lasts."}},
+{"@type":"Question","name":"How do you set the baud rate in Verilog?","acceptedAnswer":{"@type":"Answer","text":"Divide the system clock frequency by the desired baud rate to get the number of clock cycles per bit. For example, at 100 MHz and 115200 baud: 100_000_000 / 115_200 = 868 cycles per bit. A counter counts to this value before advancing to the next bit."}},
+{"@type":"Question","name":"What is the bit order in UART?","acceptedAnswer":{"@type":"Answer","text":"UART transmits the least significant bit (LSB) first. So for the byte 0x41 (letter A, binary 01000001), the bits are transmitted in order: 1,0,0,0,0,0,1,0 (bit 0 first, bit 7 last), surrounded by a start bit (0) and stop bit (1)."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--orange)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:var(--orange);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#fb923c;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--orange);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--orange);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.2rem 0;overflow-x:auto}.figure svg{display:block;margin:0 auto}.fig-cap{text-align:center;font-size:.75rem;color:#64748b;margin-top:.5rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fdba74}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/fpga-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-from-scratch/">FPGA from Scratch</a><span>›</span><span>Day 13</span></div>
+<div class="wrap">
+<span class="daytag">DAY 13 · SERIAL COMMUNICATION</span>
+<h1>Building a UART Transmitter</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 11, 2026</div>
+<p class="lead">UART is the simplest serial protocol and the most useful debug tool on any FPGA. Once you have a working TX, you can print values from your design to a terminal at any time. This lesson builds <code>uart_tx.v</code> — a complete 8N1 UART transmitter — from the framing standard through the FSM to the testbench that verifies every bit.</p>
+
+<h2>1. 8N1 framing — what goes on the wire</h2>
+<p>UART sends characters as a sequence of bits at a fixed rate (the baud rate). The line <b>idles high</b>. Each character is framed as:</p>
+<div class="figure">
+<svg viewBox="0 0 620 70" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="9">
+  <text x="310" y="14" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="800">8N1 UART Frame — transmitting 0x41 ('A')</text>
+  <!-- idle -->
+  <rect x="20"  y="28" width="40" height="22" fill="rgba(148,163,184,.1)" stroke="#475569"/><text x="40"  y="43" text-anchor="middle" fill="#64748b" font-size="8">IDLE</text>
+  <!-- start -->
+  <rect x="60"  y="38" width="50" height="12" fill="rgba(248,113,113,.2)" stroke="#f87171"/><text x="85"  y="33" text-anchor="middle" fill="#f87171" font-size="8">START=0</text>
+  <!-- bits 0-7 -->
+  <rect x="110" y="38" width="50" height="12" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="135" y="33" text-anchor="middle" fill="#38bdf8" font-size="8">b0=1</text>
+  <rect x="160" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="185" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b1=0</text>
+  <rect x="210" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="235" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b2=0</text>
+  <rect x="260" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="285" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b3=0</text>
+  <rect x="310" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="335" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b4=0</text>
+  <rect x="360" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="385" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b5=0</text>
+  <rect x="410" y="38" width="50" height="12" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="435" y="33" text-anchor="middle" fill="#38bdf8" font-size="8">b6=1</text>
+  <rect x="460" y="28" width="50" height="22" fill="rgba(56,189,248,.1)"  stroke="#38bdf8"/><text x="485" y="43" text-anchor="middle" fill="#38bdf8" font-size="8">b7=0</text>
+  <!-- stop -->
+  <rect x="510" y="28" width="50" height="22" fill="rgba(74,222,128,.15)" stroke="#4ade80"/><text x="535" y="43" text-anchor="middle" fill="#4ade80" font-size="8">STOP=1</text>
+  <text x="310" y="65" text-anchor="middle" fill="#64748b" font-size="7.5">0x41 = 0100 0001 → LSB first on wire: 1,0,0,0,0,0,1,0</text>
+</svg>
+<div class="fig-cap">8N1 frame for 'A' (0x41). Line idles high. Start bit pulls low. 8 data bits LSB first. Stop bit returns high.</div>
+</div>
+
+<h2>2. Baud rate divider</h2>
+<p>Each bit lasts exactly <code>CLK_HZ / BAUD</code> clock cycles. At 100 MHz / 115200 baud = <b>868 cycles per bit</b>. A counter counts to this value before advancing to the next bit. This is the only timing mechanism UART needs.</p>
+
+<h2>3. Port table</h2>
+<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Meaning</th></tr></thead><tbody>
+<tr><td class="m">clk</td><td>input</td><td>1</td><td>system clock</td></tr>
+<tr><td class="m">rst</td><td>input</td><td>1</td><td>synchronous reset</td></tr>
+<tr><td class="m">start</td><td>input</td><td>1</td><td>pulse high for one cycle to begin transmitting</td></tr>
+<tr><td class="m">data</td><td>input</td><td>8</td><td>byte to transmit — sampled when start goes high</td></tr>
+<tr><td class="m">tx</td><td>output</td><td>1</td><td>serial output — connect to FPGA pin</td></tr>
+<tr><td class="m">busy</td><td>output</td><td>1</td><td>1 while transmitting — don't assert start when busy</td></tr>
+<tr><td class="m">done</td><td>output</td><td>1</td><td>one-cycle pulse when transmission is complete</td></tr>
+</tbody></table>
+
+<h2>4. uart_tx.v — design</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">uart_tx.v — UART transmitter (8N1)</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="uart_tx.v">// UART Transmitter — 8N1 format
+// CLK_HZ / BAUD must equal integer cycles-per-bit
+module uart_tx #(
+    parameter CLK_HZ = 100_000_000,
+    parameter BAUD   = 115_200
+)(
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       start,    // pulse to begin
+    input  wire [7:0] data,     // byte to send
+    output reg        tx,       // serial output
+    output wire       busy,     // 1 while sending
+    output reg        done      // 1-cycle completion pulse
+);
+    localparam CLKS_PER_BIT = CLK_HZ / BAUD; // 868 at 100MHz/115200
+    localparam IDLE=2'd0, START=2'd1, DATA=2'd2, STOP=2'd3;
+
+    reg [1:0]  state;
+    reg [15:0] baud_cnt;
+    reg [2:0]  bit_idx;
+    reg [7:0]  shift;
+
+    assign busy = (state != IDLE);
+
+    always @(posedge clk) begin
+        done <= 1'b0;
+        if (rst) begin
+            state <= IDLE; tx <= 1'b1; baud_cnt <= 0; bit_idx <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    tx <= 1'b1;
+                    if (start) begin shift <= data; state <= START; baud_cnt <= 0; end
+                end
+                START: begin
+                    tx <= 1'b0;  // start bit
+                    if (baud_cnt == CLKS_PER_BIT-1) begin baud_cnt<=0; bit_idx<=0; state<=DATA; end
+                    else baud_cnt <= baud_cnt+1;
+                end
+                DATA: begin
+                    tx <= shift[bit_idx];  // LSB first
+                    if (baud_cnt == CLKS_PER_BIT-1) begin
+                        baud_cnt <= 0;
+                        if (bit_idx == 3'd7) state <= STOP;
+                        else bit_idx <= bit_idx+1;
+                    end else baud_cnt <= baud_cnt+1;
+                end
+                STOP: begin
+                    tx <= 1'b1;  // stop bit
+                    if (baud_cnt == CLKS_PER_BIT-1) begin
+                        baud_cnt <= 0; state <= IDLE; done <= 1'b1;
+                    end else baud_cnt <= baud_cnt+1;
+                end
+            endcase
+        end
+    end
+endmodule</pre></div>
+
+<h2>5. Testbench — verify every bit</h2>
+<div class="codecard"><div class="cc-head"><span class="cc-name">tb_uart_tx.v — testbench (small CLKS_PER_BIT for speed)</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_uart_tx.v">`timescale 1ns/1ps
+module tb_uart_tx;
+    reg  clk=0,rst=1,start=0; reg [7:0] data;
+    wire tx,busy,done;
+    // Use CLK_HZ=10, BAUD=1 -> 10 cycles per bit for fast simulation
+    uart_tx #(.CLK_HZ(10),.BAUD(1)) dut(.clk(clk),.rst(rst),.start(start),.data(data),.tx(tx),.busy(busy),.done(done));
+    always #5 clk=~clk;
+    integer errors=0;
+    task sample_bit(input exp);
+        repeat(10) @(posedge clk); // wait one bit period
+        #1;
+        if(tx!==exp)begin $display("FAIL tx=%b exp=%b",tx,exp);errors=errors+1;end
+        else $display("ok   tx=%b",tx);
+    endtask
+    initial begin
+        @(posedge clk); rst=0;
+        data=8'h41; // 'A' = 0100_0001
+        start=1; @(posedge clk); #1; start=0;
+        // Check: START(0), b0=1,b1=0,b2=0,b3=0,b4=0,b5=0,b6=1,b7=0, STOP(1)
+        sample_bit(0); // start
+        sample_bit(1); // bit0
+        sample_bit(0); // bit1
+        sample_bit(0); // bit2
+        sample_bit(0); // bit3
+        sample_bit(0); // bit4
+        sample_bit(0); // bit5
+        sample_bit(1); // bit6
+        sample_bit(0); // bit7
+        sample_bit(1); // stop
+        @(posedge clk); #1;
+        if(done!==1)begin $display("FAIL done not asserted");errors=errors+1;end
+        else $display("ok   done=1");
+        if(errors==0) $display("ALL TESTS PASSED"); else $display("%0d FAILED",errors);
+        $finish;
+    end
+endmodule</pre></div>
+<div class="codecard"><div class="cc-head"><span class="cc-name">expected output</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="expected.txt">ok   tx=0
+ok   tx=1
+ok   tx=0
+ok   tx=0
+ok   tx=0
+ok   tx=0
+ok   tx=0
+ok   tx=1
+ok   tx=0
+ok   tx=1
+ok   done=1
+ALL TESTS PASSED</pre></div>
+
+<div class="takeaways"><h3>🎯 Day 13 takeaways</h3><ul>
+<li><b>8N1</b>: 1 start bit (low) + 8 data bits LSB-first + 1 stop bit (high). Line idles high.</li>
+<li><b>Baud rate</b> = CLK_HZ / BAUD cycles per bit — a counter gates bit transitions.</li>
+<li>The TX FSM has 4 states: IDLE → START → DATA (8 bits) → STOP → IDLE.</li>
+<li>Sample the data byte on <code>start</code> pulse into a shift register — don't read <code>data</code> mid-frame.</li>
+<li><b>Next:</b> Day 14 builds the receiver that reads this serial stream back.</li>
+</ul></div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is UART 8N1?</h3><p>8 data bits, No parity, 1 stop bit. The most common serial format. Each character: start(0), 8 data bits LSB first, stop(1).</p></div>
+<div class="faq-item"><h3>How do you set baud rate in Verilog?</h3><p>Compute CLK_HZ / BAUD = cycles per bit. Count to this value before advancing to the next bit.</p></div>
+<div class="faq-item"><h3>What order are bits transmitted?</h3><p>LSB first. For 0x41 (01000001) the wire sequence is: 1,0,0,0,0,0,1,0.</p></div>
+
+<div class="pager">
+<a href="/fpga-from-scratch/day-12-seven-segment-display/"><span class="lab">Previous</span><div class="ti">← Day 12: Seven-segment display</div></a>
+<a class="next" href="/fpga-from-scratch/day-14-uart-receiver/"><span class="lab">Up next</span><div class="ti">Day 14: UART receiver →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/fpga-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/fpga-from-scratch/">FPGA Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body></html>
