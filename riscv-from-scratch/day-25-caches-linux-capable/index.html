@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 25: Caches &amp; the Road to Linux-Capable RISC-V | RISC-V from Scratch</title>
+<meta name="description" content="Day 25 of RISC-V from Scratch. Learn direct-mapped cache theory (tag/index/offset, hit/miss, write-back vs write-through). Build icache.v — a 16-line direct-mapped instruction cache. Understand what Linux needs: MMU, S-mode, OpenSBI, device tree. Pointers to Linux-capable cores.">
+<meta name="keywords" content="RISC-V cache verilog, direct mapped cache verilog, icache.v, cache hit miss verilog, write-back write-through cache, RISC-V Linux capable, MMU RISC-V, S-mode privilege RISC-V, CVA6 VexRiscv Rocket Chip, OpenSBI device tree RISC-V, cache tag index offset verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-25-caches-linux-capable/">
+<meta property="og:title" content="Day 25: Caches &amp; the Road to Linux-Capable RISC-V">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 25: Caches & the Road to Linux-Capable RISC-V","url":"https://ecrionix.org/riscv-from-scratch/day-25-caches-linux-capable/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 25: Caches & Linux-Capable","item":"https://ecrionix.org/riscv-from-scratch/day-25-caches-linux-capable/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"How does a direct-mapped cache work?","acceptedAnswer":{"@type":"Answer","text":"A direct-mapped cache maps each memory address to exactly one cache line. The address is split into three fields: tag (high bits identify the memory block), index (selects which cache line), and offset (byte position within the cache line). On a read, the cache checks if the tag matches and the valid bit is set — that is a hit. Otherwise it is a miss and the line is fetched from main memory."}},
+{"@type":"Question","name":"What does a RISC-V CPU need to boot Linux?","acceptedAnswer":{"@type":"Answer","text":"Linux on RISC-V requires: S-mode (supervisor privilege level) in addition to M-mode, a page-based virtual memory system (Sv32 or Sv39 MMU), OpenSBI firmware to bootstrap the system, a device tree describing the hardware, and a timer interrupt source (CLINT). This is substantially more complex than our 25-day RV32I core."}},
+{"@type":"Question","name":"What are good Linux-capable open RISC-V cores?","acceptedAnswer":{"@type":"Answer","text":"CVA6 (formerly Ariane) by ETH Zurich is a 64-bit RV64GC core with MMU that runs Linux. VexRiscv by SpinalHDL is a configurable 32/64-bit core with optional MMU and Linux support. Rocket Chip from UC Berkeley is the original research Linux-capable RISC-V core generator. All three are open-source on GitHub."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 25</span></div>
+<div class="wrap">
+<span class="daytag">DAY 25 · PHASE 4 — ADVANCED &amp; REAL HARDWARE</span>
+<h1>Caches &amp; the Road to Linux-Capable</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">You have built a complete RV32I CPU, pipelined it, added peripherals, and run it on an FPGA. For the final lesson we look at the next major performance step — <b>caches</b> — and map out what would be needed to run Linux on your core. Understanding that gap is what separates a microcontroller-class design from a full application processor.</p>
+
+<h2>Why Caches?</h2>
+<p>Modern DRAM has 50–100 ns access latency. At 500 MHz that is 25–50 cycles wasted on every cache miss. A small, fast SRAM cache (L1: 32 KB, 1–4 cycles) sits between the CPU and DRAM and exploits <b>temporal locality</b> (recently used data is likely needed again) and <b>spatial locality</b> (nearby data is likely needed soon).</p>
+
+<h2>Cache Address Decomposition</h2>
+<p>For a 16-line, 4-byte-per-line direct-mapped cache on a 32-bit address:</p>
+<div class="box">
+<pre style="font-size:.76rem;color:#94a3b8;font-family:'JetBrains Mono',monospace">32-bit address:  [ TAG (26 bits) | INDEX (4 bits) | OFFSET (2 bits) ]
+                  bits 31..6       bits 5..2         bits 1..0
+
+INDEX  selects which of the 16 cache lines to check
+OFFSET selects which byte within the 4-byte cache line
+TAG    stored alongside the line — must match for a hit</pre>
+</div>
+
+<h2>Cache Hit and Miss</h2>
+<ul>
+<li><b>Hit</b>: valid bit is set AND stored tag == address tag → return cached data in 1 cycle.</li>
+<li><b>Miss</b>: valid bit clear OR tag mismatch → stall, fetch line from DRAM, fill the cache line, return data (50+ cycle penalty).</li>
+<li><b>Write-through</b>: every store writes both the cache and DRAM. Simple but wastes memory bandwidth.</li>
+<li><b>Write-back</b>: stores go only to the cache (dirty bit set). DRAM is updated only when the dirty line is evicted. More complex but much higher performance.</li>
+</ul>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">icache.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="icache.v">// icache.v — 16-line direct-mapped instruction cache
+// Line size: 1 word (4 bytes). Tag+index+offset from 32-bit address.
+// On miss, fetches from the backing imem (next-level store).
+module icache #(
+    parameter LINES = 16 // must be power of 2
+)(
+    input         clk, rst,
+    input  [31:0] addr,          // fetch address from PC
+    input         req,           // 1 = fetch requested
+    output reg [31:0] rdata,     // instruction data
+    output reg    hit,           // 1 = cache hit this cycle
+    // Backing store (e.g. BRAM imem)
+    output [31:0] mem_addr,
+    input  [31:0] mem_rdata
+);
+    localparam IDX_BITS = 4;     // log2(LINES) = 4
+    localparam OFF_BITS = 2;     // log2(4 bytes) = 2
+    localparam TAG_BITS = 32 - IDX_BITS - OFF_BITS; // = 26
+
+    reg [TAG_BITS-1:0] tag_array  [0:LINES-1];
+    reg [31:0]         data_array [0:LINES-1];
+    reg                valid      [0:LINES-1];
+
+    wire [OFF_BITS-1:0] offset = addr[OFF_BITS-1:0];
+    wire [IDX_BITS-1:0] index  = addr[OFF_BITS+IDX_BITS-1:OFF_BITS];
+    wire [TAG_BITS-1:0] tag    = addr[31:OFF_BITS+IDX_BITS];
+
+    // Connect miss path to backing store
+    assign mem_addr = addr;
+
+    integer i;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            for (i = 0; i &lt; LINES; i = i+1)
+                valid[i] &lt;= 1'b0;
+            hit &lt;= 0;
+        end else if (req) begin
+            if (valid[index] &amp;&amp; (tag_array[index] == tag)) begin
+                // Cache hit
+                rdata &lt;= data_array[index];
+                hit   &lt;= 1'b1;
+            end else begin
+                // Cache miss: fill from backing store
+                data_array[index] &lt;= mem_rdata;
+                tag_array[index]  &lt;= tag;
+                valid[index]      &lt;= 1'b1;
+                rdata &lt;= mem_rdata;
+                hit   &lt;= 1'b0; // miss this cycle; hit next cycle
+            end
+        end
+    end
+endmodule</pre>
+</div>
+
+<h2>Testbench — Hit and Miss Verification</h2>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_icache.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_icache.v">// tb_icache.v — Verify cache hit after first miss
+`timescale 1ns/1ps
+module tb_icache;
+    reg clk=0, rst=1;
+    always #5 clk=~clk;
+
+    reg  [31:0] addr;
+    reg         req;
+    wire [31:0] rdata;
+    wire        hit;
+    wire [31:0] mem_addr;
+    // Stub memory: returns 0xDEAD_BEEF for any address
+    reg  [31:0] mem_rdata;
+    always @(*) mem_rdata = 32'hDEAD_BEEF;
+
+    icache dut(.clk(clk),.rst(rst),.addr(addr),.req(req),
+               .rdata(rdata),.hit(hit),
+               .mem_addr(mem_addr),.mem_rdata(mem_rdata));
+
+    initial begin
+        $dumpfile("tb_icache.vcd"); $dumpvars(0,tb_icache);
+        req=0; addr=0;
+        @(posedge clk); @(posedge clk); rst=0;
+
+        // First access: expect MISS
+        addr=32'h0000_0010; req=1;
+        @(posedge clk); req=0;
+        @(posedge clk); // result available next cycle
+        if(!hit) $display("PASS: first access = miss (cold)");
+        else     $display("FAIL: expected miss on cold cache");
+
+        // Second access same addr: expect HIT
+        req=1;
+        @(posedge clk); req=0;
+        @(posedge clk);
+        if(hit &amp;&amp; rdata===32'hDEAD_BEEF) $display("PASS: second access = hit, data=DEADBEEF");
+        else $display("FAIL: expected hit, hit=%b data=%h",hit,rdata);
+
+        // Different address (same index, different tag): expect MISS (conflict)
+        addr=32'h0000_0110; req=1; // different tag, same index
+        @(posedge clk); req=0;
+        @(posedge clk);
+        if(!hit) $display("PASS: conflict miss on different tag");
+        else     $display("FAIL: expected conflict miss");
+
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<h2>What a Linux-Capable RISC-V Core Needs</h2>
+<table>
+<thead><tr><th>Feature</th><th>Needed for Linux</th><th>Complexity</th></tr></thead>
+<tbody>
+<tr><td><b>S-mode privilege</b></td><td>Linux kernel runs in S-mode; U-mode for user apps</td><td>Medium — adds supervisor CSRs, privilege switching</td></tr>
+<tr><td><b>Sv32 MMU</b></td><td>Virtual memory — required for process isolation and large address spaces</td><td>High — page-table walker, TLB, PTEs</td></tr>
+<tr><td><b>CLINT timer</b></td><td>Core-Local Interrupt Controller — provides mtime/mtimecmp for timer interrupts</td><td>Low — simple MMIO counter</td></tr>
+<tr><td><b>PLIC</b></td><td>Platform Level Interrupt Controller — routes external interrupts to harts</td><td>Medium — priority encoder + claim/complete protocol</td></tr>
+<tr><td><b>OpenSBI</b></td><td>Open Source RISC-V Supervisor Binary Interface — M-mode firmware that Linux calls via ECALL</td><td>Software-only — open source firmware</td></tr>
+<tr><td><b>Device tree</b></td><td>Describes hardware to Linux (memory ranges, UART, PLIC addresses)</td><td>Low — a .dts text file</td></tr>
+</tbody>
+</table>
+
+<h2>Open-Source Linux-Capable RISC-V Cores</h2>
+<ul>
+<li><b>CVA6 (Ariane)</b> — ETH Zurich, RV64GC, 6-stage in-order, MMU, runs Linux. <a href="https://github.com/openhwgroup/cva6" target="_blank" rel="noopener">github.com/openhwgroup/cva6</a></li>
+<li><b>VexRiscv</b> — SpinalHDL, configurable 32/64-bit, MMU plugin available, very fast to synthesize. <a href="https://github.com/SpinalHDL/VexRiscv" target="_blank" rel="noopener">github.com/SpinalHDL/VexRiscv</a></li>
+<li><b>Rocket Chip</b> — UC Berkeley, Chisel, RV64GC, complete SoC generator, reference Linux platform. <a href="https://github.com/chipsalliance/rocket-chip" target="_blank" rel="noopener">github.com/chipsalliance/rocket-chip</a></li>
+</ul>
+
+<div class="box key">
+<h3>Course Complete</h3>
+<p>You have gone from a register file in Day 9 to a pipelined, hazard-handled, FPGA-proven RV32I CPU in 25 days. You understand every wire in the datapath, every pipeline register, every hazard, and the path forward to a production-grade Linux core. That knowledge is the foundation for anything in VLSI, FPGA design, or computer architecture.</p>
+<p><b>What next?</b> Explore <a href="/vlsi/">VLSI Design</a>, <a href="/fpga-from-scratch/">FPGA from Scratch</a>, or study CVA6/VexRiscv source code to see how the concepts from this course scale to a full application processor.</p>
+</div>
+
+<div class="takeaways">
+<h3>Day 25 Takeaways</h3>
+<ul>
+<li>A direct-mapped cache splits addresses into <b>tag, index, offset</b> — valid + tag match = hit; otherwise miss.</li>
+<li>Write-back caches use a <b>dirty bit</b> to defer DRAM writes until eviction, dramatically reducing memory bandwidth.</li>
+<li>Linux needs <b>S-mode, Sv32 MMU, CLINT, PLIC, OpenSBI firmware</b> — these are non-trivial additions to our RV32I core.</li>
+<li>Open-source Linux-capable cores exist: <b>CVA6, VexRiscv, Rocket Chip</b> — study them to see the full picture.</li>
+<li>This course is complete — you have built a real CPU from scratch. </li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>How does a direct-mapped cache work?</h3><p>The address is split into tag, index, and offset. The index selects a cache line. If the valid bit is set and the stored tag matches the address tag, it is a hit. Otherwise it is a miss and the line is fetched from main memory.</p></div>
+<div class="faq-item"><h3>What does a RISC-V CPU need to boot Linux?</h3><p>S-mode privilege, Sv32 virtual memory (MMU), CLINT timer, PLIC interrupt controller, OpenSBI M-mode firmware, and a device tree. All are substantially more complex than our 25-day RV32I base.</p></div>
+<div class="faq-item"><h3>What are good Linux-capable open RISC-V cores?</h3><p>CVA6 (ETH Zurich, RV64GC), VexRiscv (SpinalHDL, configurable), and Rocket Chip (UC Berkeley, full SoC generator). All are open source on GitHub.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-24-run-on-fpga/"><span class="lab">Previous</span><div class="ti">← Day 24: Run on FPGA</div></a>
+<a class="next" href="/riscv-from-scratch/"><span class="lab">Course complete!</span><div class="ti">Full course roadmap →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

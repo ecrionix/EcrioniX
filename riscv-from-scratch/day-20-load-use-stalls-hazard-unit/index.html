@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 20: Load-Use Stalls &amp; the Hazard Unit — Pipeline Stall in Verilog | RISC-V from Scratch</title>
+<meta name="description" content="Day 20 of RISC-V from Scratch. Explain the load-use hazard — LW followed by an instruction that uses the loaded value needs 1 stall cycle even with forwarding. Build hazard_unit.v — detects load-use hazards, stalls IF/ID, inserts a bubble in ID/EX.">
+<meta name="keywords" content="load use hazard verilog, hazard unit verilog, hazard_unit.v, pipeline stall verilog, LW stall verilog, RISC-V load hazard, pipeline bubble insertion verilog, stall IF ID verilog, pipelined RISC-V CPU stall detection">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-20-load-use-stalls-hazard-unit/">
+<meta property="og:title" content="Day 20: Load-Use Stalls &amp; the Hazard Unit">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 20: Load-Use Stalls & the Hazard Unit","url":"https://ecrionix.org/riscv-from-scratch/day-20-load-use-stalls-hazard-unit/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 20: Load-Use Stalls & Hazard Unit","item":"https://ecrionix.org/riscv-from-scratch/day-20-load-use-stalls-hazard-unit/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is a load-use hazard?","acceptedAnswer":{"@type":"Answer","text":"A load-use hazard occurs when a load instruction (LW, LH, LB) is immediately followed by an instruction that uses the loaded register. The data is not available from the data memory until the end of the MEM stage. Even with forwarding, the dependent instruction needs to wait one cycle, because the data arrives one cycle too late for the ALU in EX."}},
+{"@type":"Question","name":"How does the hazard unit stall the pipeline?","acceptedAnswer":{"@type":"Answer","text":"The hazard unit asserts stall=1 which freezes the PC and the IF/ID register (they hold their current values instead of advancing). Simultaneously it inserts a bubble (NOP) into the ID/EX register. This effectively replays the dependent instruction one cycle later, by which time the load data is available for forwarding from the MEM/WB register."}},
+{"@type":"Question","name":"How do compilers help with load-use hazards?","acceptedAnswer":{"@type":"Answer","text":"Modern RISC-V compilers (GCC, LLVM) perform instruction scheduling — they reorder independent instructions to fill the load-delay slot with useful work, avoiding the stall cycle without inserting NOPs. This is one reason optimized code runs faster than naive assembly."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 20</span></div>
+<div class="wrap">
+<span class="daytag">DAY 20 · PHASE 3 — PIPELINE &amp; OPTIMIZE</span>
+<h1>Load-Use Stalls &amp; the Hazard Unit</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">Forwarding (Day 18) eliminates most RAW hazards. But there is one case forwarding cannot solve: a <b>load followed immediately by an instruction that uses the loaded value</b>. The load data is not available until after the MEM stage — one cycle too late for the next instruction's EX stage. The solution is a mandatory 1-cycle stall. Today we build the <code>hazard_unit.v</code> that detects this and acts.</p>
+
+<h2>Why Forwarding Cannot Help</h2>
+<div class="box">
+<pre style="font-size:.76rem;color:#94a3b8;font-family:'JetBrains Mono',monospace">Cycle:   1    2    3    4    5    6    7
+LW x1:  [IF] [ID] [EX] [MEM][WB]
+ADD x2,x1: [IF] [ID] [EX]...
+                       ↑ needs x1 here (cycle 4, EX start)
+                  ↑ but x1 is in MEM here (cycle 4, MEM end)
+
+Even with EX/MEM forwarding, the data arrives one cycle too late.</pre>
+</div>
+<p>The only correct solution is to delay <code>ADD</code> by one cycle, so it enters EX in cycle 5 when the load data is available from MEM/WB forwarding.</p>
+
+<h2>hazard_unit.v — Port Table</h2>
+<table>
+<thead><tr><th>Port</th><th>Direction</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="m">id_ex_MemRead</td><td>Input</td><td>1</td><td>1 if instruction in EX is a load (LW/LH/LB)</td></tr>
+<tr><td class="m">id_ex_rd</td><td>Input</td><td>5</td><td>Destination register of the load in EX</td></tr>
+<tr><td class="m">if_id_rs1</td><td>Input</td><td>5</td><td>Source register 1 of next instruction (in ID)</td></tr>
+<tr><td class="m">if_id_rs2</td><td>Input</td><td>5</td><td>Source register 2 of next instruction (in ID)</td></tr>
+<tr><td class="m">stall</td><td>Output</td><td>1</td><td>1 = freeze PC and IF/ID; insert bubble in ID/EX</td></tr>
+</tbody>
+</table>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">hazard_unit.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="hazard_unit.v">// hazard_unit.v — Detects load-use hazards and generates stall
+// When a load is in EX and the next instruction in ID uses the
+// loaded register, we must stall for one cycle.
+module hazard_unit (
+    input       id_ex_MemRead, // is EX instruction a load?
+    input [4:0] id_ex_rd,      // load destination register
+    input [4:0] if_id_rs1,     // ID instruction source 1
+    input [4:0] if_id_rs2,     // ID instruction source 2
+    output reg  stall          // 1 = insert stall
+);
+    always @(*) begin
+        stall = 1'b0;
+        if (id_ex_MemRead &amp;&amp; (id_ex_rd != 5'd0)) begin
+            if ((id_ex_rd == if_id_rs1) || (id_ex_rd == if_id_rs2))
+                stall = 1'b1;
+        end
+    end
+endmodule</pre>
+</div>
+
+<h2>How the Stall Works</h2>
+<p>When <code>stall=1</code> is asserted, three things happen simultaneously on the next clock edge:</p>
+<ol>
+<li><b>PC is frozen</b> — it holds its current value so the same instruction is fetched again next cycle.</li>
+<li><b>IF/ID register is frozen</b> — the instruction in ID is replayed next cycle (held, not advanced).</li>
+<li><b>ID/EX register is cleared</b> — a NOP bubble is inserted, so the EX stage does nothing useful this cycle.</li>
+</ol>
+<p>The net effect: the load instruction advances normally through MEM, but the dependent instruction gets to re-read the register (via MEM/WB forwarding) one cycle later.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">stall_wiring_snippet.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="stall_wiring_snippet.v">wire stall;
+hazard_unit hu (
+    .id_ex_MemRead(ex_MemRead),
+    .id_ex_rd     (ex_rd),
+    .if_id_rs1    (id_rs1),
+    .if_id_rs2    (id_rs2),
+    .stall        (stall)
+);
+
+// PC: hold when stall
+always @(posedge clk or posedge rst)
+    if (rst)        pc &lt;= 0;
+    else if (!stall) pc &lt;= pc_next;
+    // if stall, pc keeps its current value
+
+// IF/ID: pass stall through to the register
+if_id_reg ifid (.stall(stall), ...);
+
+// ID/EX: force flush (NOP bubble) on stall
+id_ex_reg idex (.flush(stall), ...);</pre>
+</div>
+
+<h2>The Complete Hazard Picture</h2>
+<table>
+<thead><tr><th>Hazard Type</th><th>Detection</th><th>Resolution</th><th>CPI impact</th></tr></thead>
+<tbody>
+<tr><td><b>RAW (non-load)</b></td><td>forward_unit: EX/MEM rd == EX rs1/rs2</td><td>Forwarding — no stall</td><td>0 cycles lost</td></tr>
+<tr><td><b>Load-use</b></td><td>hazard_unit: EX is load AND rd matches ID rs</td><td>1-cycle stall + MEM/WB forward</td><td>1 cycle per load-use pair</td></tr>
+<tr><td><b>Branch taken</b></td><td>EX branch_taken=1</td><td>Flush IF/ID and ID/EX (2 NOP bubbles)</td><td>2 cycles per taken branch</td></tr>
+</tbody>
+</table>
+
+<div class="takeaways">
+<h3>Day 20 Takeaways</h3>
+<ul>
+<li>A load-use hazard requires a <b>mandatory 1-cycle stall</b> — forwarding alone cannot fix it.</li>
+<li>The hazard unit detects the hazard in the cycle the load is in EX and the dependent instruction is in ID.</li>
+<li>Stalling freezes the PC and IF/ID, inserts a bubble in ID/EX, and then MEM/WB forwarding provides the value one cycle later.</li>
+<li>Compilers can <b>schedule instructions</b> to move independent work into the load-delay slot, eliminating the stall entirely.</li>
+<li>With forwarding + hazard unit + flush unit, the pipelined CPU correctly handles all RISC-V RV32I programs.</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is a load-use hazard?</h3><p>When a load instruction (LW/LH/LB) is immediately followed by an instruction that reads the loaded register, the data arrives from DMEM one cycle too late for forwarding. A 1-cycle stall is mandatory.</p></div>
+<div class="faq-item"><h3>How does the hazard unit stall the pipeline?</h3><p>It asserts stall=1. The PC and IF/ID register hold their values (replay the same instruction). The ID/EX register is flushed to a NOP bubble. One cycle later, forwarding from MEM/WB provides the loaded value.</p></div>
+<div class="faq-item"><h3>How do compilers help with load-use hazards?</h3><p>Compilers perform instruction scheduling — placing an independent instruction between the load and the user, filling the delay slot with useful work and eliminating the stall cycle.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-19-control-hazards-branch/"><span class="lab">Previous</span><div class="ti">← Day 19: Control Hazards &amp; Branch</div></a>
+<a class="next" href="/riscv-from-scratch/day-21-csrs-traps-exceptions/"><span class="lab">Up next</span><div class="ti">Day 21: CSRs, Traps &amp; Exceptions →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

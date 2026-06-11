@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 22: Memory-Mapped I/O — A UART in Verilog | RISC-V from Scratch</title>
+<meta name="description" content="Day 22 of RISC-V from Scratch. Add a UART TX peripheral mapped to address 0x10000000. Build mmio_uart.v — address decoder plus uart_tx integration. The CPU writes a byte to the UART address and it transmits serially at 115200 baud.">
+<meta name="keywords" content="memory mapped IO verilog, MMIO verilog, UART verilog RISC-V, mmio_uart.v, uart_tx verilog, address decoder verilog, RISC-V peripheral verilog, 0x10000000 UART verilog, RISC-V MMIO peripheral, serial transmit verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-22-memory-mapped-io-uart/">
+<meta property="og:title" content="Day 22: Memory-Mapped I/O — A UART Peripheral in Verilog">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 22: Memory-Mapped I/O — A UART","url":"https://ecrionix.org/riscv-from-scratch/day-22-memory-mapped-io-uart/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 22: Memory-Mapped I/O — UART","item":"https://ecrionix.org/riscv-from-scratch/day-22-memory-mapped-io-uart/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is memory-mapped I/O?","acceptedAnswer":{"@type":"Answer","text":"Memory-mapped I/O (MMIO) uses regular load and store instructions to communicate with hardware peripherals. Each peripheral is assigned a region of the address space. A write to the peripheral's address triggers an action (send a byte, set a GPIO pin). No special I/O instructions are needed — peripherals look like memory to the CPU."}},
+{"@type":"Question","name":"How does a UART transmitter work?","acceptedAnswer":{"@type":"Answer","text":"A UART TX shifts out 8 data bits serially at a fixed baud rate. The frame format is: 1 start bit (low), 8 data bits (LSB first), 1 stop bit (high). At 115200 baud each bit lasts 8.68 µs. A 16-bit baud rate counter tracks when to advance to the next bit."}},
+{"@type":"Question","name":"What address does our RISC-V UART use?","acceptedAnswer":{"@type":"Answer","text":"Our UART TX is mapped to address 0x10000000 — the same address used by QEMU's emulated UART for RISC-V. Writing any byte to this address initiates a serial transmission. The address decoder checks for a write to 0x10000000 and loads the byte into the UART TX shift register."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 22</span></div>
+<div class="wrap">
+<span class="daytag">DAY 22 · PHASE 4 — ADVANCED &amp; REAL HARDWARE</span>
+<h1>Memory-Mapped I/O — a UART</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">A CPU that can only access its own memories is useless. Real systems need to talk to the world — serial consoles, sensors, network interfaces. <b>Memory-mapped I/O (MMIO)</b> is the standard RISC-V approach: peripherals appear at special addresses, and ordinary <code>SW</code>/<code>LW</code> instructions communicate with them. Today we add a UART TX peripheral at address <code>0x10000000</code>.</p>
+
+<h2>How MMIO Works</h2>
+<p>The address space is divided into two regions. The lower region (e.g., 0x00000000–0x0FFFFFFF) is RAM. A higher region (e.g., 0x10000000 and above) is MMIO — peripheral registers. The address decoder checks the high bits of the store/load address and routes writes to the appropriate peripheral instead of DMEM.</p>
+
+<div class="box">
+<pre style="font-size:.76rem;color:#94a3b8;font-family:'JetBrains Mono',monospace">Address map:
+  0x00000000 – 0x0FFFFFFF  → Data Memory (DMEM)
+  0x10000000               → UART TX data register
+  0x10000004               → UART status (bit[0] = TX busy)
+  0x10000008               → (reserved)</pre>
+</div>
+
+<h2>UART TX Frame Format</h2>
+<p>A standard UART frame (8N1): 1 start bit (low) + 8 data bits (LSB first) + 1 stop bit (high). At 115200 baud, each bit is 1/115200 ≈ 8.68 µs wide. With a 100 MHz clock, that is 868 clock cycles per bit.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">mmio_uart.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="mmio_uart.v">// mmio_uart.v — Memory-mapped UART TX at 0x10000000
+// CPU writes a byte → it is transmitted serially at 115200 baud
+// Parameters: CLK_FREQ = 100_000_000, BAUD = 115_200
+module mmio_uart #(
+    parameter CLK_FREQ = 100_000_000,
+    parameter BAUD     = 115_200
+)(
+    input         clk, rst,
+    // MMIO bus interface (from CPU store stage)
+    input  [31:0] addr,
+    input  [31:0] wdata,
+    input         we,         // 1 = write this cycle
+    output [31:0] rdata,      // status register read
+    // UART TX pin
+    output reg    uart_tx
+);
+    localparam BAUD_DIV = CLK_FREQ / BAUD; // = 868 for 100 MHz/115200
+
+    // ── TX shift register and control ────────────────────────────
+    reg [9:0]  shift_reg; // {stop, data[7:0], start} = 10 bits
+    reg [15:0] baud_cnt;
+    reg [3:0]  bit_cnt;   // 0..9
+    reg        busy;
+
+    // Status register: bit[0] = busy
+    assign rdata = (addr == 32'h10000000) ? {31'b0, busy} : 32'h0;
+
+    // ── Load new byte when CPU writes 0x10000000 ─────────────────
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            busy      &lt;= 0;
+            uart_tx   &lt;= 1'b1; // idle = high
+            baud_cnt  &lt;= 0;
+            bit_cnt   &lt;= 0;
+            shift_reg &lt;= 10'h3FF; // all ones
+        end else if (we &amp;&amp; (addr == 32'h10000000) &amp;&amp; !busy) begin
+            // Load frame: {stop=1, data[7:0], start=0}
+            shift_reg &lt;= {1'b1, wdata[7:0], 1'b0};
+            baud_cnt  &lt;= 0;
+            bit_cnt   &lt;= 0;
+            busy      &lt;= 1;
+        end else if (busy) begin
+            if (baud_cnt == BAUD_DIV - 1) begin
+                baud_cnt &lt;= 0;
+                uart_tx  &lt;= shift_reg[0];     // output LSB
+                shift_reg &lt;= {1'b1, shift_reg[9:1]}; // shift right
+                if (bit_cnt == 9) begin
+                    busy    &lt;= 0;
+                    uart_tx &lt;= 1'b1;           // return to idle
+                end else
+                    bit_cnt &lt;= bit_cnt + 1;
+            end else
+                baud_cnt &lt;= baud_cnt + 1;
+        end
+    end
+endmodule</pre>
+</div>
+
+<h2>Wiring MMIO into the CPU</h2>
+<p>The CPU's memory stage now passes the store address and data to both the DMEM and the MMIO decoder. The MMIO module checks the address and accepts the write if it matches <code>0x10000000</code>:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">mmio_wiring_snippet.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="mmio_wiring_snippet.v">// In the CPU top module — MEM stage:
+wire is_mmio   = (alu_out[31:28] == 4'h1); // addr >= 0x10000000
+wire dmem_we   = MemWrite &amp;&amp; !is_mmio;
+wire mmio_we   = MemWrite &amp;&amp;  is_mmio;
+
+// DMEM handles normal memory
+dmem dmem0(.clk(clk),.we(dmem_we),.addr(alu_out),
+           .wdata(rdata2),.funct3(funct3),.rdata(dmem_rdata));
+
+// MMIO handles peripheral addresses
+wire [31:0] mmio_rdata;
+mmio_uart uart0(.clk(clk),.rst(rst),
+                .addr(alu_out),.wdata(rdata2),.we(mmio_we),
+                .rdata(mmio_rdata),.uart_tx(uart_tx));
+
+// Read mux: select DMEM or MMIO based on address
+wire [31:0] mem_rdata = is_mmio ? mmio_rdata : dmem_rdata;</pre>
+</div>
+
+<h2>Testbench — UART Write Triggers TX</h2>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_mmio_uart.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_mmio_uart.v">// tb_mmio_uart.v — Verify writing to 0x10000000 starts UART TX
+`timescale 1ns/1ps
+module tb_mmio_uart;
+    reg clk=0, rst=1;
+    always #5 clk=~clk; // 100 MHz
+
+    reg [31:0] addr, wdata;
+    reg        we;
+    wire [31:0] rdata;
+    wire        uart_tx;
+
+    // Use CLK_FREQ=100 but BAUD=10 for fast simulation
+    mmio_uart #(.CLK_FREQ(100),.BAUD(10)) dut (
+        .clk(clk),.rst(rst),
+        .addr(addr),.wdata(wdata),.we(we),
+        .rdata(rdata),.uart_tx(uart_tx)
+    );
+
+    initial begin
+        $dumpfile("tb_mmio_uart.vcd"); $dumpvars(0,tb_mmio_uart);
+        we=0; addr=0; wdata=0;
+        @(posedge clk); @(posedge clk); rst=0;
+
+        // Write 'A' (0x41) to UART TX register
+        addr=32'h10000000; wdata=32'h41; we=1;
+        @(posedge clk); we=0;
+
+        // Check busy goes high
+        @(posedge clk); addr=32'h10000000;
+        if(rdata[0]===1'b1) $display("PASS: UART busy after write");
+        else $display("FAIL: UART not busy");
+
+        // Wait for transmission to complete (10 bits * 10 clocks = 100 cycles)
+        repeat(120) @(posedge clk);
+        addr=32'h10000000;
+        @(posedge clk);
+        if(rdata[0]===1'b0) $display("PASS: UART idle after TX complete");
+        else $display("FAIL: UART still busy");
+
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<div class="takeaways">
+<h3>Day 22 Takeaways</h3>
+<ul>
+<li><b>MMIO</b> uses the existing load/store infrastructure — no special I/O instructions needed. The CPU just stores to a peripheral address.</li>
+<li>The <b>address decoder</b> (checking high address bits) routes writes to DMEM or a peripheral register.</li>
+<li>A UART TX shifts out 10 bits: 1 start + 8 data + 1 stop, at a rate set by the baud-rate divider.</li>
+<li>Address <code>0x10000000</code> is the standard QEMU UART address for RISC-V — using the same address makes the design compatible with QEMU emulation.</li>
+<li>Adding more peripherals (GPIO, SPI, I2C) follows the same pattern: assign an address, add a module, connect to the MMIO bus.</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is memory-mapped I/O?</h3><p>MMIO maps peripheral registers into the CPU's address space. The CPU writes to a peripheral address using SW — no special I/O instructions. An address decoder detects the address range and routes it to the peripheral instead of DMEM.</p></div>
+<div class="faq-item"><h3>How does a UART transmitter work?</h3><p>UART TX shifts 10 bits serially: 1 start bit (low), 8 data bits LSB-first, 1 stop bit (high). A baud-rate counter divides the clock to produce the correct bit timing. At 115200 baud with a 100 MHz clock that is 868 cycles per bit.</p></div>
+<div class="faq-item"><h3>What address does our RISC-V UART use?</h3><p>0x10000000 — the same as QEMU's RISC-V UART. The address decoder checks if bits[31:28] == 4'h1 and routes all writes in that region to the MMIO module.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-21-csrs-traps-exceptions/"><span class="lab">Previous</span><div class="ti">← Day 21: CSRs, Traps &amp; Exceptions</div></a>
+<a class="next" href="/riscv-from-scratch/day-23-m-extension-multiply-divide/"><span class="lab">Up next</span><div class="ti">Day 23: The M-Extension — MUL &amp; DIV →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

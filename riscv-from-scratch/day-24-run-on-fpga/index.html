@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 24: Run Your RISC-V CPU on an FPGA — Basys3/Nexys4 | RISC-V from Scratch</title>
+<meta name="description" content="Day 24 of RISC-V from Scratch. Map the RISC-V CPU to a real FPGA. Build fpga_top.v — top wrapper for Basys3/Nexys4 with block RAM instruction memory, UART TX pin, and LED register display. Explains synthesis, implementation, and bitstream generation in Vivado.">
+<meta name="keywords" content="RISC-V FPGA verilog, fpga_top.v, RISC-V Basys3 verilog, RISC-V Nexys4 verilog, BRAM IMEM verilog, Vivado RISC-V, XDC constraints RISC-V, FPGA bitstream RISC-V, RISC-V on FPGA tutorial, riscv_core FPGA synthesis">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-24-run-on-fpga/">
+<meta property="og:title" content="Day 24: Run Your RISC-V CPU on an FPGA — Basys3/Nexys4">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 24: Run Your RISC-V CPU on an FPGA","url":"https://ecrionix.org/riscv-from-scratch/day-24-run-on-fpga/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 24: Run on FPGA","item":"https://ecrionix.org/riscv-from-scratch/day-24-run-on-fpga/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"How do you map instruction memory to FPGA block RAM?","acceptedAnswer":{"@type":"Answer","text":"Replace the reg array in imem.v with an instantiation of the FPGA's Block RAM primitive. In Vivado you can use a BRAM IP core configured as Single Port ROM and initialize it from a .coe file (Xilinx coefficient file) containing the program hex values. Alternatively, a Verilog RAMB36E1 primitive can be instantiated directly."}},
+{"@type":"Question","name":"What XDC constraints are needed for a RISC-V CPU on Basys3?","acceptedAnswer":{"@type":"Answer","text":"You need at minimum: a clock constraint (100 MHz for the Basys3 W5 pin), a reset button mapping (BTNC), UART TX pin (USB-RS232 TXD_IN J A5), and LED output pins if you want to display register values. The constraint file sets the port-to-pin mapping and the clock period for the place-and-route tool."}},
+{"@type":"Question","name":"What is a bitstream and how do you generate it in Vivado?","acceptedAnswer":{"@type":"Answer","text":"A bitstream is the binary configuration file that programs the FPGA's configuration memory, setting up lookup tables, routing, and BRAM contents. In Vivado: Run Synthesis → Run Implementation → Generate Bitstream. The process typically takes 2–5 minutes for a small CPU. Then use Program Device to download the bitstream to the FPGA via USB-JTAG."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 24</span></div>
+<div class="wrap">
+<span class="daytag">DAY 24 · PHASE 4 — ADVANCED &amp; REAL HARDWARE</span>
+<h1>Run Your CPU on an FPGA</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">Simulation is powerful, but there is nothing like watching your CPU actually run on silicon. Today we take <code>riscv_core.v</code>, wrap it in an FPGA top module, map instruction memory to block RAM, connect the UART TX pin and LEDs, and generate a bitstream for the <b>Basys3</b> or <b>Nexys4</b> board. Your CPU runs at 100 MHz on real hardware.</p>
+
+<h2>The FPGA Flow: Synthesis → Implementation → Bitstream</h2>
+<ol>
+<li><b>Synthesis</b> — Vivado translates RTL Verilog to a netlist of FPGA primitives (LUTs, flip-flops, BRAMs, DSPs).</li>
+<li><b>Implementation</b> — Place-and-route: assigns each LUT/FF to a physical location and routes the wires between them.</li>
+<li><b>Bitstream generation</b> — Packs the placed-and-routed design into the binary configuration file for the FPGA.</li>
+<li><b>Program device</b> — Downloads the bitstream via USB-JTAG. The FPGA is configured instantly.</li>
+</ol>
+
+<h2>fpga_top.v — Basys3/Nexys4 Wrapper</h2>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">fpga_top.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="fpga_top.v">// fpga_top.v — RISC-V CPU top level for Basys3 / Nexys4
+// Board clock: 100 MHz on pin W5 (Basys3)
+// Reset:       BTNC (active high)
+// UART TX:     pin A18 (Basys3 USB-RS232 TXD)
+// LEDs:        LD0..LD15 — show low 16 bits of register x2 (accumulator)
+module fpga_top (
+    input         clk_100mhz,  // 100 MHz board clock
+    input         btnc,        // reset button
+    output        uart_tx,     // UART TX → PC terminal
+    output [15:0] led          // 16 LEDs
+);
+    // ── Clock and reset ───────────────────────────────────────────
+    wire clk = clk_100mhz;
+    wire rst = btnc;
+
+    // ── RISC-V core ───────────────────────────────────────────────
+    // riscv_core from Day 15, with MMIO UART from Day 22
+    wire uart_tx_pin;
+    riscv_core_fpga #(
+        .IMEM_INIT_FILE("program.hex")
+    ) cpu (
+        .clk(clk),
+        .rst(rst),
+        .uart_tx(uart_tx_pin)
+    );
+
+    assign uart_tx = uart_tx_pin;
+
+    // ── LED display — show x2 register ───────────────────────────
+    // x2 is the accumulator in our sum program
+    assign led = cpu.rf.regs[2][15:0];
+
+endmodule
+
+// riscv_core_fpga — version of riscv_core that uses BRAM for IMEM
+// and connects the MMIO UART
+module riscv_core_fpga #(
+    parameter IMEM_INIT_FILE = "program.hex"
+)(
+    input  clk, rst,
+    output uart_tx
+);
+    // ── Program Counter ───────────────────────────────────────────
+    reg  [31:0] pc;
+    wire [31:0] pc4 = pc + 4;
+
+    // ── BRAM Instruction Memory ───────────────────────────────────
+    // Xilinx BRAM inferred from initialized reg array
+    // Vivado will map this to block RAM automatically
+    reg [31:0] imem [0:255];
+    initial $readmemh(IMEM_INIT_FILE, imem);
+    wire [31:0] inst = imem[pc[9:2]]; // word-addressed
+
+    // ── (same datapath as riscv_core, abbreviated for clarity) ───
+    wire [6:0] opcode = inst[6:0];
+    wire [4:0] rd     = inst[11:7];
+    wire [2:0] funct3 = inst[14:12];
+    wire [4:0] rs1    = inst[19:15];
+    wire [4:0] rs2    = inst[24:20];
+    wire [6:0] funct7 = inst[31:25];
+
+    wire RegWrite, ALUSrc, MemRead, MemWrite, WBSel, Branch, Jal, Jalr;
+    wire [3:0] ALUOp;
+    control ctrl(.opcode(opcode),.funct3(funct3),.funct7(funct7),
+                 .RegWrite(RegWrite),.ALUSrc(ALUSrc),
+                 .MemRead(MemRead),.MemWrite(MemWrite),.WBSel(WBSel),
+                 .ALUOp(ALUOp),.Branch(Branch),.Jal(Jal),.Jalr(Jalr));
+
+    wire [31:0] rdata1, rdata2, wr_data;
+    regfile rf(.clk(clk),.we(RegWrite),.rs1(rs1),.rs2(rs2),.rd(rd),
+               .wdata(wr_data),.rdata1(rdata1),.rdata2(rdata2));
+
+    wire [31:0] imm;
+    immgen ig(.inst(inst),.imm(imm));
+
+    wire [31:0] alu_b = ALUSrc ? imm : rdata2;
+    wire [31:0] alu_out;
+    wire        alu_zero, alu_lt, alu_ltu;
+    alu alu0(.a(rdata1),.b(alu_b),.op(ALUOp),
+             .result(alu_out),.zero(alu_zero),.lt(alu_lt),.ltu(alu_ltu));
+
+    // MMIO / DMEM address decode
+    wire is_mmio = (alu_out[31:28] == 4'h1);
+    wire [31:0] dmem_rdata;
+    dmem dmem0(.clk(clk),.we(MemWrite &amp;&amp; !is_mmio),
+               .addr(alu_out),.wdata(rdata2),.funct3(funct3),.rdata(dmem_rdata));
+
+    wire [31:0] mmio_rdata;
+    mmio_uart #(.CLK_FREQ(100_000_000),.BAUD(115_200)) uart0(
+        .clk(clk),.rst(rst),
+        .addr(alu_out),.wdata(rdata2),.we(MemWrite &amp;&amp; is_mmio),
+        .rdata(mmio_rdata),.uart_tx(uart_tx));
+
+    wire [31:0] mem_rdata = is_mmio ? mmio_rdata : dmem_rdata;
+
+    wire        branch_taken;
+    wire [31:0] branch_target;
+    branch_unit bu(.funct3(funct3),.zero(alu_zero),.alu_lt(alu_lt),.alu_ltu(alu_ltu),
+                   .pc(pc),.b_imm(imm),.branch_taken(branch_taken),.branch_target(branch_target));
+
+    wire [31:0] pc_next =
+        (Branch &amp; branch_taken) ? branch_target :
+        Jal  ? (pc + imm) :
+        Jalr ? ((rdata1 + imm) &amp; ~32'h1) : pc4;
+
+    always @(posedge clk or posedge rst)
+        if (rst) pc &lt;= 0; else pc &lt;= pc_next;
+
+    wire [31:0] wb_mem = WBSel ? mem_rdata : alu_out;
+    assign wr_data = (Jal | Jalr) ? pc4 : wb_mem;
+endmodule</pre>
+</div>
+
+<h2>XDC Constraints (Basys3)</h2>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">basys3.xdc</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="basys3.xdc">## Basys3 XDC constraints for riscv_core_fpga
+## Clock: 100 MHz on W5
+set_property PACKAGE_PIN W5 [get_ports clk_100mhz]
+set_property IOSTANDARD LVCMOS33 [get_ports clk_100mhz]
+create_clock -add -name sys_clk_pin -period 10.00 \
+    -waveform {0 5} [get_ports clk_100mhz]
+
+## Reset: BTNC
+set_property PACKAGE_PIN U18 [get_ports btnc]
+set_property IOSTANDARD LVCMOS33 [get_ports btnc]
+
+## UART TX → USB serial (goes to PC terminal at 115200 baud)
+set_property PACKAGE_PIN A18 [get_ports uart_tx]
+set_property IOSTANDARD LVCMOS33 [get_ports uart_tx]
+
+## LEDs LD0..LD15
+set_property PACKAGE_PIN U16 [get_ports {led[0]}]
+set_property PACKAGE_PIN E19 [get_ports {led[1]}]
+set_property PACKAGE_PIN U19 [get_ports {led[2]}]
+set_property PACKAGE_PIN V19 [get_ports {led[3]}]
+set_property PACKAGE_PIN W18 [get_ports {led[4]}]
+set_property PACKAGE_PIN U15 [get_ports {led[5]}]
+set_property PACKAGE_PIN U14 [get_ports {led[6]}]
+set_property PACKAGE_PIN V14 [get_ports {led[7]}]
+set_property PACKAGE_PIN V13 [get_ports {led[8]}]
+set_property PACKAGE_PIN V3  [get_ports {led[9]}]
+set_property PACKAGE_PIN W3  [get_ports {led[10]}]
+set_property PACKAGE_PIN U3  [get_ports {led[11]}]
+set_property PACKAGE_PIN P3  [get_ports {led[12]}]
+set_property PACKAGE_PIN N3  [get_ports {led[13]}]
+set_property PACKAGE_PIN P1  [get_ports {led[14]}]
+set_property PACKAGE_PIN L1  [get_ports {led[15]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {led[*]}]</pre>
+</div>
+
+<h2>Vivado Flow Step by Step</h2>
+<ol>
+<li>Open Vivado → <b>Create Project</b> → RTL Project → add all .v files + program.hex</li>
+<li>Set <b>target device</b>: xc7a35tcpg236-1 (Basys3) or xc7a100tcsg324-1 (Nexys4)</li>
+<li>Add the XDC constraints file</li>
+<li><b>Run Synthesis</b> (F11) → check Timing Summary: critical path should be &lt;10 ns for 100 MHz</li>
+<li><b>Run Implementation</b> — place and route</li>
+<li><b>Generate Bitstream</b> → Open Hardware Manager → Program Device</li>
+</ol>
+
+<div class="takeaways">
+<h3>Day 24 Takeaways</h3>
+<ul>
+<li>The <b>FPGA flow</b> is: Synthesis (RTL → netlist) → Implementation (place + route) → Bitstream → Program.</li>
+<li>Instruction memory maps to <b>BRAM</b> on the FPGA — synthesized automatically from an initialized <code>reg</code> array with <code>$readmemh</code>.</li>
+<li><b>XDC constraints</b> bind Verilog port names to physical FPGA pin names — without them, the tools don't know which pin is the clock.</li>
+<li>The UART TX pin connects directly to the board's USB serial chip — open a terminal at 115200 baud to see output.</li>
+<li>LEDs show register contents — the CPU's loop result is visible as a binary number on the LEDs in real time.</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>How do you map instruction memory to FPGA block RAM?</h3><p>Replace the reg array with an initialized BRAM. Vivado infers block RAM from a reg array initialized with $readmemh. Alternatively use a BRAM IP core with a .coe initialization file.</p></div>
+<div class="faq-item"><h3>What XDC constraints are needed?</h3><p>At minimum: clock period constraint (create_clock), reset button pin, UART TX pin, and LED pins. Each port must have a PACKAGE_PIN and IOSTANDARD property.</p></div>
+<div class="faq-item"><h3>What is a bitstream?</h3><p>The binary file that configures the FPGA's lookup tables, routing, and BRAM contents. Generated by Vivado after synthesis and implementation. Downloaded to the FPGA via USB-JTAG using Program Device.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-23-m-extension-multiply-divide/"><span class="lab">Previous</span><div class="ti">← Day 23: M-Extension MUL &amp; DIV</div></a>
+<a class="next" href="/riscv-from-scratch/day-25-caches-linux-capable/"><span class="lab">Up next</span><div class="ti">Day 25: Caches &amp; the Road to Linux →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

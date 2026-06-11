@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 23: The M-Extension — MUL, DIV, REM in Verilog | RISC-V from Scratch</title>
+<meta name="description" content="Day 23 of RISC-V from Scratch. Implement the RV32M multiply-divide extension. Build mul_unit.v — 2-stage pipelined 32x32 multiplier, and div_unit.v — 32-cycle restoring divider. Testbench verifies MUL, MULH, DIV, REM, DIVU, REMU results.">
+<meta name="keywords" content="RV32M verilog, MUL verilog, MULH verilog, DIV verilog, REM verilog, RISC-V multiply verilog, mul_unit.v, div_unit.v, restoring divider verilog, pipelined multiplier verilog, RISC-V M extension verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-23-m-extension-multiply-divide/">
+<meta property="og:title" content="Day 23: The M-Extension — MUL, DIV, REM in Verilog">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 23: The M-Extension — MUL, DIV, REM","url":"https://ecrionix.org/riscv-from-scratch/day-23-m-extension-multiply-divide/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 23: M-Extension MUL DIV","item":"https://ecrionix.org/riscv-from-scratch/day-23-m-extension-multiply-divide/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is the RV32M extension?","acceptedAnswer":{"@type":"Answer","text":"RV32M is the integer multiply-divide extension for RV32I. It adds 8 instructions: MUL (low 32 bits of product), MULH (high 32 bits, signed×signed), MULHSU (signed×unsigned), MULHU (unsigned×unsigned), DIV (signed quotient), DIVU (unsigned quotient), REM (signed remainder), REMU (unsigned remainder). All share opcode 0110011 with funct7=0000001."}},
+{"@type":"Question","name":"How does a restoring divider work?","acceptedAnswer":{"@type":"Answer","text":"A restoring divider works bit by bit. At each step it subtracts the divisor from the current partial remainder. If the result is non-negative the quotient bit is 1 and the remainder is kept. If negative the quotient bit is 0 and the remainder is restored to its previous value (hence restoring). After 32 steps the quotient and remainder are complete."}},
+{"@type":"Question","name":"Why use a pipelined multiplier instead of combinatorial?","acceptedAnswer":{"@type":"Answer","text":"A 32x32 combinatorial multiplier is a large combinational circuit. On fast clocks (e.g. 500 MHz) the delay through 32 partial product adders exceeds the clock period. A 2-stage pipelined multiplier splits the work across two cycles, halving the critical path and allowing higher clock frequencies at the cost of 2-cycle latency."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 23</span></div>
+<div class="wrap">
+<span class="daytag">DAY 23 · PHASE 4 — ADVANCED &amp; REAL HARDWARE</span>
+<h1>The M-Extension — Multiply &amp; Divide</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">The base RV32I ISA has no multiplication or division — those are in the optional <b>M extension</b>. Any real-world RISC-V implementation marks itself as <b>RV32IM</b> once it adds these 8 instructions. Today we build a pipelined multiplier and an iterative divider, and show how to hook them into the datapath.</p>
+
+<h2>The 8 RV32M Instructions</h2>
+<table>
+<thead><tr><th>Instruction</th><th>funct3</th><th>Result in rd</th><th>Types</th></tr></thead>
+<tbody>
+<tr><td><b>MUL</b></td><td class="m">000</td><td>Low 32 bits of rs1 × rs2</td><td>Signed × Signed</td></tr>
+<tr><td><b>MULH</b></td><td class="m">001</td><td>High 32 bits of rs1 × rs2</td><td>Signed × Signed</td></tr>
+<tr><td><b>MULHSU</b></td><td class="m">010</td><td>High 32 bits of rs1 × rs2</td><td>Signed × Unsigned</td></tr>
+<tr><td><b>MULHU</b></td><td class="m">011</td><td>High 32 bits of rs1 × rs2</td><td>Unsigned × Unsigned</td></tr>
+<tr><td><b>DIV</b></td><td class="m">100</td><td>Signed quotient</td><td>Signed ÷ Signed</td></tr>
+<tr><td><b>DIVU</b></td><td class="m">101</td><td>Unsigned quotient</td><td>Unsigned ÷ Unsigned</td></tr>
+<tr><td><b>REM</b></td><td class="m">110</td><td>Signed remainder</td><td>Signed rem Signed</td></tr>
+<tr><td><b>REMU</b></td><td class="m">111</td><td>Unsigned remainder</td><td>Unsigned rem Unsigned</td></tr>
+</tbody>
+</table>
+<p>All 8 share opcode <code>0110011</code> (same as R-type) with <code>funct7 = 0000001</code>. The control unit detects <code>funct7=0000001</code> and routes to the multiply/divide units instead of the base ALU.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">mul_unit.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="mul_unit.v">// mul_unit.v — 2-stage pipelined 32x32 multiplier (RV32M)
+// Latency: 2 cycles. funct3 selects which 32-bit slice of the 64-bit product.
+module mul_unit (
+    input         clk, rst,
+    input         valid,        // 1 = compute this cycle
+    input  [31:0] a, b,
+    input  [ 2:0] funct3,       // 000=MUL, 001=MULH, 010=MULHSU, 011=MULHU
+    output reg [31:0] result,
+    output reg        done      // result is valid on next cycle after done
+);
+    // Stage 1: sign-extend operands, store product type
+    reg [63:0] stage1_prod;
+    reg [ 2:0] stage1_funct3;
+    reg        stage1_valid;
+
+    wire signed [63:0] signed_prod    = $signed(a)   * $signed(b);
+    wire        [63:0] unsigned_prod  = a * b;
+    wire signed [63:0] signedU_prod   = $signed(a)   * {1'b0, b};
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            stage1_valid &lt;= 0;
+        end else begin
+            stage1_valid  &lt;= valid;
+            stage1_funct3 &lt;= funct3;
+            case (funct3)
+                3'b000, 3'b001: stage1_prod &lt;= signed_prod;
+                3'b010:         stage1_prod &lt;= signedU_prod;
+                3'b011:         stage1_prod &lt;= unsigned_prod;
+                default:        stage1_prod &lt;= 0;
+            endcase
+        end
+    end
+
+    // Stage 2: select the correct 32-bit slice
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            done &lt;= 0;
+        end else begin
+            done &lt;= stage1_valid;
+            if (stage1_funct3 == 3'b000)
+                result &lt;= stage1_prod[31:0];   // MUL — low half
+            else
+                result &lt;= stage1_prod[63:32];  // MULH/MULHSU/MULHU — high half
+        end
+    end
+endmodule</pre>
+</div>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">div_unit.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="div_unit.v">// div_unit.v — 32-cycle restoring divider (RV32M DIV/DIVU/REM/REMU)
+// Iterates bit-by-bit for 32 cycles then asserts done for 1 cycle.
+module div_unit (
+    input         clk, rst,
+    input         start,        // assert for 1 cycle to begin
+    input  [31:0] dividend,
+    input  [31:0] divisor,
+    input         is_signed,    // 1=DIV/REM, 0=DIVU/REMU
+    input         rem_sel,      // 1=return remainder, 0=return quotient
+    output reg [31:0] result,
+    output reg        done
+);
+    reg [31:0] D, d;    // dividend magnitude, divisor magnitude
+    reg [31:0] Q;       // quotient accumulator
+    reg [32:0] R;       // partial remainder (one extra sign bit)
+    reg [5:0]  cnt;     // iteration counter 0..31
+    reg        busy;
+    reg        neg_q, neg_r; // sign of quotient and remainder
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            busy &lt;= 0; done &lt;= 0;
+        end else if (start &amp;&amp; !busy) begin
+            // Determine magnitudes and expected signs
+            neg_q &lt;= is_signed &amp;&amp; (dividend[31] ^ divisor[31]);
+            neg_r &lt;= is_signed &amp;&amp;  dividend[31];
+            D     &lt;= (is_signed &amp;&amp; dividend[31]) ? -dividend : dividend;
+            d     &lt;= (is_signed &amp;&amp; divisor[31])  ? -divisor  : divisor;
+            Q     &lt;= 0;
+            R     &lt;= 0;
+            cnt   &lt;= 0;
+            busy  &lt;= 1;
+            done  &lt;= 0;
+        end else if (busy) begin
+            // Restoring division step
+            begin : step
+                reg [32:0] R_shifted;
+                reg [32:0] R_sub;
+                R_shifted = {R[31:0], D[31-cnt[4:0]]};
+                R_sub = R_shifted - {1'b0, d};
+                if (R_sub[32] == 0) begin // non-negative: quotient bit = 1
+                    R &lt;= R_sub;
+                    Q &lt;= {Q[30:0], 1'b1};
+                end else begin
+                    R &lt;= R_shifted;
+                    Q &lt;= {Q[30:0], 1'b0};
+                end
+            end
+            if (cnt == 31) begin
+                busy &lt;= 0;
+                done &lt;= 1;
+                // Apply sign correction
+                result &lt;= rem_sel ?
+                           (neg_r ? -R[31:0] : R[31:0]) :
+                           (neg_q ? -Q       : Q);
+            end else begin
+                cnt &lt;= cnt + 1;
+                done &lt;= 0;
+            end
+        end else
+            done &lt;= 0;
+    end
+endmodule</pre>
+</div>
+
+<h2>Testbench — MUL and DIV</h2>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_m_ext.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_m_ext.v">// tb_m_ext.v — Test mul_unit and div_unit
+`timescale 1ns/1ps
+module tb_m_ext;
+    reg clk=0, rst=1;
+    always #5 clk=~clk;
+
+    // MUL test
+    reg        mul_valid;
+    reg [31:0] mul_a, mul_b;
+    reg [2:0]  mul_f3;
+    wire [31:0] mul_result;
+    wire        mul_done;
+    mul_unit mu(.clk(clk),.rst(rst),.valid(mul_valid),
+                .a(mul_a),.b(mul_b),.funct3(mul_f3),
+                .result(mul_result),.done(mul_done));
+
+    // DIV test
+    reg        div_start;
+    reg [31:0] div_dvd, div_dvs;
+    wire [31:0] div_result;
+    wire        div_done;
+    div_unit du(.clk(clk),.rst(rst),.start(div_start),
+                .dividend(div_dvd),.divisor(div_dvs),
+                .is_signed(1),.rem_sel(0),
+                .result(div_result),.done(div_done));
+
+    initial begin
+        $dumpfile("tb_m_ext.vcd"); $dumpvars(0,tb_m_ext);
+        mul_valid=0; div_start=0;
+        @(posedge clk); @(posedge clk); rst=0;
+
+        // MUL: 7 * 6 = 42
+        mul_a=32'd7; mul_b=32'd6; mul_f3=3'b000; mul_valid=1;
+        @(posedge clk); mul_valid=0;
+        @(posedge clk); @(posedge clk); // 2-cycle latency
+        if(mul_result===32'd42) $display("PASS: MUL 7*6=42");
+        else $display("FAIL: MUL result=%0d", mul_result);
+
+        // DIV: 100 / 7 = 14
+        div_dvd=32'd100; div_dvs=32'd7; div_start=1;
+        @(posedge clk); div_start=0;
+        @(div_done); // wait 32 cycles
+        if(div_result===32'd14) $display("PASS: DIV 100/7=14");
+        else $display("FAIL: DIV result=%0d", div_result);
+
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<div class="takeaways">
+<h3>Day 23 Takeaways</h3>
+<ul>
+<li><b>RV32M</b> adds 8 multiply/divide instructions all sharing funct7=0000001 — easy to detect in the control unit.</li>
+<li><b>MUL</b> returns the low 32 bits; <b>MULH/MULHSU/MULHU</b> return the high 32 bits — useful for 64-bit arithmetic.</li>
+<li>A 2-stage pipelined multiplier achieves 1 result per 2 cycles and reduces critical path vs. combinatorial.</li>
+<li>A restoring divider takes 32 cycles — the pipeline must stall (or the CPU must issue a multi-cycle operation and reorder instructions around it).</li>
+<li>In production CPUs (SiFive U74, ARM Cortex-A55) dividers use SRT (Sweeney Robertson Tocher) radix-4 or radix-16 to complete in ~8 cycles.</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is the RV32M extension?</h3><p>RV32M adds 8 integer multiply/divide instructions: MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU. All use opcode 0110011 with funct7=0000001 to distinguish them from base R-type instructions.</p></div>
+<div class="faq-item"><h3>How does a restoring divider work?</h3><p>It iterates 32 times. Each cycle it shifts the partial remainder left, subtracts the divisor, and if the result is non-negative the quotient bit is 1 (remainder kept); otherwise the quotient bit is 0 and the remainder is restored. After 32 steps both quotient and remainder are ready.</p></div>
+<div class="faq-item"><h3>Why pipeline the multiplier?</h3><p>A 32x32 combinatorial multiplier has a long delay through 32 partial-product adder levels. Pipelining it into 2 stages halves the critical path depth, allowing the overall CPU to run at a higher clock frequency.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-22-memory-mapped-io-uart/"><span class="lab">Previous</span><div class="ti">← Day 22: Memory-Mapped I/O — UART</div></a>
+<a class="next" href="/riscv-from-scratch/day-24-run-on-fpga/"><span class="lab">Up next</span><div class="ti">Day 24: Run Your CPU on an FPGA →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

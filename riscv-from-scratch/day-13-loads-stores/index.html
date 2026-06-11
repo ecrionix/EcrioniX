@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 13: Loads &amp; Stores — Data Memory for Your RISC-V CPU | RISC-V from Scratch</title>
+<meta name="description" content="Day 13 of RISC-V from Scratch. Build dmem.v — a data memory supporting byte, half-word and word access via funct3. Extend the CPU to core_rim.v with a write-back mux that selects ALU result or DMEM data. Full testbench verifies store + load round trip.">
+<meta name="keywords" content="RISC-V data memory verilog, dmem.v, load store verilog, byte half word access funct3, core_rim verilog, LW SW LB SB RISC-V verilog, write-back mux CPU verilog, RISC-V CPU loads stores, RV32I memory access verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-13-loads-stores/">
+<meta property="og:title" content="Day 13: Loads &amp; Stores — Data Memory for Your RISC-V CPU">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 13: Loads & Stores — Data Memory for Your RISC-V CPU","url":"https://ecrionix.org/riscv-from-scratch/day-13-loads-stores/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 13: Loads & Stores","item":"https://ecrionix.org/riscv-from-scratch/day-13-loads-stores/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is funct3 used for in RISC-V load and store instructions?","acceptedAnswer":{"@type":"Answer","text":"funct3 encodes the data width and sign-extension mode for loads and stores. For loads: 000=LB (byte, sign-extend), 001=LH (half-word, sign-extend), 010=LW (word). 100=LBU (byte, zero-extend), 101=LHU (half-word, zero-extend). For stores: 000=SB, 001=SH, 010=SW."}},
+{"@type":"Question","name":"What is the write-back mux (WBSel) in the CPU datapath?","acceptedAnswer":{"@type":"Answer","text":"WBSel selects what gets written back to the register file. When WBSel=0 the ALU result is written (R/I-type). When WBSel=1 the data-memory read data is written (LW/LB/LH). The control unit drives WBSel=1 for load instructions (opcode 0000011)."}},
+{"@type":"Question","name":"Why is data memory separate from instruction memory?","acceptedAnswer":{"@type":"Answer","text":"Harvard architecture uses separate instruction and data memories to allow simultaneous fetch and memory access in the same cycle. RV32I programs access data via loads/stores to dmem while the CPU fetches the next instruction from imem in parallel — both read ports can be active at once."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 13</span></div>
+<div class="wrap">
+<span class="daytag">DAY 13 · PHASE 2 — BUILD THE CPU</span>
+<h1>Loads &amp; Stores</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">Day 12 gave us a CPU that executes R-type and I-type ALU instructions. But every real program needs to read and write memory — arrays, stack variables, function arguments. Today we build <code>dmem.v</code> — a byte-addressable data memory — and upgrade the CPU to <code>core_rim.v</code>, which can execute LW, LB, LH, SW, SB, and SH.</p>
+
+<div class="box key">
+<h3>What you will build today</h3>
+<ul>
+<li><b>dmem.v</b> — synchronous-write, synchronous-read data memory supporting byte, half-word and word access via funct3</li>
+<li><b>core_rim.v</b> — the full single-cycle datapath with a write-back mux (ALU result or DMEM read data)</li>
+<li><b>tb_core_rim.v</b> — testbench that stores a word then loads it back and verifies the register value</li>
+</ul>
+</div>
+
+<h2>How Load and Store Instructions Work</h2>
+<p>RISC-V defines two instruction classes for memory access. <b>Stores</b> (S-type) encode the address as <code>rs1 + S-immediate</code> and write <code>rs2</code> to memory. <b>Loads</b> (I-type) compute the same address and write the value from memory into <code>rd</code>.</p>
+<p>The <code>funct3</code> field selects the width and sign behaviour:</p>
+
+<table>
+<thead><tr><th>funct3</th><th>Instruction</th><th>Width</th><th>Sign on load</th></tr></thead>
+<tbody>
+<tr><td class="m">000</td><td><b>LB / SB</b></td><td>8-bit byte</td><td>Sign-extend</td></tr>
+<tr><td class="m">001</td><td><b>LH / SH</b></td><td>16-bit half</td><td>Sign-extend</td></tr>
+<tr><td class="m">010</td><td><b>LW / SW</b></td><td>32-bit word</td><td>—</td></tr>
+<tr><td class="m">100</td><td><b>LBU</b></td><td>8-bit byte</td><td>Zero-extend</td></tr>
+<tr><td class="m">101</td><td><b>LHU</b></td><td>16-bit half</td><td>Zero-extend</td></tr>
+</tbody>
+</table>
+
+<h2>dmem.v — Data Memory Port Table</h2>
+<p>The data memory is a simple synchronous RAM. Writes happen on the rising clock edge when <code>we=1</code>. Reads happen combinatorially (for a single-cycle CPU) so the result is available in the same cycle as the address.</p>
+
+<table>
+<thead><tr><th>Port</th><th>Direction</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="m">clk</td><td>Input</td><td>1</td><td>Clock — writes are synchronous on rising edge</td></tr>
+<tr><td class="m">we</td><td>Input</td><td>1</td><td>Write enable — 1 for SW/SH/SB, 0 otherwise</td></tr>
+<tr><td class="m">addr</td><td>Input</td><td>32</td><td>Byte address (lower 2 bits used for sub-word alignment)</td></tr>
+<tr><td class="m">wdata</td><td>Input</td><td>32</td><td>Data to write (from rs2)</td></tr>
+<tr><td class="m">funct3</td><td>Input</td><td>3</td><td>Access size/sign mode (000=byte, 001=half, 010=word, 100=LBU, 101=LHU)</td></tr>
+<tr><td class="m">rdata</td><td>Output</td><td>32</td><td>Data read from memory (sign/zero-extended per funct3)</td></tr>
+</tbody>
+</table>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">dmem.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="dmem.v">// dmem.v — Data Memory (byte-addressable, 1 KB)
+// Synchronous write, asynchronous read, byte/half/word via funct3
+module dmem #(parameter DEPTH = 256) (
+    input         clk,
+    input         we,
+    input  [31:0] addr,
+    input  [31:0] wdata,
+    input  [ 2:0] funct3,
+    output reg [31:0] rdata
+);
+    // Storage: word-addressed internally, byte-addressed externally
+    reg [7:0] mem [0:(DEPTH*4)-1];
+
+    // --- Synchronous Write ---
+    always @(posedge clk) begin
+        if (we) begin
+            case (funct3)
+                3'b000: begin // SB — store byte
+                    mem[addr]   &lt;= wdata[7:0];
+                end
+                3'b001: begin // SH — store half-word
+                    mem[addr]   &lt;= wdata[7:0];
+                    mem[addr+1] &lt;= wdata[15:8];
+                end
+                3'b010: begin // SW — store word
+                    mem[addr]   &lt;= wdata[7:0];
+                    mem[addr+1] &lt;= wdata[15:8];
+                    mem[addr+2] &lt;= wdata[23:16];
+                    mem[addr+3] &lt;= wdata[31:24];
+                end
+                default: ; // ignore illegal funct3
+            endcase
+        end
+    end
+
+    // --- Asynchronous Read ---
+    always @(*) begin
+        case (funct3)
+            3'b000: // LB — sign-extend byte
+                rdata = {{24{mem[addr][7]}}, mem[addr]};
+            3'b001: // LH — sign-extend half-word
+                rdata = {{16{mem[addr+1][7]}},
+                          mem[addr+1], mem[addr]};
+            3'b010: // LW — full word
+                rdata = {mem[addr+3], mem[addr+2],
+                          mem[addr+1], mem[addr]};
+            3'b100: // LBU — zero-extend byte
+                rdata = {24'b0, mem[addr]};
+            3'b101: // LHU — zero-extend half-word
+                rdata = {16'b0, mem[addr+1], mem[addr]};
+            default: rdata = 32'b0;
+        endcase
+    end
+endmodule</pre>
+</div>
+
+<h2>The Write-Back Mux (WBSel)</h2>
+<p>Until Day 12, every instruction wrote the ALU result to the register file. Load instructions are different — they write <b>data from memory</b>. We add a <b>write-back mux</b> controlled by the new control signal <code>WBSel</code>:</p>
+<ul>
+<li><b>WBSel = 0</b> → write ALU result (R-type, I-type ALU, JALR)</li>
+<li><b>WBSel = 1</b> → write DMEM read data (LW, LB, LH, LBU, LHU)</li>
+</ul>
+<p>The control unit sets <code>MemRead=1</code> and <code>WBSel=1</code> for any load opcode (<code>0000011</code>), and <code>MemWrite=1</code> for store opcode (<code>0100011</code>).</p>
+
+<h2>core_rim.v — Full Datapath Diagram</h2>
+
+<div class="box">
+<pre style="font-size:.75rem;line-height:1.5;color:#94a3b8;font-family:'JetBrains Mono',monospace">
+       ┌──────┐   inst[31:0]  ┌────────┐
+  PC──▶│ IMEM │─────────────▶│Control │──▶ RegWrite, ALUSrc,
+       └──────┘               │  Unit  │    MemRead, MemWrite, WBSel
+                              └────────┘
+         inst                ┌──────────┐
+  rs1,rs2,rd ──────────────▶│ RegFile  │◀── WB mux result
+                              └──┬───┬──┘
+                            rs1  │   │ rs2
+                                 ▼   ▼
+                          ┌──────────────┐
+          ImmGen ─imm─────▶     ALU      │──▶ alu_result
+                          └──────┬───────┘
+                                 │ addr
+                                 ▼
+                             ┌───────┐
+                             │  DMEM │──▶ rdata
+                             └───────┘
+                                 │
+                    ┌────────────┴─────────┐
+                    │    WBSel mux         │
+                    │  0:alu_result        │
+                    │  1:rdata             │
+                    └──────────────────────┘
+                               │
+                           wr_data ──▶ RegFile rd
+</pre>
+</div>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">core_rim.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="core_rim.v">// core_rim.v — Single-cycle RISC-V core (R/I/M instructions)
+// Executes R-type, I-type ALU, LW/LB/LH/LBU/LHU, SW/SB/SH
+module core_rim (
+    input clk,
+    input rst
+);
+    // ── Program Counter ──────────────────────────────────────────
+    reg  [31:0] pc;
+    wire [31:0] pc_next = pc + 4;
+
+    always @(posedge clk or posedge rst)
+        if (rst) pc &lt;= 0; else pc &lt;= pc_next;
+
+    // ── Instruction Fetch ─────────────────────────────────────────
+    wire [31:0] inst;
+    imem imem0 (.addr(pc), .rdata(inst));
+
+    // ── Decode ────────────────────────────────────────────────────
+    wire [6:0] opcode  = inst[6:0];
+    wire [4:0] rd      = inst[11:7];
+    wire [2:0] funct3  = inst[14:12];
+    wire [4:0] rs1     = inst[19:15];
+    wire [4:0] rs2     = inst[24:20];
+    wire [6:0] funct7  = inst[31:25];
+
+    // ── Control Signals ──────────────────────────────────────────
+    wire RegWrite, ALUSrc, MemRead, MemWrite, WBSel;
+    wire [3:0] ALUOp;
+    control ctrl (
+        .opcode(opcode), .funct3(funct3), .funct7(funct7),
+        .RegWrite(RegWrite), .ALUSrc(ALUSrc),
+        .MemRead(MemRead), .MemWrite(MemWrite),
+        .WBSel(WBSel), .ALUOp(ALUOp)
+    );
+
+    // ── Register File ────────────────────────────────────────────
+    wire [31:0] rdata1, rdata2;
+    wire [31:0] wr_data;
+    regfile rf (
+        .clk(clk), .we(RegWrite),
+        .rs1(rs1), .rs2(rs2), .rd(rd),
+        .wdata(wr_data),
+        .rdata1(rdata1), .rdata2(rdata2)
+    );
+
+    // ── Immediate Generator ───────────────────────────────────────
+    wire [31:0] imm;
+    immgen ig (.inst(inst), .imm(imm));
+
+    // ── ALU ───────────────────────────────────────────────────────
+    wire [31:0] alu_b   = ALUSrc ? imm : rdata2;
+    wire [31:0] alu_out;
+    wire        alu_zero;
+    alu alu0 (
+        .a(rdata1), .b(alu_b),
+        .op(ALUOp),
+        .result(alu_out), .zero(alu_zero)
+    );
+
+    // ── Data Memory ───────────────────────────────────────────────
+    wire [31:0] dmem_rdata;
+    dmem dmem0 (
+        .clk(clk),
+        .we(MemWrite),
+        .addr(alu_out),
+        .wdata(rdata2),
+        .funct3(funct3),
+        .rdata(dmem_rdata)
+    );
+
+    // ── Write-Back Mux ────────────────────────────────────────────
+    assign wr_data = WBSel ? dmem_rdata : alu_out;
+
+endmodule</pre>
+</div>
+
+<h2>Testbench — Store, Load, Verify</h2>
+<p>The testbench writes a known value into data memory using <code>SW</code>, then reads it back with <code>LW</code> into a different register and checks the value matches.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_core_rim.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_core_rim.v">// tb_core_rim.v — Testbench for core_rim (loads + stores)
+// Program: addi x1,x0,42  → sw x1,0(x0)  → lw x2,0(x0)
+// Expected: x2 == 42 after lw executes
+`timescale 1ns/1ps
+module tb_core_rim;
+    reg clk = 0, rst = 1;
+    always #5 clk = ~clk; // 100 MHz
+
+    core_rim dut (.clk(clk), .rst(rst));
+
+    // Preload instruction memory with a tiny store-load program
+    // (assumes imem is a reg array accessible via hierarchical path)
+    initial begin
+        // Encode:  addi x1,x0,42  = 0x02a00093
+        //          sw   x1,0(x0)  = 0x00102023
+        //          lw   x2,0(x0)  = 0x00002103
+        //          nop (addi x0,x0,0) loop
+        dut.imem0.mem[0] = 32'h02a00093; // addi x1,x0,42
+        dut.imem0.mem[1] = 32'h00102023; // sw   x1,0(x0)
+        dut.imem0.mem[2] = 32'h00002103; // lw   x2,0(x0)
+        dut.imem0.mem[3] = 32'h00000013; // nop
+
+        $dumpfile("tb_core_rim.vcd");
+        $dumpvars(0, tb_core_rim);
+
+        @(negedge rst); // wait for rst to go low
+        rst = 0;
+
+        repeat(6) @(posedge clk); // run 6 cycles
+        #1;
+
+        // Inspect x2 via hierarchical path to regfile
+        if (dut.rf.regs[2] === 32'd42)
+            $display("PASS: x2 = %0d (expected 42)", dut.rf.regs[2]);
+        else
+            $display("FAIL: x2 = %0d (expected 42)", dut.rf.regs[2]);
+
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<h2>What the Control Unit Needs to Add</h2>
+<p>The <code>control.v</code> from Day 11 decoded R-type and I-type ALU. We extend it to drive the two new signals <code>MemRead</code>, <code>MemWrite</code>, and <code>WBSel</code>:</p>
+
+<table>
+<thead><tr><th>Opcode</th><th>Type</th><th>MemRead</th><th>MemWrite</th><th>WBSel</th></tr></thead>
+<tbody>
+<tr><td class="m">0110011</td><td>R-type</td><td>0</td><td>0</td><td>0 (ALU)</td></tr>
+<tr><td class="m">0010011</td><td>I-type ALU</td><td>0</td><td>0</td><td>0 (ALU)</td></tr>
+<tr><td class="m">0000011</td><td>Load (LW/LB/LH)</td><td>1</td><td>0</td><td>1 (DMEM)</td></tr>
+<tr><td class="m">0100011</td><td>Store (SW/SB/SH)</td><td>0</td><td>1</td><td>X (no rd)</td></tr>
+</tbody>
+</table>
+
+<div class="takeaways">
+<h3>Day 13 Takeaways</h3>
+<ul>
+<li>Data memory is <b>byte-addressable</b>. All byte lanes live in an array <code>mem[0..N]</code>; a word at address 4 occupies <code>mem[4..7]</code>.</li>
+<li><b>funct3</b> encodes both width (byte/half/word) and sign extension (signed vs unsigned) for loads.</li>
+<li>Stores never write a register — <code>RegWrite=0</code> for S-type.</li>
+<li>The <b>write-back mux</b> (WBSel) is the only new datapath element needed to support loads.</li>
+<li>Next up: Day 14 adds branches and jumps — the CPU will finally be able to loop!</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is funct3 used for in RISC-V load and store instructions?</h3><p>funct3 encodes the data width and sign-extension mode. 000=LB/SB (byte), 001=LH/SH (half-word), 010=LW/SW (word), 100=LBU (byte, zero-extend), 101=LHU (half-word, zero-extend).</p></div>
+<div class="faq-item"><h3>What is the write-back mux (WBSel)?</h3><p>WBSel selects what is written back to the register file. WBSel=0 writes the ALU result; WBSel=1 writes the DMEM read data (for load instructions). The control unit drives WBSel=1 for opcode 0000011.</p></div>
+<div class="faq-item"><h3>Why is data memory separate from instruction memory?</h3><p>Harvard architecture uses separate memories so both can be accessed in the same cycle — the CPU fetches an instruction from imem while simultaneously reading/writing dmem.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-12-r-type-i-type-datapath/"><span class="lab">Previous</span><div class="ti">← Day 12: R-type &amp; I-type Datapath</div></a>
+<a class="next" href="/riscv-from-scratch/day-14-branches-jumps/"><span class="lab">Up next</span><div class="ti">Day 14: Branches &amp; Jumps →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

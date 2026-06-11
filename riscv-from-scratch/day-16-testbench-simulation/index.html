@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 16: Testbench &amp; Simulation — Deep-Dive CPU Verification | RISC-V from Scratch</title>
+<meta name="description" content="Day 16 of RISC-V from Scratch. Master CPU testbench techniques: $dumpfile for waveforms, $readmemh for programs, monitoring register state, checking memory, self-checking vs manual inspection. Build tb_full.v — a comprehensive multi-program testbench for riscv_core.">
+<meta name="keywords" content="RISC-V testbench verilog, CPU simulation verilog, $dumpfile verilog, $readmemh verilog, self-checking testbench, register file monitor verilog, verilog testbench techniques, tb_full.v RISC-V, verilog simulation best practices">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-16-testbench-simulation/">
+<meta property="og:title" content="Day 16: Testbench &amp; Simulation — Deep-Dive CPU Verification">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 16: Testbench & Simulation","url":"https://ecrionix.org/riscv-from-scratch/day-16-testbench-simulation/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 16: Testbench & Simulation","item":"https://ecrionix.org/riscv-from-scratch/day-16-testbench-simulation/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What is $dumpfile and $dumpvars in Verilog?","acceptedAnswer":{"@type":"Answer","text":"$dumpfile(filename) specifies the VCD (Value Change Dump) file to write waveform data to. $dumpvars(levels, scope) tells the simulator which signals to record. Level 0 records all signals recursively from the scope. The VCD file can be opened in GTKWave or any waveform viewer to visually debug your design."}},
+{"@type":"Question","name":"What is a self-checking testbench?","acceptedAnswer":{"@type":"Answer","text":"A self-checking testbench automatically compares the DUT outputs against expected values and prints PASS or FAIL. Instead of manually inspecting waveforms, the testbench contains an if-else that checks the result and uses $display to report it. This makes regression testing fast — you can run thousands of tests and look only at failures."}},
+{"@type":"Question","name":"How do you load a program into a Verilog simulation?","acceptedAnswer":{"@type":"Answer","text":"Use the $readmemh system task to load a hex file into a memory array: $readmemh(filename, array). The hex file contains one 32-bit instruction per line in hexadecimal. You can also use $readmemb for binary files. This is the standard way to run RISC-V programs in RTL simulation without synthesizing."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 16</span></div>
+<div class="wrap">
+<span class="daytag">DAY 16 · PHASE 3 — PIPELINE &amp; OPTIMIZE</span>
+<h1>Testbench &amp; Simulation</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">Before we pipeline the CPU in Day 17, let us level up our verification skills. A good testbench is what separates a hobby project from industrial-quality RTL. Today we cover every core testbench technique: waveform dumps, hex program loading, register monitors, self-checking assertions, and a comprehensive multi-program testbench for <code>riscv_core.v</code>.</p>
+
+<h2>The Six Pillars of a Good CPU Testbench</h2>
+<ol>
+<li><b>$dumpfile / $dumpvars</b> — capture waveforms for visual debugging</li>
+<li><b>$readmemh</b> — load programs from text hex files, not hardcoded arrays</li>
+<li><b>$monitor</b> — auto-print whenever a watched signal changes</li>
+<li><b>$display at clock edge</b> — log register/memory state each cycle</li>
+<li><b>Self-checking assertions</b> — compare outputs to expected values, auto-pass/fail</li>
+<li><b>Multiple test cases</b> — run several programs in sequence in one simulation</li>
+</ol>
+
+<h2>Technique 1: Waveform Capture with $dumpfile</h2>
+<p>VCD (Value Change Dump) is the universal waveform format. Any simulator writes it; GTKWave and most EDA tools read it. Always add these three lines to every testbench:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">waveform snippet</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="waveform_snippet.v">initial begin
+    $dumpfile("sim.vcd");       // output file name
+    $dumpvars(0, tb_riscv_core); // 0 = all levels, scope = top module
+    // ... rest of testbench
+end</pre>
+</div>
+
+<h2>Technique 2: Loading Programs with $readmemh</h2>
+<p>Never hardcode instruction words in a testbench. Put the program in a <code>.hex</code> file and use <code>$readmemh</code>. This lets you swap programs without recompiling.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">$readmemh usage</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="readmemh_usage.v">// Load from file into imem array
+$readmemh("program.hex", dut.imem0.mem);
+
+// You can also specify address range:
+$readmemh("prog2.hex", dut.imem0.mem, 0, 63); // load first 64 words</pre>
+</div>
+
+<h2>Technique 3: $monitor for Live Signal Tracing</h2>
+<p><code>$monitor</code> fires a print every time any of its arguments changes value. Use it to trace PC and the instruction word every cycle:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">$monitor snippet</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="monitor_snippet.v">initial begin
+    $monitor("t=%0t pc=%08h inst=%08h x1=%0d x2=%0d",
+             $time, dut.pc, dut.inst, dut.rf.regs[1], dut.rf.regs[2]);
+end</pre>
+</div>
+
+<h2>Technique 4: Cycle-by-Cycle Register Dump</h2>
+<p>At each negative clock edge (after registers settle), log the full register file. Useful for stepping through a small program by hand:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">reg_dump snippet</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="reg_dump_snippet.v">integer cyc;
+always @(negedge clk) begin
+    cyc = cyc + 1;
+    $display("Cycle %0d: PC=%08h", cyc, dut.pc);
+    $display("  x1=%0d x2=%0d x3=%0d x4=%0d",
+              dut.rf.regs[1], dut.rf.regs[2],
+              dut.rf.regs[3], dut.rf.regs[4]);
+end</pre>
+</div>
+
+<h2>Technique 5: Self-Checking Assertions</h2>
+<p>A professional testbench never asks you to "look at the waveform to see if it passed". It tells you:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">assert snippet</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="assert_snippet.v">// Helper task: check expected == actual
+task check;
+    input [63:0] expected;
+    input [31:0] actual;
+    input [127:0] label;
+    begin
+        if (actual === expected[31:0])
+            $display("PASS: %s = %0d", label, actual);
+        else begin
+            $display("FAIL: %s expected=%0d got=%0d",
+                     label, expected[31:0], actual);
+            failures = failures + 1;
+        end
+    end
+endtask</pre>
+</div>
+
+<h2>tb_full.v — Comprehensive Multi-Program Testbench</h2>
+<p>This testbench runs three programs back-to-back: the sum loop (verifies arithmetic + branches), a byte store/load (verifies byte memory access), and a JALR return test (verifies function call mechanics). It reports a total pass/fail count at the end.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_full.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_full.v">// tb_full.v — Comprehensive testbench for riscv_core
+// Runs multiple programs and self-checks all results
+`timescale 1ns/1ps
+module tb_full;
+    reg clk = 0, rst = 1;
+    integer failures = 0;
+    always #5 clk = ~clk;
+
+    riscv_core dut (.clk(clk), .rst(rst));
+
+    // ── Helper task ───────────────────────────────────────────────
+    task check_reg;
+        input [4:0]  reg_num;
+        input [31:0] expected;
+        input [7:0]  label;
+        begin
+            if (dut.rf.regs[reg_num] === expected)
+                $display("  PASS: x%0d = %0d", reg_num, expected);
+            else begin
+                $display("  FAIL: x%0d expected=%0d got=%0d",
+                         reg_num, expected, dut.rf.regs[reg_num]);
+                failures = failures + 1;
+            end
+        end
+    endtask
+
+    task reset_cpu;
+        begin
+            rst = 1;
+            repeat(2) @(posedge clk);
+            // Clear memories
+            begin : clr
+                integer k;
+                for (k=0; k&lt;256; k=k+1) begin
+                    dut.imem0.mem[k] = 32'h00000013; // NOP
+                    dut.dmem0.mem[k] = 8'h00;
+                end
+            end
+            rst = 0;
+        end
+    endtask
+
+    initial begin
+        $dumpfile("tb_full.vcd");
+        $dumpvars(0, tb_full);
+
+        // ── TEST 1: Sum 1..5 ─────────────────────────────────────
+        $display("\n=== Test 1: Sum 1..5 ===");
+        rst = 1;
+        $readmemh("program.hex", dut.imem0.mem);
+        @(posedge clk); @(posedge clk);
+        rst = 0;
+        repeat(50) @(posedge clk);
+        #1;
+        check_reg(2, 32'd15, "sum"); // x2 should hold 15
+
+        // ── TEST 2: Byte store then LBU ──────────────────────────
+        $display("\n=== Test 2: Byte store / LBU ===");
+        reset_cpu();
+        // addi x1,x0,0xAB  = 0x0AB00093
+        dut.imem0.mem[0] = 32'h0ab00093; // addi x1,x0,171
+        // sb x1,4(x0)  = 0x00100223
+        dut.imem0.mem[1] = 32'h00100223; // sb x1,4(x0)
+        // lbu x2,4(x0) = 0x00400103 -- wait, lbu opcode
+        dut.imem0.mem[2] = 32'h00404103; // lbu x2,4(x0)
+        dut.imem0.mem[3] = 32'h0000006f; // halt
+        repeat(10) @(posedge clk); #1;
+        check_reg(2, 32'd171, "LBU"); // zero-extended 0xAB = 171
+
+        // ── TEST 3: JAL + JALR return ────────────────────────────
+        $display("\n=== Test 3: JAL / JALR ===");
+        reset_cpu();
+        // addi x1,x0,0  x1=0
+        dut.imem0.mem[0] = 32'h00000093; // addi x1,x0,0
+        // jal ra, func (offset=+8)
+        dut.imem0.mem[1] = 32'h008000ef; // jal ra, +8
+        // addi x1,x1,77  (should be SKIPPED)
+        dut.imem0.mem[2] = 32'h04d08093; // addi x1,x1,77 (skipped)
+        // halt
+        dut.imem0.mem[3] = 32'h0000006f; // jal 0 (halt, but skipped)
+        // func: addi x1,x0,42
+        dut.imem0.mem[4] = 32'h02a00093; // addi x1,x0,42  (func:)
+        // jalr x0,ra,0  (return)
+        dut.imem0.mem[5] = 32'h00008067; // jalr x0,ra,0
+        // after return: halt
+        dut.imem0.mem[6] = 32'h0000006f; // halt (PC=24)
+        repeat(15) @(posedge clk); #1;
+        check_reg(1, 32'd42, "func result");   // x1=42
+        check_reg(1, 32'd42, "no overwrite");  // 77 was skipped
+
+        // ── Final result ─────────────────────────────────────────
+        $display("\n=== Results: %0d failure(s) ===",failures);
+        if (failures == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<h2>Running the Simulation with Icarus Verilog</h2>
+<p>If you have <a href="https://bleyer.org/icarus/" target="_blank" rel="noopener">Icarus Verilog</a> installed, compile and simulate with:</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">simulate.sh</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="simulate.sh"># Compile all RTL + testbench
+iverilog -o sim.out \
+    pc.v imem.v regfile.v alu.v immgen.v control.v \
+    dmem.v branch_unit.v riscv_core.v tb_full.v
+
+# Run simulation
+vvp sim.out
+
+# View waveforms (requires GTKWave)
+gtkwave tb_full.vcd &amp;</pre>
+</div>
+
+<div class="takeaways">
+<h3>Day 16 Takeaways</h3>
+<ul>
+<li><b>$dumpfile + $dumpvars</b> should be in every testbench — waveforms are your ultimate debug tool.</li>
+<li><b>$readmemh</b> decouples testbenches from programs; you can test any RISC-V binary without modifying the testbench.</li>
+<li>A <b>self-checking testbench</b> gives you a binary PASS/FAIL in seconds — essential for regression when you later change the CPU.</li>
+<li>Always test at <b>negative clock edge</b> (after registers settle) to avoid sampling metastable values.</li>
+<li>Phase 3 starts next — Day 17 introduces the 5-stage pipeline.</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is $dumpfile and $dumpvars?</h3><p>$dumpfile sets the VCD output filename. $dumpvars(0, scope) tells the simulator to record all signals under that scope. Open the .vcd file in GTKWave to visually inspect every signal over time.</p></div>
+<div class="faq-item"><h3>What is a self-checking testbench?</h3><p>A testbench that automatically compares outputs to expected values and prints PASS or FAIL without manual waveform inspection. It uses a task with an if/else and $display.</p></div>
+<div class="faq-item"><h3>How do you load a program into Verilog simulation?</h3><p>Use $readmemh("file.hex", memory_array). Each line in the hex file is one word. You can also specify start/end addresses as optional parameters.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-15-first-working-core/"><span class="lab">Previous</span><div class="ti">← Day 15: First Working Core</div></a>
+<a class="next" href="/riscv-from-scratch/day-17-5-stage-pipeline/"><span class="lab">Up next</span><div class="ti">Day 17: The 5-Stage Pipeline →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 21: CSRs, Traps &amp; Exceptions — M-Mode Privilege in Verilog | RISC-V from Scratch</title>
+<meta name="description" content="Day 21 of RISC-V from Scratch. Explain RISC-V Control and Status Registers (mstatus, mtvec, mepc, mcause). Build csr_file.v with CSRRW/CSRRS/CSRRC read-modify-write. Explain trap handling flow for illegal instruction and ecall.">
+<meta name="keywords" content="RISC-V CSR verilog, csr_file.v, mstatus mtvec mepc mcause verilog, CSRRW CSRRS CSRRC verilog, RISC-V trap handling verilog, M-mode privilege verilog, ecall verilog, illegal instruction verilog, RISC-V exception verilog">
+<link rel="canonical" href="https://ecrionix.org/riscv-from-scratch/day-21-csrs-traps-exceptions/">
+<meta property="og:title" content="Day 21: CSRs, Traps &amp; Exceptions — M-Mode RISC-V in Verilog">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Article","datePublished":"2026-06-11","dateModified":"2026-06-11","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 21: CSRs, Traps & Exceptions","url":"https://ecrionix.org/riscv-from-scratch/day-21-csrs-traps-exceptions/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"RISC-V from Scratch","url":"https://ecrionix.org/riscv-from-scratch/"}},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V from Scratch","item":"https://ecrionix.org/riscv-from-scratch/"},{"@type":"ListItem","position":3,"name":"Day 21: CSRs, Traps & Exceptions","item":"https://ecrionix.org/riscv-from-scratch/day-21-csrs-traps-exceptions/"}]},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"What are RISC-V CSRs?","acceptedAnswer":{"@type":"Answer","text":"Control and Status Registers (CSRs) are special 32-bit registers in RISC-V that control processor behavior and record status. Key M-mode CSRs include mstatus (global interrupt enable), mtvec (trap handler address), mepc (PC saved on trap), mcause (trap reason), and mscratch (scratch register for handler). They are accessed with the CSRRW, CSRRS, CSRRC instructions."}},
+{"@type":"Question","name":"What happens when a RISC-V trap occurs?","acceptedAnswer":{"@type":"Answer","text":"On a trap (exception or interrupt), the hardware atomically: saves the current PC in mepc, writes the cause code in mcause, saves and clears MIE (interrupt enable) in mstatus, and jumps to the address in mtvec. The trap handler can inspect mcause and mepc, handle the event, and return with MRET which restores the PC from mepc and re-enables interrupts."}},
+{"@type":"Question","name":"What is MRET in RISC-V?","acceptedAnswer":{"@type":"Answer","text":"MRET (Machine Return) is the instruction used to return from a trap handler. It restores the PC from mepc, restores the interrupt-enable bit from mstatus.MPIE, and returns to the interrupted code. It is the M-mode equivalent of a function return."}}
+]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--sl:#94a3b8}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.75}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:#38bdf8;font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--blue);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--blue);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#7dd3fc}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/riscv-from-scratch/">Course</a><a href="/tools/verilog-simulator/">Sim</a><a href="/vlsi/">VLSI</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-from-scratch/">RISC-V from Scratch</a><span>›</span><span>Day 21</span></div>
+<div class="wrap">
+<span class="daytag">DAY 21 · PHASE 4 — ADVANCED &amp; REAL HARDWARE</span>
+<h1>CSRs, Traps &amp; Exceptions</h1>
+<p class="byline">By <a href="/about/">EcrioniX</a> · Updated 2026-06-11</p>
+<p class="lead">The pipeline is complete. Now we add the <b>privilege layer</b> — the mechanism that makes a CPU safe and supervisable. Control and Status Registers (CSRs) give software a way to control processor behaviour. Traps give the CPU a way to handle errors and system calls. Together they form the foundation of operating system support.</p>
+
+<h2>Key M-Mode CSRs</h2>
+<table>
+<thead><tr><th>CSR Name</th><th>Address</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td class="m">mstatus</td><td class="m">0x300</td><td>Global interrupt enable (MIE bit[3]), previous interrupt state (MPIE bit[7])</td></tr>
+<tr><td class="m">mtvec</td><td class="m">0x305</td><td>Trap handler base address — PC jumps here on any trap</td></tr>
+<tr><td class="m">mepc</td><td class="m">0x341</td><td>Machine Exception PC — saves the PC of the trapped instruction</td></tr>
+<tr><td class="m">mcause</td><td class="m">0x342</td><td>Cause of the trap (bit[31]=interrupt/exception, bits[30:0]=cause code)</td></tr>
+<tr><td class="m">mscratch</td><td class="m">0x340</td><td>Scratch register for trap handler software use</td></tr>
+<tr><td class="m">mip</td><td class="m">0x344</td><td>Machine Interrupt Pending — which interrupts are waiting</td></tr>
+<tr><td class="m">mie</td><td class="m">0x304</td><td>Machine Interrupt Enable — which interrupts are enabled</td></tr>
+</tbody>
+</table>
+
+<h2>CSR Instructions</h2>
+<p>CSRs are accessed with three atomic read-modify-write instructions. All three return the old CSR value in <code>rd</code> before modifying it:</p>
+<ul>
+<li><b>CSRRW rd, csr, rs1</b> — atomically swap: rd = CSR; CSR = rs1</li>
+<li><b>CSRRS rd, csr, rs1</b> — set bits: rd = CSR; CSR = CSR | rs1</li>
+<li><b>CSRRC rd, csr, rs1</b> — clear bits: rd = CSR; CSR = CSR &amp; ~rs1</li>
+</ul>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">csr_file.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="csr_file.v">// csr_file.v — M-mode Control and Status Register file
+// Supports CSRRW, CSRRS, CSRRC and hardware trap signals
+module csr_file (
+    input         clk, rst,
+    // CSR instruction interface
+    input  [11:0] csr_addr,     // 12-bit CSR address from instruction
+    input  [ 2:0] csr_op,      // 001=CSRRW, 010=CSRRS, 011=CSRRC
+    input         csr_we,      // 1 = write CSR
+    input  [31:0] csr_wdata,   // write data (from rs1)
+    output reg [31:0] csr_rdata, // read data (old value, to rd)
+    // Hardware trap interface
+    input         trap,         // exception/interrupt asserted
+    input  [31:0] trap_pc,     // PC of trapped instruction
+    input  [31:0] trap_cause,  // mcause code
+    output [31:0] mtvec_out,   // trap vector — where to jump on trap
+    output [31:0] mepc_out,    // saved PC — used by MRET
+    // MRET
+    input         mret          // 1 = MRET instruction executing
+);
+    // ── CSR storage ───────────────────────────────────────────────
+    reg [31:0] mstatus;   // 0x300
+    reg [31:0] mie;       // 0x304
+    reg [31:0] mtvec;     // 0x305
+    reg [31:0] mscratch;  // 0x340
+    reg [31:0] mepc;      // 0x341
+    reg [31:0] mcause;    // 0x342
+    reg [31:0] mip;       // 0x344
+
+    assign mtvec_out = mtvec;
+    assign mepc_out  = mepc;
+
+    // ── CSR Read (combinatorial) ──────────────────────────────────
+    always @(*) begin
+        case (csr_addr)
+            12'h300: csr_rdata = mstatus;
+            12'h304: csr_rdata = mie;
+            12'h305: csr_rdata = mtvec;
+            12'h340: csr_rdata = mscratch;
+            12'h341: csr_rdata = mepc;
+            12'h342: csr_rdata = mcause;
+            12'h344: csr_rdata = mip;
+            default: csr_rdata = 32'h0;
+        endcase
+    end
+
+    // ── CSR Write (synchronous) ───────────────────────────────────
+    task do_csr_write;
+        input [31:0] old_val;
+        input [31:0] wdata;
+        input [ 2:0] op;
+        output reg [31:0] new_val;
+        begin
+            case (op)
+                3'b001: new_val = wdata;           // CSRRW
+                3'b010: new_val = old_val | wdata; // CSRRS
+                3'b011: new_val = old_val &amp; ~wdata; // CSRRC
+                default: new_val = old_val;
+            endcase
+        end
+    endtask
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            mstatus  &lt;= 32'h0000_1800; // MPP=11 (M-mode)
+            mie      &lt;= 0; mtvec    &lt;= 0;
+            mscratch &lt;= 0; mepc     &lt;= 0;
+            mcause   &lt;= 0; mip      &lt;= 0;
+        end else if (trap) begin
+            // Hardware trap: save PC, cause; jump to handler
+            mepc     &lt;= trap_pc;
+            mcause   &lt;= trap_cause;
+            // Clear MIE, save to MPIE
+            mstatus  &lt;= {mstatus[31:8], mstatus[3], mstatus[6:4], 1'b0, mstatus[2:0]};
+        end else if (mret) begin
+            // Return from trap: restore MIE from MPIE
+            mstatus &lt;= {mstatus[31:8], 1'b1, mstatus[6:4], mstatus[7], mstatus[2:0]};
+        end else if (csr_we) begin
+            // Software CSR write
+            case (csr_addr)
+                12'h300: do_csr_write(mstatus, csr_wdata, csr_op, mstatus);
+                12'h304: do_csr_write(mie,     csr_wdata, csr_op, mie);
+                12'h305: do_csr_write(mtvec,   csr_wdata, csr_op, mtvec);
+                12'h340: do_csr_write(mscratch,csr_wdata, csr_op, mscratch);
+                12'h341: do_csr_write(mepc,    csr_wdata, csr_op, mepc);
+                12'h342: do_csr_write(mcause,  csr_wdata, csr_op, mcause);
+                default: ; // read-only or unimplemented CSR
+            endcase
+        end
+    end
+endmodule</pre>
+</div>
+
+<h2>Trap Handling Flow</h2>
+<p>When an exception occurs (illegal instruction, misaligned address, ecall), the hardware automatically:</p>
+<ol>
+<li>Saves the current PC to <code>mepc</code></li>
+<li>Writes the exception code to <code>mcause</code> (e.g., 2 = illegal instruction, 11 = ECALL from M-mode)</li>
+<li>Clears the MIE bit in <code>mstatus</code> (disables further interrupts)</li>
+<li>Jumps the PC to the address stored in <code>mtvec</code></li>
+</ol>
+<p>The trap handler reads <code>mcause</code> to determine what happened, services the event, and executes <code>MRET</code> to return.</p>
+
+<div class="codecard">
+<div class="cc-head"><span class="cc-name">tb_csr.v</span><div class="cc-btns"><button onclick="copyCC(this)">Copy</button><button onclick="dlCC(this)">Download</button></div></div>
+<pre data-file="tb_csr.v">// tb_csr.v — Test CSRRW and trap handling
+`timescale 1ns/1ps
+module tb_csr;
+    reg clk=0, rst=1;
+    always #5 clk=~clk;
+
+    // Direct instantiation of csr_file for unit testing
+    reg [11:0] csr_addr;
+    reg [2:0]  csr_op;
+    reg        csr_we, trap, mret;
+    reg [31:0] csr_wdata, trap_pc, trap_cause;
+    wire [31:0] csr_rdata, mtvec_out, mepc_out;
+
+    csr_file dut (
+        .clk(clk), .rst(rst),
+        .csr_addr(csr_addr), .csr_op(csr_op),
+        .csr_we(csr_we), .csr_wdata(csr_wdata), .csr_rdata(csr_rdata),
+        .trap(trap), .trap_pc(trap_pc), .trap_cause(trap_cause),
+        .mtvec_out(mtvec_out), .mepc_out(mepc_out), .mret(mret)
+    );
+
+    initial begin
+        $dumpfile("tb_csr.vcd"); $dumpvars(0, tb_csr);
+        csr_we=0; trap=0; mret=0; csr_op=3'b001;
+        @(posedge clk); @(posedge clk); rst=0;
+
+        // Write mtvec = 0x8000
+        csr_addr=12'h305; csr_wdata=32'h8000; csr_we=1; csr_op=3'b001;
+        @(posedge clk); csr_we=0;
+        @(posedge clk);
+        if(mtvec_out===32'h8000) $display("PASS: mtvec=0x8000");
+        else $display("FAIL: mtvec=%h",mtvec_out);
+
+        // Trigger a trap (ecall, cause=11)
+        trap=1; trap_pc=32'h100; trap_cause=32'd11;
+        @(posedge clk); trap=0;
+        @(posedge clk);
+        if(mepc_out===32'h100) $display("PASS: mepc=0x100");
+        else $display("FAIL: mepc=%h",mepc_out);
+
+        $finish;
+    end
+endmodule</pre>
+</div>
+
+<div class="takeaways">
+<h3>Day 21 Takeaways</h3>
+<ul>
+<li>CSRs are 32-bit special-purpose registers accessed by 12-bit addresses — completely separate from the integer register file.</li>
+<li><b>CSRRW/CSRRS/CSRRC</b> always return the <em>old</em> value atomically — this enables safe read-modify-write sequences.</li>
+<li>On a trap, the CPU hardware saves PC → mepc, cause → mcause, and jumps to mtvec. Software handles the rest.</li>
+<li><b>MRET</b> restores the PC from mepc — without it, you cannot return from a trap handler.</li>
+<li>M-mode is the highest privilege level. S-mode (supervisor) and U-mode (user) are added for OS support (Day 25).</li>
+</ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What are RISC-V CSRs?</h3><p>Control and Status Registers are special 32-bit registers that control CPU behavior (interrupt enable, trap vector) and record status (exception cause, saved PC). They are accessed with CSRRW/CSRRS/CSRRC — not normal load/store instructions.</p></div>
+<div class="faq-item"><h3>What happens when a RISC-V trap occurs?</h3><p>Hardware saves PC to mepc, writes cause to mcause, clears MIE in mstatus, and jumps to mtvec. Software reads mcause, handles the event, and executes MRET to return.</p></div>
+<div class="faq-item"><h3>What is MRET?</h3><p>Machine Return — restores the PC from mepc, re-enables interrupts (restores MIE from MPIE), and returns from the trap handler to the interrupted code.</p></div>
+
+<div class="pager">
+<a href="/riscv-from-scratch/day-20-load-use-stalls-hazard-unit/"><span class="lab">Previous</span><div class="ti">← Day 20: Load-Use Stalls &amp; Hazard Unit</div></a>
+<a class="next" href="/riscv-from-scratch/day-22-memory-mapped-io-uart/"><span class="lab">Up next</span><div class="ti">Day 22: Memory-Mapped I/O — UART →</div></a>
+</div>
+<p style="text-align:center;margin-top:1.2rem"><a href="/riscv-from-scratch/">← Full roadmap</a></p>
+</div>
+<footer>© 2026 EcrioniX · <a href="/riscv-from-scratch/">RISC-V Course</a> · <a href="/tools/">Tools</a> · <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> · <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCC(b){var pre=b.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){var t=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=t;},1400);});}
+function dlCC(b){var pre=b.closest('.codecard').querySelector('pre');var name=pre.getAttribute('data-file')||'code.txt';var blob=new Blob([pre.innerText],{type:'text/plain'});var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
