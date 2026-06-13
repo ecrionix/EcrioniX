@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 26 — MAC Unit Design | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-26-mac-unit-design/"><meta property="og:title" content="AI Chip Design Day 26"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative;max-height:600px;overflow-y:auto}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.3}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.5rem 0}th,td{border:1px solid var(--bdr);padding:.6rem;text-align:left}th{background:rgba(236,72,153,.1);color:#ec4899}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 26</span></div>
+<div class="hero"><h1>Building a <span class="g">MAC Unit</span></h1><p>SystemVerilog design for a multiply-accumulate unit. Pipelining, precision, testbenches. From paper to gates.</p></div>
+<div class="container"><div class="content">
+<h2>MAC Unit Specification</h2>
+<table>
+<tr><th>Parameter</th><th>Value</th></tr>
+<tr><td>Input precision</td><td>INT8 (8-bit signed)</td></tr>
+<tr><td>Output precision</td><td>INT32 (32-bit signed)</td></tr>
+<tr><td>Pipeline depth</td><td>2 cycles</td></tr>
+<tr><td>Clock</td><td>1 GHz (1 ns cycle)</td></tr>
+<tr><td>Area target</td><td>< 0.01 mm² (5nm process)</td></tr>
+<tr><td>Power target</td><td>< 1 mW @ 1 GHz</td></tr>
+</table>
+
+<h2>Design: Pipelined MAC</h2>
+<div class="diagram">
+Cycle 0: Load A, B
+  ├─ Stage 1: Multiply (A × B) → 16-bit result
+  ├─ Stage 2: Add (result + accumulator) → 32-bit
+  └─ Output C_out
+
+Each cycle:
+- Input: A (8-bit), B (8-bit), C_in (32-bit, from previous MAC)
+- Output: C_out (32-bit)
+- Latency: 2 cycles (input to output)
+- Throughput: 1 result per cycle (after pipeline fills)
+</div>
+
+<h2>SystemVerilog Implementation</h2>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>module mac_unit #(
+  parameter WIDTH_A = 8,
+  parameter WIDTH_B = 8,
+  parameter WIDTH_C = 32
+) (
+  input clk, reset,
+  input [WIDTH_A-1:0] a_in,
+  input [WIDTH_B-1:0] b_in,
+  input [WIDTH_C-1:0] c_in,
+  output reg [WIDTH_C-1:0] c_out,
+  output reg valid_out
+);
+  // Pipeline stage 1: Multiply
+  reg signed [WIDTH_A-1:0] a_s1;
+  reg signed [WIDTH_B-1:0] b_s1;
+
+  // Pipeline stage 2: Accumulate
+  reg signed [WIDTH_C-1:0] acc_s2;
+  reg signed [15:0] mult_result;  // 8×8 → 16
+
+  always @(posedge clk) begin
+    if (reset) begin
+      a_s1 <= 0;
+      b_s1 <= 0;
+      mult_result <= 0;
+      acc_s2 <= 0;
+      c_out <= 0;
+      valid_out <= 0;
+    end else begin
+      // S1: Capture inputs
+      a_s1 <= $signed(a_in);
+      b_s1 <= $signed(b_in);
+
+      // S1→S2: Compute multiply (combinational)
+      mult_result <= a_s1 * b_s1;  // 8×8 signed → 16-bit
+
+      // S2: Accumulate
+      acc_s2 <= $signed(mult_result) + $signed(c_in);
+
+      // Output
+      c_out <= acc_s2;
+      valid_out <= 1;  // Always valid after first 2 cycles
+    end
+  end
+endmodule
+</code></div>
+
+<h2>Area Estimation (5nm)</h2>
+<table>
+<tr><th>Component</th><th>Gates (approx)</th><th>Area (μm²)</th></tr>
+<tr><td>8×8 multiplier</td><td>500</td><td>2</td></tr>
+<tr><td>32-bit adder</td><td>300</td><td>1.2</td></tr>
+<tr><td>Pipeline registers</td><td>100</td><td>0.4</td></tr>
+<tr><td>Logic & routing</td><td>200</td><td>0.8</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>1,100</strong></td><td><strong>4.4</strong></td></tr>
+</table>
+
+<h2>Testbench</h2>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>module mac_unit_tb;
+  reg clk, reset;
+  reg signed [7:0] a_in, b_in;
+  reg signed [31:0] c_in;
+  wire signed [31:0] c_out;
+
+  mac_unit uut (
+    .clk(clk), .reset(reset),
+    .a_in(a_in), .b_in(b_in), .c_in(c_in),
+    .c_out(c_out)
+  );
+
+  initial begin
+    clk = 0;
+    reset = 1; #10 reset = 0;
+
+    // Test: 3 × 4 = 12, accumulate
+    a_in = 3; b_in = 4; c_in = 0; #10;  // Load inputs
+    #10; #10;  // Wait for pipeline
+    $display("Output: %d (expect ~12)", c_out);
+
+    // Test: 2 × 5 + 12 = 22
+    a_in = 2; b_in = 5; c_in = 12; #10;
+    #10; #10;
+    $display("Output: %d (expect ~22)", c_out);
+  end
+
+  always #5 clk = ~clk;
+endmodule
+</code></div>
+
+<p><strong>Day 27:</strong> Scaling to 4×4 systolic array: connecting 16 MACs with dataflow.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 26/30</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

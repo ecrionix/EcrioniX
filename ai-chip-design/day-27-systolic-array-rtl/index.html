@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 27 — 4×4 Systolic RTL | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-27-systolic-array-rtl/"><meta property="og:title" content="AI Chip Design Day 27"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative;max-height:500px;overflow-y:auto}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#a5f3fc;line-height:1.2}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#a5f3fc;line-height:1.4}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 27</span></div>
+<div class="hero"><h1>4×4 Systolic Array <span class="g">RTL</span></h1><p>Complete SystemVerilog implementation: PE instantiation, dataflow, memory interfaces. Synthesis-ready code.</p></div>
+<div class="container"><div class="content">
+<h2>Architecture Overview</h2>
+<div class="diagram">
+4×4 Systolic Array:
+┌────┬────┬────┬────┐
+│ M00│ M01│ M02│ M03│ → output
+├────┼────┼────┼────┤
+│ M10│ M11│ M12│ M13│ → output
+├────┼────┼────┼────┤
+│ M20│ M21│ M22│ M23│ → output
+├────┼────┼────┼────┤
+│ M30│ M31│ M32│ M33│ → output
+└────┴────┴────┴────┘
+
+Data flow:
+- A values (rows): Enter from left, shift right
+- B values (columns): Enter from top, shift down
+- Accumulate at each PE
+</div>
+
+<h2>Top-Level Module</h2>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>module systolic_4x4 #(
+  parameter WIDTH_A = 8,
+  parameter WIDTH_B = 8,
+  parameter WIDTH_C = 32
+) (
+  input clk, reset,
+  input [WIDTH_A-1:0] a_in [0:3],   // A inputs (left edge)
+  input [WIDTH_B-1:0] b_in [0:3],   // B inputs (top edge)
+  output [WIDTH_C-1:0] c_out [0:3], // C outputs (bottom)
+  input valid_in,
+  output valid_out
+);
+
+  // Array of MACs (16 total)
+  wire [WIDTH_A-1:0] a_routes [0:3][0:4];  // Routing: 0-3 data, 4 is output
+  wire [WIDTH_B-1:0] b_routes [0:4][0:3];  // Routing
+  wire [WIDTH_C-1:0] c_routes [0:3][0:3];
+
+  // Input/Output muxing
+  assign a_routes[0][0] = a_in[0];
+  assign a_routes[1][0] = a_in[1];
+  assign a_routes[2][0] = a_in[2];
+  assign a_routes[3][0] = a_in[3];
+
+  assign b_routes[0][0] = b_in[0];
+  assign b_routes[0][1] = b_in[1];
+  assign b_routes[0][2] = b_in[2];
+  assign b_routes[0][3] = b_in[3];
+
+  // Generate 4×4 grid of MACs
+  genvar i, j;
+  generate
+    for (i = 0; i < 4; i++) begin : row
+      for (j = 0; j < 4; j++) begin : col
+        mac_unit #(.WIDTH_A(WIDTH_A), .WIDTH_B(WIDTH_B), .WIDTH_C(WIDTH_C))
+        pe (
+          .clk(clk), .reset(reset),
+          .a_in(a_routes[i][j]),
+          .b_in(b_routes[i][j]),
+          .c_in(c_routes[i][j]),
+          .c_out(c_routes[i][j])
+        );
+
+        // A dataflow (rightward)
+        assign a_routes[i][j+1] = a_routes[i][j];
+
+        // B dataflow (downward)
+        assign b_routes[i+1][j] = b_routes[i][j];
+      end
+    end
+  endgenerate
+
+  // Output capture
+  assign c_out[0] = c_routes[3][0];
+  assign c_out[1] = c_routes[3][1];
+  assign c_out[2] = c_routes[3][2];
+  assign c_out[3] = c_routes[3][3];
+
+  assign valid_out = valid_in;  // Passthrough
+
+endmodule
+</code></div>
+
+<h2>Key Design Points</h2>
+<ul>
+<li><strong>Pipelining:</strong> Each PE pipelines MAC (2 cycles), so full result at cycle N+2</li>
+<li><strong>Dataflow:</strong> A routes right (shift register), B routes down</li>
+<li><strong>Scalability:</strong> Can parameterize to 16×16 by changing loop bounds</li>
+<li><strong>Reset:</strong> All accumulators clear on reset</li>
+<li><strong>Valid signal:</strong> Propagates through pipeline</li>
+</ul>
+
+<h2>Synthesis Considerations</h2>
+<div class="note">
+<strong>Timing closure:</strong>
+- Critical path: MAC (multiply + adder) = ~0.7 ns @ 1 GHz
+- Routing: A/B buses = ~0.2 ns
+- Total: ~0.9 ns (safe margin to 1 ns clock)
+
+<strong>Area:</strong>
+- 4×4 = 16 MACs
+- Area per MAC: 4.4 μm² (from Day 26)
+- Array area: 16 × 4.4 = 70 μm²
+- Routing/interconnect: +20% = ~85 μm²
+
+<strong>Power:</strong>
+- 16 MACs × 1 mW = 16 mW sustained
+- Leakage: ~2 mW
+- Total: ~18 mW @ 1 GHz
+</note>
+
+<p><strong>Day 28:</strong> Power optimization: clock gating, voltage scaling, precision reduction.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 27/30</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

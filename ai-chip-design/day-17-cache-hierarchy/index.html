@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 17 — Cache Hierarchies | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-17-cache-hierarchy/"><meta property="og:title" content="AI Chip Design Day 17"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}table{width:100%;border-collapse:collapse;font-size:.9rem;margin:1.5rem 0}th,td{border:1px solid var(--bdr);padding:.8rem;text-align:left}th{background:rgba(236,72,153,.1);color:#ec4899}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 17</span></div>
+<div class="hero"><h1>Cache <span class="g">Hierarchies</span></h1><p>L1/L2/L3 caches vs weight SRAM in systolic arrays. How to design fast, power-efficient memory for AI chips.</p></div>
+<div class="container"><div class="content">
+<h2>GPU vs Systolic Cache Design</h2>
+<table>
+<tr><th>Architecture</th><th>Cache Type</th><th>Strategy</th><th>Latency</th></tr>
+<tr><td>GPU (H100)</td><td>L1/L2/L3 hierarchy</td><td>Caches miss data dynamically</td><td>80+ cycles to HBM</td></tr>
+<tr><td>Systolic (TPU)</td><td>Weight SRAM + regs</td><td>Pre-load all data before compute</td><td>1-2 cycles to local mem</td></tr>
+<tr><td>Mobile (A17)</td><td>Shared SRAM</td><td>Small buffer (512KB), tight loops</td><td>3-5 cycles</td></tr>
+</table>
+
+<h2>Systolic Array Weight SRAM</h2>
+<p><strong>Google TPU v4: 24 MB SRAM for weights</strong></p>
+<div class="diagram">
+256×256 systolic array needs weights pre-loaded.
+24 MB SRAM = 6M INT8 values
+
+For large model:
+- Model weights: 7 GB (1B-parameter model)
+- Working set: 24 MB at a time
+- Loading: Stream weights in tiles from HBM
+
+Memory loop:
+1. Load 24 MB weight tile from HBM (100 ms @ 2000 GB/s)
+2. Compute on 256×256 for ~10k operations
+3. Repeat for next weight tile
+</div>
+
+<h3>Design Decision: Size vs Bandwidth</h3>
+<ul>
+<li>Larger SRAM: Better reuse, but more area, longer wires (latency)</li>
+<li>Smaller SRAM: More bandwidth needed, but compact</li>
+<li><strong>Sweet spot:</strong> 16-32 MB (can hold 1-2 large layers)</li>
+</ul>
+
+<h2>GPU L1/L2/L3 Design</h2>
+<p><strong>H100: Hierarchical caches with coherence</strong></p>
+<div class="note">
+L1: 128 KB per SM, 80 GB/s bandwidth
+L2: 50 MB shared, 4 TB/s bandwidth
+L3: Not implemented (coherent GPU mem)
+HBM: 80 GB, 2 TB/s bandwidth
+
+Design challenge: GPU threads don't know what to prefetch.
+Solution: Tensor Core operates on blocks (warp-level collective); prefetch entire blocks.
+</div>
+
+<h2>Power Implications</h2>
+<div class="diagram">
+Energy per operation:
+- Access L1 cache: ~3 pJ
+- Access L2 cache: ~5 pJ
+- Access HBM: ~100 pJ
+
+For 1 billion MACs:
+- Perfect cache hit: 1B × 3 pJ = 3 mJ
+- L2 hit rate 50%: 1B × (0.5×3 + 0.5×5) = 4 mJ
+- L3/HBM hit: 1B × 100 pJ = 100 mJ ← 25× worse!
+
+Implication: Cache design is power-critical. Systolic pre-loading wins.
+</div>
+
+<p><strong>Day 18:</strong> High-bandwidth memory (HBM) and memory co-design.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 17/30</footer>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

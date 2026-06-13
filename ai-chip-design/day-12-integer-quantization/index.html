@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 12 — Integer Quantization | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-12-integer-quantization/"><meta property="og:title" content="AI Chip Design Day 12"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}table{width:100%;border-collapse:collapse;font-size:.9rem;margin:1.5rem 0}th,td{border:1px solid var(--bdr);padding:.8rem;text-align:left}th{background:rgba(236,72,153,.1);color:#ec4899}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 12</span></div>
+<div class="hero"><h1>Integer <span class="g">Quantization</span></h1><p>From floating-point to fixed-point: INT8, INT4, asymmetric quantization. How Apple Neural Engine and NVIDIA H100 do integer inference.</p></div>
+<div class="container"><div class="content">
+<h2>The Core Problem: FP32 → INT8</h2>
+<p>A typical transformer weight:</p>
+<div class="diagram">
+FP32:  0.0234567  (32 bits, floating-point)
+INT8:  12         (8 bits, integer: -128 to +127)
+
+The challenge: 4× smaller, but still accurate
+</div>
+
+<h3>Fixed-Point Representation</h3>
+<p>INT8 is a fixed-point number with implicit decimal point:</p>
+<div class="diagram">
+INT8 bit layout: S[1] | M[7]  (Sign + 7-bit magnitude)
+Range: -128 to +127
+
+Quantization formula (Symmetric):
+INT8_value = round( FP32_value / scale_factor )
+scale_factor = max(|FP32_values|) / 127
+
+Example:
+FP32 weights: [-0.5, -0.2, 0.1, 0.3, 0.5]
+max(abs) = 0.5
+scale = 0.5 / 127 = 0.003937
+
+Quantized:
+0.5  / 0.003937 = 127   → INT8: 127
+0.3  / 0.003937 = 76    → INT8: 76
+0.1  / 0.003937 = 25    → INT8: 25
+-0.5 / 0.003937 = -127  → INT8: -127
+</div>
+
+<h3>De-quantization (Inference)</h3>
+<p>When you multiply INT8 values, you get larger integers. Scale back:</p>
+<div class="diagram">
+During inference:
+y = (INT8_x * INT8_w * scale_x * scale_w) + bias
+
+Example computation:
+x = 42 (INT8), w = 38 (INT8)
+scale_x = 1/2048, scale_w = 1/4096
+y = 42 * 38 * (1/2048) * (1/4096) = 1596 / 8388608 ≈ 0.00019
+</div>
+
+<h2>INT8 vs INT4</h2>
+<table>
+<tr><th>Format</th><th>Bits</th><th>Range</th><th>Use Case</th><th>Accuracy Loss</th></tr>
+<tr><td>FP32</td><td>32</td><td>±10^38</td><td>Training</td><td>—</td></tr>
+<tr><td>INT8</td><td>8</td><td>[-128, 127]</td><td>Inference (standard)</td><td>0.5-1% accuracy drop</td></tr>
+<tr><td>INT4</td><td>4</td><td>[-8, 7]</td><td>Mobile/Edge</td><td>2-5% accuracy drop</td></tr>
+<tr><td>INT2</td><td>2</td><td>[-2, 1]</td><td>Ultra-edge (research)</td><td>10%+ accuracy drop</td></tr>
+</table>
+
+<h2>Why Hardware Loves INT8</h2>
+<ul>
+<li><strong>8-bit multiply:</strong> 8×8→16 bit operation (fits on hardware)</li>
+<li><strong>Accumulation:</strong> Add 256 INT8 products in 32-bit accumulator</li>
+<li><strong>Power:</strong> Integer multiply is ~4× lower power than floating-point multiply</li>
+<li><strong>Memory:</strong> 4× smaller weights (4 GB → 1 GB for billion-parameter model)</li>
+<li><strong>Bandwidth:</strong> 4× more weights per memory transaction</li>
+</ul>
+
+<div class="note">
+<strong>Apple Neural Engine (INT8 only):</strong> A17 Pro runs inference-only workloads in INT8. Why? 2W power budget for smartphone. INT8 multiply is atomic; no floating-point overhead.
+
+<strong>NVIDIA H100 (FP8 support):</strong> Hopper added FP8 (1 sign + 5 exponent + 2 mantissa) for ultra-low precision. Still floating-point format, but squeezed into 8 bits.
+</div>
+
+<h2>Asymmetric Quantization</h2>
+<p>What if weights don't center around zero?</p>
+<div class="diagram">
+Weight distribution:
+Symmetric:  [====|====]  (centered on 0)
+           -50   0   50
+
+Asymmetric: [  ========] (skewed right)
+           -10  0   60
+
+Asymmetric formula:
+INT8 = round( (FP32 - zero_point) / scale )
+
+Example: weights range from 0.1 to 0.5
+zero_point = 0.1  (minimum)
+scale = (0.5 - 0.1) / 255 ≈ 0.00157
+
+0.5 → (0.5-0.1) / 0.00157 = 255  (uses full INT8 range!)
+0.3 → (0.3-0.1) / 0.00157 = 127
+0.1 → (0.1-0.1) / 0.00157 = 0
+</div>
+
+<h2>Hardware Implementation</h2>
+<p>INT8 multiplier in hardware (simplified):</p>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>module int8_multiplier (
+  input signed [7:0] a, b,
+  output signed [15:0] product
+);
+  assign product = a * b;  // 8-bit × 8-bit = 16-bit result
+endmodule
+
+// In a MAC unit:
+always @(posedge clk) begin
+  mult_result <= a * b;  // INT8 × INT8
+  accum <= accum + mult_result;  // Accumulate (32-bit)
+end
+</code></div>
+
+<h2>Quantization Error</h2>
+<p>The key metric: how much accuracy is lost?</p>
+<ul>
+<li><strong>Top-1 accuracy (ImageNet):</strong> FP32=76.5% → INT8=76.2% (0.3% drop)</li>
+<li><strong>BERT language model:</strong> FP32=92% → INT8=91.7% (0.3% drop)</li>
+<li><strong>Production tolerance:</strong> 0.5-1% accuracy loss is acceptable; re-train if higher</li>
+</ul>
+
+<p><strong>Day 13:</strong> How to quantize: post-training quantization vs quantization-aware training.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 12/30</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

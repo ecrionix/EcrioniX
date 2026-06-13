@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 16 — Roofline Model | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-16-roofline-model/"><meta property="og:title" content="AI Chip Design Day 16"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}table{width:100%;border-collapse:collapse;font-size:.9rem;margin:1.5rem 0}th,td{border:1px solid var(--bdr);padding:.8rem;text-align:left}th{background:rgba(236,72,153,.1);color:#ec4899}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 16</span></div>
+<div class="hero"><h1>Roofline <span class="g">Model</span></h1><p>The key tool for understanding whether your AI chip is compute-bound or memory-bound. Design insights for systolic arrays, GPUs, and CPUs.</p></div>
+<div class="container"><div class="content">
+<h2>The Problem: Is Memory the Bottleneck?</h2>
+<p>For matrix multiplication C = A @ B:</p>
+<div class="diagram">
+A[N×K], B[K×N], C[N×N]
+FLOPs: 2·N·K·N = 2·N²·K
+Memory: 2·N² (load A and B, store C) + 2·N·K (load for each pass)
+
+Arithmetic intensity = FLOPs / Bytes
+                     = 2·N²·K / (2·N² + 2·N·K)
+                     ≈ N / 2  for large N
+
+For N=256: AI ≈ 128 FLOPs/byte
+For N=1024: AI ≈ 512 FLOPs/byte
+</div>
+
+<h2>Roofline Formula</h2>
+<p><strong>Peak performance = min(Peak Compute, Peak Memory × AI)</strong></p>
+<div class="diagram">
+Peak Compute (FLOPS):  What the chip can do per second
+Peak Memory (GB/s):    Max bandwidth from memory
+
+Example: TPU v4
+- Peak Compute: 430 TFLOPS = 430×10^12 FLOPs/sec
+- Peak Memory: 2000 GB/s (HBM bandwidth)
+- AI threshold = 430×10^12 / (2000×10^9) = 215 FLOPs/byte
+
+If AI < 215 → memory-bound (limited by bandwidth)
+If AI > 215 → compute-bound (limited by hardware FLOPs)
+</div>
+
+<h3>Roofline Chart</h3>
+<div class="diagram">
+Performance (TFLOPS) |
+             430 |--------[Compute Roof]--------→
+                 |       /
+             215 |------/←[Knee: AI=215]
+                 |    /
+               100 |--/
+                   |/[Memory Roof: 2000 GB/s × AI]
+                 0 |___________________________
+                   0    100    200    300   400
+                   Arithmetic Intensity (FLOP/byte)
+
+Regions:
+- Left of knee: Memory-bound (roofline slopes with bandwidth)
+- Right of knee: Compute-bound (flat at 430 TFLOPS)
+</div>
+
+<h2>Why This Matters for Design</h2>
+<ul>
+<li><strong>If memory-bound:</strong> Increase data reuse (better algorithm, larger systolic arrays, better caching)</li>
+<li><strong>If compute-bound:</strong> Add more compute units (more MACs, wider pipelines)</li>
+<li><strong>Design sweet spot:</strong> Operate at the knee (mix of both limits)</li>
+</ul>
+
+<h2>Real Examples</h2>
+
+<h3>Google TPU v4 (Systolic Array)</h3>
+<div class="note">
+<strong>Specs:</strong>
+- Compute: 430 TFLOPS
+- Memory: 2000 GB/s (HBM)
+- AI threshold: 215 FLOP/byte
+
+For matrix multiply (N=256×256):
+- AI = 128 FLOP/byte (< 215)
+- Result: Memory-bound, ~200 TFLOPS achieved (46% peak)
+
+For matrix multiply (N=1024×1024):
+- AI = 512 FLOP/byte (> 215)
+- Result: Compute-bound, ~430 TFLOPS achieved (100% peak!)
+
+<strong>Insight:</strong> Systolic arrays are memory-efficient but still memory-bound for small matrices. Large batch sizes increase AI.
+</div>
+
+<h3>Apple A17 Neural Engine</h3>
+<table>
+<tr><th>Config</th><th>Compute</th><th>Memory BW</th><th>AI Knee</th><th>Status</th></tr>
+<tr><td>16×16 systolic</td><td>17 TOPS</td><td>100 GB/s</td><td>170 FLOP/B</td><td>Mem-bound</td></tr>
+<tr><td>With 512KB cache</td><td>17 TOPS</td><td>500 GB/s</td><td>34 FLOP/B</td><td>Compute-bound</td></tr>
+</table>
+
+<p><strong>Day 17:</strong> Cache hierarchies and memory systems.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 16/30</footer>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

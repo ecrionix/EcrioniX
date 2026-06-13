@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 14 — Mixed-Precision | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-14-mixed-precision/"><meta property="og:title" content="AI Chip Design Day 14"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}table{width:100%;border-collapse:collapse;font-size:.9rem;margin:1.5rem 0}th,td{border:1px solid var(--bdr);padding:.8rem;text-align:left}th{background:rgba(236,72,153,.1);color:#ec4899}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 14</span></div>
+<div class="hero"><h1>Mixed-Precision <span class="g">Training</span></h1><p>Using different precisions for different parts of the model: FP32 for stability, FP16/BF16 for speed. How NVIDIA and Google do it.</p></div>
+<div class="container"><div class="content">
+<h2>The Problem: Pure FP16 Training</h2>
+<p>If you train the entire model in FP16, gradients underflow:</p>
+<div class="diagram">
+FP16 range: ±10^-5 to ±10^4
+Backward pass gradients: Can be 10^-8 to 10^-6
+Result: Gradients drop to zero → weights don't update!
+
+Solution: Mixed-precision training
+</div>
+
+<h2>Standard Mixed-Precision Approach</h2>
+<p><strong>Keep FP32 master weights, compute in FP16/BF16.</strong></p>
+<div class="diagram">
+Forward pass:
+  weights_fp16 = weights_fp32.to(fp16)
+  activations_fp16 = forward_pass(inputs, weights_fp16)
+  loss_fp16 = loss_function(activations_fp16, targets)
+
+Backward pass:
+  gradients_fp16 = backward_pass(loss_fp16)
+
+Loss scaling (prevent gradient underflow):
+  scaled_loss_fp16 = loss_fp16 * 2^15  (scale up)
+  scaled_grads_fp16 = backward_pass(scaled_loss_fp16)
+
+Update:
+  gradients_fp32 = scaled_grads_fp16 / 2^15  (scale back down)
+  weights_fp32 -= lr * gradients_fp32
+</div>
+
+<h2>Why Loss Scaling Works</h2>
+<table>
+<tr><th>Step</th><th>Without Scaling</th><th>With Scaling (2^15)</th></tr>
+<tr><td>Gradient magnitude</td><td>1e-7 (underflow!)</td><td>3.3 (safe)</td></tr>
+<tr><td>FP16 represents it?</td><td>NO → 0</td><td>YES</td></tr>
+<tr><td>After backward</td><td>0 (loss)</td><td>Accurate</td></tr>
+<tr><td>After scaling back</td><td>—</td><td>1e-7 (correct)</td></tr>
+</table>
+
+<h2>Hardware Support</h2>
+
+<h3>NVIDIA Automatic Mixed Precision (AMP)</h3>
+<div class="note">
+<strong>Tensor Cores:</strong> H100 has special hardware for mixed-precision:
+- TF32 (32-bit float, 19-bit effective)
+- FP8 (8-bit float)
+- Automatic dtype casting
+
+Usage: Just add `torch.cuda.amp.autocast()`
+</div>
+
+<h3>Google TPU Mixed-Precision</h3>
+<p>TPU v4 computes in BF16, stores in FP32:</p>
+<ul>
+<li>BF16 matches FP32 exponent range (no underflow)</li>
+<li>Loss scaling less critical but still used for stability</li>
+<li>Compute: 2× faster than FP32</li>
+<li>Memory: Same (weights still FP32)</li>
+</ul>
+
+<h2>Which Layers Need Which Precision?</h2>
+<table>
+<tr><th>Layer</th><th>Precision</th><th>Reason</th></tr>
+<tr><td>Attention (matmul)</td><td>FP32</td><td>Softmax needs stability</td></tr>
+<tr><td>Linear (weights)</td><td>FP16/BF16</td><td>Doesn't hurt accuracy</td></tr>
+<tr><td>Layer norm</td><td>FP32</td><td>Normalizes by variance</td></tr>
+<tr><td>Loss</td><td>FP32</td><td>Scaling needs headroom</td></tr>
+</table>
+
+<div class="note">
+<strong>Example: PyTorch Mixed-Precision</strong>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>from torch.cuda.amp import autocast, GradScaler
+
+scaler = GradScaler()
+for batch in dataloader:
+  with autocast():  # Forward in FP16
+    output = model(batch)
+    loss = loss_fn(output, target)
+
+  scaler.scale(loss).backward()  # Backward in FP16 (scaled)
+  scaler.step(optimizer)  # Update in FP32
+  scaler.update()
+</code></div>
+</div>
+
+<p><strong>Day 15:</strong> Production quantization in real chips (Apple, Google, NVIDIA).</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 14/30</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
