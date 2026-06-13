@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 7 — Systolic Arrays Deep Dive | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-07-systolic-array/"><meta property="og:title" content="AI Chip Design Day 7"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.8}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.hero p{position:relative;color:#94a3b8;font-size:1rem;max-width:680px;margin:0 auto}.container{max-width:920px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.6rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 1rem;border-bottom:3px solid rgba(236,72,153,.3);padding-bottom:.7rem}.content h3{font-size:1.2rem;font-weight:700;color:#e2e8f0;margin:1.8rem 0 .8rem}.content p{margin-bottom:1.2rem;color:#cbd5e1;font-size:1.02rem}.content ul{margin-left:1.8rem;margin-bottom:1.2rem;color:#cbd5e1}.content li{margin-bottom:.6rem}.note{background:rgba(236,72,153,.08);border-left:4px solid var(--pink);padding:1.2rem;margin:1.5rem 0;border-radius:6px;font-size:1.01rem}.diagram{background:var(--bg3);border:2px solid rgba(236,72,153,.2);border-radius:8px;padding:1.8rem;margin:1.8rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#a5f3fc;line-height:1.6;transition:all .3s;cursor:help}.diagram:hover{border-color:rgba(236,72,153,.4);box-shadow:0 0 20px rgba(236,72,153,.1)}table{width:100%;margin:1.5rem 0;border-collapse:collapse;font-size:.95rem}table td,table th{padding:.8rem;border:1px solid rgba(236,72,153,.2);text-align:left}table th{background:rgba(236,72,153,.1);color:var(--pink);font-weight:700}table tr:hover{background:rgba(236,72,153,.05)}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:1.5rem 0}@media(max-width:768px){.comparison{grid-template-columns:1fr}}.comp-box{background:var(--bg3);border:1px solid rgba(236,72,153,.2);padding:1.2rem;border-radius:8px;transition:all .3s}.comp-box:hover{border-color:var(--pink);box-shadow:0 0 15px rgba(236,72,153,.1)}.comp-box h4{color:var(--pink);margin-bottom:.8rem;font-size:1.05rem}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative;max-height:500px;overflow-y:auto}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:.8rem;right:.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 7 (Enhanced)</span></div>
+<div class="hero"><h1>Systolic Arrays <span class="g">Deep Dive</span></h1><p>How to scale from one MAC unit to 256×256 arrays. The heartbeat of Google TPU and Apple Neural Engine. Complete with math, diagrams, and working hardware code.</p></div>
+<div class="container"><div class="content">
+
+<h2>The Problem: Why Single MACs Aren't Enough</h2>
+
+<p>Imagine a CPU with one multiply-accumulate (MAC) unit computing a matrix multiplication. Let's calculate the cost:</p>
+
+<table>
+<tr><th>Matrix Size</th><th>Total FLOPs</th><th>Cycles @ 1 GHz</th><th>Actual Time</th><th>Feasible?</th></tr>
+<tr><td>16×16</td><td>4,096</td><td>4,096</td><td>4.1 μs</td><td>✅ Yes</td></tr>
+<tr><td>64×64</td><td>262,144</td><td>262 K</td><td>262 μs</td><td>✅ Okay</td></tr>
+<tr><td>256×256</td><td>16.7 million</td><td>16.7 M</td><td><strong>16.7 ms</strong></td><td>❌ Too slow</td></tr>
+<tr><td>1024×1024</td><td>2.1 billion</td><td>2.1 B</td><td><strong>2.1 seconds</strong></td><td>❌ Unusable</td></tr>
+</table>
+
+<p><strong>The insight:</strong> Neural networks do massive matrix multiplies constantly (every layer!). A single MAC is fundamentally too slow. You need thousands of MACs working in parallel—but wiring them efficiently is the challenge.</p>
+
+<h2>The Naive Approach: Why It Fails</h2>
+
+<p>First instinct: "Let's add 65,536 MACs all connected to shared memory!"</p>
+
+<div class="diagram">
+NAIVE DESIGN:
+        ┌─────────────────────────────┐
+        │    Shared Memory (4GB)       │
+        └──────────┬──────────────────┘
+                   │ BUS (needs 65K connections!)
+    ┌──────────────┼──────────────────┐
+    │              │                  │ ...
+   [MAC] [MAC] [MAC] [MAC] ... [MAC]
+    │              │                  │
+    └──────────────┼──────────────────┘
+
+PROBLEMS:
+1. Wiring nightmare: 65K × 32-bit connections = 2M wires
+2. Bus is the bottleneck: Can't feed all MACs simultaneously
+3. Power disaster: Every wire consumes power
+4. Latency: Signal propagates slowly across entire chip
+5. Routing: Becomes impossible at scale (physical design fails)
+</div>
+
+<p><strong>This is why:</strong> Most chips tried this approach and hit a wall around 1000-2000 MACs. The wiring becomes infeasible.</p>
+
+<h2>The Breakthrough: Systolic Arrays</h2>
+
+<p><strong>Systolic: from Greek "systole" (heartbeat).</strong> Instead of random connectivity, data flows in synchronized <em>waves</em> through a regular grid. Like how blood pulses through arteries in rhythm.</p>
+
+<div class="diagram">
+SYSTOLIC DESIGN:
+    Input A →  ┌─────────────────────┐
+               │ MAC  MAC  MAC  MAC  │ → Output B
+               │  ↓    ↓    ↓    ↓  │
+    Input B → │ MAC  MAC  MAC  MAC  │
+               │  ↓    ↓    ↓    ↓  │
+               │ MAC  MAC  MAC  MAC  │
+               │  ↓    ↓    ↓    ↓  │
+               │ MAC  MAC  MAC  MAC  │
+               └─────────────────────┘
+                    ↓ Output C
+
+BENEFITS:
+✓ Wiring: Only nearest-neighbor connections (O(N) instead of O(N²))
+✓ Regular pattern: Easy to tile and scale
+✓ Data reuse: Each value used 256 times before exiting
+✓ Power: Predictable, local connections
+✓ Latency: Constant (1-2 gate delays between MACs)
+</div>
+
+<h2>How Systolic Works: The Data Flow</h2>
+
+<h3>Principle: Stream Data Through, Not Broadcast</h3>
+
+<p><strong>Key idea:</strong> Instead of loading data once and keeping it stationary, flow data continuously through the array like a pipeline.</p>
+
+<div class="note">
+For matrix multiply C = A @ B:
+- Row i of A enters from the left and flows RIGHT
+- Column j of B enters from the top and flows DOWN
+- Each MAC[i,j] receives A[i,k] and B[k,j]
+- Computes partial sum: C[i,j] += A[i,k] × B[k,j]
+- Passes results to neighbors for next iteration
+</div>
+
+<h3>2×2 Example: Computing C[0,0]</h3>
+
+<p>Let's multiply two 2×2 matrices step by step:</p>
+
+<table>
+<tr><th colspan="2">Input A</th><th colspan="2">Input B</th><th colspan="2">Output C (desired)</th></tr>
+<tr><td>0.2</td><td>0.8</td><td>1.5</td><td>2.1</td><td>1.64</td><td>1.92</td></tr>
+<tr><td>0.5</td><td>0.1</td><td>0.7</td><td>3.2</td><td>0.82</td><td>1.17</td></tr>
+</table>
+
+<p><strong>Cycle-by-cycle execution in 2×2 systolic array:</strong></p>
+
+<table>
+<tr><th>Cycle</th><th>Data In</th><th>MAC[0,0] Op</th><th>MAC[0,1] Op</th><th>MAC[1,0] Op</th><th>MAC[1,1] Op</th><th>Status</th></tr>
+<tr><td>0</td><td>A[0,0]=0.2, B[0,0]=1.5</td><td>0 + 0.2×1.5 = 0.3</td><td>—</td><td>—</td><td>—</td><td>Loading</td></tr>
+<tr><td>1</td><td>A[0,1]=0.8, B[0,1]=2.1, A[1,0]=0.5, B[1,0]=0.7</td><td>0.3 + 0.8×0.7 = 0.86</td><td>0 + 0.8×2.1 = 1.68</td><td>0 + 0.5×1.5 = 0.75</td><td>—</td><td>Computing</td></tr>
+<tr><td>2</td><td>A[1,1]=0.1, B[1,1]=3.2</td><td><strong>0.86 (C[0,0]!)</strong></td><td>1.68 + 0.2×2.1 = 2.10</td><td>0.75 + 0.5×0.7 = 1.10</td><td>0 + 0.1×2.1 = 0.21</td><td>Computing</td></tr>
+<tr><td>3</td><td>Drain</td><td>—</td><td><strong>2.10 (C[0,1])</strong></td><td>1.10 + 0.1×0.7 = 1.17</td><td>0.21 + 0.1×3.2 = 0.53</td><td>Draining</td></tr>
+<tr><td>4</td><td>Done</td><td>—</td><td>—</td><td><strong>1.17 (C[1,0])</strong></td><td><strong>0.53 (C[1,1])</strong></td><td>Complete</td></tr>
+</table>
+
+<p><strong>Notice:</strong> We computed a 2×2 multiply in 4 cycles (load + compute + drain). A sequential CPU would need 8 multiplies = 8 cycles. Systolic got lucky here, but for 256×256, the advantage is massive.</p>
+
+<h2>Scaling to 256×256: The Math</h2>
+
+<table>
+<tr><th>Dimension</th><th>Sequential Cycles</th><th>Systolic Cycles</th><th>Speedup</th></tr>
+<tr><td>2×2</td><td>8</td><td>5</td><td>1.6×</td></tr>
+<tr><td>4×4</td><td>64</td><td>11</td><td>5.8×</td></tr>
+<tr><td>16×16</td><td>4,096</td><td>47</td><td>87×</td></tr>
+<tr><td>64×64</td><td>262,144</td><td>191</td><td>1,371×</td></tr>
+<tr><td><strong>256×256</strong></td><td><strong>16.7M</strong></td><td><strong>767</strong></td><td><strong>21,700×</strong></td></tr>
+</table>
+
+<p><strong>The pattern:</strong> Systolic time grows as O(3N), sequential grows as O(N³). At scale, systolic is exponentially faster!</p>
+
+<h2>The Secret: Data Reuse (Why This Matters)</h2>
+
+<p>Here's the real magic of systolic arrays: <strong>memory bandwidth reduction through data reuse.</strong></p>
+
+<div class="note">
+<strong>Standard CPU approach:</strong>
+```
+for i=0 to 255:
+  for j=0 to 255:
+    C[i,j] = 0
+    for k=0 to 255:
+      C[i,j] += A[i,k] * B[k,j]  ← Load A[i,k] EVERY ITERATION
+```
+A[0,0] is loaded 256 times (for j=0..255). Wasteful!
+
+<strong>Systolic approach:</strong>
+A[0,0] is loaded ONCE from memory, then flows through row 0.
+All 256 MACs in row 0 use it WITHOUT reloading.
+
+<strong>Result:</strong>
+• CPU memory bandwidth: 256² × 2 = 131K loads
+• Systolic memory bandwidth: 256² × 2 / 256 = 512 loads
+• Reduction: 256×
+
+For a 256×256 multiply needing 2 TB/s bandwidth:
+• CPU needs: 2 TB/s × 256 = 512 TB/s (!!)
+• Systolic needs: 2 TB/s × 1 = 2 TB/s ✓
+
+This is why TPU roofline model says 430 TFLOPS is achievable with 2 TB/s.
+</note>
+
+<h2>256×256 Systolic Array Architecture</h2>
+
+<div class="diagram">
+Google TPU v4 systolic core:
+
+    A[0] ──→ ┌──────────────────────────────────────┐
+    A[1] ──→ │ [MAC] [MAC] ... [MAC] [MAC] ← B_out  │
+    ...      │   ↓     ↓               ↓     ↓      │
+    A[255]─→ │ [MAC] [MAC] ... [MAC] [MAC]        │
+             │   ↓     ↓               ↓     ↓      │
+             │ ...                              ...  │
+             │   ↓     ↓               ↓     ↓      │
+             │ [MAC] [MAC] ... [MAC] [MAC]        │
+             └──────────────────────────────────────┘
+                   ↓     ↓               ↓     ↓
+              C_out[0]               C_out[255]
+
+Key specs:
+- 256×256 grid = 65,536 MACs total
+- Each MAC: 8-bit input, 32-bit accumulator
+- Clock: 2 GHz
+- Peak: 65K × 2 × 2 = 260 TFLOPS (naive)
+- Actual: 430 TFLOPS (with INT8 + better utilization)
+
+Latency to first result: ~512 cycles (load A/B + pipeline)
+Throughput: One 256×256 multiply every ~768 cycles
+</div>
+
+<h2>Hardware: SystemVerilog Implementation</h2>
+
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>// Systolic Processing Element
+module systolic_pe #(parameter W=8, ACC=32) (
+  input clk, rst,
+  input signed [W-1:0] a_in,           // From left (row broadcast)
+  input signed [W-1:0] b_in,           // From top (column broadcast)
+
+  output reg signed [W-1:0] a_out,     // To right
+  output reg signed [W-1:0] b_out,     // To bottom
+
+  input signed [ACC-1:0] c_partial_in, // From left (accumulator)
+  output reg signed [ACC-1:0] c_out    // To bottom
+);
+
+  wire signed [2*W-1:0] mult_result;
+  assign mult_result = a_in * b_in;    // 8×8 → 16 bits
+
+  always @(posedge clk) begin
+    if (rst) begin
+      a_out <= 0;
+      b_out <= 0;
+      c_out <= 0;
+    end else begin
+      // Pipeline stage: Forward inputs
+      a_out <= a_in;           // Shift A rightward (row)
+      b_out <= b_in;           // Shift B downward (column)
+
+      // Multiply-accumulate
+      c_out <= c_partial_in + mult_result;  // C += A×B
+    end
+  end
+endmodule
+
+// 256×256 Systolic Array instantiation
+genvar i, j;
+generate
+  for (i = 0; i < 256; i = i + 1) begin : rows
+    for (j = 0; j < 256; j = j + 1) begin : cols
+      systolic_pe #(.W(8), .ACC(32)) pe (
+        .clk(clk), .rst(rst),
+        .a_in(a_route[i][j]),
+        .b_in(b_route[i][j]),
+        .a_out(a_route[i][j+1]),   // Shift right
+        .b_out(b_route[i+1][j]),   // Shift down
+        .c_partial_in(c_route[i][j]),
+        .c_out(c_route[i][j+1])
+      );
+    end
+  end
+endgenerate
+</code></div>
+
+<h2>Why GPUs Lost to Systolic (For This Task)</h2>
+
+<div class="comparison">
+<div class="comp-box">
+<h4>NVIDIA H100 Tensor Core</h4>
+<p><strong>Strategy:</strong> General-purpose with cache hierarchy</p>
+<ul>
+<li>Memory: 80GB HBM @ 3 TB/s (1.5× faster than TPU)</li>
+<li>Peak: 1.45 PFLOPS (3× more than TPU)</li>
+<li>BUT: Complex caching, branch prediction, control logic</li>
+<li>Actual matrix multiply: ~70% peak (1 PFLOPS)</li>
+<li>Power: 700W</li>
+</ul>
+</div>
+<div class="comp-box">
+<h4>Google TPU v4 Systolic</h4>
+<p><strong>Strategy:</strong> Specialized for matrix ops only</p>
+<ul>
+<li>Memory: 8GB HBM @ 2 TB/s</li>
+<li>Peak: 430 TFLOPS (smaller headline number)</li>
+<li>BUT: Optimized dataflow, no caching overhead</li>
+<li>Actual matrix multiply: ~97% peak (430 TFLOPS!)</li>
+<li>Power: 200W</li>
+</ul>
+</div>
+</div>
+
+<p><strong>Winner:</strong> For pure matrix math, TPU beats H100 on efficiency (TFLOPS/Watt). But H100 wins on flexibility (runs any code, any workload).</p>
+
+<h2>Limitations of Systolic (Why Not Use It Everywhere?)</h2>
+
+<p><strong>1. Requires Regular Data Access Patterns:</strong> Can't handle sparse matrices efficiently (zeros still occupy wires).</p>
+
+<p><strong>2. All MACs Must Stay Busy:</strong> If you have a 100×100 matrix and 256×256 array, 156 rows are wasted. Stalls = idle hardware.</p>
+
+<p><strong>3. Non-Matrix Ops Are Slow:</strong> Activation functions (ReLU, sigmoid, softmax) run on separate control logic, not systolic.</p>
+
+<p><strong>4. Fixed Array Size:</strong> A 256×256 systolic optimizes for 256×256 matrices, not 512×512 or 128×128 (though tiling helps).</p>
+
+<h2>Takeaway: Why Systolic Rules AI</h2>
+
+<ul>
+<li>✅ <strong>256× less memory bandwidth</strong> via data reuse</li>
+<li>✅ <strong>97% hardware utilization</strong> (vs 20% on CPUs for this task)</li>
+<li>✅ <strong>21,700× speedup</strong> over sequential for 256×256</li>
+<li>✅ <strong>5× better FLOPS/Watt</strong> than GPU</li>
+<li>✅ <strong>O(N) wiring</strong> (scales to thousands of MACs)</li>
+</ul>
+
+<p><strong>Next (Day 8):</strong> Detailed cycle-by-cycle execution of a real 4×4 systolic array, with timing diagrams and SystemVerilog testbenches.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 7 Enhanced</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
