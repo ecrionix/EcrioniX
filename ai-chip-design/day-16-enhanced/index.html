@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Chip Design Day 16 — Roofline Model Deep Dive | EcrioniX</title>
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-16-enhanced/"><meta property="og:title" content="AI Chip Design Day 16 Enhanced"><meta property="og:image" content="https://ecrionix.org/favicon1.png"><link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.8}a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.hero p{color:#94a3b8;font-size:1rem;max-width:680px;margin:0 auto}.container{max-width:920px;margin:0 auto;padding:2.5rem 1.5rem}.content h2{font-size:1.6rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 1rem;border-bottom:3px solid rgba(236,72,153,.3);padding-bottom:.7rem}.content h3{font-size:1.2rem;font-weight:700;color:#e2e8f0;margin:1.8rem 0 .8rem}.content p{margin-bottom:1.2rem;color:#cbd5e1;font-size:1.02rem}.content ul{margin-left:1.8rem;margin-bottom:1.2rem}.content li{margin-bottom:.6rem}.formula-box{background:rgba(236,72,153,.12);border:2px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:1rem;color:#a5f3fc;line-height:1.8;transition:all .3s}.formula-box:hover{border-color:var(--pink);box-shadow:0 0 20px rgba(236,72,153,.15)}.table-scroll{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.95rem}table td,table th{padding:.8rem;border:1px solid rgba(236,72,153,.2);text-align:left}table th{background:rgba(236,72,153,.1);color:var(--pink);font-weight:700}table tr:hover{background:rgba(236,72,153,.05)}.example-box{background:var(--bg3);border-left:4px solid var(--pink);padding:1.5rem;margin:1.5rem 0;border-radius:6px}.example-box h4{color:var(--pink);margin-bottom:1rem}.example-box .calc{display:grid;grid-template-columns:auto 1fr;gap:1rem;margin:.8rem 0;font-family:'JetBrains Mono',monospace;font-size:.95rem}.example-box .calc-label{color:#94a3b8}.example-box .calc-value{color:#a5f3fc;font-weight:600}.diagram{background:var(--bg3);border:2px solid rgba(236,72,153,.2);border-radius:8px;padding:2rem;margin:2rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.6}.note{background:rgba(236,72,153,.08);border-left:4px solid var(--pink);padding:1.2rem;margin:1.5rem 0;border-radius:6px}.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative;max-height:400px;overflow-y:auto}.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}.copy-btn{position:absolute;top:.8rem;right:.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem}footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 16 Enhanced</span></div>
+<div class="hero"><h1>The Roofline Model <span class="g">Deep Dive</span></h1><p>The fundamental tool for understanding AI chip bottlenecks. Is your design compute-bound or memory-bound? Complete mathematical framework with real examples from Apple to NVIDIA.</p></div>
+<div class="container"><div class="content">
+
+<h2>Why This Matters: The Critical Question</h2>
+
+<p>You've designed an AI chip. It can compute 1,000 TFLOPS. But in practice, does it achieve 1,000 TFLOPS on real workloads? Or does it get stuck at 400 TFLOPS?</p>
+
+<p><strong>The roofline model answers this fundamental question:</strong> Is your design limited by compute throughput or memory bandwidth?</p>
+
+<p>This distinction changes everything:</p>
+<ul>
+<li><strong>Compute-bound:</strong> Add more MACs to go faster</li>
+<li><strong>Memory-bound:</strong> Faster MACs don't help; buy faster memory instead</li>
+</ul>
+
+<h2>The Mathematical Foundation</h2>
+
+<p>Roofline is based on one simple equation:</p>
+
+<div class="formula-box">
+Peak Performance = min(
+  Peak Compute (FLOPS),
+  Peak Memory Bandwidth (Bytes/sec) × Arithmetic Intensity (FLOPS/Byte)
+)
+</div>
+
+<p>Let's break each term:</p>
+
+<table>
+<tr><th>Term</th><th>Definition</th><th>Example</th></tr>
+<tr><td><strong>Peak Compute</strong></td><td>Theoretical max FLOPs if all ALUs/MACs fire</td><td>430 TFLOPS for TPU v4</td></tr>
+<tr><td><strong>Peak Memory BW</strong></td><td>Theoretical max Bytes/sec from memory</td><td>2 TB/s for TPU v4 HBM</td></tr>
+<tr><td><strong>Arithmetic Intensity (AI)</strong></td><td>FLOPs per Byte loaded/stored</td><td>Depends on algorithm</td></tr>
+</table>
+
+<h2>Computing Arithmetic Intensity</h2>
+
+<p><strong>Example: Matrix Multiply C = A @ B where all matrices are N×N</strong></p>
+
+<div class="example-box">
+<h4>📊 Calculation for 256×256 Multiply</h4>
+
+<div class="calc">
+<span class="calc-label">Total FLOPs:</span>
+<span class="calc-value">N × N × (2N - 1) ≈ 2N³ = 2×256³ = 33.6 million</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Memory Bytes (assuming FP32):</span>
+<span class="calc-value">2 matrices × N² × 4 bytes = 2×256²×4 = 512 KB</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Arithmetic Intensity:</span>
+<span class="calc-value">33.6M FLOPs ÷ 512K Bytes = 65.5 FLOPS/Byte</span>
+</div>
+</div>
+
+<p><strong>Notice:</strong> AI scales with N! Larger matrices have higher AI (better efficiency).</p>
+
+<table>
+<tr><th>Matrix Size</th><th>AI (FLOPS/Byte)</th><th>Category</th></tr>
+<tr><td>16×16</td><td>16.4</td><td>Memory-bound</td></tr>
+<tr><td>64×64</td><td>32</td><td>Memory-bound</td></tr>
+<tr><td>256×256</td><td>65.5</td><td>Depends on roofline knee</td></tr>
+<tr><td>1024×1024</td><td>256</td><td>Likely compute-bound</td></tr>
+</table>
+
+<h2>The Roofline Graph: Visualizing the Trade-off</h2>
+
+<div class="diagram">
+                      Peak Compute Roof (430 TFLOPS)
+                      ─────────────────────────────────
+TFLOPS
+    400 |                    ╱─────────────────→
+        |                  ╱
+    300 |                ╱
+        |              ╱
+    200 |            ╱  ← Memory Roof
+        |          ╱ (slope = 2 TB/s bandwidth)
+    100 |        ╱
+        |      ╱ ← Knee (AI = 215)
+      0 |____╱___________________________→
+        0   50  100  150  200  250  300
+            Arithmetic Intensity (FLOPS/Byte)
+
+Regions:
+• Left of knee (AI < 215): Memory-bound
+  - Performance limited by bandwidth
+  - Line has slope = 2 TB/s × AI
+
+• Right of knee (AI > 215): Compute-bound
+  - Performance = flat 430 TFLOPS
+  - Memory is not the bottleneck
+</div>
+
+<h2>Calculating the Knee</h2>
+
+<p><strong>The knee is where compute and memory limits meet:</strong></p>
+
+<div class="formula-box">
+AI_knee = Peak Compute / Peak Bandwidth
+        = 430 TFLOPS / 2 TB/s
+        = 430 × 10¹² / (2 × 10¹² bytes/sec)
+        = 215 FLOPS/Byte
+</div>
+
+<p><strong>Interpretation:</strong> Any operation with AI < 215 is memory-bound on TPU v4. Any operation with AI > 215 can achieve peak compute.</p>
+
+<h2>Real Examples: What's the AI for Common Operations?</h2>
+
+<div class="table-scroll">
+<table>
+<tr><th>Operation</th><th>FLOPs</th><th>Bytes</th><th>AI (FLOPS/B)</th><th>On TPU v4</th></tr>
+<tr><td><strong>Matrix Multiply (256×256)</strong></td><td>33.6M</td><td>512K</td><td>65.5</td><td>Memory-bound (100 TFLOPS)</td></tr>
+<tr><td><strong>Matrix Multiply (1024×1024)</strong></td><td>2.1B</td><td>8M</td><td>262</td><td>Compute-bound (430 TFLOPS)</td></tr>
+<tr><td><strong>Element-wise ReLU</strong></td><td>N</td><td>2N bytes</td><td>0.5</td><td>Memory-bound (memory only)</td></tr>
+<tr><td><strong>Layer Norm</strong></td><td>5N</td><td>4N bytes</td><td>1.25</td><td>Memory-bound</td></tr>
+<tr><td><strong>Softmax (attention)</strong></td><td>5N²</td><td>N² bytes</td><td>5.0</td><td>Memory-bound</td></tr>
+<tr><td><strong>Conv2D (3×3 kernel)</strong></td><td>18HWK²</td><td>4(H×W + K²)</td><td>≈9</td><td>Memory-bound</td></tr>
+<tr><td><strong>Batch Matmul (GEMM)</strong></td><td>Varies</td><td>Varies</td><td>Batch-dependent</td><td>Depends on batch</td></tr>
+</table>
+</div>
+
+<h2>Case Study 1: Why TPU Dominates Matrix Math</h2>
+
+<p><strong>Scenario: Multiply two 1024×1024 matrices</strong></p>
+
+<div class="example-box">
+<h4>🔷 TPU v4 (Systolic Array)</h4>
+
+<div class="calc">
+<span class="calc-label">Arithmetic Intensity:</span>
+<span class="calc-value">256 FLOPS/Byte (> 215 knee)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Predicted Performance:</span>
+<span class="calc-value">430 TFLOPS (peak)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Actual Performance:</span>
+<span class="calc-value">~415 TFLOPS (97% peak!)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Why so high?:</span>
+<span class="calc-value">Systolic data reuse reduces real memory traffic</span>
+</div>
+</div>
+
+<div class="example-box">
+<h4>🔷 NVIDIA H100 (Tensor Core)</h4>
+
+<div class="calc">
+<span class="calc-label">Arithmetic Intensity:</span>
+<span class="calc-value">256 FLOPS/Byte (> knee)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Predicted Performance:</span>
+<span class="calc-value">1,450 TFLOPS (peak)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Actual Performance:</span>
+<span class="calc-value">~920 TFLOPS (63% peak)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Why lower?:</span>
+<span class="calc-value">Cache misses, warp divergence, not optimized for 1024×1024</span>
+</div>
+</div>
+
+<p><strong>Conclusion:</strong> TPU achieves higher percentage of peak because systolic architecture is optimized for exactly this access pattern.</p>
+
+<h2>Case Study 2: Why Attention Layers Bottleneck Transformers</h2>
+
+<p><strong>Problem: Self-attention in a 1B-parameter transformer</strong></p>
+
+<p>In transformer architecture, attention is the expensive operation:</p>
+
+<div class="example-box">
+<h4>🔶 Attention Computation</h4>
+
+<div class="calc">
+<span class="calc-label">Sequence Length:</span>
+<span class="calc-value">L = 2,048 tokens</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Attention Matrix (Q @ K^T):</span>
+<span class="calc-value">FLOPs = L² × d_k = 2048² × 64 = 268M</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Memory (Q, K, V):</span>
+<span class="calc-value">Bytes = 3 × L × d × 2 (FP16) = 3 × 2048 × 768 × 2 = 9.4 MB</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">Arithmetic Intensity:</span>
+<span class="calc-value">268M / 9.4M = 28.5 FLOPS/Byte (< 215 knee!)</span>
+</div>
+
+<div class="calc">
+<span class="calc-label">On TPU v4:</span>
+<span class="calc-value">min(430T, 2T/s × 28.5) = 57 TFLOPS (13% peak!)</span>
+</div>
+</div>
+
+<p><strong>This is why attention scales poorly:</strong> Softmax and attention create many small operations with low AI. The roofline predicts 13% utilization—real measurements confirm this.</p>
+
+<h2>Design Implication: What Should You Optimize?</h2>
+
+<p><strong>For memory-bound operations (AI < knee):</strong></p>
+<ul>
+<li>✅ Increase memory bandwidth (HBM, 3D stacking, NVLink)</li>
+<li>✅ Reduce data reuse overhead (fewer loads)</li>
+<li>❌ Adding more MACs is useless (they'll starve)</li>
+<li>❌ Faster clock speed doesn't help</li>
+</ul>
+
+<p><strong>For compute-bound operations (AI > knee):</strong></p>
+<ul>
+<li>✅ Add more MACs/ALUs</li>
+<li>✅ Increase clock speed</li>
+<li>❌ Faster memory doesn't help (already computing faster than memory feeds)</li>
+<li>❌ Larger cache doesn't help (computation is the limit)</li>
+</ul>
+
+<h2>The Systolic Array Advantage: Moving the Knee</h2>
+
+<p><strong>Standard GPU (H100):</strong> AI_knee = 1450 TFLOPS / 3 TB/s ≈ 480 FLOPS/B</p>
+
+<p><strong>Systolic Array (TPU):</strong> AI_knee = 430 TFLOPS / 2 TB/s ≈ 215 FLOPS/B</p>
+
+<p><strong>But wait—GPU has more peak TFLOPS and higher knee! So why is TPU better?</strong></p>
+
+<p><strong>Answer:</strong> Data reuse changes the actual AI:</p>
+
+<div class="note">
+For matrix multiply, actual memory traffic on:
+• H100: O(N²) bytes (limited caching helps, but still high)
+• TPU: O(N²/256) bytes (systolic streams data through 256 MACs)
+
+Result: TPU's actual AI is 256× higher for this operation!
+
+Example (1024×1024 multiply):
+• H100 roofline predicts compute-bound, but cache misses occur
+• TPU roofline predicts compute-bound, and it delivers 97% peak
+
+Systolic architecture changes the fundamental memory access pattern, improving actual AI beyond what the simple roofline predicts.
+</div>
+
+<h2>Roofline in Practice: Profiling Your Design</h2>
+
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>// Pseudo-code: Measure roofline performance
+def measure_roofline(chip, operation, size):
+    flops = count_flops(operation, size)
+    bytes_loaded = count_memory_bytes(operation, size)
+
+    ai = flops / bytes_loaded
+    peak_compute = chip.peak_tflops
+    peak_memory = chip.memory_bandwidth
+
+    knee = peak_compute / peak_memory
+
+    if ai < knee:
+        bottleneck = "MEMORY"
+        predicted = peak_memory * ai
+    else:
+        bottleneck = "COMPUTE"
+        predicted = peak_compute
+
+    actual = benchmark(operation, size)
+    efficiency = actual / predicted
+
+    print(f"AI={ai}, Knee={knee}")
+    print(f"Bottleneck: {bottleneck}")
+    print(f"Predicted: {predicted} TFLOPS")
+    print(f"Actual: {actual} TFLOPS ({efficiency*100:.0f}%)")
+
+    return {ai, bottleneck, predicted, actual, efficiency}
+
+# Example results:
+measure_roofline(TPU_v4, "matmul_1024x1024", 1024)
+# Output: AI=256, Bottleneck=COMPUTE, Predicted=430T, Actual=415T (97%)
+
+measure_roofline(H100, "matmul_1024x1024", 1024)
+# Output: AI=256, Bottleneck=COMPUTE, Predicted=1450T, Actual=920T (63%)
+
+measure_roofline(TPU_v4, "softmax", 2048)
+# Output: AI=5.2, Bottleneck=MEMORY, Predicted=10T, Actual=9T (90%)
+</code></div>
+
+<h2>Summary: The Roofline Framework</h2>
+
+<p><strong>The roofline model is your design debugging tool:</strong></p>
+
+<ul>
+<li>✅ Understand bottlenecks before building silicon</li>
+<li>✅ Know whether to optimize compute or memory</li>
+<li>✅ Predict real-world performance from AI</li>
+<li>✅ Justify spending on expensive components (HBM costs $$$)</li>
+<li>✅ Identify which operations need algorithmic changes (fuse kernels, increase batch size to raise AI)</li>
+</ul>
+
+<p><strong>Next (Day 17):</strong> Cache hierarchies and how to reduce memory traffic.</p>
+
+</div></div>
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 16 Enhanced</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
