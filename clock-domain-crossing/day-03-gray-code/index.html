@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gray Code in CDC — Safely Crossing Multi-Bit Buses | CDC Day 3</title>
+<meta name="description" content="Day 3 of Clock Domain Crossing. Gray code: how it solves multi-bit CDC crossing. Only 1 bit changes between consecutive values, so metastability on any bit doesn't produce invalid states. Gray counters, binary-gray conversion, and FIFO pointer synchronization.">
+<meta name="keywords" content="gray code CDC, gray code counter, multi-bit crossing, one-hot transition, synchronizer gray code, CDC pointer, binary to gray conversion">
+<link rel="canonical" href="https://ecrionix.org/clock-domain-crossing/day-03-gray-code/">
+<meta property="og:title" content="Gray Code in CDC — Safely Crossing Multi-Bit Buses">
+<meta property="og:description" content="How Gray code safely crosses multi-bit buses in CDC: only 1 bit changes per transition.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-13","dateModified":"2026-06-13","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Gray Code in CDC — Safely Crossing Multi-Bit Buses","description":"Gray code solves multi-bit CDC: only 1 bit changes between consecutive values. Even if that bit is delayed by metastability, the result is always a valid adjacent code, never an invalid state.","url":"https://ecrionix.org/clock-domain-crossing/day-03-gray-code/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Clock Domain Crossing Guide","url":"https://ecrionix.org/clock-domain-crossing/"}},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"CDC Guide","item":"https://ecrionix.org/clock-domain-crossing/"},{"@type":"ListItem","position":3,"name":"Day 3","item":"https://ecrionix.org/clock-domain-crossing/day-03-gray-code/"}]},
+ {"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why is Gray code safe for CDC?","acceptedAnswer":{"@type":"Answer","text":"Gray code has a unique property: only 1 bit changes between consecutive values. If a bit is delayed or metastable during crossing, the result is always adjacent to a valid code, never an invalid state. Binary does not have this property — multiple bits change at once."}},{"@type":"Question","name":"What is the Gray code formula?","acceptedAnswer":{"@type":"Answer","text":"To convert binary B to Gray: G = B XOR (B >> 1). To convert Gray G back to binary: B is computed by XOR-ing all more-significant bits."}},{"@type":"Question","name":"Can I use Gray code for all multi-bit CDC?","acceptedAnswer":{"@type":"Answer","text":"Gray code is best for counters and pointers (read/write pointers in FIFOs). For random multi-bit data, Gray code doesn't help — you need a handshake or data + req/ack protocol (covered in Day 4)."}},{"@type":"Question","name":"How do I implement a Gray counter?","acceptedAnswer":{"@type":"Answer","text":"Increment a binary counter, then convert each output to Gray. Or use an optimized Gray counter that increments directly in Gray code. Synopsys DesignWare has DW_gray module."}}]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--cyan:#06b6d4}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.78}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--cyan)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.3);color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:var(--cyan);font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--cyan);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}.box.warn{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}.box.warn h3{color:var(--red);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--cyan);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.2rem 0;overflow-x:auto}.figure svg{display:block;margin:0 auto}.fig-cap{text-align:center;font-size:.75rem;color:#64748b;margin-top:.5rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#67e8f9}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/clock-domain-crossing/">CDC</a><a href="/vlsi/">VLSI</a><a href="/riscv-from-scratch/">RISC-V</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/clock-domain-crossing/">CDC Guide</a><span>›</span><span>Day 3</span></div>
+<div class="wrap">
+<span class="daytag">DAY 3 · CDC FUNDAMENTALS</span>
+<h1>Gray Code — Crossing Multi-Bit Buses</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 13, 2026</div>
+<p class="lead">The 2-FF synchronizer solves metastability for single bits. But what about crossing a multi-bit value, like a counter or FIFO pointer? Gray code is the answer: a binary code where <b>only 1 bit changes between consecutive values</b>. Even if that single bit is delayed by metastability, the result is always a valid code, never an invalid state.</p>
+
+<h2>1. The problem: multi-bit binary crossing</h2>
+<p>Consider crossing a 4-bit counter from clock domain A to domain B. In regular binary, consecutive numbers differ in multiple bits:</p>
+<ul>
+  <li>3 (0011) → 4 (0100): 3 bits change simultaneously</li>
+  <li>7 (0111) → 8 (1000): all 4 bits change</li>
+</ul>
+<p>If you cross these asynchronously, metastability can delay some bits but not others. You might read an intermediate invalid value:</p>
+<ul>
+  <li>Reading during 3→4 transition: you might see 0010 or 0110 or 0101 — values that don't represent valid counter states</li>
+  <li>These invalid states can corrupt downstream logic</li>
+</ul>
+
+<div class="box warn">
+  <h3>⚠️ Binary is unsafe for CDC</h3>
+  <p style="margin:0">Never cross a multi-bit binary value asynchronously without Gray code conversion. The synchronizer can't protect you — multiple bits can be in inconsistent states during the transition.</p>
+</div>
+
+<h2>2. What is Gray code?</h2>
+<p>Gray code (also called <b>reflected binary code</b>) is a binary code where consecutive values differ by exactly 1 bit:</p>
+<table>
+  <thead><tr><th>Decimal</th><th>Binary</th><th>Gray</th><th>Bits changed</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>0000</td><td>0000</td><td>—</td></tr>
+    <tr><td>1</td><td>0001</td><td>0001</td><td>1 bit</td></tr>
+    <tr><td>2</td><td>0010</td><td>0011</td><td>1 bit</td></tr>
+    <tr><td>3</td><td>0011</td><td>0010</td><td>1 bit</td></tr>
+    <tr><td>4</td><td>0100</td><td>0110</td><td>1 bit</td></tr>
+    <tr><td>5</td><td>0101</td><td>0111</td><td>1 bit</td></tr>
+    <tr><td>6</td><td>0110</td><td>0101</td><td>1 bit</td></tr>
+    <tr><td>7</td><td>0111</td><td>0100</td><td>1 bit</td></tr>
+    <tr><td>8</td><td>1000</td><td>1100</td><td>1 bit</td></tr>
+    <tr><td>9</td><td>1001</td><td>1101</td><td>1 bit</td></tr>
+    <tr><td>10</td><td>1010</td><td>1111</td><td>1 bit</td></tr>
+    <tr><td>11</td><td>1011</td><td>1110</td><td>1 bit</td></tr>
+    <tr><td>12</td><td>1100</td><td>1010</td><td>1 bit</td></tr>
+    <tr><td>13</td><td>1101</td><td>1011</td><td>1 bit</td></tr>
+    <tr><td>14</td><td>1110</td><td>1001</td><td>1 bit</td></tr>
+    <tr><td>15</td><td>1111</td><td>1000</td><td>1 bit</td></tr>
+  </tbody>
+</table>
+
+<p>Notice: every transition changes only 1 bit. This is the magic of Gray code.</p>
+
+<h2>3. Why Gray code is safe for CDC</h2>
+<p>If only 1 bit changes between consecutive Gray values, then even if metastability delays that bit:</p>
+<ul>
+  <li><b>In the worst case:</b> you read the old or new value, but never an invalid intermediate state</li>
+  <li><b>Why?</b> Any 1-bit difference from a valid Gray code is another valid Gray code (or at least adjacent to the intended code)</li>
+</ul>
+
+<div class="box key">
+  <h3>✅ Gray code + 2-FF synchronizer = safe multi-bit crossing</h3>
+  <p style="margin:0">Convert binary to Gray, sync the Gray value across clock domains with a 2-FF synchronizer per bit, then convert back to binary. The receiver always reads a valid Gray code, even if metastability delays individual bits. This is the standard pattern for synchronizing FIFO pointers, event counters, and state information.</p>
+</div>
+
+<h2>4. Binary ↔ Gray conversion</h2>
+<p><b>Binary to Gray:</b></p>
+<p style="text-align:center;color:#cbd5e1;margin:1.2rem 0"><code>Gray = Binary XOR (Binary >> 1)</code></p>
+<p>Example: Binary 0101 (5)</p>
+<ul>
+  <li>0101 XOR 0010 = 0111 (7 in Gray)</li>
+</ul>
+
+<p><b>Gray to Binary:</b> Reverse the process by XOR-ing all more-significant bits:</p>
+<ul>
+  <li>Binary[n] = Gray[n]</li>
+  <li>Binary[n-1] = Gray[n-1] XOR Binary[n]</li>
+  <li>Binary[n-2] = Gray[n-2] XOR Binary[n-1]</li>
+  <li>... and so on</li>
+</ul>
+
+<h2>5. Verilog implementation</h2>
+
+<div class="codecard">
+  <div class="cc-head">
+    <span class="cc-name">gray_converter.sv</span>
+    <div class="cc-btns">
+      <button onclick="this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);navigator.clipboard.writeText(document.querySelector('.cc-code-1').innerText)">Copy</button>
+      <button onclick="fetch('/api/download?file=gray_converter.sv').then(r=>r.blob()).then(b=>{let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='gray_converter.sv';a.click()})">Download</button>
+    </div>
+  </div>
+  <pre class="cc-code-1">// Binary to Gray and Gray to Binary converters
+module gray_converter #(parameter WIDTH = 8) (
+  input  [WIDTH-1:0] binary_in,
+  output [WIDTH-1:0] gray_out
+);
+  assign gray_out = binary_in ^ (binary_in >> 1);
+endmodule
+
+module gray_to_binary #(parameter WIDTH = 8) (
+  input  [WIDTH-1:0] gray_in,
+  output [WIDTH-1:0] binary_out
+);
+  genvar i;
+  generate
+    for (i = 0; i < WIDTH; i = i + 1) begin : g2b
+      if (i == WIDTH - 1)
+        assign binary_out[i] = gray_in[i];
+      else
+        assign binary_out[i] = gray_in[i] ^ binary_out[i + 1];
+    end
+  endgenerate
+endmodule
+
+// Example: 4-bit Gray counter
+module gray_counter #(parameter WIDTH = 4) (
+  input clk, rst_n,
+  output [WIDTH-1:0] gray_out,
+  output [WIDTH-1:0] binary_out
+);
+  reg [WIDTH-1:0] counter;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      counter <= 0;
+    else
+      counter <= counter + 1;
+  end
+
+  gray_converter #(.WIDTH(WIDTH)) gc (.binary_in(counter), .gray_out(gray_out));
+  assign binary_out = counter;
+endmodule
+
+<h2>6. Using Gray code in FIFO pointer synchronization</h2>
+<p>A dual-clock FIFO (covered in depth on Day 5) uses Gray code like this:</p>
+<ul>
+  <li><b>Write domain:</b> Maintains write_ptr (binary), converts to write_ptr_gray</li>
+  <li><b>Crosses to read domain:</b> write_ptr_gray synced with 2-FF synchronizer</li>
+  <li><b>Read domain:</b> Synced gray value converted back to binary for comparisons</li>
+  <li><b>Same in reverse:</b> read_ptr crosses back to write domain as Gray</li>
+</ul>
+
+<p>This pattern ensures pointers never produce invalid intermediate states during crossing.</p>
+
+<div class="codecard">
+  <div class="cc-head">
+    <span class="cc-name">gray_fifo_pointer.sv (snippet)</span>
+    <div class="cc-btns">
+      <button onclick="this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);navigator.clipboard.writeText(document.querySelector('.cc-code-2').innerText)">Copy</button>
+      <button onclick="fetch('/api/download?file=gray_fifo.sv').then(r=>r.blob()).then(b=>{let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='gray_fifo.sv';a.click()})">Download</button>
+    </div>
+  </div>
+  <pre class="cc-code-2">// Simplified: FIFO pointer synchronization using Gray code
+module fifo_wr_ptr_gray #(parameter AWIDTH = 4) (
+  input clk_w, rst_n,
+  input wr_en,
+  output [AWIDTH-1:0] wr_ptr_gray,
+  output [AWIDTH-1:0] wr_ptr_bin
+);
+  reg [AWIDTH-1:0] wr_ptr;
+
+  always @(posedge clk_w or negedge rst_n) begin
+    if (!rst_n)
+      wr_ptr <= 0;
+    else if (wr_en)
+      wr_ptr <= wr_ptr + 1;
+  end
+
+  assign wr_ptr_bin = wr_ptr;
+  assign wr_ptr_gray = wr_ptr ^ (wr_ptr >> 1);
+endmodule
+
+// In read domain, synchronize wr_ptr_gray
+wire [AWIDTH-1:0] wr_ptr_gray_sync;
+sync_2ff #(.WIDTH(AWIDTH)) wr_sync (
+  .clk(clk_r),
+  .rst_n(rst_n),
+  .async_in(wr_ptr_gray),
+  .sync_out(wr_ptr_gray_sync)
+);
+
+// Convert back to binary for comparison
+wire [AWIDTH-1:0] wr_ptr_sync;
+gray_to_binary #(.WIDTH(AWIDTH)) g2b (
+  .gray_in(wr_ptr_gray_sync),
+  .binary_out(wr_ptr_sync)
+);
+
+// Now wr_ptr_sync is safe to use in read_ptr comparisons
+
+<h2>7. Best practices and limitations</h2>
+<table>
+  <thead><tr><th>Use Gray code for:</th><th>Don't use Gray code for:</th></tr></thead>
+  <tbody>
+    <tr><td>FIFO read/write pointers</td><td>Random multi-bit data values</td></tr>
+    <tr><td>Event counters crossing domains</td><td>Commands or control words (use handshake)</td></tr>
+    <tr><td>Address buses</td><td>Data that doesn't increment sequentially</td></tr>
+    <tr><td>State machine pointers</td><td>Situations where you need exact binary value (convert back from Gray)</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <h3>⚠️ Gray code gotcha: conversion overhead</h3>
+  <p style="margin:0">Gray code adds a small logic delay for binary↔gray conversion. For very high-frequency designs, pre-compute Gray conversion stages or pipeline them. Also, Gray code only helps with sequential values; for random data, you need a handshake (Day 4).</p>
+</div>
+
+<div class="takeaways">
+  <h3>🎯 Day 3 takeaways</h3>
+  <ul>
+    <li><b>Gray code property:</b> only 1 bit changes between consecutive values</li>
+    <li><b>Safe for CDC:</b> even if 1 bit is delayed, result is always a valid adjacent code</li>
+    <li><b>Binary to Gray:</b> <code>Gray = Binary XOR (Binary >> 1)</code></li>
+    <li><b>Gray to binary:</b> iterative XOR of more-significant bits</li>
+    <li><b>FIFO pointer pattern:</b> Gray encode before sync, decode after sync</li>
+    <li><b>Typical use:</b> FIFO pointers, event counters, address buses</li>
+    <li><b>Not for random data:</b> use handshake protocols instead (covered Day 4)</li>
+  </ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>Why is Gray code safe for CDC?</h3><p>Only 1 bit changes between consecutive Gray values. If that bit is delayed by metastability, you always read a valid code (or adjacent code), never an invalid intermediate state. Binary does not have this property.</p></div>
+<div class="faq-item"><h3>What is the Gray code formula?</h3><p>Binary to Gray: G = B XOR (B >> 1). Gray to Binary: iteratively XOR all more-significant bits. Most HDL libraries have parameterized Gray converters available.</p></div>
+<div class="faq-item"><h3>Can I use Gray code for all multi-bit CDC?</h3><p>Gray code is best for counters and pointers (strictly incrementing values). For random multi-bit data, Gray code doesn't help — you need a handshake protocol with valid/ready signaling (Day 4).</p></div>
+<div class="faq-item"><h3>How many FF stages do I need after Gray sync?</h3><p>Use a 2-FF synchronizer for each Gray code bit, just like single-bit signals. The Gray code property (1-bit change) prevents invalid states, but metastability resolution still requires 2 FFs.</p></div>
+<div class="faq-item"><h3>Is Gray code the only way to sync multi-bit values?</h3><p>No. For random data, use a valid/ready handshake (Day 4). For commands, use encoded handshakes or CDC-safe protocols. Gray code is specific to strictly-incrementing sequences like FIFO pointers.</p></div>
+
+<div class="pager">
+  <a href="/clock-domain-crossing/day-02-two-ff-synchronizer/"><span class="lab">Previous</span><div class="ti">← Day 2: The 2-FF Synchronizer</div></a>
+  <a class="next" href="/clock-domain-crossing/day-04-pulse-synchronizers/"><span class="lab">Next</span><div class="ti">Day 4: Pulse Synchronizers →</div></a>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/clock-domain-crossing/">CDC Guide</a> · <a href="/vlsi/">VLSI</a> · <a href="/riscv-from-scratch/">RISC-V</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

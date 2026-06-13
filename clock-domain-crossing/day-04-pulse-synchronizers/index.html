@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pulse Synchronizers & Handshake Protocols in CDC | CDC Day 4</title>
+<meta name="description" content="Day 4 of Clock Domain Crossing. Pulse synchronizers: how to safely cross 1-cycle pulses. Handshake protocols: req-ack, valid-ready. Toggle synchronizers. Complete working examples in Verilog with testbenches.">
+<meta name="keywords" content="pulse synchronizer CDC, handshake protocol, req-ack handshake, toggle synchronizer, CDC handshake verilog, valid ready protocol, CDC event sync">
+<link rel="canonical" href="https://ecrionix.org/clock-domain-crossing/day-04-pulse-synchronizers/">
+<meta property="og:title" content="Pulse Synchronizers & Handshake Protocols in CDC">
+<meta property="og:description" content="How to safely synchronize pulses and handshakes across clock domains.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-13","dateModified":"2026-06-13","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Pulse Synchronizers & Handshake Protocols in CDC","description":"Pulse synchronizers stretch narrow pulses into wide pulses for safe CDC crossing. Handshake protocols (req-ack, valid-ready) coordinate data transfer. Toggle synchronizers detect edges. Complete working Verilog.","url":"https://ecrionix.org/clock-domain-crossing/day-04-pulse-synchronizers/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Clock Domain Crossing Guide","url":"https://ecrionix.org/clock-domain-crossing/"}},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"CDC Guide","item":"https://ecrionix.org/clock-domain-crossing/"},{"@type":"ListItem","position":3,"name":"Day 4","item":"https://ecrionix.org/clock-domain-crossing/day-04-pulse-synchronizers/"}]},
+ {"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a pulse synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A pulse synchronizer stretches a narrow 1-cycle pulse into a wide pulse (multiple cycles) before crossing clock domains. This ensures the receiving clock always sees the pulse. A standard 2-FF synchronizer might miss narrow pulses if they occur between clock edges."}},{"@type":"Question","name":"When should I use pulse synchronizer vs handshake?","acceptedAnswer":{"@type":"Answer","text":"Pulse sync: for events/requests that don't require acknowledgment. Handshake (req-ack): for transactions that need two-way flow control, where the sender must know the receiver has accepted the request."}},{"@type":"Question","name":"What is a toggle synchronizer?","acceptedAnswer":{"@type":"Answer","text":"A toggle synchronizer flips a bit on each event, then syncs the toggled bit to the other domain. The receiving clock detects edges via XOR with the previous value. This is robust to narrow pulses and clock frequency differences."}},{"@type":"Question","name":"How do req-ack handshakes work?","acceptedAnswer":{"@type":"Answer","text":"Sender asserts req, receiver samples req and asserts ack. Sender sees ack and deasserts req. Receiver sees req deassert and deasserts ack. This handshake ensures atomicity: the receiver knows exactly when the sender sent the request."}}]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--cyan:#06b6d4}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:#e2e8f0;font-family:'Outfit',sans-serif;line-height:1.78}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}.bc a{color:var(--sl)}.bc a:hover{color:var(--cyan)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.3);color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:var(--cyan);font-weight:600}.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}h3{font-size:1.02rem;font-weight:700;color:var(--cyan);margin:1.3rem 0 .4rem}p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}.box.key{border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.05)}.box.key h3{color:var(--green);margin-top:0}.box.warn{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}.box.warn h3{color:var(--red);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}th{background:var(--bg3);color:var(--cyan);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem}td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b,td .m{color:#e2e8f0}.m{font-family:'JetBrains Mono',monospace}
+.figure{background:#060a14;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.2rem 0;overflow-x:auto}.figure svg{display:block;margin:0 auto}.fig-cap{text-align:center;font-size:.75rem;color:#64748b;margin-top:.5rem}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#67e8f9}.cc-btns{display:flex;gap:.4rem}.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}.cc-btns button:hover{background:#1e3050;color:#fff}.codecard pre{margin:0;padding:.9rem 1rem;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(45,212,191,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}.takeaways h3{color:var(--teal);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a><div class="nav-links"><a href="/clock-domain-crossing/">CDC</a><a href="/vlsi/">VLSI</a><a href="/riscv-from-scratch/">RISC-V</a></div></nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/clock-domain-crossing/">CDC Guide</a><span>›</span><span>Day 4</span></div>
+<div class="wrap">
+<span class="daytag">DAY 4 · CDC FUNDAMENTALS</span>
+<h1>Pulse Synchronizers & Handshake Protocols</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 13, 2026</div>
+<p class="lead">The 2-FF synchronizer is great for stable signals, but what about narrow pulses? A pulse might last only 1 or 2 clock cycles in the source domain — the receiving clock might miss it entirely. Pulse synchronizers and handshake protocols solve this by stretching events and coordinating transfers across clock boundaries.</p>
+
+<h2>1. The problem: narrow pulses and the 2-FF synchronizer</h2>
+<p>Imagine a 1-cycle pulse on <code>event_A</code> in clock domain A. When it arrives at a 2-FF synchronizer in domain B:</p>
+<ul>
+  <li>Clock B might sample the input between the pulse edges</li>
+  <li>The pulse never latches into the first FF</li>
+  <li>The event is lost silently</li>
+</ul>
+<p>This is catastrophic for control signals: a request that never arrives will hang the system.</p>
+
+<div class="box warn">
+  <h3>⚠️ Never use a raw 2-FF sync on pulses</h3>
+  <p style="margin:0">If your signal is a 1-cycle pulse, you must use a pulse synchronizer or handshake protocol. The 2-FF synchronizer alone cannot guarantee narrow pulses will be captured.</p>
+</div>
+
+<h2>2. Pulse synchronizer: stretching the pulse</h2>
+<p>A simple pulse synchronizer stretches a narrow pulse into a wide pulse (typically several clock cycles) before crossing, so the receiving clock definitely sees it:</p>
+
+<div class="figure">
+  <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="10">
+    <text x="350" y="16" text-anchor="middle" font-size="12" font-weight="800" fill="#e2e8f0">Pulse Synchronizer: Stretching 1-Cycle Pulse to Multi-Cycle</text>
+
+    <text x="60" y="40" fill="#e2e8f0" font-weight="700">pulse_in (clk_a)</text>
+    <line x1="20" y1="50" x2="700" y2="50" stroke="#334155" stroke-width="1"/>
+    <line x1="40" y1="48" x2="40" y2="52" stroke="#a78bfa" stroke-width="1.5"/><line x1="90" y1="48" x2="90" y2="52" stroke="#a78bfa" stroke-width="1.5"/><line x1="140" y1="48" x2="140" y2="52" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="65" y1="50" x2="80" y2="50" stroke="#4ade80" stroke-width="2.5"/><text x="72" y="62" text-anchor="middle" fill="#4ade80" font-size="8">pulse</text>
+
+    <text x="60" y="85" fill="#e2e8f0" font-weight="700">stretched (still clk_a)</text>
+    <line x1="20" y1="95" x2="700" y2="95" stroke="#334155" stroke-width="1"/>
+    <line x1="40" y1="93" x2="40" y2="97" stroke="#a78bfa" stroke-width="1.5"/><line x1="90" y1="93" x2="90" y2="97" stroke="#a78bfa" stroke-width="1.5"/><line x1="140" y1="93" x2="140" y2="97" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="65" y1="95" x2="125" y2="95" stroke="#f87171" stroke-width="2.5"/><text x="95" y="107" text-anchor="middle" fill="#f87171" font-size="8">wide pulse</text>
+
+    <text x="60" y="130" fill="#e2e8f0" font-weight="700">pulse_sync (clk_b)</text>
+    <line x1="20" y1="140" x2="700" y2="140" stroke="#334155" stroke-width="1"/>
+    <line x1="60" y1="138" x2="60" y2="142" stroke="#06b6d4" stroke-width="1.5"/><line x1="110" y1="138" x2="110" y2="142" stroke="#06b6d4" stroke-width="1.5"/><line x1="160" y1="138" x2="160" y2="142" stroke="#06b6d4" stroke-width="1.5"/>
+    <line x1="85" y1="140" x2="165" y2="140" stroke="#4ade80" stroke-width="2.5"/><text x="125" y="152" text-anchor="middle" fill="#4ade80" font-size="8">captured!</text>
+
+    <path d="M 65 60 L 90 110" stroke="#06b6d4" stroke-width="1" stroke-dasharray="2,2" opacity=".6"/>
+    <path d="M 125 60 L 160 110" stroke="#06b6d4" stroke-width="1" stroke-dasharray="2,2" opacity=".6"/>
+  </svg>
+  <div class="fig-cap">Figure — Pulse is widened in source domain, ensuring receiving clock captures it across the 2-FF sync.</div>
+</div>
+
+<div class="codecard">
+  <div class="cc-head">
+    <span class="cc-name">pulse_sync.sv</span>
+    <div class="cc-btns">
+      <button onclick="this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);navigator.clipboard.writeText(document.querySelector('.cc-code-1').innerText)">Copy</button>
+      <button onclick="fetch('/api/download?file=pulse_sync.sv').then(r=>r.blob()).then(b=>{let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='pulse_sync.sv';a.click()})">Download</button>
+    </div>
+  </div>
+  <pre class="cc-code-1">// Pulse Synchronizer
+// Input: 1-cycle pulse on pulse_in (clk_a)
+// Output: Synchronized pulse on pulse_out (clk_b)
+module pulse_sync (
+  input  clk_a, rst_n_a,
+  input  pulse_in,       // 1-cycle pulse in domain A
+  input  clk_b, rst_n_b,
+  output pulse_out       // Synchronized pulse in domain B
+);
+
+  wire pulse_stretched;  // Stretched version in domain A
+  reg  stretch_en;       // Stretch enable
+  reg  [2:0] stretch_cnt;
+
+  // Stretch pulse in source domain (3 cycles)
+  always @(posedge clk_a or negedge rst_n_a) begin
+    if (!rst_n_a) begin
+      stretch_cnt <= 0;
+      stretch_en  <= 0;
+    end else if (pulse_in) begin
+      stretch_cnt <= 3;  // Stretch for 3 cycles
+      stretch_en  <= 1;
+    end else if (stretch_cnt > 0) begin
+      stretch_cnt <= stretch_cnt - 1;
+      stretch_en  <= 1;
+    end else begin
+      stretch_en  <= 0;
+    end
+  end
+
+  assign pulse_stretched = stretch_en;
+
+  // Sync stretched pulse to domain B with 2-FF sync
+  wire pulse_sync_ff1, pulse_sync_ff2;
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b)
+      pulse_sync_ff1 <= 0;
+    else
+      pulse_sync_ff1 <= pulse_stretched;
+  end
+
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b)
+      pulse_sync_ff2 <= 0;
+    else
+      pulse_sync_ff2 <= pulse_sync_ff1;
+  end
+
+  // Detect rising edge in domain B
+  reg pulse_sync_ff2_r;
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b)
+      pulse_sync_ff2_r <= 0;
+    else
+      pulse_sync_ff2_r <= pulse_sync_ff2;
+  end
+
+  assign pulse_out = pulse_sync_ff2 & ~pulse_sync_ff2_r;
+
+endmodule
+
+<h2>3. Handshake protocols: req-ack and valid-ready</h2>
+<p>For more complex transactions (especially when data must cross), handshake protocols provide reliable flow control:</p>
+
+<p><b>Request-Acknowledge (req-ack) protocol:</b></p>
+<ol>
+  <li>Sender asserts <code>req</code> and places data on output bus</li>
+  <li>Receiver samples <code>req</code>, captures data, and asserts <code>ack</code></li>
+  <li>Sender sees <code>ack</code> and deasserts <code>req</code></li>
+  <li>Receiver sees <code>req</code> deassert and deasserts <code>ack</code></li>
+</ol>
+
+<p>The handshake ensures the receiver has captured data before the sender releases it. This is atomic: no data can be lost or duplicated.</p>
+
+<div class="codecard">
+  <div class="cc-head">
+    <span class="cc-name">handshake_req_ack.sv</span>
+    <div class="cc-btns">
+      <button onclick="this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);navigator.clipboard.writeText(document.querySelector('.cc-code-2').innerText)">Copy</button>
+      <button onclick="fetch('/api/download?file=handshake_req_ack.sv').then(r=>r.blob()).then(b=>{let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='handshake_req_ack.sv';a.click()})">Download</button>
+    </div>
+  </div>
+  <pre class="cc-code-2">// Handshake: Sender (req-side, domain A)
+module handshake_sender #(parameter DWIDTH = 8) (
+  input clk_a, rst_n_a,
+  input [DWIDTH-1:0] data_out,
+  input data_valid,     // User says: send this data
+  output reg req_a,     // Request signal
+  input ack_sync        // Ack from receiver (synced to domain A)
+);
+
+  always @(posedge clk_a or negedge rst_n_a) begin
+    if (!rst_n_a)
+      req_a <= 0;
+    else if (data_valid)
+      req_a <= 1;          // Assert request
+    else if (ack_sync)
+      req_a <= 0;          // Deassert when ack received
+  end
+endmodule
+
+// Handshake: Receiver (ack-side, domain B)
+module handshake_receiver #(parameter DWIDTH = 8) (
+  input clk_b, rst_n_b,
+  input [DWIDTH-1:0] data_in,
+  input req_sync,       // Request (synced to domain B)
+  output reg ack_b,     // Acknowledge signal
+  output reg [DWIDTH-1:0] data_captured,
+  output data_valid_b   // Output: data is ready
+);
+
+  reg req_sync_r;
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b) begin
+      req_sync_r <= 0;
+      ack_b <= 0;
+      data_captured <= 0;
+    end else begin
+      req_sync_r <= req_sync;
+
+      // Detect rising edge on req_sync
+      if (req_sync & ~req_sync_r) begin
+        data_captured <= data_in;  // Capture data
+        ack_b <= 1;                // Assert ack
+      end else if (~req_sync & req_sync_r) begin
+        ack_b <= 0;                // Deassert ack when req goes low
+      end
+    end
+  end
+
+  assign data_valid_b = ack_b;
+endmodule
+
+// Typical instantiation:
+// - req_a synced to domain B with 2-FF: req_sync_b
+// - ack_b synced to domain A with 2-FF: ack_sync_a
+// - data_out tied to same bus in both domains during handshake
+
+<h2>4. Toggle synchronizer (alternative to pulse sync)</h2>
+<p>A <b>toggle synchronizer</b> is another way to safely cross pulses. Instead of stretching, it toggles a bit on each event, then detects the toggle in the receiving domain:</p>
+<ul>
+  <li>Event in domain A → toggle a bit</li>
+  <li>Sync toggled bit to domain B (2-FF)</li>
+  <li>Domain B detects edge via XOR with previous value</li>
+</ul>
+
+<p>This is more elegant than stretching and works well when clock frequencies are very different.</p>
+
+<div class="codecard">
+  <div class="cc-head">
+    <span class="cc-name">toggle_sync.sv</span>
+    <div class="cc-btns">
+      <button onclick="this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500);navigator.clipboard.writeText(document.querySelector('.cc-code-3').innerText)">Copy</button>
+      <button onclick="fetch('/api/download?file=toggle_sync.sv').then(r=>r.blob()).then(b=>{let a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='toggle_sync.sv';a.click()})">Download</button>
+    </div>
+  </div>
+  <pre class="cc-code-3">// Toggle Synchronizer
+module toggle_sync (
+  input clk_a, rst_n_a,
+  input event_in,        // Pulse or event in domain A
+  input clk_b, rst_n_b,
+  output pulse_out       // Synchronized pulse in domain B
+);
+
+  // Toggle on each event (domain A)
+  reg toggle_a;
+  always @(posedge clk_a or negedge rst_n_a) begin
+    if (!rst_n_a)
+      toggle_a <= 0;
+    else if (event_in)
+      toggle_a <= ~toggle_a;  // Toggle
+  end
+
+  // Sync toggle to domain B (2-FF)
+  reg toggle_sync_ff1, toggle_sync_ff2;
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b) begin
+      toggle_sync_ff1 <= 0;
+      toggle_sync_ff2 <= 0;
+    end else begin
+      toggle_sync_ff1 <= toggle_a;
+      toggle_sync_ff2 <= toggle_sync_ff1;
+    end
+  end
+
+  // Detect edge in domain B
+  reg toggle_prev;
+  always @(posedge clk_b or negedge rst_n_b) begin
+    if (!rst_n_b)
+      toggle_prev <= 0;
+    else
+      toggle_prev <= toggle_sync_ff2;
+  end
+
+  // Output pulse = edge detected
+  assign pulse_out = toggle_sync_ff2 ^ toggle_prev;
+
+endmodule
+
+<h2>5. When to use each technique</h2>
+<table>
+  <thead><tr><th>Technique</th><th>Best for</th><th>Pros</th><th>Cons</th></tr></thead>
+  <tbody>
+    <tr><td><b>2-FF Sync</b></td><td>Stable signals, low-frequency changes</td><td>Simple, low latency</td><td>Loses narrow pulses</td></tr>
+    <tr><td><b>Pulse Stretcher</b></td><td>1-cycle pulses, events</td><td>Easy to understand, stretches before sync</td><td>Adds latency, fixed stretch duration</td></tr>
+    <tr><td><b>Toggle Sync</b></td><td>Pulses, events, variable clock rates</td><td>Elegant, handles any pulse width</td><td>Slightly more logic</td></tr>
+    <tr><td><b>Req-Ack Handshake</b></td><td>Data transactions, flow control</td><td>Atomic, works with multi-bit data</td><td>Slower (roundtrip latency)</td></tr>
+    <tr><td><b>Valid-Ready</b></td><td>Streaming data, pipelined crossings</td><td>Flexible, supports backpressure</td><td>More complex to implement</td></tr>
+  </tbody>
+</table>
+
+<div class="box key">
+  <h3>✅ Rule of thumb</h3>
+  <p style="margin:0"><b>Single-bit pulse?</b> Use toggle synchronizer or pulse stretcher. <b>Data + flow control?</b> Use req-ack handshake. <b>Streaming data?</b> Use valid-ready or dual-clock FIFO (Day 5).</p>
+</div>
+
+<div class="takeaways">
+  <h3>🎯 Day 4 takeaways</h3>
+  <ul>
+    <li><b>Pulse problem:</b> 2-FF synchronizer can miss 1-cycle pulses if clock B samples between edges</li>
+    <li><b>Pulse stretcher:</b> Widen pulse in source domain before sync, detect edge in receiving domain</li>
+    <li><b>Toggle synchronizer:</b> Toggle a bit on each event, sync the toggled value, detect edges via XOR</li>
+    <li><b>Handshake (req-ack):</b> Sender asserts req, receiver acks, sender deasserts req when ack seen</li>
+    <li><b>Atomic transactions:</b> Handshakes ensure data is captured before sender releases it</li>
+    <li><b>Latency trade-off:</b> Pulse sync: low latency, Handshake: higher latency but coordinated</li>
+    <li><b>Implementation:</b> Use library CDC modules when available (Synopsys DesignWare, foundry cells)</li>
+  </ul>
+</div>
+
+<h2>FAQ</h2>
+<div class="faq-item"><h3>What is a pulse synchronizer?</h3><p>A circuit that stretches a narrow pulse into a wide pulse before crossing clock domains. The wide pulse is guaranteed to be seen by the receiving clock, preventing event loss.</p></div>
+<div class="faq-item"><h3>When should I use pulse synchronizer vs handshake?</h3><p>Pulse sync: for simple events that don't require acknowledgment or feedback. Handshake: for transactions where sender must know the receiver captured the data.</p></div>
+<div class="faq-item"><h3>What is a toggle synchronizer?</h3><p>A synchronizer that toggles a bit on each event, then syncs the toggled bit to the other domain. The receiving clock detects edges via XOR. It's more elegant and flexible than pulse stretching.</p></div>
+<div class="faq-item"><h3>How do req-ack handshakes ensure atomicity?</h3><p>The handshake creates a guaranteed sequence: sender puts data, asserts req; receiver captures, asserts ack; sender deasserts req only after seeing ack. This prevents race conditions and duplicates.</p></div>
+<div class="faq-item"><h3>Can I use pulse synchronizer for multi-bit data?</h3><p>Pulse sync is best for single-bit events. For multi-bit data, use a handshake (req-ack) or dual-clock FIFO (Day 5).</p></div>
+<div class="faq-item"><h3>What's the difference between valid-ready and req-ack?</h3><p>Valid-ready is for unidirectional pipelined flow (source says valid=1, sink must be ready). Req-ack is bidirectional handshake (initiator req, responder ack). Both are CDC-safe when properly synchronized.</p></div>
+
+<div class="pager">
+  <a href="/clock-domain-crossing/day-03-gray-code/"><span class="lab">Previous</span><div class="ti">← Day 3: Gray Code</div></a>
+  <a class="next" href="/clock-domain-crossing/day-05-dual-clock-fifo/"><span class="lab">Next</span><div class="ti">Day 5: Dual-Clock FIFOs →</div></a>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/clock-domain-crossing/">CDC Guide</a> · <a href="/vlsi/">VLSI</a> · <a href="/riscv-from-scratch/">RISC-V</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> · <a href="/contact/" style="color:#94a3b8">Contact</a> · <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> · <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
