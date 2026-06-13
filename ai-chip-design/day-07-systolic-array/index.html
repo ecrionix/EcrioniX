@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Chip Design Day 7 — From Single MAC to Systolic Arrays | EcrioniX</title>
+<meta name="description" content="Deep dive: how to scale from one MAC unit to thousands in a systolic array. Dataflow, tiling, systolic wave propagation explained with diagrams.">
+<link rel="canonical" href="https://ecrionix.org/ai-chip-design/day-07-systolic-array/">
+<meta property="og:title" content="AI Chip Design Day 7 — Systolic Arrays"><meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png"><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--pink)}.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}.bc{padding:.5rem 1.5rem;font-size:.75rem;color:#94a3b8;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.hero{position:relative;padding:4rem 1.5rem 2.5rem;text-align:center}.hero h1{position:relative;font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{position:relative;color:#94a3b8;font-size:1rem;max-width:680px;margin:0 auto}
+.container{max-width:900px;margin:0 auto;padding:2.5rem 1.5rem}
+.content h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2rem 0 .8rem;border-bottom:2px solid rgba(236,72,153,.2);padding-bottom:.5rem}
+.content h3{font-size:1.15rem;font-weight:700;color:#e2e8f0;margin:1.5rem 0 .6rem}
+.content p{margin-bottom:1rem;color:#cbd5e1}.content ul{margin-left:1.5rem;margin-bottom:1rem}
+.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto;position:relative;max-height:400px;overflow-y:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:#a5f3fc;line-height:1.4}
+.copy-btn{position:absolute;top:0.8rem;right:0.8rem;background:rgba(236,72,153,.2);border:1px solid rgba(236,72,153,.4);color:var(--pink);padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.75rem;z-index:10}
+.note{background:rgba(236,72,153,.08);border-left:3px solid var(--pink);padding:1rem;margin:1.2rem 0;border-radius:6px}
+.diagram{background:var(--bg3);border:1px solid rgba(236,72,153,.3);border-radius:8px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a5f3fc;line-height:1.5}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:#94a3b8;background:var(--bg2);margin-top:2rem}
+</style>
+</head>
+<body>
+<nav class="nav"><a class="nav-logo" href="/">EcrioniX</a></nav><div class="bc"><a href="/">Home</a><span>›</span><span>Day 7</span></div>
+<div class="hero"><h1>From Single MAC to <span class="g">Systolic Arrays</span></h1>
+<p>Scale one multiply-accumulate unit to thousands. The architecture that powers Google TPU and Apple Neural Engine.</p></div>
+
+<div class="container"><div class="content">
+<h2>The Scaling Problem</h2>
+<p>A single MAC unit does one multiply-accumulate per clock cycle. For a 256×256 matrix multiply:</p>
+<ul>
+<li>Cycles needed: 256 × 256 × 256 = 16.7 million</li>
+<li>At 1 GHz: 16.7 milliseconds</li>
+</ul>
+<p>Way too slow for real-time AI. You need <strong>parallelism.</strong></p>
+
+<h2>The Tiling Approach</h2>
+<p>Instead of multiplying full 256×256 matrices, tile them into smaller blocks and multiply in parallel:</p>
+
+<div class="diagram">
+Original problem: C[256,256] = A[256,256] @ B[256,256]
+
+Tiled (16 tiles):
+C[256,256] = A[256,16] @ B[16,256]  +  A[256,32] @ B[32,256]  + ...
+             └─ 16 small ops ─┘      └─ 16 small ops ─┘
+
+Each tile: C[16,16] = A[16,16] @ B[16,16]
+Cost: 16×16×16 = 4,096 cycles per tile
+With 16 tiles in parallel: 4,096 cycles total
+Speedup: 4,096× (instead of 16.7M)</div>
+
+<h2>The Systolic Array Architecture</h2>
+<p><strong>Systolic = "systole" (heartbeat).</strong> Data pulses through the array like blood through a heart.</p>
+
+<h3>2×2 Systolic Array (Simple)</h3>
+<div class="diagram">
+         A inputs →  A inputs →
+              ↓           ↓
+    MAC[0,0] → MAC[0,1]
+       ↓          ↓
+    MAC[1,0] → MAC[1,1]
+       ↓          ↓
+    C outputs   C outputs
+
+Data flow on each cycle:
+- New A values enter from left
+- B values flow downward
+- Partial sums propagate right
+- One new multiply per MAC per cycle!</div>
+
+<h3>Real TPU-Style: 8×8 Systolic Array</h3>
+<p>Google TPU v2 uses a 256×256 systolic array. Each MAC:</p>
+<ul>
+<li>Multiplies: A[i,k] × B[k,j]</li>
+<li>Accumulates: C[i,j] += result</li>
+<li>Passes A rightward, B downward</li>
+<li>All happen simultaneously in different rows/cols</li>
+</ul>
+
+<h2>Why Systolic Works</h2>
+<ul>
+<li>✅ <strong>No global communication:</strong> Each MAC only talks to neighbors</li>
+<li>✅ <strong>High throughput:</strong> All MACs active every cycle</li>
+<li>✅ <strong>Regular pattern:</strong> Easy to synthesize, tile, scale</li>
+<li>✅ <strong>Data reuse:</strong> A and B values propagate through all MACs (reduces memory bandwidth)</li>
+</ul>
+
+<h2>The Key Insight: Data Reuse</h2>
+<p>For C[i,j] = Σ(A[i,k] × B[k,j]) where k=1..256:</p>
+<div class="note">
+In a 256×256 systolic array:
+- Each A[i,k] value is used by 256 MACs (row i)
+- Each B[k,j] value is used by 256 MACs (column j)
+- One A/B value loaded from memory = 256 multiplies!
+<br>
+Memory bandwidth = problem solved. Traditional CPU/GPU:
+- Load A[i,k], do 1 multiply, move on
+- Systolic: Load A[i,k], use it 256 times</note>
+
+<h2>Implementation in Verilog</h2>
+<div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<code>// Simple 2×2 systolic element
+module systolic_pe (
+  input clk,
+  input [7:0] a_in, b_in,
+  output reg [7:0] a_out, b_out,
+  output reg [15:0] c_out,
+  input [15:0] c_partial_in
+);
+  reg [15:0] accumulator;
+
+  always @(posedge clk) begin
+    // Multiply-accumulate
+    accumulator <= (a_in * b_in) + c_partial_in;
+
+    // Pass values to neighbors
+    a_out <= a_in;      // Forward A rightward
+    b_out <= b_in;      // Forward B downward
+    c_out <= accumulator; // Output C result
+  end
+endmodule
+
+// 2×2 Array
+wire [7:0] a[0:1], b[0:1];
+wire [15:0] c[0:1][0:1];
+
+systolic_pe pe00 (clk, a[0], b[0], a_out[0], b_out[0], c[0][0], 0);
+systolic_pe pe01 (clk, a_out[0], b[1], a_out[1], b_out[1], c[0][1], 0);
+systolic_pe pe10 (clk, a[1], b_out[0], a_out[1], b_out[2], c[1][0], 0);
+systolic_pe pe11 (clk, a_out[1], b_out[1], a_out[2], b_out[2], c[1][1], 0);</code></div>
+
+<h2>Real-World Scaling</h2>
+<p><strong>Google TPU v4:</strong></p>
+<ul>
+<li>256×256 systolic array</li>
+<li>65,536 MAC units</li>
+<li>One 256×256 matrix multiply per ~256 cycles</li>
+<li>430 TFLOPS theoretical peak (mostly achieved in practice)</li>
+</ul>
+
+<h2>Limitations</h2>
+<ul>
+<li>❌ All MACs must stay busy (stalls if data unavailable)</li>
+<li>❌ Can't do variable-length operations efficiently</li>
+<li>❌ Optimized for square matrices (256×256, not 256×1000)</li>
+</ul>
+
+<p><strong>Day 8:</strong> Deep dive into a 4×4 systolic array—detailed cycle-by-cycle execution.</p>
+</div></div>
+
+<footer>© 2026 EcrioniX · <a href="/ai-chip-design/">AI Chip Design</a> · Day 7/30</footer>
+<script>function copyCode(btn){navigator.clipboard.writeText(btn.nextElementSibling.innerText);}</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
