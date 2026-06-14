@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FPGA Memory Architecture for AI — BRAM vs DDR4, AXI4, Ping-Pong | EcrioniX</title>
+<meta name="description" content="Memory architecture for FPGA neural network accelerators. On-chip BRAM vs off-chip DDR4, memory bandwidth bottleneck analysis, ping-pong double buffering, and the AXI4 master interface for streaming weights and activations.">
+<meta name="keywords" content="FPGA memory architecture, BRAM vs DDR4, AXI4 master, ping-pong buffer, double buffering FPGA, memory bandwidth AI, HBM FPGA, weight streaming">
+<link rel="canonical" href="https://ecrionix.org/fpga-neural-network/day-06/">
+<meta property="og:title" content="FPGA Memory Architecture for AI — Day 6 | EcrioniX">
+<meta property="og:description" content="BRAM vs DDR4, bandwidth analysis, ping-pong double buffering, and AXI4 for streaming neural network data.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"FPGA Memory Architecture for AI — BRAM vs DDR4, AXI4, and Ping-Pong Buffering","description":"Complete guide to memory architecture for FPGA neural network accelerators: on-chip BRAM vs off-chip DDR4/HBM, memory bandwidth bottleneck analysis, ping-pong double buffering, and AXI4 master interface design.","datePublished":"2026-06-14","dateModified":"2026-06-14","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/fpga-neural-network/day-06/","isPartOf":{"@type":"Course","name":"FPGA Neural Network Accelerator from Scratch","url":"https://ecrionix.org/fpga-neural-network/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA Neural Network","item":"https://ecrionix.org/fpga-neural-network/"},{"@type":"ListItem","position":3,"name":"Day 6 — Memory Architecture","item":"https://ecrionix.org/fpga-neural-network/day-06/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the difference between BRAM and DDR on an FPGA?","acceptedAnswer":{"@type":"Answer","text":"BRAM (Block RAM) is on-chip memory — tens of MB, single-cycle access, terabytes/sec aggregate bandwidth, but limited capacity. DDR4 is off-chip — gigabytes of capacity but ~20-80 GB/s bandwidth and 100+ ns latency. AI accelerators keep weights and active feature maps in BRAM and stream large data from DDR only when it won't fit on-chip."}},{"@type":"Question","name":"What is ping-pong buffering?","acceptedAnswer":{"@type":"Answer","text":"Ping-pong (double) buffering uses two memory banks: while the compute engine reads from buffer A, the DMA fills buffer B from DDR. Next cycle they swap. This hides memory latency completely — the compute never stalls waiting for data, as long as DMA can keep up with consumption."}},{"@type":"Question","name":"Why is memory bandwidth the bottleneck for neural networks?","acceptedAnswer":{"@type":"Answer","text":"Many neural network layers are memory-bound, not compute-bound: they need more bytes of weights/activations per second than DDR can supply. The roofline model shows that below a certain arithmetic intensity (operations per byte), performance is capped by memory bandwidth, not by the number of DSP MACs. Maximizing on-chip data reuse is the key fix."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--purple:#a78bfa;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(167,139,250,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:740px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(167,139,250,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(167,139,250,.1);border:2px solid rgba(167,139,250,.3);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#c4b5fd;font-size:.87rem;line-height:1.9;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-block{background:#060d1e;border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:1.5rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.75rem;right:.75rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c4b5fd;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(167,139,250,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(167,139,250,.15);text-align:left}
+th{background:rgba(167,139,250,.1);color:var(--purple);font-weight:700}
+tr:hover{background:rgba(167,139,250,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--purple);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(167,139,250,.4);z-index:99}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:#c4b5fd;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill.active{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.5)}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a style="font-size:.95rem;font-weight:800;color:#fff" href="/">EcrioniX</a>
+  <a href="/fpga-neural-network/" style="font-size:.85rem;color:#94a3b8">← FPGA NN Course</a>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-neural-network/">FPGA Neural Network</a><span>›</span><span>Day 6 — Memory Architecture</span></div>
+
+<div class="hero">
+  <h1>Memory Architecture<br><span class="g">BRAM vs DDR</span></h1>
+  <p>Where the real bottleneck lives. On-chip BRAM vs off-chip DDR4/HBM, bandwidth analysis, ping-pong double buffering, and the AXI4 master interface for streaming weights and activations.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 14, 2026 · ~4,500 words · 14 min read</div>
+
+<div class="nav-pills">
+  <a href="/fpga-neural-network/day-05/" class="nav-pill">← Day 5: Convolution</a>
+  <a href="/fpga-neural-network/day-06/" class="nav-pill active">Day 6: Memory</a>
+  <a href="/fpga-neural-network/day-07/" class="nav-pill">Day 7: Activations →</a>
+</div>
+
+<div class="container">
+
+<h2>1. The Memory Wall</h2>
+<p><strong>The dirty secret of AI accelerators: compute is rarely the bottleneck — memory is.</strong> A modern FPGA has thousands of DSP MACs, but if you can't feed them data fast enough, they sit idle. Understanding the memory hierarchy is what separates a 10% utilized design from a 90% one.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Memory Hierarchy — Capacity vs Bandwidth vs Latency</div>
+  <div style="display:flex;flex-direction:column;gap:.6rem">
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:rgba(74,222,128,.15);border:1.5px solid rgba(74,222,128,.4);border-radius:8px;padding:.6rem;min-width:130px;text-align:center;color:#86efac;font-weight:700;font-size:.85rem">Registers</div>
+      <div style="color:#94a3b8;font-size:.83rem">KB · ~100 TB/s · 0 cycle — DSP/window registers</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:rgba(6,182,212,.12);border:1.5px solid rgba(6,182,212,.4);border-radius:8px;padding:.6rem;min-width:130px;text-align:center;color:#a5f3fc;font-weight:700;font-size:.85rem">BRAM (on-chip)</div>
+      <div style="color:#94a3b8;font-size:.83rem">10s of MB · ~10 TB/s aggregate · 1 cycle — weights, line buffers</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:rgba(167,139,250,.12);border:1.5px solid rgba(167,139,250,.4);border-radius:8px;padding:.6rem;min-width:130px;text-align:center;color:#c4b5fd;font-weight:700;font-size:.85rem">HBM2 (in-pkg)</div>
+      <div style="color:#94a3b8;font-size:.83rem">8–16 GB · ~460 GB/s · ~100ns — large models (Alveo U280)</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:rgba(251,191,36,.1);border:1.5px solid rgba(251,191,36,.4);border-radius:8px;padding:.6rem;min-width:130px;text-align:center;color:#fde68a;font-weight:700;font-size:.85rem">DDR4 (off-chip)</div>
+      <div style="color:#94a3b8;font-size:.83rem">GBs · ~20–80 GB/s · 100+ ns — bulk weight storage</div>
+    </div>
+  </div>
+</div>
+
+<h2>2. BRAM — On-Chip Block RAM</h2>
+<p><strong>BRAM is your most precious resource for AI.</strong> It's fast, single-cycle, and massively parallel — every BRAM block can be accessed independently, giving aggregate bandwidth in the terabytes/sec range.</p>
+
+<div class="formula-box">
+BRAM on Xilinx UltraScale+:
+  BRAM36 = 36 Kbit = 4.5 KB per block
+  Alveo U250: 2,688 BRAMs = ~12 MB total
+
+Weight residency check (INT8):
+  MobileNetV2: 3.4M params × 1B = 3.4 MB → FITS in BRAM ✓
+  ResNet-50:   25.6M params × 1B = 25.6 MB → exceeds 12MB ✗
+                → must stream from DDR/HBM
+
+Strategy:
+  Small model → all weights in BRAM (zero DDR stalls)
+  Large model → tile weights, stream layer-by-layer
+  Trick: weight pruning + compression to fit more on-chip
+</div>
+
+<h2>3. The Bandwidth Bottleneck</h2>
+<p><strong>The roofline model (from Day 1) tells you whether a layer is memory-bound.</strong> If a layer's arithmetic intensity (operations per byte) is below the roofline ridge, no amount of extra DSPs will help — you're starved for data.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.2rem">Memory-Bound vs Compute-Bound Layers</div>
+  <svg viewBox="0 0 500 200" width="100%" style="max-width:500px;display:block;margin:0 auto">
+    <rect width="500" height="200" fill="#0c1526" rx="8"/>
+    <line x1="50" y1="20" x2="50" y2="165" stroke="rgba(148,163,184,.25)" stroke-width="1"/>
+    <line x1="50" y1="165" x2="480" y2="165" stroke="rgba(148,163,184,.25)" stroke-width="1"/>
+    <!-- compute roof -->
+    <line x1="220" y1="45" x2="480" y2="45" stroke="#4ade80" stroke-width="2.5" stroke-dasharray="8,4"/>
+    <text x="350" y="38" fill="#4ade80" font-size="10" font-family="Outfit,sans-serif">Compute Roof (DSP limit)</text>
+    <!-- mem bw slope -->
+    <line x1="50" y1="165" x2="220" y2="45" stroke="#06b6d4" stroke-width="2.5"/>
+    <text x="70" y="120" fill="#06b6d4" font-size="9" font-family="Outfit,sans-serif" transform="rotate(-50,70,120)">Memory BW</text>
+    <!-- ridge -->
+    <circle cx="220" cy="45" r="5" fill="#fbbf24"/>
+    <!-- layer markers -->
+    <circle cx="110" cy="110" r="6" fill="#f87171"/><text x="110" y="128" fill="#fca5a5" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">DW-conv</text>
+    <circle cx="150" cy="85" r="6" fill="#fbbf24"/><text x="150" y="78" fill="#fde68a" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">1×1 conv</text>
+    <circle cx="320" cy="45" r="6" fill="#4ade80"/><text x="320" y="62" fill="#86efac" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">3×3 conv</text>
+    <circle cx="420" cy="45" r="6" fill="#4ade80"/><text x="420" y="62" fill="#86efac" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">large GEMM</text>
+    <text x="120" y="185" fill="#f87171" font-size="9" font-family="Outfit,sans-serif">← memory-bound</text>
+    <text x="380" y="185" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif">compute-bound →</text>
+    <text x="265" y="185" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">Arithmetic Intensity (OPS/byte)</text>
+  </svg>
+  <div style="margin-top:.8rem;font-size:.83rem;color:#94a3b8">Depthwise and 1×1 convolutions are often memory-bound — they do few operations per byte loaded. Fix: maximize on-chip reuse so data is fetched once and used many times.</div>
+</div>
+
+<h2>4. Ping-Pong (Double) Buffering</h2>
+<p><strong>The trick that hides memory latency entirely:</strong> use two buffers. While the compute engine drains buffer A, the DMA fills buffer B from DDR. Then swap. The compute never waits.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Ping-Pong Double Buffering</div>
+  <svg viewBox="0 0 500 200" width="100%" style="max-width:500px;display:block;margin:0 auto">
+    <!-- Phase 1 -->
+    <text x="125" y="20" fill="#94a3b8" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Phase 1</text>
+    <rect x="40" y="30" width="80" height="44" rx="6" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="80" y="50" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Buffer A</text>
+    <text x="80" y="64" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">→ COMPUTE reads</text>
+    <rect x="130" y="30" width="80" height="44" rx="6" fill="rgba(251,191,36,.12)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="170" y="50" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Buffer B</text>
+    <text x="170" y="64" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">← DMA fills</text>
+    <!-- swap arrow -->
+    <text x="250" y="55" fill="#06b6d4" font-size="20" font-family="Outfit,sans-serif" text-anchor="middle">⇄</text>
+    <!-- Phase 2 -->
+    <text x="375" y="20" fill="#94a3b8" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Phase 2 (swap)</text>
+    <rect x="290" y="30" width="80" height="44" rx="6" fill="rgba(251,191,36,.12)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="330" y="50" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Buffer A</text>
+    <text x="330" y="64" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">← DMA fills</text>
+    <rect x="380" y="30" width="80" height="44" rx="6" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="420" y="50" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Buffer B</text>
+    <text x="420" y="64" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">→ COMPUTE reads</text>
+    <!-- timeline -->
+    <text x="250" y="110" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Overlapped Timeline</text>
+    <rect x="60" y="120" width="180" height="20" fill="rgba(74,222,128,.2)" stroke="#4ade80" stroke-width="1"/><text x="150" y="134" fill="#86efac" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Compute A</text>
+    <rect x="60" y="142" width="180" height="20" fill="rgba(251,191,36,.15)" stroke="#fbbf24" stroke-width="1"/><text x="150" y="156" fill="#fde68a" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">DMA fill B (hidden!)</text>
+    <rect x="240" y="120" width="180" height="20" fill="rgba(74,222,128,.2)" stroke="#4ade80" stroke-width="1"/><text x="330" y="134" fill="#86efac" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Compute B</text>
+    <rect x="240" y="142" width="180" height="20" fill="rgba(251,191,36,.15)" stroke="#fbbf24" stroke-width="1"/><text x="330" y="156" fill="#fde68a" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">DMA fill A (hidden!)</text>
+    <text x="250" y="185" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Compute never stalls — memory latency is fully hidden</text>
+  </svg>
+</div>
+
+<h2>5. The AXI4 Interface</h2>
+<p><strong>AXI4 is the standard bus for moving bulk data</strong> between the FPGA fabric and DDR/HBM. Your accelerator acts as an AXI4 <em>master</em>, issuing burst read/write requests.</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>AXI4 Variant</th><th>Use</th><th>Key Feature</th></tr>
+<tr><td>AXI4 (full)</td><td>Bulk DDR/HBM transfers</td><td>Bursts up to 256 beats, high throughput</td></tr>
+<tr><td>AXI4-Lite</td><td>Control registers</td><td>Single transfers, simple — start/stop/status</td></tr>
+<tr><td>AXI4-Stream</td><td>Data streaming between blocks</td><td>No address, pure dataflow (conv→pool→...)</td></tr>
+</table>
+</div>
+
+<div class="code-wrap">
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// axi_weight_loader.v — AXI4-Stream sink into ping-pong BRAM
+module axi_weight_loader #(
+  parameter DW = 64,        // AXI data width (bits)
+  parameter DEPTH = 1024    // words per buffer
+)(
+  input  wire             clk, rst_n,
+  // AXI4-Stream input (from DMA reading DDR)
+  input  wire [DW-1:0]    s_axis_tdata,
+  input  wire             s_axis_tvalid,
+  output wire             s_axis_tready,
+  input  wire             s_axis_tlast,
+  // control
+  output reg              buffer_ready,   // a full buffer is ready for compute
+  output reg              active_buf      // which buffer compute should read
+);
+
+  reg [DW-1:0] bram_a [0:DEPTH-1];
+  reg [DW-1:0] bram_b [0:DEPTH-1];
+  reg [$clog2(DEPTH):0] wptr;
+  reg fill_buf;   // which buffer DMA is filling
+
+  assign s_axis_tready = 1'b1;  // always ready (compute keeps up)
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      wptr <= 0; fill_buf <= 0; active_buf <= 1;
+      buffer_ready <= 0;
+    end else if (s_axis_tvalid && s_axis_tready) begin
+      // write incoming word to the buffer being filled
+      if (fill_buf == 0) bram_a[wptr] <= s_axis_tdata;
+      else               bram_b[wptr] <= s_axis_tdata;
+
+      if (s_axis_tlast) begin
+        // buffer complete → swap roles (ping-pong)
+        wptr        <= 0;
+        active_buf  <= fill_buf;   // compute now reads what we just filled
+        fill_buf    <= ~fill_buf;  // DMA fills the other one next
+        buffer_ready<= 1;
+      end else begin
+        wptr <= wptr + 1;
+      end
+    end
+  end
+endmodule</code></div>
+</div>
+
+<h2>6. Bandwidth Budgeting Example</h2>
+<div class="formula-box">
+ResNet-50 inference, batch=1, INT8, target 1000 IPS:
+
+  Weights to load per inference: 25.6 MB
+  Activations (intermediate):   ~10 MB
+  Total per inference:          ~35 MB
+
+  Required bandwidth = 35 MB × 1000 IPS = 35 GB/s
+
+  DDR4 (single bank): ~20 GB/s  → INSUFFICIENT ✗
+  HBM2 (Alveo U280):  ~460 GB/s → plenty ✓
+  OR: keep weights resident, only stream activations
+      Activation BW = 10 MB × 1000 = 10 GB/s → DDR4 OK ✓
+
+Lesson: weight reuse across the batch + on-chip residency
+        turns a memory-bound problem into a compute-bound one.
+</div>
+
+<div class="info-box">
+  <h4>HBM Changes the Game</h4>
+  <p>FPGAs like the Alveo U280 integrate HBM2 stacks delivering ~460 GB/s — 10–20× more than DDR4. This is why HBM-equipped FPGAs dominate datacenter AI inference: they can feed thousands of MACs without starving. For edge devices, the answer is instead keeping the whole (small) model in BRAM.</p>
+</div>
+
+<div class="checklist">
+<h3>Day 6 — Key Takeaways</h3>
+<ul>
+  <li>✅ <strong>Memory is the bottleneck</strong>, not compute, for many NN layers</li>
+  <li>✅ <strong>BRAM</strong>: ~12MB on Alveo U250, single-cycle, TB/s aggregate — keep weights here</li>
+  <li>✅ <strong>DDR4</strong>: GBs of capacity but only 20–80 GB/s, 100+ ns latency</li>
+  <li>✅ <strong>HBM2</strong>: ~460 GB/s in-package — the datacenter inference enabler</li>
+  <li>✅ <strong>Roofline</strong>: layers below the ridge are memory-bound — maximize reuse</li>
+  <li>✅ <strong>Ping-pong buffering</strong> hides DMA latency completely — compute never stalls</li>
+  <li>✅ <strong>AXI4</strong> full for bulk, Lite for control, Stream for block-to-block dataflow</li>
+  <li>✅ <strong>Weight residency</strong> turns memory-bound into compute-bound</li>
+</ul>
+</div>
+
+<p><strong>Next — Day 7:</strong> Activation Functions in Hardware — ReLU, Leaky ReLU, Sigmoid, Softmax, LUT approximations, and CORDIC for transcendental functions.</p>
+
+<div style="display:flex;justify-content:space-between;margin-top:3rem;gap:1rem">
+  <a href="/fpga-neural-network/day-05/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">← Previous</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 5: Convolution Engine</div>
+  </a>
+  <a href="/fpga-neural-network/day-07/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">Next →</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 7: Activation Functions</div>
+  </a>
+</div>
+
+</div>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer>
+  <p>© 2026 <a href="/">EcrioniX</a> · <a href="/fpga-neural-network/">FPGA Neural Network Accelerator</a> · Day 6</p>
+  <p style="margin-top:.5rem"><a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/contact/">Contact</a></p>
+</footer>
+</body>
+</html>
