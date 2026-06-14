@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Convolution Engine for CNNs on FPGA — Line Buffers & im2col | EcrioniX</title>
+<meta name="description" content="Build a 2D convolution engine on FPGA from scratch. Sliding window logic, line buffers, kernel weight storage, im2col transformation, and a complete 3×3 conv2D engine in Verilog with BRAM buffering.">
+<meta name="keywords" content="FPGA convolution engine, conv2d FPGA, line buffer FPGA, im2col, sliding window CNN, 3x3 convolution Verilog, CNN accelerator FPGA, BRAM line buffer">
+<link rel="canonical" href="https://ecrionix.org/fpga-neural-network/day-05/">
+<meta property="og:title" content="Convolution Engine for CNNs on FPGA — Day 5 | EcrioniX">
+<meta property="og:description" content="Build a 3×3 conv2D engine on FPGA: line buffers, sliding window, im2col, kernel storage — full Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"Convolution Engine for CNNs on FPGA — Line Buffers and im2col","description":"Build a complete 2D convolution engine on FPGA: sliding window logic, line buffer design, kernel weight storage, im2col transformation, and a fully functional 3×3 conv2D engine in Verilog.","datePublished":"2026-06-14","dateModified":"2026-06-14","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/fpga-neural-network/day-05/","isPartOf":{"@type":"Course","name":"FPGA Neural Network Accelerator from Scratch","url":"https://ecrionix.org/fpga-neural-network/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA Neural Network","item":"https://ecrionix.org/fpga-neural-network/"},{"@type":"ListItem","position":3,"name":"Day 5 — Convolution Engine","item":"https://ecrionix.org/fpga-neural-network/day-05/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a line buffer in an FPGA convolution engine?","acceptedAnswer":{"@type":"Answer","text":"A line buffer is on-chip BRAM that stores the most recent rows of an input image so a 2D convolution window can access multiple rows simultaneously. For a 3×3 kernel you need 2 line buffers (plus the current row), letting the engine produce one output pixel per clock as the image streams in, without re-reading rows from external DDR."}},{"@type":"Question","name":"What is im2col and why is it used on FPGA?","acceptedAnswer":{"@type":"Answer","text":"im2col (image-to-column) unrolls each convolution window into a column vector, turning convolution into a single large matrix multiply (GEMM). This lets a CNN reuse the highly optimized systolic/GEMM hardware. The trade-off is memory expansion — overlapping windows duplicate pixels — so direct line-buffer convolution is often preferred for streaming FPGA designs."}},{"@type":"Question","name":"How many multiply-accumulates does a 3x3 convolution need?","acceptedAnswer":{"@type":"Answer","text":"A single 3×3 convolution window over one input channel needs 9 MACs. For a full layer with Cin input channels, Cout output channels, and an H×W output, total MACs = 9 × Cin × Cout × H × W. For example, a 3×3 layer with 64→64 channels on a 56×56 feature map needs 9 × 64 × 64 × 3136 ≈ 116 million MACs."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--purple:#a78bfa;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(167,139,250,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:740px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(167,139,250,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(167,139,250,.1);border:2px solid rgba(167,139,250,.3);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#c4b5fd;font-size:.87rem;line-height:1.9;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-block{background:#060d1e;border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:1.5rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.75rem;right:.75rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c4b5fd;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(167,139,250,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(167,139,250,.15);text-align:left}
+th{background:rgba(167,139,250,.1);color:var(--purple);font-weight:700}
+tr:hover{background:rgba(167,139,250,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--purple);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(167,139,250,.4);z-index:99}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:#c4b5fd;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill.active{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.5)}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a style="font-size:.95rem;font-weight:800;color:#fff" href="/">EcrioniX</a>
+  <a href="/fpga-neural-network/" style="font-size:.85rem;color:#94a3b8">← FPGA NN Course</a>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-neural-network/">FPGA Neural Network</a><span>›</span><span>Day 5 — Convolution Engine</span></div>
+
+<div class="hero">
+  <h1>Convolution Engine<br><span class="g">for CNNs</span></h1>
+  <p>The core of every vision model. Build a streaming 2D convolution engine on FPGA with line buffers, sliding-window logic, kernel weight storage, im2col, and a complete 3×3 conv2D in Verilog.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 14, 2026 · ~4,600 words · 14 min read</div>
+
+<div class="nav-pills">
+  <a href="/fpga-neural-network/day-04/" class="nav-pill">← Day 4: Systolic Array</a>
+  <a href="/fpga-neural-network/day-05/" class="nav-pill active">Day 5: Convolution</a>
+  <a href="/fpga-neural-network/day-06/" class="nav-pill">Day 6: Memory →</a>
+</div>
+
+<div class="container">
+
+<h2>1. What is 2D Convolution?</h2>
+<p><strong>Convolution slides a small kernel (filter) across an input image, computing a weighted sum at each position.</strong> It's the operation that lets CNNs detect edges, textures, and ultimately objects. On FPGA, the challenge is doing this at one output pixel per clock without re-reading the image from slow external memory.</p>
+
+<div class="formula-box">
+2D Convolution (single channel, 3×3 kernel):
+
+  out[y][x] = Σ(i=0..2) Σ(j=0..2)  in[y+i][x+j] × kernel[i][j]
+
+  9 multiply-accumulates per output pixel
+
+Full layer MAC count:
+  MACs = K×K × Cin × Cout × H_out × W_out
+  Example (3×3, 64→64, 56×56 output):
+    = 9 × 64 × 64 × 3136 ≈ 116 million MACs per layer
+</div>
+
+<h2>2. The Sliding Window</h2>
+<p><strong>A 3×3 convolution needs 9 pixels at once</strong> — but the image streams in one pixel per clock, row by row. The sliding window holds the current 3×3 patch and shifts right each cycle.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">3×3 Sliding Window over Input Image</div>
+  <svg viewBox="0 0 480 220" width="100%" style="max-width:480px;display:block;margin:0 auto">
+    <!-- image grid 8x6 -->
+    <g stroke="#1e3a5f" stroke-width="1" fill="rgba(6,182,212,.05)">
+      <!-- generate cells -->
+      <rect x="40" y="20" width="36" height="28"/><rect x="76" y="20" width="36" height="28"/><rect x="112" y="20" width="36" height="28"/><rect x="148" y="20" width="36" height="28"/><rect x="184" y="20" width="36" height="28"/><rect x="220" y="20" width="36" height="28"/><rect x="256" y="20" width="36" height="28"/><rect x="292" y="20" width="36" height="28"/>
+      <rect x="40" y="48" width="36" height="28"/><rect x="76" y="48" width="36" height="28"/><rect x="112" y="48" width="36" height="28"/><rect x="148" y="48" width="36" height="28"/><rect x="184" y="48" width="36" height="28"/><rect x="220" y="48" width="36" height="28"/><rect x="256" y="48" width="36" height="28"/><rect x="292" y="48" width="36" height="28"/>
+      <rect x="40" y="76" width="36" height="28"/><rect x="76" y="76" width="36" height="28"/><rect x="112" y="76" width="36" height="28"/><rect x="148" y="76" width="36" height="28"/><rect x="184" y="76" width="36" height="28"/><rect x="220" y="76" width="36" height="28"/><rect x="256" y="76" width="36" height="28"/><rect x="292" y="76" width="36" height="28"/>
+      <rect x="40" y="104" width="36" height="28"/><rect x="76" y="104" width="36" height="28"/><rect x="112" y="104" width="36" height="28"/><rect x="148" y="104" width="36" height="28"/><rect x="184" y="104" width="36" height="28"/><rect x="220" y="104" width="36" height="28"/><rect x="256" y="104" width="36" height="28"/><rect x="292" y="104" width="36" height="28"/>
+    </g>
+    <!-- highlighted 3x3 window -->
+    <rect x="76" y="48" width="108" height="84" fill="rgba(167,139,250,.2)" stroke="#a78bfa" stroke-width="2.5"/>
+    <text x="130" y="93" fill="#c4b5fd" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">3×3 window</text>
+    <!-- arrow showing slide -->
+    <line x1="184" y1="160" x2="240" y2="160" stroke="#4ade80" stroke-width="2" marker-end="url(#sl)"/>
+    <defs><marker id="sl" markerWidth="7" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#4ade80"/></marker></defs>
+    <text x="210" y="180" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">slides → 1 pixel/clock</text>
+    <!-- kernel -->
+    <text x="390" y="35" fill="#fbbf24" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Kernel</text>
+    <g stroke="#fbbf24" stroke-width="1" fill="rgba(251,191,36,.12)">
+      <rect x="360" y="45" width="20" height="20"/><rect x="380" y="45" width="20" height="20"/><rect x="400" y="45" width="20" height="20"/>
+      <rect x="360" y="65" width="20" height="20"/><rect x="380" y="65" width="20" height="20"/><rect x="400" y="65" width="20" height="20"/>
+      <rect x="360" y="85" width="20" height="20"/><rect x="380" y="85" width="20" height="20"/><rect x="400" y="85" width="20" height="20"/>
+    </g>
+    <text x="390" y="120" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">9 weights</text>
+    <text x="390" y="135" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">(stored in BRAM)</text>
+    <text x="170" y="205" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Each window position → 1 output pixel = Σ(window × kernel)</text>
+  </svg>
+</div>
+
+<h2>3. Line Buffers — The Key to Streaming</h2>
+<p><strong>The problem:</strong> a 3×3 window touches 3 different rows, but the image arrives one row at a time. <strong>The solution:</strong> line buffers store the previous rows in on-chip BRAM so all 3 rows are available simultaneously.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Line Buffer Architecture (3×3 conv)</div>
+  <svg viewBox="0 0 500 230" width="100%" style="max-width:500px;display:block;margin:0 auto">
+    <defs><marker id="lb" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#06b6d4"/></marker></defs>
+    <!-- input stream -->
+    <text x="40" y="30" fill="#4ade80" font-size="10" font-family="Outfit,sans-serif" font-weight="700">Pixel stream in</text>
+    <line x1="40" y1="40" x2="40" y2="60" stroke="#4ade80" stroke-width="2" marker-end="url(#lb)"/>
+    <!-- Line buffer 1 -->
+    <rect x="60" y="60" width="380" height="34" rx="5" fill="rgba(6,182,212,.1)" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="250" y="82" fill="#a5f3fc" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="600">Line Buffer 1 (BRAM) — stores row N−2</text>
+    <line x1="250" y1="94" x2="250" y2="110" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#lb)"/>
+    <!-- Line buffer 2 -->
+    <rect x="60" y="110" width="380" height="34" rx="5" fill="rgba(6,182,212,.1)" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="250" y="132" fill="#a5f3fc" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="600">Line Buffer 2 (BRAM) — stores row N−1</text>
+    <!-- current row -->
+    <text x="250" y="165" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">+ current row N (direct from stream)</text>
+    <!-- 3x3 window taps -->
+    <rect x="160" y="175" width="180" height="40" rx="5" fill="rgba(167,139,250,.15)" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="250" y="193" fill="#c4b5fd" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">3×3 Window Register</text>
+    <text x="250" y="207" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">9 pixels → MAC array → 1 output/clock</text>
+  </svg>
+  <div style="margin-top:.8rem;font-size:.83rem;color:#94a3b8">
+    <strong style="color:#4ade80">Result:</strong> for a K×K kernel you need <strong style="color:#e2e8f0">K−1 line buffers</strong>. Each holds one image row (width × bytes). After the buffers fill, the engine produces one output pixel every clock cycle — true streaming.
+  </div>
+</div>
+
+<div class="formula-box">
+Line Buffer Sizing:
+  Buffers needed = K − 1  (for K×K kernel)
+  Each buffer size = image_width × bytes_per_pixel
+
+Example (3×3 kernel, 224-wide image, INT8):
+  Buffers: 2
+  Size each: 224 × 1 byte = 224 bytes → 1 BRAM18 each
+  Total: 2 BRAM18 blocks (tiny!)
+
+Latency before first output:
+  ≈ (K−1) × image_width + K  cycles
+  = 2 × 224 + 3 = 451 cycles (then 1 output/clock)
+</div>
+
+<h2>4. Convolution Engine in Verilog</h2>
+<p>This streaming 3×3 conv engine uses two line buffers, a 3×3 shift-register window, and 9 parallel MACs.</p>
+
+<div class="code-wrap">
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// conv3x3.v — Streaming 3×3 Convolution Engine (INT8, single channel)
+module conv3x3 #(
+  parameter IMG_W = 224,   // image width
+  parameter DW    = 8      // data width
+)(
+  input  wire              clk, rst_n,
+  input  wire              pix_valid,            // input pixel valid
+  input  wire signed [DW-1:0] pix_in,            // streaming pixel
+  input  wire signed [DW-1:0] kernel [0:8],      // 9 kernel weights
+  output reg  signed [2*DW+4:0] conv_out,        // convolution result
+  output reg               out_valid
+);
+
+  // Two line buffers (store previous 2 rows)
+  reg signed [DW-1:0] lb1 [0:IMG_W-1];   // row N-2
+  reg signed [DW-1:0] lb2 [0:IMG_W-1];   // row N-1
+  reg [$clog2(IMG_W):0] col;
+
+  // 3×3 window shift registers (3 taps per row)
+  reg signed [DW-1:0] w00,w01,w02, w10,w11,w12, w20,w21,w22;
+
+  wire signed [DW-1:0] r0 = lb1[col];  // top row pixel
+  wire signed [DW-1:0] r1 = lb2[col];  // middle row pixel
+  wire signed [DW-1:0] r2 = pix_in;    // current row pixel
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      col <= 0; out_valid <= 0;
+    end else if (pix_valid) begin
+      // shift window left, bring in new column (r0,r1,r2)
+      w00<=w01; w01<=w02; w02<=r0;
+      w10<=w11; w11<=w12; w12<=r1;
+      w20<=w21; w21<=w22; w22<=r2;
+
+      // update line buffers: lb1 gets old lb2, lb2 gets new pixel
+      lb1[col] <= lb2[col];
+      lb2[col] <= pix_in;
+
+      col <= (col == IMG_W-1) ? 0 : col + 1;
+
+      // 9-tap MAC (valid once window is full)
+      conv_out <= w00*kernel[0] + w01*kernel[1] + w02*kernel[2]
+                + w10*kernel[3] + w11*kernel[4] + w12*kernel[5]
+                + w20*kernel[6] + w21*kernel[7] + w22*kernel[8];
+      out_valid <= (col >= 2);  // skip border warm-up
+    end
+  end
+endmodule</code></div>
+</div>
+
+<h2>5. The im2col Alternative</h2>
+<p><strong>im2col</strong> unrolls each convolution window into a column, turning the whole layer into one big matrix multiply — letting you reuse the Day 3 GEMM engine or Day 4 systolic array.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">im2col — Convolution as GEMM</div>
+  <svg viewBox="0 0 500 170" width="100%" style="max-width:500px;display:block;margin:0 auto">
+    <defs><marker id="i2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#94a3b8"/></marker></defs>
+    <!-- input windows -->
+    <text x="70" y="20" fill="#a78bfa" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Input windows</text>
+    <g stroke="#a78bfa" stroke-width="1" fill="rgba(167,139,250,.12)">
+      <rect x="30" y="30" width="20" height="20"/><rect x="50" y="30" width="20" height="20"/><rect x="70" y="30" width="20" height="20"/>
+      <rect x="30" y="50" width="20" height="20"/><rect x="50" y="50" width="20" height="20"/><rect x="70" y="50" width="20" height="20"/>
+      <rect x="30" y="70" width="20" height="20"/><rect x="50" y="70" width="20" height="20"/><rect x="70" y="70" width="20" height="20"/>
+    </g>
+    <!-- arrow -->
+    <line x1="100" y1="60" x2="150" y2="60" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#i2)"/>
+    <text x="125" y="52" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">unroll</text>
+    <!-- column matrix -->
+    <text x="200" y="20" fill="#06b6d4" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">im2col matrix</text>
+    <rect x="165" y="30" width="70" height="100" rx="3" fill="rgba(6,182,212,.1)" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="200" y="85" fill="#a5f3fc" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">9 × N_windows</text>
+    <!-- times weights -->
+    <text x="255" y="65" fill="#64748b" font-size="14" font-family="Outfit,sans-serif" text-anchor="middle">×</text>
+    <rect x="270" y="30" width="50" height="100" rx="3" fill="rgba(251,191,36,.1)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="295" y="80" fill="#fde68a" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">weights</text>
+    <text x="295" y="95" fill="#fde68a" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">Cout × 9</text>
+    <!-- equals -->
+    <text x="340" y="65" fill="#64748b" font-size="14" font-family="Outfit,sans-serif" text-anchor="middle">=</text>
+    <rect x="355" y="30" width="70" height="100" rx="3" fill="rgba(74,222,128,.1)" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="390" y="80" fill="#86efac" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">output</text>
+    <text x="390" y="95" fill="#86efac" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">feature map</text>
+    <text x="250" y="155" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Reuses the GEMM/systolic hardware — but duplicates overlapping pixels (memory cost)</text>
+  </svg>
+</div>
+
+<div class="table-wrap">
+<table>
+<tr><th>Approach</th><th>Memory</th><th>Hardware Reuse</th><th>Best For</th></tr>
+<tr><td>Line-buffer (direct)</td><td>Low (K−1 rows)</td><td>Dedicated conv engine</td><td>Streaming, edge, low latency</td></tr>
+<tr><td>im2col + GEMM</td><td>High (pixel duplication)</td><td>Reuses systolic/GEMM array</td><td>Datacenter, large batch</td></tr>
+</table>
+</div>
+
+<h2>6. Multi-Channel Convolution</h2>
+<p>Real CNN layers have many input and output channels. The single-channel engine above is replicated and accumulated across input channels.</p>
+
+<div class="formula-box">
+Multi-channel conv (per output pixel, per output channel):
+  out[co][y][x] = Σ(ci=0..Cin-1) conv3x3(in[ci], kernel[co][ci])
+
+Hardware options:
+  1. Channel parallelism: Cin conv engines in parallel → sum
+  2. Channel sequencing: 1 engine, accumulate over Cin cycles
+  3. Output parallelism: Cout engines for different filters
+
+Resource estimate (3×3, 64 input channels, INT8):
+  Full parallel: 64 × 9 = 576 MACs (576 DSPs)
+  With DSP packing (2 INT8/DSP): 288 DSPs
+  Alveo U250 has 12,288 DSPs → plenty of room
+</div>
+
+<div class="info-box">
+  <h4>Connecting the Course</h4>
+  <p>The conv engine feeds its output into the activation unit (<a href="/fpga-neural-network/day-07/">Day 7</a>) and pooling (<a href="/fpga-neural-network/day-08/">Day 8</a>). Weights and feature maps are streamed via the memory architecture from <a href="/fpga-neural-network/day-06/">Day 6</a>. This is how the full CNN pipeline (Day 9) comes together.</p>
+</div>
+
+<div class="checklist">
+<h3>Day 5 — Key Takeaways</h3>
+<ul>
+  <li>✅ <strong>2D convolution</strong> = sliding weighted sum; 9 MACs per pixel for 3×3</li>
+  <li>✅ <strong>Sliding window</strong> holds the current K×K patch, shifts 1 pixel/clock</li>
+  <li>✅ <strong>Line buffers</strong> (K−1 of them) store previous rows in BRAM for streaming</li>
+  <li>✅ <strong>Latency</strong> ≈ (K−1)×width before first output, then 1 output/clock</li>
+  <li>✅ <strong>im2col</strong> turns conv into GEMM — reuses systolic hardware at a memory cost</li>
+  <li>✅ <strong>Multi-channel</strong>: parallelize, sequence, or replicate across Cin/Cout</li>
+  <li>✅ <strong>A 3×3 64→64 layer</strong> on 56×56 needs ~116M MACs — DSP-bound, fits easily on Alveo</li>
+</ul>
+</div>
+
+<p><strong>Next — Day 6:</strong> Memory Architecture — BRAM vs DDR4, bandwidth bottleneck analysis, ping-pong buffering, and the AXI4 interface for streaming weights and activations.</p>
+
+<div style="display:flex;justify-content:space-between;margin-top:3rem;gap:1rem">
+  <a href="/fpga-neural-network/day-04/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">← Previous</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 4: Systolic Array</div>
+  </a>
+  <a href="/fpga-neural-network/day-06/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">Next →</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 6: Memory Architecture</div>
+  </a>
+</div>
+
+</div>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer>
+  <p>© 2026 <a href="/">EcrioniX</a> · <a href="/fpga-neural-network/">FPGA Neural Network Accelerator</a> · Day 5</p>
+  <p style="margin-top:.5rem"><a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/contact/">Contact</a></p>
+</footer>
+</body>
+</html>
