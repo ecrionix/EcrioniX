@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fixed-Point Arithmetic & Quantization for FPGA Neural Networks | EcrioniX</title>
+<meta name="description" content="Complete guide to fixed-point arithmetic and quantization for FPGA neural network accelerators. INT8/INT4 Q-format representation, quantization error, overflow handling, and Verilog MAC unit implementation.">
+<meta name="keywords" content="fixed point arithmetic FPGA, INT8 quantization neural network, Q format representation, quantization error FPGA, fixed point MAC unit Verilog, neural network quantization FPGA inference">
+<link rel="canonical" href="https://ecrionix.org/fpga-neural-network/day-02/">
+<meta property="og:title" content="Fixed-Point Arithmetic & Quantization — FPGA NN Day 2 | EcrioniX">
+<meta property="og:description" content="INT8 fixed-point math, Q-format, quantization error, overflow handling, and a complete 8-bit MAC unit in Verilog for FPGA AI inference.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"Fixed-Point Arithmetic and Quantization for FPGA Neural Network Accelerators","description":"Complete guide to fixed-point arithmetic and INT8 quantization for FPGA inference: Q-format representation, quantization error analysis, scale factor computation, overflow and saturation handling, and a fully pipelined 8-bit MAC unit in Verilog.","datePublished":"2026-06-14","dateModified":"2026-06-14","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/fpga-neural-network/day-02/","isPartOf":{"@type":"Course","name":"FPGA Neural Network Accelerator from Scratch","url":"https://ecrionix.org/fpga-neural-network/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA Neural Network","item":"https://ecrionix.org/fpga-neural-network/"},{"@type":"ListItem","position":3,"name":"Day 2 — Fixed-Point & Quantization","item":"https://ecrionix.org/fpga-neural-network/day-02/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why use INT8 instead of FP32 for FPGA inference?","acceptedAnswer":{"@type":"Answer","text":"INT8 uses 4× less memory than FP32, allows 2× more MAC operations per DSP block, and has simpler hardware (no floating-point exponent logic). Research shows neural networks lose less than 1% accuracy when quantized from FP32 to INT8, making it the dominant format for FPGA inference."}},{"@type":"Question","name":"What is Q-format in fixed-point arithmetic?","acceptedAnswer":{"@type":"Answer","text":"Q-format (Qm.n notation) specifies how many bits represent the integer part (m) and fractional part (n) of a fixed-point number. Q1.7 means 1 sign bit, 0 integer bits, 7 fractional bits — representing values from -1.0 to +0.9921875 in steps of 1/128. The decimal point is fixed at a specific bit position, unlike floating-point where it moves."}},{"@type":"Question","name":"What is quantization error?","acceptedAnswer":{"@type":"Answer","text":"Quantization error is the difference between the original FP32 value and the nearest representable fixed-point value. For INT8 with range [-1, 1], the step size is 2/256 ≈ 0.0078. Maximum quantization error is half the step size: ±0.0039. Accumulated over thousands of MAC operations, this error must be carefully managed through calibration and fine-tuning."}},{"@type":"Question","name":"How do you handle overflow in fixed-point neural networks?","acceptedAnswer":{"@type":"Answer","text":"Overflow occurs when a MAC accumulation exceeds the representable range. Solutions include: (1) saturation arithmetic — clamp to max/min instead of wrapping, (2) wider accumulators — use 32-bit accumulators for INT8 multiply-accumulate, (3) requantization after each layer — scale back to INT8 range, (4) careful scale factor selection during quantization calibration."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--purple:#a78bfa;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(167,139,250,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.08rem;max-width:740px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2.5rem}
+.byline a{color:#94a3b8}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(167,139,250,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(167,139,250,.1);border:2px solid rgba(167,139,250,.3);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#c4b5fd;font-size:.87rem;line-height:1.9;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-block{background:#060d1e;border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:1.5rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.83rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.75rem;right:.75rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c4b5fd;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .2s}
+.copy-btn:hover{background:rgba(167,139,250,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(167,139,250,.15);text-align:left}
+th{background:rgba(167,139,250,.1);color:var(--purple);font-weight:700}
+tr:hover{background:rgba(167,139,250,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--purple);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(167,139,250,.4);z-index:99}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:#c4b5fd;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill:hover{background:rgba(167,139,250,.2);text-decoration:none}
+.nav-pill.active{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.5);color:#e9d5ff}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a style="font-size:.95rem;font-weight:800;color:#fff" href="/">EcrioniX</a>
+  <a href="/fpga-neural-network/" style="font-size:.85rem;color:#94a3b8">← FPGA NN Course</a>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-neural-network/">FPGA Neural Network</a><span>›</span><span>Day 2 — Fixed-Point & Quantization</span></div>
+
+<div class="hero">
+  <h1>Fixed-Point Arithmetic<br><span class="g">&amp; Quantization</span></h1>
+  <p>Why FP32 is wasteful on FPGA. INT8/INT4 fixed-point representation, Q-format notation, quantization error analysis, scale factors, overflow handling, and a fully pipelined 8-bit MAC unit in Verilog.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 14, 2026 · ~4,700 words · 15 min read</div>
+
+<!-- Day nav -->
+<div class="nav-pills">
+  <a href="/fpga-neural-network/day-01/" class="nav-pill">Day 1: FPGA vs GPU</a>
+  <a href="/fpga-neural-network/day-02/" class="nav-pill active">Day 2: Fixed-Point</a>
+  <a href="/fpga-neural-network/" class="nav-pill">All Days →</a>
+</div>
+
+<div class="container">
+
+<h2>1. Why Floating-Point is Wrong for FPGA Inference</h2>
+
+<p><strong>FP32 (32-bit floating-point) is the format PyTorch and TensorFlow train in.</strong> It gives numerical accuracy and large dynamic range — perfect for training where gradients span many orders of magnitude. But for inference on FPGA, FP32 is a terrible choice:</p>
+
+<!-- FP32 vs INT8 comparison cards -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:2rem 0">
+  <div style="background:#0c1526;border:2px solid rgba(248,113,113,.3);border-radius:12px;padding:1.4rem">
+    <div style="color:#f87171;font-weight:800;font-size:.95rem;margin-bottom:.9rem">FP32 on FPGA — The Problems</div>
+    <ul style="list-style:none;margin:0;padding:0;font-size:.87rem;color:#94a3b8;line-height:2.1">
+      <li>❌ 1 FP32 multiply needs <strong style="color:#fca5a5">3–4 DSP blocks</strong></li>
+      <li>❌ Exponent + mantissa logic eats <strong style="color:#fca5a5">1,500+ LUTs</strong></li>
+      <li>❌ 4× more memory bandwidth vs INT8</li>
+      <li>❌ Slower clock due to complex rounding</li>
+      <li>❌ Only <strong style="color:#fca5a5">3,072 FP32 MACs/cycle</strong> on Alveo U250</li>
+    </ul>
+  </div>
+  <div style="background:#0c1526;border:2px solid rgba(74,222,128,.3);border-radius:12px;padding:1.4rem">
+    <div style="color:#4ade80;font-weight:800;font-size:.95rem;margin-bottom:.9rem">INT8 on FPGA — The Wins</div>
+    <ul style="list-style:none;margin:0;padding:0;font-size:.87rem;color:#94a3b8;line-height:2.1">
+      <li>✅ 2 INT8 MACs per DSP block per cycle</li>
+      <li>✅ Simple shift-and-add hardware</li>
+      <li>✅ 4× less memory bandwidth</li>
+      <li>✅ Higher clock frequency (simpler logic)</li>
+      <li>✅ <strong style="color:#86efac">24,576 INT8 MACs/cycle</strong> on Alveo U250 (8×!)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="info-box">
+  <h4>Research Reality Check</h4>
+  <p>Google's landmark 2017 paper showed ResNet-50 loses only <strong>0.5% top-1 accuracy</strong> when quantized from FP32 → INT8. MobileNetV2 loses ~0.9%. That's a completely acceptable trade-off for 8× more compute throughput on FPGA.</p>
+</div>
+
+<h2>2. How Numbers Are Represented</h2>
+
+<h3>2.1 Floating-Point (FP32) — Review</h3>
+
+<!-- FP32 bit layout SVG -->
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.2rem">FP32 — 32-bit Floating Point Layout</div>
+  <svg viewBox="0 0 580 80" width="100%" style="max-width:580px;display:block;margin:0 auto">
+    <rect x="0" y="10" width="40" height="40" rx="4" fill="rgba(248,113,113,.2)" stroke="rgba(248,113,113,.5)" stroke-width="1.5"/>
+    <text x="20" y="35" fill="#fca5a5" font-size="11" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">S</text>
+    <text x="20" y="62" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">1 bit</text>
+    <rect x="45" y="10" width="200" height="40" rx="4" fill="rgba(251,191,36,.15)" stroke="rgba(251,191,36,.4)" stroke-width="1.5"/>
+    <text x="145" y="35" fill="#fde68a" font-size="11" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Exponent (E)</text>
+    <text x="145" y="62" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">8 bits — range: -126 to +127</text>
+    <rect x="250" y="10" width="326" height="40" rx="4" fill="rgba(167,139,250,.15)" stroke="rgba(167,139,250,.4)" stroke-width="1.5"/>
+    <text x="413" y="35" fill="#c4b5fd" font-size="11" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Mantissa / Fraction (M)</text>
+    <text x="413" y="62" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">23 bits — ~7 decimal digits of precision</text>
+  </svg>
+  <p style="color:#64748b;font-size:.82rem;text-align:center;margin-top:.5rem">Value = (-1)ˢ × 2^(E-127) × (1 + M/2²³) — Exponent logic requires expensive hardware on FPGA</p>
+</div>
+
+<h3>2.2 Fixed-Point Representation</h3>
+
+<p><strong>Fixed-point removes the exponent entirely.</strong> The decimal point is fixed at a known position. This makes hardware trivially simple — just integers with a pre-agreed scaling factor.</p>
+
+<!-- Fixed-point bit layout SVG -->
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.2rem">Fixed-Point — Q3.4 Format (8-bit signed example)</div>
+  <svg viewBox="0 0 580 100" width="100%" style="max-width:580px;display:block;margin:0 auto">
+    <defs><marker id="a" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#06b6d4"/></marker></defs>
+    <!-- Sign bit -->
+    <rect x="0" y="10" width="60" height="40" rx="4" fill="rgba(248,113,113,.2)" stroke="rgba(248,113,113,.5)" stroke-width="1.5"/>
+    <text x="30" y="31" fill="#fca5a5" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Sign</text>
+    <text x="30" y="44" fill="#fca5a5" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">bit 7</text>
+    <!-- Integer bits -->
+    <rect x="65" y="10" width="185" height="40" rx="4" fill="rgba(251,191,36,.12)" stroke="rgba(251,191,36,.4)" stroke-width="1.5"/>
+    <text x="157" y="31" fill="#fde68a" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Integer Part (3 bits)</text>
+    <text x="157" y="44" fill="#fde68a" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">bits 6–4 → values 0,1,2,3,4</text>
+    <!-- Fixed point marker -->
+    <line x1="252" y1="5" x2="252" y2="75" stroke="#4ade80" stroke-width="2" stroke-dasharray="4,3"/>
+    <text x="252" y="82" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Fixed Point ↑</text>
+    <!-- Fractional bits -->
+    <rect x="255" y="10" width="322" height="40" rx="4" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.4)" stroke-width="1.5"/>
+    <text x="416" y="31" fill="#c4b5fd" font-size="10" font-family="Outfit,sans-serif" text-anchor="middle" font-weight="700">Fractional Part (4 bits)</text>
+    <text x="416" y="44" fill="#c4b5fd" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">bits 3–0 → values ½, ¼, ⅛, 1/16</text>
+  </svg>
+  <div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem;font-size:.83rem">
+    <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.8rem">
+      <div style="color:#e2e8f0;font-weight:700;margin-bottom:.4rem">Example: 0b 0 011 0100</div>
+      <div style="color:#94a3b8;line-height:1.8">Integer part: 011 = 3<br>Fraction: 0100 = 4/16 = 0.25<br><strong style="color:#4ade80">Value = 3.25</strong></div>
+    </div>
+    <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.8rem">
+      <div style="color:#e2e8f0;font-weight:700;margin-bottom:.4rem">Range (Q3.4, signed)</div>
+      <div style="color:#94a3b8;line-height:1.8">Max: +7.9375<br>Min: -8.0<br>Step: 1/16 = 0.0625</div>
+    </div>
+  </div>
+</div>
+
+<h2>3. Q-Format Notation</h2>
+
+<p><strong>Q-format (Qm.n) precisely defines how a fixed-point number's bits are split.</strong> You will see this notation throughout FPGA AI literature and Verilog codebases.</p>
+
+<div class="formula-box">
+Q-Format Rules:
+  Qm.n = m integer bits + n fractional bits
+  Total bits = sign bit + m + n (for signed)
+
+Common formats for neural networks:
+  Q1.7   → 1 int bit,  7 frac bits  → range [-1.0,  +0.992]  step 0.0078
+  Q4.4   → 4 int bits, 4 frac bits  → range [-8.0,  +7.9375] step 0.0625
+  Q7.8   → 7 int bits, 8 frac bits  → range [-128,  +127.99] step 0.0039
+  Q0.7   → 0 int bits, 7 frac bits  → range [-0.5,  +0.492]  step 0.0078
+
+Value formula:
+  x_real = x_int × 2^(-n)
+  x_int  = round(x_real × 2^n)
+
+Example — convert 0.3 to Q1.7:
+  x_int = round(0.3 × 2^7) = round(0.3 × 128) = round(38.4) = 38
+  Binary: 0b 0_0100110 = 38
+  Recovered: 38 / 128 = 0.296875  (error = 0.3 - 0.296875 = 0.003125)
+</div>
+
+<h2>4. INT8 Quantization — The Industry Standard</h2>
+
+<p><strong>INT8 quantization maps FP32 weights and activations to 8-bit signed integers.</strong> This is what TensorFlow Lite, PyTorch Mobile, and Vitis AI all use by default. Two key parameters define the mapping:</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.2rem">FP32 → INT8 Quantization Mapping</div>
+  <svg viewBox="0 0 580 160" width="100%" style="max-width:580px;display:block;margin:0 auto">
+    <defs><marker id="b" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#94a3b8"/></marker>
+    <marker id="c" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#4ade80"/></marker></defs>
+
+    <!-- FP32 number line -->
+    <line x1="30" y1="45" x2="550" y2="45" stroke="#f87171" stroke-width="2"/>
+    <text x="10" y="42" fill="#f87171" font-size="10" font-family="Outfit,sans-serif" font-weight="700">FP32</text>
+    <line x1="30" y1="38" x2="30" y2="52" stroke="#f87171" stroke-width="1.5"/>
+    <line x1="290" y1="38" x2="290" y2="52" stroke="#f87171" stroke-width="1.5"/>
+    <line x1="550" y1="38" x2="550" y2="52" stroke="#f87171" stroke-width="1.5"/>
+    <text x="30" y="64" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">-2.5</text>
+    <text x="290" y="64" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">0.0</text>
+    <text x="550" y="64" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">+2.5</text>
+
+    <!-- Arrows down -->
+    <line x1="290" y1="70" x2="290" y2="95" stroke="#4ade80" stroke-width="1.5" marker-end="url(#c)"/>
+    <text x="305" y="85" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif">scale = 2.5/127 ≈ 0.01969</text>
+    <text x="305" y="95" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">zero_point = 0 (symmetric)</text>
+
+    <!-- INT8 number line -->
+    <line x1="30" y1="115" x2="550" y2="115" stroke="#4ade80" stroke-width="2"/>
+    <text x="10" y="112" fill="#4ade80" font-size="10" font-family="Outfit,sans-serif" font-weight="700">INT8</text>
+    <line x1="30" y1="108" x2="30" y2="122" stroke="#4ade80" stroke-width="1.5"/>
+    <line x1="290" y1="108" x2="290" y2="122" stroke="#4ade80" stroke-width="1.5"/>
+    <line x1="550" y1="108" x2="550" y2="122" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="30" y="135" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">-127</text>
+    <text x="290" y="135" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">0</text>
+    <text x="550" y="135" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">+127</text>
+
+    <!-- Discrete ticks on INT8 line -->
+    <line x1="30" y1="110" x2="30" y2="120" stroke="#4ade80" stroke-width="1"/>
+    <line x1="74" y1="112" x2="74" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="118" y1="112" x2="118" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="162" y1="112" x2="162" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="206" y1="112" x2="206" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="250" y1="112" x2="250" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="330" y1="112" x2="330" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="374" y1="112" x2="374" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="418" y1="112" x2="418" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="462" y1="112" x2="462" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="506" y1="112" x2="506" y2="118" stroke="rgba(74,222,128,.4)" stroke-width="1"/>
+    <line x1="550" y1="110" x2="550" y2="120" stroke="#4ade80" stroke-width="1"/>
+    <text x="290" y="155" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Each step = 0.01969 (≈ 2% of range) — 256 discrete levels</text>
+  </svg>
+
+  <div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;font-size:.82rem">
+    <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.8rem;text-align:center">
+      <div style="color:#a78bfa;font-weight:700">Quantize</div>
+      <div style="color:#94a3b8;margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem">q = clamp(<br>round(x/S + Z),<br>-128, 127)</div>
+    </div>
+    <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.8rem;text-align:center">
+      <div style="color:#a78bfa;font-weight:700">Dequantize</div>
+      <div style="color:#94a3b8;margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem">x ≈ S × (q - Z)</div>
+    </div>
+    <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.8rem;text-align:center">
+      <div style="color:#a78bfa;font-weight:700">Scale Factor S</div>
+      <div style="color:#94a3b8;margin-top:.4rem;font-family:'JetBrains Mono',monospace;font-size:.78rem">S = (max-min)<br>/ (2^bits - 1)</div>
+    </div>
+  </div>
+</div>
+
+<h2>5. Quantization Error Analysis</h2>
+
+<p><strong>Every quantized value has an error equal to the rounding distance.</strong> Understanding this error is critical for knowing when INT8 is safe vs when you need INT16 or FP16.</p>
+
+<!-- Error visualization -->
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.2rem">Quantization Error — Sawtooth Pattern</div>
+  <svg viewBox="0 0 580 140" width="100%" style="max-width:580px;display:block;margin:0 auto">
+    <rect width="580" height="140" fill="#0c1526" rx="6"/>
+    <!-- Axes -->
+    <line x1="50" y1="110" x2="560" y2="110" stroke="rgba(148,163,184,.3)" stroke-width="1"/>
+    <line x1="50" y1="20" x2="50" y2="110" stroke="rgba(148,163,184,.3)" stroke-width="1"/>
+    <!-- Zero line -->
+    <line x1="50" y1="65" x2="560" y2="65" stroke="rgba(148,163,184,.15)" stroke-width="1" stroke-dasharray="4,4"/>
+    <!-- Sawtooth error pattern -->
+    <polyline points="50,65 97,20 97,110 144,20 144,110 191,20 191,110 238,20 238,110 285,20 285,110 332,20 332,110 379,20 379,110 426,20 426,110 473,20 473,110 520,20 520,110 560,50" fill="none" stroke="#f87171" stroke-width="1.5"/>
+    <!-- Labels -->
+    <text x="35" y="25" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="end">+S/2</text>
+    <text x="35" y="69" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="end">0</text>
+    <text x="35" y="113" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="end">-S/2</text>
+    <text x="305" y="128" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Input value (x)</text>
+    <text x="12" y="70" fill="#f87171" font-size="9" font-family="Outfit,sans-serif" transform="rotate(-90,12,70)">Error</text>
+    <!-- Period markers -->
+    <line x1="97" y1="108" x2="97" y2="112" stroke="#64748b" stroke-width="1"/>
+    <line x1="144" y1="108" x2="144" y2="112" stroke="#64748b" stroke-width="1"/>
+    <text x="120" y="125" fill="#64748b" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">step=S</text>
+    <!-- Max error annotation -->
+    <line x1="97" y1="20" x2="140" y2="20" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,2"/>
+    <text x="145" y="23" fill="#fbbf24" font-size="9" font-family="Outfit,sans-serif">max error = S/2</text>
+  </svg>
+  <div style="margin-top:.8rem;font-size:.83rem;color:#94a3b8;line-height:1.8">
+    <strong style="color:#e2e8f0">For INT8 with range [-2.5, +2.5]:</strong><br>
+    Step size S = 5.0 / 255 ≈ <strong style="color:#fbbf24">0.01961</strong> &nbsp;|&nbsp;
+    Max error = S/2 ≈ <strong style="color:#fbbf24">±0.0098</strong> &nbsp;|&nbsp;
+    SNR ≈ <strong style="color:#4ade80">49.9 dB</strong> (excellent for inference)
+  </div>
+</div>
+
+<h2>6. Overflow and Saturation Handling</h2>
+
+<p><strong>Overflow is the most dangerous bug in fixed-point neural networks.</strong> When two INT8 values multiply (8×8=16-bit result), then accumulate hundreds of times, the accumulator can easily overflow a 16-bit register — but not a 32-bit one. This is why accumulators must be wider than inputs.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Accumulator Width — Why 32 Bits?</div>
+  <div style="display:flex;flex-direction:column;gap:.8rem">
+
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="min-width:180px;color:#e2e8f0;font-size:.85rem;font-weight:600">INT8 × INT8 =</div>
+      <div style="flex:1;background:rgba(167,139,250,.12);border-radius:6px;padding:.5rem 1rem">
+        <div style="display:flex;gap:2px">
+          <div style="background:#a78bfa;height:24px;border-radius:3px;flex:8;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">8 bits (A)</div>
+          <div style="color:#64748b;align-self:center;padding:0 4px">×</div>
+          <div style="background:#7c3aed;height:24px;border-radius:3px;flex:8;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">8 bits (B)</div>
+          <div style="color:#64748b;align-self:center;padding:0 4px">=</div>
+          <div style="background:#5b21b6;height:24px;border-radius:3px;flex:16;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">16-bit product</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="min-width:180px;color:#e2e8f0;font-size:.85rem;font-weight:600">Accumulate 256× =</div>
+      <div style="flex:1;background:rgba(74,222,128,.08);border-radius:6px;padding:.5rem 1rem">
+        <div style="display:flex;gap:2px">
+          <div style="background:#15803d;height:24px;border-radius:3px;flex:24;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">32-bit accumulator (needed!)</div>
+          <div style="background:rgba(248,113,113,.2);border:1px solid rgba(248,113,113,.4);height:24px;border-radius:3px;flex:8;display:flex;align-items:center;justify-content:center;font-size:.68rem;color:#fca5a5">16-bit: OVERFLOW ✗</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="min-width:180px;color:#e2e8f0;font-size:.85rem;font-weight:600">Requantize output =</div>
+      <div style="flex:1;background:rgba(6,182,212,.08);border-radius:6px;padding:.5rem 1rem">
+        <div style="display:flex;gap:2px;align-items:center">
+          <div style="background:#0e7490;height:24px;border-radius:3px;flex:24;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">32-bit accumulator</div>
+          <div style="color:#06b6d4;padding:0 6px;font-size:.85rem">→ scale →</div>
+          <div style="background:#0891b2;height:24px;border-radius:3px;flex:8;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;font-weight:700">INT8 output</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div style="margin-top:1rem;font-size:.83rem;color:#94a3b8">
+    <strong style="color:#4ade80">Rule:</strong> Always use <strong style="color:#e2e8f0">32-bit accumulators for INT8 MACs</strong>. After each layer, requantize back to INT8. This is exactly how DSP58E2's 48-bit accumulator is used in practice.
+  </div>
+</div>
+
+<h2>7. Scale Factor Calibration</h2>
+
+<p><strong>Choosing the right scale factor S is what separates good quantization from bad.</strong> If S is too large → many values overflow. If S is too small → most values clamp to 0 or ±127 (clipping loss).</p>
+
+<div class="formula-box">
+Calibration Methods:
+
+1. Min-Max (simplest):
+   S = (max_val - min_val) / (2^bits - 1)
+   Z = -round(min_val / S)
+
+   Problem: outliers inflate S → poor precision for typical values
+
+2. Percentile (better):
+   Use 99.9th percentile instead of absolute max
+   Clips 0.1% of values but improves precision for 99.9%
+
+3. KL-Divergence (best — used by TensorRT, Vitis AI):
+   Minimize KL divergence between FP32 and INT8 distribution
+   Runs on calibration dataset (1000-5000 representative images)
+   Automatically finds optimal S per layer
+
+Python example (PyTorch):
+   import torch.quantization
+   model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+   model_prepared = torch.quantization.prepare(model)
+   # Run calibration data through model_prepared
+   model_int8 = torch.quantization.convert(model_prepared)
+</div>
+
+<h2>8. Building the INT8 MAC Unit in Verilog</h2>
+
+<p><strong>Now let's build it.</strong> This is a fully pipelined 3-stage MAC unit using signed INT8 inputs, a 16-bit product register, and a 32-bit accumulator — exactly how a real CNN accelerator works.</p>
+
+<div class="code-wrap">
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// mac_unit.v — Pipelined INT8 MAC Unit for FPGA Neural Network
+// 3-stage pipeline: Stage1=Multiply, Stage2=Accumulate, Stage3=Output
+// Uses DSP58E2 inference — Xilinx synthesis will map to DSP blocks
+
+module mac_unit #(
+  parameter DATA_W  = 8,   // INT8 input width
+  parameter PROD_W  = 16,  // 8x8 = 16-bit product
+  parameter ACCUM_W = 32   // 32-bit accumulator (safe for 256 accumulations)
+)(
+  input  wire                  clk,
+  input  wire                  rst_n,
+  input  wire                  clear,     // clear accumulator (new dot product)
+  input  wire                  valid_in,  // input data is valid
+  input  wire signed [DATA_W-1:0] a,      // weight (INT8 signed)
+  input  wire signed [DATA_W-1:0] b,      // activation (INT8 signed)
+  output reg  signed [ACCUM_W-1:0] accum, // accumulated result
+  output reg                   valid_out  // output valid
+);
+
+  // Pipeline Stage 1: Multiply
+  reg signed [PROD_W-1:0]  product;
+  reg                       valid_s1;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      product  <= 0;
+      valid_s1 <= 0;
+    end else begin
+      product  <= a * b;          // 8x8 = 16-bit signed multiply
+      valid_s1 <= valid_in;
+    end
+  end
+
+  // Pipeline Stage 2: Accumulate (sign-extend product to 32-bit)
+  reg signed [ACCUM_W-1:0] product_ext;
+  reg                       valid_s2;
+  reg                       clear_s2;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      product_ext <= 0;
+      valid_s2    <= 0;
+      clear_s2    <= 0;
+    end else begin
+      product_ext <= {{(ACCUM_W-PROD_W){product[PROD_W-1]}}, product}; // sign extend
+      valid_s2    <= valid_s1;
+      clear_s2    <= clear;
+    end
+  end
+
+  // Pipeline Stage 3: Accumulate or Clear
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      accum     <= 0;
+      valid_out <= 0;
+    end else begin
+      valid_out <= valid_s2;
+      if (clear_s2)
+        accum <= product_ext;           // start new accumulation
+      else if (valid_s2)
+        accum <= accum + product_ext;   // accumulate
+    end
+  end
+
+endmodule</code></div>
+</div>
+
+<h3>Testbench — Verify the MAC Unit</h3>
+
+<div class="code-wrap">
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// mac_unit_tb.v — Testbench: compute dot product [2,3,4] · [1,2,3] = 2+6+12 = 20
+`timescale 1ns/1ps
+
+module mac_unit_tb;
+  reg        clk = 0, rst_n = 0, clear = 0, valid_in = 0;
+  reg  signed [7:0] a, b;
+  wire signed [31:0] accum;
+  wire valid_out;
+
+  mac_unit uut(.clk(clk),.rst_n(rst_n),.clear(clear),
+               .valid_in(valid_in),.a(a),.b(b),
+               .accum(accum),.valid_out(valid_out));
+
+  always #5 clk = ~clk; // 100MHz clock
+
+  initial begin
+    rst_n = 0; #20; rst_n = 1;
+
+    // Dot product: a=[2,3,4], b=[1,2,3] → expected = 20
+    @(posedge clk); clear=1; valid_in=1; a=2; b=1; // 2*1=2
+    @(posedge clk); clear=0; valid_in=1; a=3; b=2; // 3*2=6
+    @(posedge clk); valid_in=1; a=4; b=3;           // 4*3=12
+    @(posedge clk); valid_in=0;
+
+    #50;
+    $display("Dot product result: %0d (expected 20)", accum);
+    if (accum == 20) $display("PASS ✓");
+    else             $display("FAIL ✗");
+    $finish;
+  end
+endmodule</code></div>
+</div>
+
+<h2>9. INT4 Quantization — Pushing Further</h2>
+
+<p><strong>INT4 halves memory bandwidth again</strong> and fits 4 MAC operations per DSP58 on Xilinx. It's used in LLM inference (GPTQ, AWQ) and some mobile CNNs. The challenge is higher quantization error:</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>Format</th><th>Bits</th><th>Levels</th><th>Max Error</th><th>Accuracy Drop (ResNet-50)</th><th>MACs/DSP/cycle</th></tr>
+<tr><td>FP32</td><td>32</td><td>~16M</td><td>~1e-7</td><td>Baseline</td><td>0.25</td></tr>
+<tr><td>FP16</td><td>16</td><td>~65K</td><td>~1e-3</td><td>&lt;0.1%</td><td>0.5</td></tr>
+<tr><td><strong>INT8</strong></td><td><strong>8</strong></td><td><strong>256</strong></td><td><strong>±0.010</strong></td><td><strong>~0.5%</strong></td><td><strong>2</strong></td></tr>
+<tr><td>INT4</td><td>4</td><td>16</td><td>±0.031</td><td>1–3%</td><td>4</td></tr>
+<tr><td>INT2</td><td>2</td><td>4</td><td>±0.125</td><td>5–15%</td><td>8</td></tr>
+</table>
+</div>
+
+<div class="warn-box">
+  <h4>INT4 Requires Careful Calibration</h4>
+  <p>With only 16 levels, INT4 is sensitive to outliers. Techniques like GPTQ (gradient-based post-training quantization) or AWQ (activation-aware weight quantization) are needed to keep accuracy drops under 2% for transformer models.</p>
+</div>
+
+<h2>10. Practical Quantization Workflow</h2>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">FP32 → INT8 → FPGA Deployment Pipeline</div>
+  <div style="display:flex;flex-direction:column;gap:.6rem">
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:#1e40af;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.82rem;flex-shrink:0">1</div>
+      <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.6rem 1rem;flex:1;font-size:.87rem">
+        <strong style="color:#e2e8f0">Train FP32 model</strong> <span style="color:#64748b">— PyTorch / TensorFlow, normal training loop</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:#1e40af;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.82rem;flex-shrink:0">2</div>
+      <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.6rem 1rem;flex:1;font-size:.87rem">
+        <strong style="color:#e2e8f0">Calibration</strong> <span style="color:#64748b">— Run 1K–5K representative images to collect activation statistics</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:#1e40af;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.82rem;flex-shrink:0">3</div>
+      <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.6rem 1rem;flex:1;font-size:.87rem">
+        <strong style="color:#e2e8f0">PTQ or QAT</strong> <span style="color:#64748b">— Post-training quantization (fast) or quantization-aware training (more accurate)</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:#1e40af;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.82rem;flex-shrink:0">4</div>
+      <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:.6rem 1rem;flex:1;font-size:.87rem">
+        <strong style="color:#e2e8f0">Vitis AI Quantizer</strong> <span style="color:#64748b">— vai_q_pytorch converts to Xilinx-optimized INT8 format with per-layer scale factors</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="background:#15803d;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.82rem;flex-shrink:0">5</div>
+      <div style="background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:.6rem 1rem;flex:1;font-size:.87rem">
+        <strong style="color:#4ade80">Deploy on FPGA</strong> <span style="color:#64748b">— Vitis AI compiler maps quantized model to DPU or your custom RTL accelerator</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>11. Day 2 Checklist</h2>
+
+<div class="checklist">
+<h3>Key Takeaways — Fixed-Point & Quantization</h3>
+<ul>
+  <li>✅ <strong>FP32 on FPGA is 8× less efficient</strong> than INT8 — avoid it for inference</li>
+  <li>✅ <strong>Q-format (Qm.n)</strong> defines integer + fractional bit split</li>
+  <li>✅ <strong>INT8 quantization</strong> maps FP32 values to 256 discrete levels with scale factor S</li>
+  <li>✅ <strong>Quantization error</strong> = ±S/2 per value; SNR ≈ 50 dB for INT8</li>
+  <li>✅ <strong>Always use 32-bit accumulators</strong> for INT8 MAC to prevent overflow</li>
+  <li>✅ <strong>KL-divergence calibration</strong> finds optimal scale factor per layer</li>
+  <li>✅ <strong>3-stage pipelined MAC unit</strong> in Verilog maps to DSP58E2 on Xilinx</li>
+  <li>✅ <strong>INT4 achieves 4 MACs/DSP/cycle</strong> at the cost of ~1–3% accuracy drop</li>
+  <li>✅ <strong>Vitis AI vai_q_pytorch</strong> automates the FP32 → INT8 conversion workflow</li>
+</ul>
+</div>
+
+<p><strong>Next — Day 3:</strong> Matrix Multiply Accelerator — building a 4×4 tiled GEMM engine in Verilog with DSP48 packing, input/output buffering, and throughput analysis.</p>
+
+<!-- Nav buttons -->
+<div style="display:flex;justify-content:space-between;margin-top:3rem;gap:1rem">
+  <a href="/fpga-neural-network/day-01/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">← Previous</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 1: FPGA vs GPU vs CPU</div>
+  </a>
+  <a href="/fpga-neural-network/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">Course Home</div>
+    <div style="color:#c4b5fd;font-weight:700">All 15 Days →</div>
+  </a>
+</div>
+
+</div>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer>
+  <p>© 2026 <a href="/">EcrioniX</a> · <a href="/fpga-neural-network/">FPGA Neural Network Accelerator</a> · Day 2</p>
+  <p style="margin-top:.5rem"><a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/contact/">Contact</a></p>
+</footer>
+</body>
+</html>
