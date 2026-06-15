@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipelining & Parallelism in FPGA Neural Networks — Layer Pipelines & Dataflow | EcrioniX</title>
+<meta name="description" content="Pipelining and parallelism for FPGA neural network accelerators. Layer-by-layer pipelining, inter-layer FIFOs, throughput vs latency trade-off, data vs model parallelism, initiation interval, and pipeline stall analysis.">
+<meta name="keywords" content="FPGA pipelining, neural network parallelism, layer pipeline, inter-layer FIFO, initiation interval, throughput vs latency, data parallelism, model parallelism, dataflow FPGA, II pipeline">
+<link rel="canonical" href="https://ecrionix.org/fpga-neural-network/day-09/">
+<meta property="og:title" content="Pipelining & Parallelism in FPGA Neural Networks — Day 9 | EcrioniX">
+<meta property="og:description" content="Layer pipelining, inter-layer FIFOs, throughput vs latency, data/model parallelism, and pipeline stalls.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"Pipelining and Parallelism in FPGA Neural Networks","description":"Complete guide to pipelining and parallelism for FPGA neural network accelerators: layer-by-layer pipelining, inter-layer FIFOs, the throughput vs latency trade-off, data and model parallelism, initiation interval, and pipeline stall analysis.","datePublished":"2026-06-15","dateModified":"2026-06-15","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/fpga-neural-network/day-09/","isPartOf":{"@type":"Course","name":"FPGA Neural Network Accelerator from Scratch","url":"https://ecrionix.org/fpga-neural-network/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA Neural Network","item":"https://ecrionix.org/fpga-neural-network/"},{"@type":"ListItem","position":3,"name":"Day 9 — Pipelining & Parallelism","item":"https://ecrionix.org/fpga-neural-network/day-09/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is initiation interval (II) in FPGA pipelining?","acceptedAnswer":{"@type":"Answer","text":"Initiation interval (II) is the number of clock cycles between starting consecutive operations in a pipeline. II=1 (the ideal) means a new input is accepted every cycle, giving maximum throughput. II=2 means one new input every two cycles, halving throughput. Achieving II=1 requires resolving all resource conflicts and loop-carried dependencies."}},{"@type":"Question","name":"What is the difference between data and model parallelism on FPGA?","acceptedAnswer":{"@type":"Answer","text":"Data parallelism processes multiple inputs (images) simultaneously through copies of the same hardware — boosting throughput. Model parallelism splits one model across hardware: different layers run on different engines (layer pipelining), or one layer's channels are computed in parallel. FPGAs typically combine both: parallel channels within a layer plus a pipeline across layers."}},{"@type":"Question","name":"Why use inter-layer FIFOs in a CNN accelerator?","acceptedAnswer":{"@type":"Answer","text":"Inter-layer FIFOs decouple adjacent layer engines so they can run concurrently at slightly different rates without stalling each other. When a producing layer runs faster than the consumer, the FIFO buffers the surplus; when it runs slower, the FIFO drains. This smooths out rate mismatches and keeps all pipeline stages busy."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--purple:#a78bfa;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(167,139,250,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:740px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(167,139,250,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(167,139,250,.1);border:2px solid rgba(167,139,250,.3);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#c4b5fd;font-size:.87rem;line-height:1.9;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-block{background:#060d1e;border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:1.5rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.75rem;right:.75rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c4b5fd;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(167,139,250,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(167,139,250,.15);text-align:left}
+th{background:rgba(167,139,250,.1);color:var(--purple);font-weight:700}
+tr:hover{background:rgba(167,139,250,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--purple);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(167,139,250,.4);z-index:99}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:#c4b5fd;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill.active{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.5)}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a style="font-size:.95rem;font-weight:800;color:#fff" href="/">EcrioniX</a>
+  <a href="/fpga-neural-network/" style="font-size:.85rem;color:#94a3b8">← FPGA NN Course</a>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-neural-network/">FPGA Neural Network</a><span>›</span><span>Day 9 — Pipelining & Parallelism</span></div>
+
+<div class="hero">
+  <h1>Pipelining &amp; <span class="g">Parallelism</span></h1>
+  <p>How to keep thousands of MACs busy every cycle. Layer pipelining, inter-layer FIFOs, the throughput-vs-latency trade-off, initiation interval, and data vs model parallelism.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 15, 2026 · ~4,700 words · 15 min read</div>
+
+<div class="nav-pills">
+  <a href="/fpga-neural-network/day-08/" class="nav-pill">← Day 8: Pooling & Norm</a>
+  <a href="/fpga-neural-network/day-09/" class="nav-pill active">Day 9: Pipelining</a>
+  <a href="/fpga-neural-network/day-10/" class="nav-pill">Day 10: Vitis HLS →</a>
+</div>
+
+<div class="container">
+
+<h2>1. Why Pipelining Is Everything</h2>
+<p><strong>An FPGA's superpower is spatial parallelism — but only if you keep the hardware busy.</strong> A conv engine with 1,000 MACs that sits idle 80% of the time delivers the same throughput as 200 fully-utilized MACs. Pipelining and parallelism are what turn raw DSP count into real inference performance.</p>
+
+<p>Three levers control performance:</p>
+<ul>
+<li><strong>Pipelining</strong> — overlap operations in time so a new result emerges every cycle</li>
+<li><strong>Spatial parallelism</strong> — replicate hardware to process more data at once</li>
+<li><strong>Dataflow</strong> — connect layer engines so they all run concurrently</li>
+</ul>
+
+<h2>2. The Pipeline Concept</h2>
+<p><strong>A pipeline overlaps the stages of consecutive operations</strong> — like an assembly line. While stage 3 works on item A, stage 2 works on item B, and stage 1 on item C. After the pipeline fills, one result comes out every clock.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Pipelined Execution — Fill, Steady-State, Drain</div>
+  <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto">
+    <!-- column headers (cycles) -->
+    <text x="120" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C1</text>
+    <text x="170" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C2</text>
+    <text x="220" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C3</text>
+    <text x="270" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C4</text>
+    <text x="320" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C5</text>
+    <text x="370" y="20" fill="#64748b" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">C6</text>
+    <!-- stage rows -->
+    <text x="40" y="48" fill="#a78bfa" font-size="9" font-family="Outfit,sans-serif" text-anchor="start">Multiply</text>
+    <text x="40" y="78" fill="#06b6d4" font-size="9" font-family="Outfit,sans-serif" text-anchor="start">Add</text>
+    <text x="40" y="108" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif" text-anchor="start">Activate</text>
+    <!-- items flowing diagonally: A green, B yellow, C pink -->
+    <!-- Multiply row -->
+    <rect x="100" y="36" width="44" height="20" rx="3" fill="rgba(74,222,128,.3)" stroke="#4ade80"/><text x="122" y="50" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">A</text>
+    <rect x="150" y="36" width="44" height="20" rx="3" fill="rgba(251,191,36,.3)" stroke="#fbbf24"/><text x="172" y="50" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">B</text>
+    <rect x="200" y="36" width="44" height="20" rx="3" fill="rgba(236,72,153,.3)" stroke="#ec4899"/><text x="222" y="50" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C</text>
+    <!-- Add row (shifted +1) -->
+    <rect x="150" y="66" width="44" height="20" rx="3" fill="rgba(74,222,128,.3)" stroke="#4ade80"/><text x="172" y="80" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">A</text>
+    <rect x="200" y="66" width="44" height="20" rx="3" fill="rgba(251,191,36,.3)" stroke="#fbbf24"/><text x="222" y="80" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">B</text>
+    <rect x="250" y="66" width="44" height="20" rx="3" fill="rgba(236,72,153,.3)" stroke="#ec4899"/><text x="272" y="80" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C</text>
+    <!-- Activate row (shifted +2) -->
+    <rect x="200" y="96" width="44" height="20" rx="3" fill="rgba(74,222,128,.3)" stroke="#4ade80"/><text x="222" y="110" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">A✓</text>
+    <rect x="250" y="96" width="44" height="20" rx="3" fill="rgba(251,191,36,.3)" stroke="#fbbf24"/><text x="272" y="110" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">B✓</text>
+    <rect x="300" y="96" width="44" height="20" rx="3" fill="rgba(236,72,153,.3)" stroke="#ec4899"/><text x="322" y="110" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C✓</text>
+    <!-- phase brackets -->
+    <text x="135" y="140" fill="#f87171" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">fill (latency)</text>
+    <line x1="100" y1="128" x2="200" y2="128" stroke="#f87171" stroke-width="1"/>
+    <text x="270" y="140" fill="#4ade80" font-size="8" font-family="Outfit,sans-serif" text-anchor="middle">steady: 1 result/cycle</text>
+    <line x1="200" y1="128" x2="344" y2="128" stroke="#4ade80" stroke-width="1"/>
+    <text x="260" y="175" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Latency = pipeline depth · Throughput = 1/II (here II=1, one result every cycle)</text>
+  </svg>
+</div>
+
+<div class="formula-box">
+Pipeline Performance:
+  Latency    = depth (cycles to traverse the pipeline)
+  Throughput = 1 / II  (results per cycle)
+
+  II = Initiation Interval = cycles between new inputs
+    II = 1  → ideal (new input every cycle) → max throughput
+    II = 2  → half throughput
+    II = N  → 1/N throughput
+
+For a 1000-image batch through a depth-50, II=1 pipeline:
+  Total cycles = depth + (N-1)×II = 50 + 999×1 = 1049 cycles
+  vs non-pipelined: 1000 × 50 = 50,000 cycles
+  → ~48× speedup from pipelining alone!
+</div>
+
+<h2>3. Achieving II = 1</h2>
+<p><strong>II=1 is the holy grail — a new input accepted every clock.</strong> Two things break it: resource conflicts (two operations need the same DSP/BRAM port) and loop-carried dependencies (this iteration needs last iteration's result).</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>II Killer</th><th>Cause</th><th>Fix</th></tr>
+<tr><td>Resource conflict</td><td>One BRAM port, two reads/cycle</td><td>Array partition / dual-port BRAM</td></tr>
+<tr><td>Loop-carried dependency</td><td>acc += x[i] (acc depends on prev)</td><td>Partial sums / tree reduction</td></tr>
+<tr><td>Long combinational path</td><td>Too much logic between registers</td><td>Add pipeline registers (retiming)</td></tr>
+<tr><td>Variable-latency op</td><td>Divide, sqrt with data-dependent cycles</td><td>Fixed-latency LUT/CORDIC</td></tr>
+</table>
+</div>
+
+<div class="warn-box">
+  <h4>The Accumulator Trap</h4>
+  <p>A naive <code>acc += data[i]</code> creates a loop-carried dependency: the adder must finish iteration i before starting i+1. If the adder takes 3 cycles, you get II=3. The fix is multiple partial accumulators (interleave 4 sums, combine at the end) — restoring II=1 at the cost of a few extra registers.</p>
+</div>
+
+<h2>4. Spatial Parallelism — Unrolling</h2>
+<p><strong>Unrolling replicates hardware to do more work per cycle.</strong> Instead of one MAC processing 64 channels over 64 cycles, instantiate 64 MACs and do it in one cycle. It's a direct area-for-speed trade.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Parallelism Dimensions in a Conv Layer</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;font-size:.86rem">
+    <div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:8px;padding:1rem">
+      <div style="color:#c4b5fd;font-weight:700;margin-bottom:.5rem">Input-channel parallel</div>
+      <div style="color:#94a3b8">Process all Cin channels of one window at once → Cin MACs summed in a tree</div>
+    </div>
+    <div style="background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);border-radius:8px;padding:1rem">
+      <div style="color:#a5f3fc;font-weight:700;margin-bottom:.5rem">Output-channel parallel</div>
+      <div style="color:#94a3b8">Compute Cout filters at once → Cout independent MAC arrays share inputs</div>
+    </div>
+    <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:1rem">
+      <div style="color:#86efac;font-weight:700;margin-bottom:.5rem">Kernel parallel</div>
+      <div style="color:#94a3b8">All K×K taps in parallel (the Day 5 conv engine — 9 MACs for 3×3)</div>
+    </div>
+    <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:1rem">
+      <div style="color:#fde68a;font-weight:700;margin-bottom:.5rem">Pixel/batch parallel</div>
+      <div style="color:#94a3b8">Multiple output pixels or images at once → data parallelism</div>
+    </div>
+  </div>
+  <div style="margin-top:1rem;font-size:.83rem;color:#94a3b8">
+    <strong style="color:#e2e8f0">Total parallelism</strong> = product of all dimensions. A design with Cin=16 × Cout=16 = 256 MACs working in parallel, all at II=1, hits 256 MACs/cycle.
+  </div>
+</div>
+
+<h2>5. Layer Pipelining with Inter-Layer FIFOs</h2>
+<p><strong>The most powerful FPGA architecture: run every layer's engine simultaneously, connected by FIFOs.</strong> Layer 1 streams into Layer 2's FIFO while Layer 2 processes the previous frame's data — the whole network is one giant pipeline.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Layer-Pipelined CNN with Inter-Layer FIFOs</div>
+  <svg viewBox="0 0 520 130" width="100%" style="max-width:520px;display:block;margin:0 auto">
+    <defs><marker id="f9" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#06b6d4"/></marker></defs>
+    <!-- Conv1 -->
+    <rect x="20" y="40" width="70" height="44" rx="6" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.5"/><text x="55" y="60" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Conv1</text><text x="55" y="74" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">+ReLU+Pool</text>
+    <!-- FIFO -->
+    <line x1="90" y1="62" x2="110" y2="62" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#f9)"/>
+    <rect x="110" y="50" width="40" height="24" rx="3" fill="rgba(6,182,212,.12)" stroke="#06b6d4" stroke-width="1"/><text x="130" y="66" fill="#a5f3fc" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">FIFO</text>
+    <line x1="150" y1="62" x2="170" y2="62" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#f9)"/>
+    <!-- Conv2 -->
+    <rect x="170" y="40" width="70" height="44" rx="6" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.5"/><text x="205" y="60" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Conv2</text><text x="205" y="74" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">+ReLU+Pool</text>
+    <line x1="240" y1="62" x2="260" y2="62" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#f9)"/>
+    <rect x="260" y="50" width="40" height="24" rx="3" fill="rgba(6,182,212,.12)" stroke="#06b6d4" stroke-width="1"/><text x="280" y="66" fill="#a5f3fc" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">FIFO</text>
+    <line x1="300" y1="62" x2="320" y2="62" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#f9)"/>
+    <!-- ConvN -->
+    <rect x="320" y="40" width="70" height="44" rx="6" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.5"/><text x="355" y="60" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">…ConvN</text><text x="355" y="74" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">+GAP</text>
+    <line x1="390" y1="62" x2="410" y2="62" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#f9)"/>
+    <rect x="410" y="40" width="70" height="44" rx="6" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1.5"/><text x="445" y="60" fill="#86efac" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FC</text><text x="445" y="74" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">+softmax</text>
+    <text x="250" y="25" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">All engines run concurrently — FIFOs absorb rate mismatch</text>
+    <text x="250" y="110" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Throughput = slowest stage (bottleneck) · balance stages for max utilization</text>
+  </svg>
+</div>
+
+<div class="info-box">
+  <h4>Throughput = Slowest Stage</h4>
+  <p>In a balanced layer pipeline, overall throughput equals the throughput of the <em>slowest</em> stage. If Conv3 takes twice as long as the others, the whole pipeline runs at half speed — so PD/HLS engineers carefully balance per-layer parallelism (more MACs for heavy layers) so every stage finishes in roughly the same time.</p>
+</div>
+
+<h2>6. Throughput vs Latency Trade-off</h2>
+<p><strong>The classic FPGA architecture choice.</strong> Two extreme styles, with a spectrum between:</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>Architecture</th><th>Hardware</th><th>Latency</th><th>Throughput</th><th>Best For</th></tr>
+<tr><td>Single engine (folded)</td><td>1 reused engine, all layers time-shared</td><td>Higher (sequential)</td><td>Lower</td><td>Small FPGA, low cost, large models</td></tr>
+<tr><td>Layer-pipelined (dataflow)</td><td>One engine per layer, all concurrent</td><td>Low (streaming)</td><td>Very high</td><td>Real-time, fixed model, large FPGA</td></tr>
+<tr><td>Hybrid</td><td>Pipeline groups of layers</td><td>Medium</td><td>High</td><td>Balanced resource budgets</td></tr>
+</table>
+</div>
+
+<h2>7. Inter-Layer FIFO in Verilog</h2>
+<div class="code-wrap">
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// stream_fifo.v — synchronous FIFO decoupling two layer engines
+module stream_fifo #(parameter DW = 8, parameter DEPTH = 512)(
+  input  wire           clk, rst_n,
+  // producer (upstream layer)
+  input  wire [DW-1:0]  wr_data,
+  input  wire           wr_en,
+  output wire           full,
+  // consumer (downstream layer)
+  output reg  [DW-1:0]  rd_data,
+  input  wire           rd_en,
+  output wire           empty
+);
+  localparam AW = $clog2(DEPTH);
+  reg [DW-1:0] mem [0:DEPTH-1];
+  reg [AW:0]   wptr, rptr;             // extra bit for full/empty distinction
+
+  assign full  = (wptr[AW] != rptr[AW]) && (wptr[AW-1:0] == rptr[AW-1:0]);
+  assign empty = (wptr == rptr);
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin wptr <= 0; rptr <= 0; end
+    else begin
+      if (wr_en && !full)  begin mem[wptr[AW-1:0]] <= wr_data; wptr <= wptr + 1; end
+      if (rd_en && !empty) begin rd_data <= mem[rptr[AW-1:0]]; rptr <= rptr + 1; end
+    end
+  end
+endmodule
+
+// Producer stalls when full; consumer stalls when empty.
+// FIFO absorbs short-term rate mismatch between layer engines.</code></div>
+</div>
+
+<h2>8. Real-World Pipeline Numbers</h2>
+<div class="formula-box">
+MobileNetV2 on Xilinx Kria (layer-pipelined dataflow):
+
+  Architecture: dataflow, all 53 layers pipelined
+  Clock: 300 MHz
+  Bottleneck stage: 224×224 first conv (~150k cycles)
+  Steady-state throughput: 1 frame / 150k cycles
+    = 300M / 150k = 2000 FPS theoretical
+  Measured: ~400 FPS (memory + overhead limited)
+  Latency: ~0.9ms (pipeline fill, single frame)
+
+Single-engine (folded) alternative on same chip:
+  Latency: ~3ms (layers run sequentially)
+  Throughput: ~330 FPS
+  → dataflow trades area for latency + throughput
+</div>
+
+<div class="checklist">
+<h3>Day 9 — Key Takeaways</h3>
+<ul>
+  <li>✅ <strong>Pipelining</strong> overlaps stages → 1 result/cycle after fill; ~48× over non-pipelined</li>
+  <li>✅ <strong>Initiation Interval (II)</strong>: II=1 is ideal; throughput = 1/II</li>
+  <li>✅ <strong>II killers</strong>: resource conflicts, loop-carried deps, long paths, variable latency</li>
+  <li>✅ <strong>Accumulator trap</strong>: use partial sums / tree reduction to keep II=1</li>
+  <li>✅ <strong>Parallelism dimensions</strong>: input-ch × output-ch × kernel × pixel — multiply them</li>
+  <li>✅ <strong>Layer pipelining + FIFOs</strong>: all layer engines run concurrently, decoupled</li>
+  <li>✅ <strong>Throughput = slowest stage</strong> — balance per-layer parallelism</li>
+  <li>✅ <strong>Dataflow vs folded</strong>: area for latency+throughput, or reuse for cost</li>
+</ul>
+</div>
+
+<p><strong>Next — Day 10:</strong> Vitis HLS — write CNN layers in C++, synthesize to RTL with PIPELINE / UNROLL / ARRAY_PARTITION pragmas, and read latency/area reports.</p>
+
+<div style="display:flex;justify-content:space-between;margin-top:3rem;gap:1rem">
+  <a href="/fpga-neural-network/day-08/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">← Previous</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 8: Pooling & Normalization</div>
+  </a>
+  <a href="/fpga-neural-network/day-10/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">Next →</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 10: Vitis HLS</div>
+  </a>
+</div>
+
+</div>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer>
+  <p>© 2026 <a href="/">EcrioniX</a> · <a href="/fpga-neural-network/">FPGA Neural Network Accelerator</a> · Day 9</p>
+  <p style="margin-top:.5rem"><a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/contact/">Contact</a></p>
+</footer>
+</body>
+</html>
