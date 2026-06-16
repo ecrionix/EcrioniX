@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transformer Attention on FPGA — Self-Attention, QKV, Softmax & Multi-Head | EcrioniX</title>
+<meta name="description" content="Implement transformer self-attention on FPGA. QKV matrix multiplies, scaled dot-product attention, hardware softmax, multi-head parallelism, and accelerating BERT/ViT inference on Xilinx Alveo with FPGA.">
+<meta name="keywords" content="transformer FPGA, attention FPGA, self-attention hardware, QKV matrix multiply, multi-head attention FPGA, BERT FPGA, ViT FPGA, softmax hardware, LLM FPGA inference, scaled dot product attention">
+<link rel="canonical" href="https://ecrionix.org/fpga-neural-network/day-13/">
+<meta property="og:title" content="Transformer Attention on FPGA — Day 13 | EcrioniX">
+<meta property="og:description" content="Self-attention in hardware: QKV matmuls, scaled dot-product, hardware softmax, multi-head parallelism for BERT/ViT.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"Transformer Attention on FPGA — Self-Attention, QKV, Softmax and Multi-Head","description":"Implement transformer self-attention on FPGA: QKV matrix multiplies, scaled dot-product attention, hardware softmax, multi-head parallelism, and accelerating BERT and Vision Transformer (ViT) inference on FPGA.","datePublished":"2026-06-16","dateModified":"2026-06-16","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/fpga-neural-network/day-13/","isPartOf":{"@type":"Course","name":"FPGA Neural Network Accelerator from Scratch","url":"https://ecrionix.org/fpga-neural-network/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"FPGA Neural Network","item":"https://ecrionix.org/fpga-neural-network/"},{"@type":"ListItem","position":3,"name":"Day 13 — Transformer Attention","item":"https://ecrionix.org/fpga-neural-network/day-13/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is self-attention in transformers?","acceptedAnswer":{"@type":"Answer","text":"Self-attention lets every token in a sequence attend to every other token. It computes three projections — Query (Q), Key (K), Value (V) — then scores = softmax(Q·Kᵀ/√d), and output = scores·V. This is mostly matrix multiplication, which maps beautifully onto the GEMM/systolic hardware from Days 3-4, plus a softmax."}},{"@type":"Question","name":"Why is attention hard to accelerate on FPGA?","acceptedAnswer":{"@type":"Answer","text":"Attention has two challenges: the Q·Kᵀ score matrix grows as sequence-length squared (O(N²)) in both compute and memory, and softmax requires exponentials plus a row-wise normalization that creates a data dependency. The matmuls are easy (reuse GEMM); the difficulty is managing the large intermediate score matrix and streaming softmax efficiently."}},{"@type":"Question","name":"How is multi-head attention parallelized on FPGA?","acceptedAnswer":{"@type":"Answer","text":"Multi-head attention runs several independent attention computations (heads) on different projections of the input. On FPGA these heads are fully independent, so they map to parallel hardware: instantiate multiple attention engines that run concurrently, or time-share one engine across heads. Heads are an ideal spatial-parallelism dimension since there are no dependencies between them."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--purple:#a78bfa;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(167,139,250,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:740px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(167,139,250,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(167,139,250,.1);border:2px solid rgba(167,139,250,.3);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#c4b5fd;font-size:.87rem;line-height:1.9;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-label{position:absolute;top:.75rem;left:1rem;font-size:.68rem;color:#64748b;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+.code-block{background:#060d1e;border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:1.5rem;padding-top:2.2rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.65rem;right:.75rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c4b5fd;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(167,139,250,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(167,139,250,.15);text-align:left}
+th{background:rgba(167,139,250,.1);color:var(--purple);font-weight:700}
+tr:hover{background:rgba(167,139,250,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--purple);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(167,139,250,.4);z-index:99}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:#c4b5fd;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill.active{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.5)}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a style="font-size:.95rem;font-weight:800;color:#fff" href="/">EcrioniX</a>
+  <a href="/fpga-neural-network/" style="font-size:.85rem;color:#94a3b8">← FPGA NN Course</a>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/fpga-neural-network/">FPGA Neural Network</a><span>›</span><span>Day 13 — Transformer Attention</span></div>
+
+<div class="hero">
+  <h1>Transformer Attention<br><span class="g">on FPGA</span></h1>
+  <p>From CNNs to the architecture behind ChatGPT. Self-attention in hardware: QKV matmuls, scaled dot-product, hardware softmax, and multi-head parallelism for BERT and Vision Transformer inference.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 16, 2026 · ~4,800 words · 15 min read</div>
+
+<div class="nav-pills">
+  <a href="/fpga-neural-network/day-12/" class="nav-pill">← Day 12: Power</a>
+  <a href="/fpga-neural-network/day-13/" class="nav-pill active">Day 13: Transformers</a>
+  <a href="/fpga-neural-network/day-14/" class="nav-pill">Day 14: Benchmarking →</a>
+</div>
+
+<div class="container">
+
+<h2>1. Why Transformers, Why FPGA</h2>
+<p><strong>Transformers power modern AI</strong> — BERT for language, ViT for vision, GPT/LLaMA for generation. Their core is the <em>attention</em> mechanism, and the good news for FPGA designers is that attention is <strong>mostly matrix multiplication</strong> — the exact operation you already accelerate with the GEMM engine (Day 3) and systolic array (Day 4). The new ingredients are a large intermediate score matrix and a softmax.</p>
+
+<div class="info-box">
+  <h4>You Already Have 80% of the Hardware</h4>
+  <p>Three of the four steps in attention are GEMMs. Your Day 4 systolic array runs them directly. The only genuinely new hardware is the softmax (which builds on Day 7's activation work) and the buffering for the N×N score matrix (Day 6 memory). Transformers are far more FPGA-friendly than their reputation suggests.</p>
+</div>
+
+<h2>2. The Attention Mechanism</h2>
+<p><strong>Self-attention lets every token look at every other token</strong> and decide what's relevant. It's computed in four steps from the input sequence X (N tokens × d dimensions).</p>
+
+<div class="formula-box">
+Scaled Dot-Product Attention:
+
+  Step 1 — Projections (3 GEMMs):
+    Q = X · Wq     Query   [N × d]
+    K = X · Wk     Key     [N × d]
+    V = X · Wv     Value   [N × d]
+
+  Step 2 — Scores (GEMM, N×N output):
+    S = Q · Kᵀ / √d        [N × N]   ← every token vs every token
+
+  Step 3 — Softmax (row-wise):
+    A = softmax(S)         [N × N]   ← normalize each row to sum=1
+
+  Step 4 — Weighted sum (GEMM):
+    out = A · V            [N × d]
+
+Compute: 3 projection GEMMs + Q·Kᵀ + A·V = mostly matrix multiply
+Memory: the N×N score matrix scales as O(N²) — the main challenge</code></div>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Attention Dataflow</div>
+  <svg viewBox="0 0 520 180" width="100%" style="max-width:520px;display:block;margin:0 auto">
+    <defs><marker id="a13" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#64748b"/></marker></defs>
+    <!-- X input -->
+    <rect x="15" y="75" width="50" height="40" rx="5" fill="rgba(148,163,184,.12)" stroke="#94a3b8" stroke-width="1.5"/><text x="40" y="99" fill="#cbd5e1" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">X</text>
+    <!-- to Q K V -->
+    <line x1="65" y1="85" x2="95" y2="45" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <line x1="65" y1="95" x2="95" y2="95" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <line x1="65" y1="105" x2="95" y2="145" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <rect x="97" y="30" width="46" height="28" rx="5" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.2"/><text x="120" y="48" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Q</text>
+    <rect x="97" y="81" width="46" height="28" rx="5" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.2"/><text x="120" y="99" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">K</text>
+    <rect x="97" y="132" width="46" height="28" rx="5" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.2"/><text x="120" y="150" fill="#c4b5fd" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">V</text>
+    <text x="120" y="20" fill="#64748b" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">3 projection GEMMs</text>
+    <!-- QK^T -->
+    <line x1="143" y1="44" x2="180" y2="60" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <line x1="143" y1="95" x2="180" y2="75" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <rect x="182" y="55" width="70" height="34" rx="5" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1.2"/><text x="217" y="71" fill="#a5f3fc" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Q·Kᵀ/√d</text><text x="217" y="83" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">N×N scores</text>
+    <!-- softmax -->
+    <line x1="252" y1="72" x2="282" y2="72" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <rect x="284" y="55" width="70" height="34" rx="5" fill="rgba(251,191,36,.15)" stroke="#fbbf24" stroke-width="1.2"/><text x="319" y="76" fill="#fde68a" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">softmax</text>
+    <!-- A.V -->
+    <line x1="354" y1="72" x2="384" y2="72" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <line x1="143" y1="146" x2="384" y2="100" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#a13)"/>
+    <rect x="386" y="55" width="60" height="34" rx="5" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1.2"/><text x="416" y="71" fill="#a5f3fc" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">A·V</text><text x="416" y="83" fill="#64748b" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">GEMM</text>
+    <!-- output -->
+    <line x1="446" y1="72" x2="476" y2="72" stroke="#64748b" stroke-width="1.5" marker-end="url(#a13)"/>
+    <rect x="478" y="55" width="34" height="34" rx="5" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1.2"/><text x="495" y="76" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">out</text>
+    <text x="260" y="175" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif" text-anchor="middle">Purple/cyan = GEMM (your systolic array) · Yellow = softmax (new) · V feeds A·V</text>
+  </svg>
+</div>
+
+<h2>3. Mapping QKV to the Systolic Array</h2>
+<p><strong>The three projections and the two attention matmuls all run on the Day 4 systolic array.</strong> You reuse the same MAC fabric, just reloading different weight matrices and routing different operands.</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>Step</th><th>Operation</th><th>Dimensions</th><th>Hardware</th></tr>
+<tr><td>Q projection</td><td>X · Wq</td><td>[N×d]·[d×d]</td><td>Systolic array (weight-stationary Wq)</td></tr>
+<tr><td>K projection</td><td>X · Wk</td><td>[N×d]·[d×d]</td><td>Systolic array (weight-stationary Wk)</td></tr>
+<tr><td>V projection</td><td>X · Wv</td><td>[N×d]·[d×d]</td><td>Systolic array (weight-stationary Wv)</td></tr>
+<tr><td>Scores</td><td>Q · Kᵀ</td><td>[N×d]·[d×N]</td><td>Systolic array (Kᵀ streamed)</td></tr>
+<tr><td>Context</td><td>A · V</td><td>[N×N]·[N×d]</td><td>Systolic array (V weight-stationary)</td></tr>
+</table>
+</div>
+
+<h2>4. Hardware Softmax for Attention</h2>
+<p><strong>Softmax is the one genuinely new piece.</strong> It runs row-wise on the N×N score matrix: for each row, subtract the max (stability), exponentiate, sum, and divide. This builds directly on Day 7's exp-LUT and Day 8's accumulation.</p>
+
+<div class="code-wrap">
+<span class="code-label">attention_softmax.cpp (HLS, streaming row-wise)</span>
+<button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText)">Copy</button>
+<div class="code-block"><code>// Row-wise softmax over one row of the N×N score matrix
+// 3 passes: max → exp+sum → normalize (numerically stable)
+void softmax_row(data_t s[N], data_t out[N]) {
+  #pragma HLS PIPELINE II=1
+
+  // Pass 1: row max (stability)
+  data_t m = s[0];
+  for (int j = 1; j < N; j++) m = (s[j] > m) ? s[j] : m;
+
+  // Pass 2: exp(s - max) via LUT, accumulate sum
+  acc_t sum = 0;
+  data_t e[N];
+  #pragma HLS ARRAY_PARTITION variable=e cyclic factor=8
+  for (int j = 0; j < N; j++) {
+    e[j] = exp_lut(s[j] - m);     // Day 7 exp LUT
+    sum += e[j];
+  }
+
+  // Pass 3: normalize by reciprocal (one divide, then multiplies)
+  data_t inv = reciprocal(sum);   // 1/sum once
+  for (int j = 0; j < N; j++)
+    out[j] = e[j] * inv;
+}
+// Tip: "online softmax" (FlashAttention-style) fuses passes 1-2 to
+// avoid storing the full row — essential for long sequences.</code></div>
+</div>
+
+<div class="warn-box">
+  <h4>The O(N²) Problem</h4>
+  <p>The score matrix is N×N. For BERT (N=512) that's 262,144 elements per head — large but manageable in BRAM. For long-context LLMs (N=4096+) it explodes to 16M+ elements, exceeding on-chip memory. The fix is <strong>tiling + online softmax (FlashAttention)</strong>: process the score matrix in blocks, never materializing the full N×N — keeping it on-chip and bandwidth-efficient.</p>
+</div>
+
+<h2>5. Multi-Head Attention</h2>
+<p><strong>Transformers run several attention "heads" in parallel</strong>, each on a different learned projection, then concatenate. Because heads are completely independent, they're a perfect spatial-parallelism dimension (Day 9) — no dependencies, ideal for FPGA replication.</p>
+
+<div style="background:var(--bg3);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.8rem;margin:2rem 0">
+  <div style="color:#06b6d4;font-weight:700;font-size:.9rem;margin-bottom:1.4rem">Multi-Head Attention — Parallel Independent Heads</div>
+  <svg viewBox="0 0 500 170" width="100%" style="max-width:500px;display:block;margin:0 auto">
+    <defs><marker id="m13" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,6 2.5,0 5" fill="#64748b"/></marker></defs>
+    <rect x="15" y="70" width="45" height="36" rx="5" fill="rgba(148,163,184,.12)" stroke="#94a3b8" stroke-width="1.5"/><text x="37" y="92" fill="#cbd5e1" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">X</text>
+    <!-- split to heads -->
+    <line x1="60" y1="80" x2="95" y2="40" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <line x1="60" y1="88" x2="95" y2="88" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <line x1="60" y1="96" x2="95" y2="136" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <rect x="97" y="26" width="120" height="28" rx="5" fill="rgba(167,139,250,.15)" stroke="#a78bfa" stroke-width="1"/><text x="157" y="44" fill="#c4b5fd" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Head 1: attention</text>
+    <rect x="97" y="74" width="120" height="28" rx="5" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/><text x="157" y="92" fill="#a5f3fc" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Head 2: attention</text>
+    <rect x="97" y="122" width="120" height="28" rx="5" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1"/><text x="157" y="140" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Head h: attention</text>
+    <text x="157" y="166" fill="#64748b" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">all run concurrently — no dependencies</text>
+    <!-- concat -->
+    <line x1="217" y1="40" x2="250" y2="78" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <line x1="217" y1="88" x2="250" y2="88" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <line x1="217" y1="136" x2="250" y2="98" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <rect x="252" y="70" width="60" height="36" rx="5" fill="rgba(236,72,153,.15)" stroke="#ec4899" stroke-width="1.2"/><text x="282" y="88" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Concat</text>
+    <line x1="312" y1="88" x2="345" y2="88" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <rect x="347" y="70" width="70" height="36" rx="5" fill="rgba(167,139,250,.18)" stroke="#a78bfa" stroke-width="1.2"/><text x="382" y="88" fill="#c4b5fd" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Wo proj</text>
+    <line x1="417" y1="88" x2="450" y2="88" stroke="#64748b" stroke-width="1.2" marker-end="url(#m13)"/>
+    <rect x="452" y="72" width="34" height="32" rx="5" fill="rgba(74,222,128,.15)" stroke="#4ade80" stroke-width="1.2"/><text x="469" y="92" fill="#86efac" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">out</text>
+  </svg>
+  <div style="margin-top:.6rem;font-size:.82rem;color:#94a3b8"><strong style="color:#4ade80">FPGA strategy:</strong> instantiate H attention engines for full parallelism, or time-share one engine across heads to save area. Heads have zero inter-dependency — the cleanest parallelism in the whole network.</div>
+</div>
+
+<h2>6. The Full Transformer Block</h2>
+<p>Attention is one sub-layer. A complete transformer block adds a feed-forward network (two big GEMMs) and layer normalization — all of which you already know how to build.</p>
+
+<div class="table-wrap">
+<table>
+<tr><th>Sub-layer</th><th>Operation</th><th>Maps to (earlier day)</th></tr>
+<tr><td>Multi-head attention</td><td>QKV + scores + softmax + A·V</td><td>Systolic array (D4) + softmax (D7)</td></tr>
+<tr><td>Add &amp; LayerNorm</td><td>residual + normalize</td><td>Norm folding ideas (D8)</td></tr>
+<tr><td>Feed-forward (FFN)</td><td>2 GEMMs + GELU</td><td>GEMM (D3) + activation LUT (D7)</td></tr>
+<tr><td>Add &amp; LayerNorm</td><td>residual + normalize</td><td>(D8)</td></tr>
+</table>
+</div>
+
+<div class="info-box">
+  <h4>FFN Is Often the Bigger Cost</h4>
+  <p>People obsess over attention, but in BERT/GPT the feed-forward network (typically 4× the model dimension) often has <em>more</em> FLOPs than attention itself for moderate sequence lengths. Both are GEMMs — so a strong systolic array benefits the whole transformer, not just attention.</p>
+</div>
+
+<h2>7. BERT / ViT on FPGA — Real Numbers</h2>
+<div class="formula-box">
+BERT-Base attention on Alveo U280 (HBM), INT8:
+
+  Config: 12 layers, 12 heads, d=768, sequence N=128
+  Per-layer GEMMs: 3 proj + Q·Kᵀ + A·V + 2 FFN
+  Systolic array: 32×32 INT8 @ 300MHz = ~0.6 TOPS/array, ×4 arrays
+  HBM bandwidth: ~460 GB/s feeds the weight streaming
+
+  Latency: ~2–5 ms / sequence (vs ~8–12ms on CPU)
+  Throughput: ~200–400 sequences/sec
+  Power: ~45 W → competitive perf/W vs GPU for batch-1 latency
+
+Vision Transformer (ViT-Base, 196 patches):
+  Same engine — patches are just the "tokens"
+  Real-time image classification at the edge with a smaller config</code></div>
+
+<div class="info-box">
+  <h4>From CNNs to LLMs — Same Foundation</h4>
+  <p>Everything that makes a great CNN accelerator — INT8 quantization, a strong GEMM/systolic array, smart memory and pipelining — is exactly what a transformer accelerator needs. The leap from vision to language models is much smaller in hardware than in software. Master the fundamentals and you can accelerate both.</p>
+</div>
+
+<div class="checklist">
+<h3>Day 13 — Key Takeaways</h3>
+<ul>
+  <li>✅ <strong>Attention = mostly GEMM</strong> — Q/K/V projections, Q·Kᵀ, and A·V all run on the systolic array</li>
+  <li>✅ <strong>4 steps</strong>: project QKV → scores Q·Kᵀ/√d → softmax → weighted sum A·V</li>
+  <li>✅ <strong>Softmax</strong> is the one new piece — row-wise, stable (subtract max), exp-LUT + reciprocal</li>
+  <li>✅ <strong>O(N²) score matrix</strong> is the challenge → tiling + online softmax (FlashAttention)</li>
+  <li>✅ <strong>Multi-head</strong> = independent heads → ideal spatial parallelism (replicate or time-share)</li>
+  <li>✅ <strong>Full block</strong> adds FFN (2 GEMMs + GELU) + LayerNorm — often FFN dominates FLOPs</li>
+  <li>✅ <strong>BERT/ViT on Alveo</strong>: ~2–5ms/sequence, competitive batch-1 latency vs GPU</li>
+  <li>✅ <strong>Same foundation as CNNs</strong> — quantization, GEMM, memory, pipelining carry straight over</li>
+</ul>
+</div>
+
+<p><strong>Next — Day 14:</strong> Benchmarking &amp; Profiling — measuring real TOPS, latency, and power; MLPerf methodology; and finding the true bottleneck in your accelerator.</p>
+
+<div style="display:flex;justify-content:space-between;margin-top:3rem;gap:1rem">
+  <a href="/fpga-neural-network/day-12/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">← Previous</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 12: Power Optimization</div>
+  </a>
+  <a href="/fpga-neural-network/day-14/" style="flex:1;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:10px;padding:1rem 1.5rem;text-align:center;text-decoration:none">
+    <div style="color:#64748b;font-size:.75rem;margin-bottom:.3rem">Next →</div>
+    <div style="color:#c4b5fd;font-weight:700">Day 14: Benchmarking</div>
+  </a>
+</div>
+
+</div>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<footer>
+  <p>© 2026 <a href="/">EcrioniX</a> · <a href="/fpga-neural-network/">FPGA Neural Network Accelerator</a> · Day 13</p>
+  <p style="margin-top:.5rem"><a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/contact/">Contact</a></p>
+</footer>
+</body>
+</html>
