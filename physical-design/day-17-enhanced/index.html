@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clock Tree Synthesis (CTS) Deep Dive — Physical Design Day 17 | EcrioniX</title>
+<meta name="description" content="Complete deep dive into Clock Tree Synthesis (CTS) in VLSI physical design. H-tree vs fishbone topology, clock skew, insertion delay, useful skew, NDR rules, clock mesh, hold fixing, power vs skew tradeoff, Innovus/ICC2 CTS commands, and real-chip examples.">
+<meta name="keywords" content="clock tree synthesis CTS, clock skew VLSI, H-tree clock, insertion delay CTS, useful skew, NDR rules CTS, clock mesh, hold violation CTS, CTS power optimization, Innovus CTS, ICC2 CTS, clock latency VLSI, TritonCTS">
+<link rel="canonical" href="https://ecrionix.org/physical-design/day-17-enhanced/">
+<meta property="og:title" content="Clock Tree Synthesis (CTS) Deep Dive — Physical Design Day 17 | EcrioniX">
+<meta property="og:description" content="H-tree, fishbone, clock mesh, skew, insertion delay, useful skew, NDR rules, hold fixing — the complete CTS guide for VLSI engineers.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"Clock Tree Synthesis (CTS) Deep Dive — Physical Design Day 17","description":"Complete deep dive into Clock Tree Synthesis (CTS): H-tree and fishbone topology, clock skew, insertion delay, useful skew, NDR rules, clock mesh, hold violation fixing, power optimization, Cadence Innovus and Synopsys ICC2 CTS flows, and real-chip examples from Apple A17 and AMD EPYC.","datePublished":"2026-06-19","dateModified":"2026-06-19","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/physical-design/day-17-enhanced/","isPartOf":{"@type":"Course","name":"Physical Design — RTL to GDSII","url":"https://ecrionix.org/physical-design/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Physical Design","item":"https://ecrionix.org/physical-design/"},{"@type":"ListItem","position":3,"name":"Day 17 — Clock Tree Synthesis","item":"https://ecrionix.org/physical-design/day-17-enhanced/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is clock skew and why does it matter?","acceptedAnswer":{"@type":"Answer","text":"Clock skew is the difference in arrival time of the clock edge at two flip-flops that interact through a data path. Positive skew (launch FF clock arrives before capture FF clock) relaxes setup timing by effectively lengthening the clock period for that path, but tightens hold timing. Negative skew tightens setup and relaxes hold. In practice, local skew (between communicating FFs) must be under 50–100 ps for GHz-class designs, while global skew (entire chip) can be 200–400 ps. Skew directly eats into your setup and hold slack."}},{"@type":"Question","name":"What is the difference between clock latency and clock skew?","acceptedAnswer":{"@type":"Answer","text":"Clock latency (insertion delay) is the absolute time from the clock source to a flip-flop's clock pin — typically 0.5–3 ns for a full chip. Clock skew is the difference in latency between two flip-flops. A chip can have large latency (the clock arrives late everywhere) but zero skew (it arrives equally late everywhere), which is functionally acceptable. High latency increases power (more buffers), and affects hold margin calculation. High skew is the real danger — it creates path-dependent timing violations."}},{"@type":"Question","name":"What is useful skew in CTS?","acceptedAnswer":{"@type":"Answer","text":"Useful skew (also called intentional skew) is the deliberate introduction of skew between launch and capture flip-flops to fix a timing violation. If a data path has a 50 ps setup violation, the CTS tool can be told to make the capture FF's clock arrive 60 ps later than the launch FF's clock — this effectively borrows time from the clock period. Useful skew is powerful but risky: it fixes one path's setup while worsening that same pair's hold timing, and it must be globally consistent."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--pink:#ec4899;--cyan:#06b6d4;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--purple:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.nav-links{display:flex;gap:1.5rem;list-style:none}
+.nav-links a{color:#94a3b8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(236,72,153,.05) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2.1rem,5vw,3.1rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#ec4899,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:750px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(236,72,153,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(236,72,153,.08);border:2px solid rgba(236,72,153,.25);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:#f9a8d4;font-size:.87rem;line-height:2;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-label{position:absolute;top:.75rem;left:1rem;font-size:.68rem;color:#64748b;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+.code-block{background:#060d1e;border:1px solid rgba(236,72,153,.2);border-radius:12px;padding:1.5rem;padding-top:2.2rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.65rem;right:.75rem;background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#f9a8d4;font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(236,72,153,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem;font-size:1rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.pink-box{background:rgba(236,72,153,.07);border-left:4px solid var(--pink);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.pink-box h4{color:var(--pink);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(236,72,153,.15);text-align:left}
+th{background:rgba(236,72,153,.1);color:var(--pink);font-weight:700}
+tr:hover{background:rgba(236,72,153,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--cyan);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:1.2rem;margin:2rem 0}
+.metric-card{background:var(--bg3);border:1px solid rgba(236,72,153,.2);border-radius:12px;padding:1.4rem;text-align:center}
+.metric-val{font-size:1.8rem;font-weight:900;color:var(--pink);font-family:'JetBrains Mono',monospace}
+.metric-label{font-size:.82rem;color:#94a3b8;margin-top:.3rem}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(236,72,153,.08);border:1px solid rgba(236,72,153,.2);color:#f9a8d4;font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill:hover{background:rgba(236,72,153,.18)}
+.prev-next{display:flex;justify-content:space-between;gap:1rem;margin:3rem 0;flex-wrap:wrap}
+.prev-next a{background:var(--bg3);border:1px solid rgba(236,72,153,.2);color:#f9a8d4;padding:.9rem 1.4rem;border-radius:10px;font-size:.9rem;font-weight:600;flex:1;min-width:200px}
+.prev-next a:hover{border-color:rgba(236,72,153,.5);text-decoration:none;background:rgba(236,72,153,.08)}
+.prev-next .arrow{color:#64748b;font-size:.8rem;display:block;margin-bottom:.2rem}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--pink);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(236,72,153,.4);z-index:99}
+.svg-wrap{background:var(--bg3);border:1px solid rgba(236,72,153,.2);border-radius:14px;padding:1.5rem;margin:2rem 0;overflow-x:auto}
+.svg-caption{text-align:center;font-size:.82rem;color:#64748b;margin-top:1rem}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/fpga-from-scratch/">FPGA Basics</a>
+    <a href="/fpga-neural-network/">FPGA + AI</a>
+    <a href="/physical-design/">Physical Design</a>
+    <a href="/riscv-from-scratch/">RISC-V</a>
+    <a href="/arm-architecture/">ARM</a>
+    <a href="/rtl-to-silicon/">RTL->Silicon</a>
+  </div>
+</nav>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/physical-design/">Physical Design</a><span>›</span><span>Day 17 — Clock Tree Synthesis</span></div>
+
+<div class="hero">
+  <h1>Clock Tree Synthesis <span class="g">(CTS) Deep Dive</span></h1>
+  <p>H-tree vs fishbone vs mesh topologies, clock skew budgets, insertion delay, useful skew, NDR rules, hold violation fixing, power optimization, and the complete Innovus/ICC2 CTS flow — with real numbers from billion-transistor chips.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 19, 2026 · ~5,000 words · 17 min read</div>
+
+<div class="nav-pills">
+  <a href="#why-cts" class="nav-pill">Why CTS</a>
+  <a href="#topologies" class="nav-pill">Topologies</a>
+  <a href="#skew-latency" class="nav-pill">Skew & Latency</a>
+  <a href="#ndr" class="nav-pill">NDR Rules</a>
+  <a href="#useful-skew" class="nav-pill">Useful Skew</a>
+  <a href="#hold-fix" class="nav-pill">Hold Fixing</a>
+  <a href="#power" class="nav-pill">CTS Power</a>
+  <a href="#flow" class="nav-pill">Tool Flow</a>
+  <a href="#checklist" class="nav-pill">Checklist</a>
+</div>
+
+<div class="container">
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="why-cts">1. Why Clock Tree Synthesis Is the Hardest Step in Physical Design</h2>
+
+<p><strong>Every flip-flop in the design must receive its clock edge at nearly the same instant.</strong> In a modern SoC running at 3 GHz, one clock period is 333 ps. Setup timing requires data to be stable at the capture FF at least 80 ps before the clock edge. Hold timing requires data to not arrive too early at the very next edge, which is only 333 ps later. This leaves a razor-thin margin — and clock skew (the difference in clock arrival times between flip-flops) eats directly into both margins.</p>
+
+<p>CTS is the step that builds the physical clock distribution network: a tree of buffers and inverters from the clock source to every sink (flip-flop clock pin). It must simultaneously achieve:</p>
+
+<ul>
+  <li><strong>Low skew</strong> — minimize arrival time differences between communicating FFs</li>
+  <li><strong>Controlled latency</strong> — insertion delay must match the timing model (SDC set_clock_latency)</li>
+  <li><strong>Signal integrity</strong> — clock edges must be clean, fast-slew, no glitches</li>
+  <li><strong>Low power</strong> — clock network consumes 20–40% of total chip dynamic power</li>
+  <li><strong>Hold closure</strong> — CTS changes latency, which directly creates new hold violations</li>
+</ul>
+
+<div class="metrics-grid">
+  <div class="metric-card"><div class="metric-val">&lt;50 ps</div><div class="metric-label">Local skew target (3 GHz design)</div></div>
+  <div class="metric-card"><div class="metric-val">0.5–3 ns</div><div class="metric-label">Typical clock insertion delay</div></div>
+  <div class="metric-card"><div class="metric-val">20–40%</div><div class="metric-label">Dynamic power from clock network</div></div>
+  <div class="metric-card"><div class="metric-val">2×</div><div class="metric-label">NDR wire width vs signal wires</div></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="topologies">2. Clock Tree Topologies</h2>
+
+<h3>2.1 The H-Tree</h3>
+
+<p>The H-tree is the classic symmetric topology where the clock is routed in an H-pattern that recursively divides the chip area. At each H junction, the wire splits into equal-length branches, guaranteeing equal path length — and therefore equal insertion delay — to all leaf sinks. This is the closest thing to a mathematically perfect balanced tree.</p>
+
+<!-- H-Tree SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 700 360" width="100%" style="max-width:700px;display:block;margin:0 auto">
+  <rect width="700" height="360" fill="#080d1a" rx="10"/>
+  <text x="350" y="24" fill="#f9a8d4" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">H-Tree Clock Topology — 2-Level Example</text>
+
+  <!-- Level 0: Root -->
+  <circle cx="350" cy="55" r="9" fill="rgba(236,72,153,.8)" stroke="#ec4899" stroke-width="2"/>
+  <text x="350" y="59" fill="#fff" font-size="7.5" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">CLK</text>
+
+  <!-- Level 0 trunk down -->
+  <line x1="350" y1="64" x2="350" y2="100" stroke="#ec4899" stroke-width="3"/>
+
+  <!-- Level 1 H bar -->
+  <line x1="175" y1="100" x2="525" y2="100" stroke="#ec4899" stroke-width="3"/>
+
+  <!-- Level 1 buffers -->
+  <circle cx="175" cy="100" r="7" fill="rgba(236,72,153,.5)" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="175" y="104" fill="#f9a8d4" font-size="6.5" text-anchor="middle" font-family="Outfit,sans-serif">BUF</text>
+  <circle cx="525" cy="100" r="7" fill="rgba(236,72,153,.5)" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="525" y="104" fill="#f9a8d4" font-size="6.5" text-anchor="middle" font-family="Outfit,sans-serif">BUF</text>
+
+  <!-- Left branch down -->
+  <line x1="175" y1="107" x2="175" y2="165" stroke="#f472b6" stroke-width="2.5"/>
+  <!-- Right branch down -->
+  <line x1="525" y1="107" x2="525" y2="165" stroke="#f472b6" stroke-width="2.5"/>
+
+  <!-- Level 2 H bars -->
+  <line x1="87"  y1="165" x2="263" y2="165" stroke="#f472b6" stroke-width="2.5"/>
+  <line x1="437" y1="165" x2="613" y2="165" stroke="#f472b6" stroke-width="2.5"/>
+
+  <!-- Level 2 buffers (4 of them) -->
+  <circle cx="87"  cy="165" r="6" fill="rgba(167,139,250,.6)" stroke="#a78bfa" stroke-width="1.5"/>
+  <circle cx="263" cy="165" r="6" fill="rgba(167,139,250,.6)" stroke="#a78bfa" stroke-width="1.5"/>
+  <circle cx="437" cy="165" r="6" fill="rgba(167,139,250,.6)" stroke="#a78bfa" stroke-width="1.5"/>
+  <circle cx="613" cy="165" r="6" fill="rgba(167,139,250,.6)" stroke="#a78bfa" stroke-width="1.5"/>
+
+  <!-- Level 3 drops to flip-flops (leaves) -->
+  <line x1="87"  y1="171" x2="87"  y2="215" stroke="#a78bfa" stroke-width="2"/>
+  <line x1="263" y1="171" x2="263" y2="215" stroke="#a78bfa" stroke-width="2"/>
+  <line x1="437" y1="171" x2="437" y2="215" stroke="#a78bfa" stroke-width="2"/>
+  <line x1="613" y1="171" x2="613" y2="215" stroke="#a78bfa" stroke-width="2"/>
+
+  <!-- Leaf H bars -->
+  <line x1="43"  y1="215" x2="131" y2="215" stroke="#06b6d4" stroke-width="2"/>
+  <line x1="219" y1="215" x2="307" y2="215" stroke="#06b6d4" stroke-width="2"/>
+  <line x1="393" y1="215" x2="481" y2="215" stroke="#06b6d4" stroke-width="2"/>
+  <line x1="569" y1="215" x2="657" y2="215" stroke="#06b6d4" stroke-width="2"/>
+
+  <!-- FF sink squares (16 total, 4 per quadrant shown as pairs) -->
+  <!-- Q1 -->
+  <rect x="30"  y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <rect x="118" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <line x1="43"  y1="215" x2="43"  y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="131" y1="215" x2="131" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="43"  y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <text x="131" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <!-- Q2 -->
+  <rect x="206" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <rect x="294" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <line x1="219" y1="215" x2="219" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="307" y1="215" x2="307" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="219" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <text x="307" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <!-- Q3 -->
+  <rect x="380" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <rect x="468" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <line x1="393" y1="215" x2="393" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="481" y1="215" x2="481" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="393" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <text x="481" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <!-- Q4 -->
+  <rect x="556" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <rect x="644" y="225" width="26" height="20" rx="4" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <line x1="569" y1="215" x2="569" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="657" y1="215" x2="657" y2="225" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="569" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+  <text x="657" y="238" fill="#67e8f9" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">FF</text>
+
+  <!-- Equal length annotation -->
+  <text x="350" y="275" fill="#4ade80" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="600">All paths: CLK → BUF → BUF → FF are equal length → near-zero skew</text>
+
+  <!-- Legend -->
+  <circle cx="80" cy="305" r="7" fill="rgba(236,72,153,.7)" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="93" cy="305" y="308" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif">Root buffer (M8/M9 wire)</text>
+  <circle cx="80" cy="323" r="6" fill="rgba(167,139,250,.6)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="93" y="327" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif">Sub-tree buffer (M5/M6 wire)</text>
+  <rect x="73" cy="340" y="339" width="14" height="10" rx="2" fill="rgba(6,182,212,.15)" stroke="#06b6d4" stroke-width="1"/>
+  <text x="93" y="347" fill="#94a3b8" font-size="9" font-family="Outfit,sans-serif">Flip-flop sink</text>
+</svg>
+<div class="svg-caption">Fig 1: H-tree clock topology. Recursive symmetric branching ensures equal path length to every sink, achieving near-zero skew by geometry alone.</div>
+</div>
+
+<p><strong>H-tree limitations:</strong> Real designs are not square, not uniform in FF density, and have macros that cannot be crossed. The textbook H-tree works for regular arrays (DRAM, SRAM sense amps) but breaks down for irregular SoC floorplans. Tools use <em>modified balanced tree</em> algorithms instead, inserting buffered branches of different length to compensate for irregular sink distributions.</p>
+
+<h3>2.2 Fishbone / Spine Topology</h3>
+
+<p>The fishbone places a single horizontal "spine" wire across the chip (or block), with shorter "ribs" branching off vertically. It trades the perfect symmetry of the H-tree for better routability in elongated blocks. The spine is a very wide, shielded wire on a top metal layer with strong buffers driving it; the ribs are shorter and thinner. Fishbone is common in memory compilers and CPU pipeline lanes.</p>
+
+<h3>2.3 Clock Mesh</h3>
+
+<p>A clock mesh is a continuous grid of wires covering the block, driven from multiple injection points. Every FF is very close to a mesh wire, so RC variation is minimised — this gives <strong>the lowest possible skew</strong> (often &lt;10 ps across a block). The cost: clock mesh consumes 5–15% of routing resources and has enormous capacitance → high dynamic power. Used in high-end CPUs (Intel, AMD) where skew control is paramount and power budget allows it.</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Topology</th><th>Skew</th><th>Power</th><th>Routing Area</th><th>Best Use</th></tr></thead>
+<tbody>
+<tr><td><strong>H-tree</strong></td><td>50–200 ps</td><td>Low</td><td>Low</td><td>Regular arrays, DRAM, small blocks</td></tr>
+<tr><td><strong>Balanced tree</strong></td><td>50–150 ps</td><td>Medium</td><td>Medium</td><td>Standard SoC CTS (most common)</td></tr>
+<tr><td><strong>Fishbone/spine</strong></td><td>100–300 ps</td><td>Low–medium</td><td>Medium</td><td>Long pipeline blocks, memory columns</td></tr>
+<tr><td><strong>Clock mesh</strong></td><td>&lt;10–30 ps</td><td>Very high (2–5× tree)</td><td>Very high</td><td>High-end CPUs, GPU shader arrays</td></tr>
+<tr><td><strong>Hybrid (tree + local mesh)</strong></td><td>20–80 ps</td><td>High</td><td>High</td><td>Modern Apple/AMD CPUs</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="skew-latency">3. Clock Skew and Insertion Delay — Formulas and Budgets</h2>
+
+<h3>3.1 Definitions</h3>
+
+<div class="formula-box">
+Clock Latency (Insertion Delay):
+  t_latency(FF) = sum of buffer delays + wire RC delays from CLK source to FF.CK
+
+Clock Skew (between FF_A and FF_B):
+  skew = t_latency(FF_B) - t_latency(FF_A)
+  (positive skew: capture FF clock arrives later than launch FF clock)
+
+Setup Constraint with Skew:
+  T_clk + skew ≥ t_cq + t_logic + t_setup
+  → slack_setup = T_clk + skew - t_cq - t_logic - t_setup
+
+Hold Constraint with Skew:
+  t_cq + t_logic ≥ t_hold + skew
+  → slack_hold = t_cq + t_logic - t_hold - skew
+
+Key insight: positive skew helps setup but hurts hold (and vice versa).
+</div>
+
+<div class="info-box">
+  <h4>Skew Kills Both Setup and Hold Simultaneously</h4>
+  <p>Skew is a <em>signed</em> quantity relative to the data path direction. The same skew that adds 100 ps to your setup slack on one path steals 100 ps from the hold slack on the same path. This means aggressive useful skew always creates hold violations that must be repaired with delay buffers — the "hold tax" of useful skew.</p>
+</div>
+
+<h3>3.2 Global vs Local Skew</h3>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Skew Type</th><th>Measured Between</th><th>Typical Target</th><th>Impact</th></tr></thead>
+<tbody>
+<tr><td><strong>Global skew</strong></td><td>Any two FFs on the chip</td><td>200–500 ps</td><td>Determines worst-case timing margin across chip</td></tr>
+<tr><td><strong>Local skew</strong></td><td>Launch and capture FF of same data path</td><td>30–100 ps</td><td>Directly sets setup/hold margin for that path</td></tr>
+<tr><td><strong>Inter-domain skew</strong></td><td>FFs in different clock domains</td><td>N/A (CDC handled separately)</td><td>Must be managed with synchronizers, not minimized</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>3.3 Skew Budget Breakdown</h3>
+
+<p>For a 3 GHz design (T = 333 ps), a typical skew budget looks like:</p>
+
+<div class="formula-box">
+Total clock period:                    333 ps
+  - Setup margin (library):            -80 ps
+  - Hold margin (library):             -50 ps
+  - Clock uncertainty (SDC):           -40 ps   (jitter + MMMC variation)
+  - OCV derating (on-chip variation):  -30 ps
+  - Usable for data propagation:       ~133 ps
+
+Skew budget allocation:
+  Local skew target:                   ≤ 50 ps  (eats from useful cycle time)
+  Global skew target:                  ≤ 150 ps (worst-case in any domain)
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="ndr">4. NDR Rules — Non-Default Routing Rules for Clock Nets</h2>
+
+<p>Clock nets are routed with <em>non-default rules (NDR)</em> that are stricter than signal nets to ensure signal integrity and consistent RC delay. The main NDR characteristics for clock wires:</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>NDR Parameter</th><th>Default Signal Wire</th><th>Clock NDR Rule</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Wire width</td><td>1× minimum width</td><td>2× minimum width</td><td>Lower resistance → controlled latency; less EM risk on high-frequency toggling wire</td></tr>
+<tr><td>Wire spacing</td><td>1× minimum spacing</td><td>2× minimum spacing</td><td>Shielding gap prevents crosstalk from aggressor nets causing glitch on clock</td></tr>
+<tr><td>Shielding</td><td>None</td><td>VDD/VSS shield on both sides</td><td>Eliminates capacitive coupling from switching signals onto clock net</td></tr>
+<tr><td>Via type</td><td>Single via</td><td>Via array (2×2 or 3×3)</td><td>Reliability; clock vias switch 100M–3G times/second; single-via EM risk is high</td></tr>
+<tr><td>Metal layer</td><td>M1–M5</td><td>M4–M8 (higher preferred)</td><td>Higher metals have lower RC per unit length → less skew from RC variation</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="warn-box">
+  <h4>NDR Rules Increase Routing Congestion</h4>
+  <p>A 2W/2S clock wire with shields consumes 6–8× more routing tracks than a standard signal wire. In congested designs, clock shielding can cause detour routing of other signals, which itself creates timing issues. Tools have routing cost functions that balance clock quality against congestion. Reducing shielding to critical clock segments only (near the root) is a common congestion relief technique.</p>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Tcl — Innovus NDR rule definition and CTS specification</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code># 1. Define the non-default routing rule for clock nets
+add_ndr \
+  -name        CLK_NDR_2W2S \
+  -spacing     {M3:M7 0.14} \
+  -width       {M3:M7 0.14} \
+  -via         {V3:V6 VIAX2_2x2}
+
+# Wire widths are 2× min; spacing is 2× min at each layer
+
+# 2. Create clock specification for CTS
+create_ccopt_clock_tree_spec \
+  -file cts_spec.tcl \
+  -immediate
+
+# 3. Core CTS settings
+set_ccopt_property buffer_cells \
+  {CLKBUF1 CLKBUF2 CLKBUF4 CLKBUF8 CLKBUF16}
+
+set_ccopt_property inverter_cells \
+  {CLKINV1 CLKINV2 CLKINV4 CLKINV8}
+
+set_ccopt_property target_max_trans        0.10    ;# 100ps max slew on clock nets
+set_ccopt_property target_skew             0.050   ;# 50ps local skew target
+set_ccopt_property max_fanout              16      ;# max FF per leaf buffer
+
+# 4. Run CTS
+ccopt_design
+
+# 5. Verify results
+report_ccopt_clock_trees -summary
+report_clock_timing -type skew    -clocks [all_clocks]
+report_clock_timing -type latency -clocks [all_clocks]</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="useful-skew">5. Useful Skew — Intentional Timing Borrowing</h2>
+
+<p>Useful skew (sometimes called <em>intentional skew</em> or <em>clock skew scheduling</em>) deliberately sets different clock arrival times at different flip-flops to fix timing violations. Instead of treating all skew as harmful, useful skew treats it as a design knob.</p>
+
+<h3>How Useful Skew Works</h3>
+
+<!-- Useful Skew SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 280" width="100%" style="max-width:720px;display:block;margin:0 auto">
+  <rect width="720" height="280" fill="#080d1a" rx="10"/>
+  <text x="360" y="24" fill="#f9a8d4" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Useful Skew — Fixing a Setup Violation</text>
+
+  <!-- BEFORE (left side) -->
+  <text x="180" y="50" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">BEFORE (zero skew — violation)</text>
+
+  <!-- FF_A (launch) -->
+  <rect x="30" y="65" width="60" height="40" rx="5" fill="rgba(236,72,153,.15)" stroke="rgba(236,72,153,.5)" stroke-width="1.5"/>
+  <text x="60" y="82" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF_A</text>
+  <text x="60" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">launch</text>
+
+  <!-- Logic cloud -->
+  <ellipse cx="175" cy="85" rx="55" ry="25" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="175" y="82" fill="#06b6d4" font-size="8.5" text-anchor="middle" font-family="Outfit,sans-serif">Long logic</text>
+  <text x="175" y="94" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">290 ps</text>
+
+  <!-- FF_B (capture) -->
+  <rect x="253" y="65" width="60" height="40" rx="5" fill="rgba(236,72,153,.15)" stroke="rgba(236,72,153,.5)" stroke-width="1.5"/>
+  <text x="283" y="82" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF_B</text>
+  <text x="283" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">capture</text>
+
+  <!-- Arrows -->
+  <line x1="90"  y1="85" x2="120" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr-c)"/>
+  <line x1="230" y1="85" x2="253" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr-c)"/>
+  <defs><marker id="arr-c" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#06b6d4"/></marker></defs>
+
+  <!-- Clock lines -->
+  <line x1="60"  y1="105" x2="60"  y2="125" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="283" y1="105" x2="283" y2="125" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="30"  y1="130" x2="315" y2="130" stroke="#ec4899" stroke-width="1" opacity=".4"/>
+  <text x="175" y="145" fill="#f87171" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">t_clk=333ps, logic=290ps → slack = -37ps FAIL</text>
+
+  <!-- Divider -->
+  <line x1="360" y1="40" x2="360" y2="240" stroke="rgba(148,163,184,.15)" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- AFTER (right side) -->
+  <text x="540" y="50" fill="#4ade80" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">AFTER (useful skew = +50ps — fixed)</text>
+
+  <!-- FF_A2 -->
+  <rect x="390" y="65" width="60" height="40" rx="5" fill="rgba(236,72,153,.15)" stroke="rgba(236,72,153,.5)" stroke-width="1.5"/>
+  <text x="420" y="82" fill="#f9a8d4" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF_A</text>
+  <text x="420" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">launch t=0</text>
+
+  <!-- Logic cloud 2 -->
+  <ellipse cx="535" cy="85" rx="55" ry="25" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="535" y="82" fill="#06b6d4" font-size="8.5" text-anchor="middle" font-family="Outfit,sans-serif">Long logic</text>
+  <text x="535" y="94" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">290 ps</text>
+
+  <!-- FF_B2 — arrives 50ps LATER (useful skew) -->
+  <rect x="613" y="65" width="75" height="40" rx="5" fill="rgba(74,222,128,.12)" stroke="rgba(74,222,128,.5)" stroke-width="1.5"/>
+  <text x="650" y="79" fill="#4ade80" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF_B</text>
+  <text x="650" y="91" fill="#94a3b8" font-size="7.5" text-anchor="middle" font-family="Outfit,sans-serif">capture t=+50ps</text>
+
+  <line x1="450" y1="85" x2="480" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr-c)"/>
+  <line x1="590" y1="85" x2="613" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr-c)"/>
+
+  <!-- Clock lines after -->
+  <line x1="420" y1="105" x2="420" y2="125" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="650" y1="105" x2="650" y2="130" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="390" y1="130" x2="630" y2="130" stroke="#ec4899" stroke-width="1" opacity=".4"/>
+  <line x1="660" y1="130" x2="690" y2="130" stroke="#4ade80" stroke-width="1" opacity=".5"/>
+
+  <text x="540" y="155" fill="#4ade80" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">effective period = 333+50 = 383ps, slack = +13ps PASS</text>
+
+  <!-- Hold warning -->
+  <text x="540" y="175" fill="#fbbf24" font-size="8.5" text-anchor="middle" font-family="Outfit,sans-serif">⚠ Hold slack now: t_cq+logic - t_hold - 50ps (hold tax!)</text>
+
+  <!-- Summary box -->
+  <rect x="390" y="195" width="300" height="65" rx="6" fill="rgba(74,222,128,.06)" stroke="rgba(74,222,128,.2)" stroke-width="1"/>
+  <text x="540" y="213" fill="#f8fafc" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">Useful Skew = 50 ps on capture FF_B</text>
+  <text x="540" y="227" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Setup: +50ps donated → violation fixed</text>
+  <text x="540" y="241" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Hold: -50ps borrowed → may need delay buffer</text>
+  <text x="540" y="255" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Max useful skew ≈ 15–20% of clock period</text>
+</svg>
+<div class="svg-caption">Fig 2: Useful skew: delaying FF_B's clock arrival by 50 ps gives the data path an effective 383 ps window, fixing the 37 ps setup violation — at the cost of 50 ps of hold margin.</div>
+</div>
+
+<h3>Practical Limits of Useful Skew</h3>
+
+<ul>
+  <li><strong>Maximum useful skew:</strong> Typically 15–20% of clock period. Beyond this, the hold violations created exceed the cell delay values available to repair them, and the entire design hold-closure deteriorates.</li>
+  <li><strong>Global consistency:</strong> Useful skew must be globally consistent. If FF_B is delayed, all paths <em>from</em> FF_B must also account for the new latency.</li>
+  <li><strong>MMMC modes:</strong> Skew values change across process, voltage, temperature corners. Useful skew set for the fast corner may worsen hold in the slow corner — verify all PVT modes.</li>
+  <li><strong>Post-ECO skew:</strong> Engineering change orders (metal ECOs) can inadvertently alter clock buffer placement, disturbing carefully set useful skew. Re-run CTS after any metal ECO touching clock nets.</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="hold-fix">6. Hold Violation Fixing After CTS</h2>
+
+<p><strong>After CTS, hold violations are almost guaranteed.</strong> CTS changes the absolute clock latency of every flip-flop, and these latency changes are not uniform — they create new skew relationships that pre-CTS STA never modeled. Hold fixing is therefore always a post-CTS task, not a pre-CTS task.</p>
+
+<h3>Why CTS Creates Hold Violations</h3>
+
+<p>Pre-CTS, the tool uses an ideal clock model (zero latency everywhere). Post-CTS, a particular FF may get a clock that arrives 800 ps later than another, due to its position in the tree. If a data path exists between these two FFs and the data delay is short (e.g. 150 ps), then:</p>
+
+<div class="formula-box">
+Hold check: data must NOT arrive within one hold time of the clock edge.
+  slack_hold = t_cq + t_data - t_hold - local_skew
+             = 50 + 150 - 50 - 800 = -650 ps  SEVERE HOLD VIOLATION
+
+Fix: insert delay buffer(s) in the data path to add ≥ 650 ps of data delay.
+</div>
+
+<h3>Hold Fixing Strategies</h3>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Strategy</th><th>How It Works</th><th>Pros</th><th>Cons</th></tr></thead>
+<tbody>
+<tr><td><strong>Insert delay buffers</strong></td><td>Add BUFX1/BUFX2 cells in data path to increase t_data</td><td>Simple, effective, precise</td><td>Increases area; can worsen setup on same path if setup already tight</td></tr>
+<tr><td><strong>Resize buffers</strong></td><td>Use slower (HVT/LVT swap) buffers to increase delay</td><td>No area overhead</td><td>Limited delay range; changes power profile</td></tr>
+<tr><td><strong>Reroute path</strong></td><td>Detour data path wire to increase RC delay</td><td>No cell changes</td><td>Routing congestion; hard to control precisely</td></tr>
+<tr><td><strong>Adjust useful skew</strong></td><td>Reduce beneficial skew to lessen hold exposure</td><td>Systemic fix</td><td>May re-introduce setup violations that were fixed by skew</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Tcl — Innovus post-CTS hold fixing</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code># After CTS, run timing analysis to reveal hold violations
+setAnalysisMode -analysisType onChipVariation -cppr both
+timeDesign -postCTS -hold -expandedViews -outDir timing_reports/postCTS_hold
+
+# Fix hold violations by inserting delay cells in data paths
+setOptMode \
+  -fixHoldAllowSetupTns    0 \
+  -holdTargetSlack         0.0 \
+  -holdFixingCells         {BUFX1 BUFX2 BUFX4 DLYG1 DLYG2}
+
+optDesign -postCTS -hold
+
+# Verify all hold violations fixed
+report_timing -path_type full_clock_expanded \
+  -max_paths 20 \
+  -slack_lesser_than 0 \
+  -hold</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="power">7. Clock Power Optimization</h2>
+
+<p>The clock network is almost always the largest single consumer of dynamic power in a synchronous digital design — typically 20–40% of total chip power. At 3 GHz, every clock net toggles 3 billion times per second, charging and discharging its capacitance on each edge.</p>
+
+<div class="formula-box">
+Dynamic clock power:
+  P_clock = α × C_clock × VDD² × f_clk
+
+  α = 0.5  (each net charges once and discharges once per cycle)
+  C_clock = total clock network capacitance (can be 100–500 pF on a large chip)
+  VDD = 0.8 V  →  VDD² = 0.64 V²
+  f_clk = 3 GHz
+
+Example: C_clock = 200 pF, VDD = 0.8V, f = 3 GHz
+  P_clock = 0.5 × 200×10⁻¹² × 0.64 × 3×10⁹ = 192 mW (just the clock!)
+</div>
+
+<h3>Power Reduction Techniques</h3>
+
+<ul>
+  <li><strong>Clock gating (ICG cells):</strong> The single most effective technique. Integrated clock gating (ICG) cells add an enable condition to each clock sub-tree, shutting off the clock to idle FF banks. A well-gated design with 30% average activity reduces clock power by 50–70%.</li>
+  <li><strong>Hierarchical clock gating:</strong> Gate at block level (coarse), module level (medium), and register level (fine). Each level adds gates and area but reduces average switching activity proportionally.</li>
+  <li><strong>Multi-Vt buffer selection:</strong> Use HVT (high-Vt) clock buffers where timing allows — they have lower leakage power.</li>
+  <li><strong>Clock tree compression:</strong> Tools minimise total capacitance by reducing the number of buffer stages and using high-drive-strength buffers that need fewer levels.</li>
+  <li><strong>Frequency scaling (DVFS):</strong> Architecture-level; lower frequency at light load reduces dynamic power quadratically with voltage if voltage is also lowered.</li>
+</ul>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — Integrated Clock Gate (ICG) cell usage</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code>// RTL style that synthesis infers as ICG
+always_ff @(posedge clk) begin
+  if (enable)
+    q <= d;   // synthesis tool maps this to ICG + regular FF
+end
+
+// Explicit ICG cell instantiation (post-synthesis or in custom blocks)
+// Library cell: ICGX1 has: CLK, EN, SE (scan enable) -> GCLK
+ICGX1 u_clk_gate (
+  .CLK   (clk_in),      // ungated clock input
+  .EN    (reg_enable),   // functional enable
+  .SE    (scan_en),      // scan enable (bypasses gate for ATPG)
+  .GCLK  (clk_gated)    // gated clock to downstream FFs
+);
+
+// Synthesis directive to preserve ICG (prevent optimization removing it)
+// set_dont_touch [get_cells u_clk_gate]</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="flow">8. Complete CTS Flow — Innovus Step by Step</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Step</th><th>Command / Action</th><th>What to Check</th></tr></thead>
+<tbody>
+<tr><td>1. Pre-CTS timing</td><td><code>timeDesign -preCTS</code></td><td>Setup WNS/TNS before clock. Ideal-clock setup violations must be &lt;0 (acceptable) or fixed before CTS.</td></tr>
+<tr><td>2. Load CTS spec</td><td><code>create_ccopt_clock_tree_spec</code></td><td>All defined clock roots present; buffer/inverter list loaded from tech lib.</td></tr>
+<tr><td>3. Set NDR rules</td><td><code>add_ndr; set_ccopt_property route_type NDR_CLK</code></td><td>NDR rule covers all metal layers used by clock; double-check via rule.</td></tr>
+<tr><td>4. Run CTS</td><td><code>ccopt_design</code></td><td>Skew &lt; target; max slew &lt; 100 ps; max fanout respected.</td></tr>
+<tr><td>5. Post-CTS STA (setup)</td><td><code>timeDesign -postCTS</code></td><td>Setup WNS ≥ 0 (or within ECO budget); TNS near zero.</td></tr>
+<tr><td>6. Post-CTS hold fix</td><td><code>optDesign -postCTS -hold</code></td><td>Hold WNS ≥ 0 across all corners; no new setup violations created.</td></tr>
+<tr><td>7. Verify clock reports</td><td><code>report_ccopt_clock_trees</code></td><td>Latency, skew, buffer count, power estimate per clock domain.</td></tr>
+<tr><td>8. Clock mesh (if used)</td><td>Separate mesh synthesis flow</td><td>Mesh injection point distribution; droop across mesh &lt;30 ps differential.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Tcl — complete post-CTS verification and reporting</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code># Post-CTS: check clock tree quality
+report_ccopt_clock_trees \
+  -summary \
+  -file     cts_summary.rpt
+
+# Skew report per clock domain
+report_clock_timing \
+  -type skew \
+  -clocks [all_clocks] \
+  -verbose \
+  -file cts_skew.rpt
+
+# Latency (insertion delay) report
+report_clock_timing \
+  -type latency \
+  -clocks [all_clocks] \
+  -file cts_latency.rpt
+
+# Buffer count and power estimate
+report_clock_timing \
+  -type summary
+
+# Check for slew violations on clock nets
+report_constraint -check_ports -all_violators \
+  -drv_types max_transition \
+  -file clock_slew_violations.rpt
+
+# Run MCMM check across all corners/modes
+foreach_in_collection corner [all_corners] {
+  set_analysis_view \
+    -setup [list func_tt_setup] \
+    -hold  [list func_ss_hold]
+  timeDesign -postCTS -hold
+}</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2>9. Real Chip CTS Numbers</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Chip</th><th>Process</th><th>Clock Freq</th><th>Local Skew</th><th>Insertion Delay</th><th>Clock Power</th><th>Topology</th></tr></thead>
+<tbody>
+<tr><td><strong>Apple A17 Pro</strong></td><td>TSMC 3nm</td><td>3.78 GHz (P-core)</td><td>&lt;30 ps</td><td>~0.6 ns</td><td>~15% of chip power</td><td>Hybrid tree + local mesh</td></tr>
+<tr><td><strong>AMD Ryzen 9 (Zen 4)</strong></td><td>TSMC 5nm</td><td>5.7 GHz (boost)</td><td>&lt;25 ps</td><td>~0.5 ns</td><td>~18% of chip power</td><td>Optimised balanced tree</td></tr>
+<tr><td><strong>Intel Core i9 (13th gen)</strong></td><td>Intel 7</td><td>5.8 GHz (boost)</td><td>&lt;20 ps</td><td>~0.45 ns</td><td>~20% of chip power</td><td>Clock mesh on P-cores</td></tr>
+<tr><td><strong>Qualcomm Snapdragon 8 Gen 3</strong></td><td>TSMC 4nm</td><td>3.3 GHz</td><td>&lt;40 ps</td><td>~0.7 ns</td><td>~12% of chip power</td><td>Balanced tree + ICG heavy</td></tr>
+<tr><td><strong>AMD EPYC Genoa</strong></td><td>TSMC 5nm</td><td>3.7 GHz (base)</td><td>&lt;35 ps</td><td>~0.9 ns (larger die)</td><td>~22% of chip power</td><td>Per-chiplet tree, mesh within core</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="info-box">
+  <h4>Why AMD Ryzen Can Hit 5.7 GHz</h4>
+  <p>One reason AMD's Zen 4 achieves such high boost frequencies is clock discipline: very tight local skew (&lt;25 ps), aggressive ICG (nearly all idle logic clock-gated), and per-core clock domains that can individually boost while others idle. The CTS team essentially treats each core as an independent sub-chip with its own balanced tree, then connects them through a low-skew inter-core distribution layer.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2>10. CTS Interview Q&amp;A</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>#</th><th>Question</th><th>Key Points in the Answer</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>What is the difference between clock skew and clock jitter?</td><td>Skew is a static, spatial difference between two FF clock arrivals — deterministic, caused by unequal buffer/wire delays. Jitter is a temporal variation of the clock edge arrival at a single FF from cycle to cycle — caused by supply noise, thermal noise, PLL bandwidth. Skew is modeled in STA as clock uncertainty; jitter is modeled as sdiv in the PLL spec and clock uncertainty derating.</td></tr>
+<tr><td>2</td><td>Why do hold violations increase after CTS?</td><td>Before CTS, ideal clock model assumes zero latency everywhere. After CTS, real buffers create unequal latency. FFs that are close in the data domain may be far apart in the clock tree, creating large skew. Large positive skew → large hold risk. Short data paths between these FFs violate hold timing that didn't exist pre-CTS.</td></tr>
+<tr><td>3</td><td>What is an NDR rule and why is it needed for clocks?</td><td>Non-default routing rule: wider wires (2× min width → lower resistance), wider spacing (2× min → shielding gap), and via arrays. Needed to: (1) control RC-based latency variation, (2) prevent crosstalk glitches on the clock from switching signal aggressors, (3) reduce EM risk at GHz switching frequency.</td></tr>
+<tr><td>4</td><td>What is useful skew and what is the downside?</td><td>Useful skew = intentionally delaying the capture FF's clock to give a tight path more effective cycle time. Fixes setup. The downside: the same delay worsens hold on that same path. Maximum useful skew is ~15–20% of clock period before hold violations become unfixable.</td></tr>
+<tr><td>5</td><td>How does clock gating reduce power?</td><td>ICG cells gate the clock to idle register groups. If a block is idle 80% of the time, its clock capacitance stops switching 80% of the time, reducing dynamic power by 80% for that branch. Chip-level clock gating with 30% average activity → 50–70% reduction in total clock dynamic power.</td></tr>
+<tr><td>6</td><td>What is clock mesh and when do you use it?</td><td>Clock mesh is a full grid of driven wires, giving sub-10 ps skew. Used in high-performance CPU cores where skew is the binding constraint and power budget allows the 2–5× overhead vs tree topology. Not practical for full-chip; used per block (e.g., per CPU core cluster).</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="checklist">11. Day 17 CTS Checklist</h2>
+
+<div class="checklist">
+  <h3>Clock Tree Synthesis Sign-Off Checklist</h3>
+  <ul>
+    <li>☐ CTS specification complete: buffer list, inverter list, max fanout, max slew, skew target</li>
+    <li>☐ NDR rules defined: 2W/2S on all clock layers, via arrays at all transitions</li>
+    <li>☐ Clock shielding enabled on top-level trunk wires</li>
+    <li>☐ Pre-CTS setup WNS verified — no ideal-clock violations blocking CTS</li>
+    <li>☐ CTS run: local skew ≤ 50 ps (or per spec), max slew ≤ 100 ps</li>
+    <li>☐ Insertion delay reported and matches SDC set_clock_latency values</li>
+    <li>☐ Post-CTS setup timing clean (WNS ≥ 0 or within ECO closure budget)</li>
+    <li>☐ Post-CTS hold fixing run — all hold violations repaired with delay buffers</li>
+    <li>☐ Hold fix verified not to create new setup violations on same paths</li>
+    <li>☐ Useful skew applied only where needed; hold tax verified across all MCMM corners</li>
+    <li>☐ ICG cells present on all register banks; clock gating coverage ≥ 70%</li>
+    <li>☐ Clock power estimate reviewed; within power budget allocation</li>
+    <li>☐ ccopt_clock_trees summary report saved for signoff review</li>
+  </ul>
+</div>
+
+<div class="prev-next">
+  <a href="/physical-design/day-16-enhanced/"><span class="arrow">← Previous</span>Day 16 — Power Planning &amp; Power Grid</a>
+  <a href="/physical-design/day-18-enhanced/" style="text-align:right"><span class="arrow">Next →</span>Day 18 — Signal Integrity &amp; Crosstalk</a>
+</div>
+
+</div><!-- /container -->
+
+<footer>
+  <p>© 2026 EcrioniX · Physical Design · <a href="/">Home</a> · <a href="/physical-design/">Course Index</a></p>
+  <div style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85">
+    <a href="/about/" style="color:#94a3b8">About</a> &middot;
+    <a href="/contact/" style="color:#94a3b8">Contact</a> &middot;
+    <a href="/legal/privacy.html" style="color:#94a3b8">Privacy Policy</a> &middot;
+    <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> &middot;
+    <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a>
+  </div>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>
+document.querySelectorAll('.copy-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const code=btn.nextElementSibling.querySelector('code');
+    navigator.clipboard.writeText(code.innerText);
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',1500);
+  });
+});
+</script>
+</body>
+</html>
