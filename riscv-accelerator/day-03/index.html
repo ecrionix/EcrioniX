@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RoCC Interface Deep Dive — RISC-V Tightly Coupled Coprocessor | Day 3 | EcrioniX</title>
+<meta name="description" content="Complete guide to the RISC-V RoCC (Rocket Custom Coprocessor) interface: command and response channel signals, valid/ready handshake protocol, memory interface, Verilog coprocessor implementation with MAC unit, protocol testbench, and integration with Rocket chip Chipyard. Day 3 of RISC-V + Custom Accelerator Design course.">
+<meta name="keywords" content="RoCC interface RISC-V, Rocket Custom Coprocessor, RoCC command channel, RoCC response channel, RoCC memory interface, RISC-V coprocessor Verilog, Chipyard RoCC accelerator, RoCC valid ready handshake, tightly coupled accelerator RISC-V, Rocket chip custom coprocessor, RoCC MAC accelerator, RISC-V accelerator integration">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-03/">
+<meta property="og:title" content="RoCC Interface Deep Dive — Day 3 | EcrioniX">
+<meta property="og:description" content="Every RoCC signal explained, valid/ready handshake timing, Verilog MAC coprocessor, memory interface, Chipyard integration, and protocol testbench — complete guide.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RoCC Interface Deep Dive — RISC-V Tightly Coupled Coprocessor Protocol","description":"Complete guide to the RoCC (Rocket Custom Coprocessor) interface: all command and response channel signals, valid/ready handshake protocol timing, optional memory interface, Verilog coprocessor implementation with a pipelined MAC unit, Chipyard integration, and a full protocol testbench. Day 3 of the RISC-V + Custom Accelerator Design course.","datePublished":"2026-06-19","dateModified":"2026-06-19","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/riscv-accelerator/day-03/","isPartOf":{"@type":"Course","name":"RISC-V + Custom Accelerator Design","url":"https://ecrionix.org/riscv-accelerator/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 3 — RoCC Interface","item":"https://ecrionix.org/riscv-accelerator/day-03/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What are the RoCC interface signals?","acceptedAnswer":{"@type":"Answer","text":"The RoCC interface has three channels. Command channel (CPU→RoCC): cmd.valid, cmd.ready, cmd.bits.inst (32-bit instruction word), cmd.bits.rs1 (register value), cmd.bits.rs2 (register value), cmd.bits.status (processor privilege/status). Response channel (RoCC→CPU): resp.valid, resp.ready, resp.bits.rd (destination register index), resp.bits.data (result value). Memory channel (RoCC→L1/L2 cache, optional): mem.req.valid/ready/bits and mem.resp.valid/bits — allows the coprocessor to issue its own load/store operations into the cache hierarchy."}},{"@type":"Question","name":"How does the RoCC valid/ready handshake work?","acceptedAnswer":{"@type":"Answer","text":"RoCC uses standard decoupled (valid/ready) handshake on both command and response channels. A transaction occurs when both valid AND ready are high on the same rising clock edge. For commands: the CPU asserts cmd.valid and the RoCC coprocessor asserts cmd.ready when it can accept the instruction. If the RoCC is busy, it deasserts cmd.ready and the CPU stalls (pipeline hazard). For responses: the RoCC asserts resp.valid when a result is ready. The CPU asserts resp.ready when it can write the result to the register file. The RoCC must hold resp.valid high until the CPU accepts with resp.ready."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--text:#e2e8f0;--teal:#06b6d4;--teal-l:#67e8f9;--purple:#a78bfa;--green:#4ade80;--yellow:#fbbf24;--red:#f87171;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.9;font-size:16px}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.nav-links{display:flex;gap:1.4rem;list-style:none}
+.nav-links a{color:#94a3b8;font-size:.83rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:4.5rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,rgba(6,182,212,.06) 0%,transparent 100%)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:1rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:#94a3b8;font-size:1.05rem;max-width:760px;margin:0 auto}
+.byline{text-align:center;color:#64748b;font-size:.85rem;margin:1.2rem 0 2rem}
+.container{max-width:940px;margin:0 auto;padding:0 1.5rem 5rem}
+h2{font-size:1.75rem;font-weight:800;color:#f8fafc;margin:3rem 0 1.2rem;padding-bottom:.8rem;border-bottom:3px solid rgba(6,182,212,.3)}
+h3{font-size:1.28rem;font-weight:700;color:#e2e8f0;margin:2rem 0 .8rem}
+p{margin-bottom:1.3rem;color:#cbd5e1;font-size:1.02rem}
+ul,ol{margin:0 0 1.3rem 2rem;color:#cbd5e1}li{margin-bottom:.6rem}
+strong{color:#e2e8f0}
+.formula-box{background:rgba(6,182,212,.07);border:2px solid rgba(6,182,212,.2);border-radius:12px;padding:1.6rem;margin:2rem 0;font-family:'JetBrains Mono',monospace;color:var(--teal-l);font-size:.87rem;line-height:2;overflow-x:auto}
+.code-wrap{position:relative;margin:2rem 0}
+.code-label{position:absolute;top:.75rem;left:1rem;font-size:.68rem;color:#64748b;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+.code-block{background:#060d1e;border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.5rem;padding-top:2.2rem;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#a5f3fc;line-height:1.75;display:block;white-space:pre}
+.copy-btn{position:absolute;top:.65rem;right:.75rem;background:rgba(6,182,212,.15);border:1px solid rgba(6,182,212,.3);color:var(--teal-l);font-size:.72rem;padding:.3rem .75rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(6,182,212,.3)}
+.info-box{background:rgba(74,222,128,.07);border-left:4px solid var(--green);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.info-box h4{color:var(--green);margin:0 0 .5rem}
+.warn-box{background:rgba(251,191,36,.07);border-left:4px solid var(--yellow);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.warn-box h4{color:var(--yellow);margin:0 0 .5rem}
+.teal-box{background:rgba(6,182,212,.07);border-left:4px solid var(--teal);padding:1.3rem 1.6rem;margin:1.8rem 0;border-radius:0 10px 10px 0}
+.teal-box h4{color:var(--teal);margin:0 0 .5rem}
+.table-wrap{overflow-x:auto;margin:2rem 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{padding:.8rem 1rem;border:1px solid rgba(6,182,212,.15);text-align:left}
+th{background:rgba(6,182,212,.1);color:var(--teal);font-weight:700}
+tr:hover{background:rgba(6,182,212,.04)}
+.checklist{background:var(--bg3);border-radius:12px;padding:2rem;margin:2.5rem 0}
+.checklist h3{color:var(--teal);margin-top:0;margin-bottom:1.2rem}
+.checklist li{list-style:none;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#cbd5e1}
+.checklist li:last-child{border:none}
+.nav-pills{display:flex;justify-content:center;gap:.8rem;margin:1.5rem 0 2rem;flex-wrap:wrap}
+.nav-pill{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--teal-l);font-size:.78rem;padding:.35rem .9rem;border-radius:20px;text-decoration:none}
+.nav-pill:hover{background:rgba(6,182,212,.18)}
+.prev-next{display:flex;justify-content:space-between;gap:1rem;margin:3rem 0;flex-wrap:wrap}
+.prev-next a{background:var(--bg3);border:1px solid rgba(6,182,212,.2);color:var(--teal-l);padding:.9rem 1.4rem;border-radius:10px;font-size:.9rem;font-weight:600;flex:1;min-width:200px}
+.prev-next a:hover{border-color:rgba(6,182,212,.5);text-decoration:none;background:rgba(6,182,212,.08)}
+.prev-next .arrow{color:#64748b;font-size:.8rem;display:block;margin-bottom:.2rem}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--teal);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.2rem;cursor:pointer;box-shadow:0 4px 12px rgba(6,182,212,.4);z-index:99}
+.svg-wrap{background:var(--bg3);border:1px solid rgba(6,182,212,.2);border-radius:14px;padding:1.5rem;margin:2rem 0;overflow-x:auto}
+.svg-caption{text-align:center;font-size:.82rem;color:#64748b;margin-top:1rem}
+footer{border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2);margin-top:2rem}
+footer a{color:#94a3b8}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/fpga-from-scratch/">FPGA Basics</a>
+    <a href="/fpga-neural-network/">FPGA + AI</a>
+    <a href="/physical-design/">Physical Design</a>
+    <a href="/riscv-from-scratch/">RISC-V</a>
+    <a href="/riscv-accelerator/">RISC-V+Accel</a>
+    <a href="/arm-architecture/">ARM</a>
+    <a href="/rtl-to-silicon/">RTL->Silicon</a>
+  </div>
+</nav>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 3 — RoCC Interface Deep Dive</span></div>
+
+<div class="hero">
+  <h1>RoCC Interface <span class="g">Deep Dive</span></h1>
+  <p>Every signal on the Rocket Custom Coprocessor interface, the valid/ready handshake timing, optional memory channel, a complete pipelined MAC coprocessor in Verilog, Chipyard integration steps, and a full protocol testbench.</p>
+</div>
+<div class="byline">By <a href="/about/">EcrioniX Engineering Team</a> · Published June 19, 2026 · ~4,800 words · 16 min read</div>
+
+<div class="nav-pills">
+  <a href="#rocc-overview" class="nav-pill">RoCC Overview</a>
+  <a href="#signals" class="nav-pill">All Signals</a>
+  <a href="#handshake" class="nav-pill">Handshake Timing</a>
+  <a href="#memory" class="nav-pill">Memory Channel</a>
+  <a href="#verilog" class="nav-pill">Verilog MAC</a>
+  <a href="#chipyard" class="nav-pill">Chipyard</a>
+  <a href="#testbench" class="nav-pill">Testbench</a>
+  <a href="#interview" class="nav-pill">Interview Q&A</a>
+</div>
+
+<div class="container">
+
+<h2 id="rocc-overview">1. What Is RoCC?</h2>
+
+<p>RoCC (Rocket Custom Coprocessor) is a standardised tightly-coupled accelerator interface defined by the UC Berkeley Rocket chip generator. It allows a custom accelerator to be attached <em>inside</em> the Rocket CPU pipeline — instructions are decoded by the CPU and dispatched to the coprocessor with register values piggybacked, results return directly to CPU registers, and (optionally) the coprocessor can issue its own load/store requests into the L1/L2 cache hierarchy.</p>
+
+<p>The critical property of "tightly coupled" is that <strong>no memory roundtrip is required for operand passing</strong>. The CPU reads rs1 and rs2 from the integer register file and forwards their values over the RoCC command channel — the coprocessor never touches memory to get its inputs. This is what achieves 1–10 cycle invoke latency.</p>
+
+<div class="teal-box">
+  <h4>RoCC vs AXI4 — one-line summary</h4>
+  <p>RoCC: operands arrive as register values over a direct pipeline connection — zero memory latency, Rocket-specific. AXI4: operands must be written to SRAM first, then the accelerator DMA-reads them — adds 50–500 cycles but works with any CPU and scales to gigabytes of data.</p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="signals">2. Complete RoCC Signal Reference</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Signal</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td colspan="4" style="background:rgba(6,182,212,.08);color:var(--teal);font-weight:700">Command Channel (CPU → RoCC)</td></tr>
+<tr><td><strong>cmd.valid</strong></td><td>CPU→RoCC</td><td>1</td><td>CPU has a command ready to dispatch</td></tr>
+<tr><td><strong>cmd.ready</strong></td><td>RoCC→CPU</td><td>1</td><td>RoCC can accept a new command this cycle</td></tr>
+<tr><td><strong>cmd.bits.inst</strong></td><td>CPU→RoCC</td><td>32</td><td>Full 32-bit instruction word (opcode, funct3, funct7, rd, rs1, rs2)</td></tr>
+<tr><td><strong>cmd.bits.rs1</strong></td><td>CPU→RoCC</td><td>64</td><td>Value of register rs1 from integer register file</td></tr>
+<tr><td><strong>cmd.bits.rs2</strong></td><td>CPU→RoCC</td><td>64</td><td>Value of register rs2 from integer register file</td></tr>
+<tr><td><strong>cmd.bits.status</strong></td><td>CPU→RoCC</td><td>varies</td><td>Processor privilege/mode status (M/S/U, interrupt enables)</td></tr>
+<tr><td colspan="4" style="background:rgba(167,139,250,.08);color:var(--purple);font-weight:700">Response Channel (RoCC → CPU)</td></tr>
+<tr><td><strong>resp.valid</strong></td><td>RoCC→CPU</td><td>1</td><td>RoCC has a result ready to write back</td></tr>
+<tr><td><strong>resp.ready</strong></td><td>CPU→RoCC</td><td>1</td><td>CPU register file can accept a write this cycle</td></tr>
+<tr><td><strong>resp.bits.rd</strong></td><td>RoCC→CPU</td><td>5</td><td>Destination register index to write result into</td></tr>
+<tr><td><strong>resp.bits.data</strong></td><td>RoCC→CPU</td><td>64</td><td>Result value to write to rd in register file</td></tr>
+<tr><td colspan="4" style="background:rgba(74,222,128,.08);color:var(--green);font-weight:700">Memory Channel (RoCC ↔ L1 Cache, optional)</td></tr>
+<tr><td><strong>mem.req.valid</strong></td><td>RoCC→Cache</td><td>1</td><td>RoCC issuing a load/store request</td></tr>
+<tr><td><strong>mem.req.ready</strong></td><td>Cache→RoCC</td><td>1</td><td>Cache can accept the request</td></tr>
+<tr><td><strong>mem.req.bits.addr</strong></td><td>RoCC→Cache</td><td>40</td><td>Physical address for the load/store</td></tr>
+<tr><td><strong>mem.req.bits.cmd</strong></td><td>RoCC→Cache</td><td>5</td><td>M_XRD (load) or M_XWR (store)</td></tr>
+<tr><td><strong>mem.req.bits.data</strong></td><td>RoCC→Cache</td><td>64</td><td>Store data (ignored for loads)</td></tr>
+<tr><td><strong>mem.resp.valid</strong></td><td>Cache→RoCC</td><td>1</td><td>Cache returning load data</td></tr>
+<tr><td><strong>mem.resp.bits.data</strong></td><td>Cache→RoCC</td><td>64</td><td>Loaded data from cache/memory</td></tr>
+<tr><td colspan="4" style="background:rgba(251,191,36,.06);color:var(--yellow);font-weight:700">Control Signals</td></tr>
+<tr><td><strong>busy</strong></td><td>RoCC→CPU</td><td>1</td><td>RoCC is processing — CPU won't context-switch</td></tr>
+<tr><td><strong>interrupt</strong></td><td>RoCC→CPU</td><td>1</td><td>RoCC requesting an interrupt (error, completion)</td></tr>
+<tr><td><strong>exception</strong></td><td>CPU→RoCC</td><td>1</td><td>CPU has taken an exception — RoCC should flush</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="handshake">3. Valid/Ready Handshake — Timing Diagrams</h2>
+
+<div class="formula-box">
+RoCC handshake rule (same as AXI4 decoupled):
+  Transaction occurs when: valid == 1 AND ready == 1 on the SAME rising clock edge
+
+  cmd channel (CPU→RoCC):
+    CPU asserts cmd.valid with cmd.bits.* stable
+    RoCC asserts cmd.ready when it can accept
+    → transfer on cycle where both are high
+
+  resp channel (RoCC→CPU):
+    RoCC asserts resp.valid with resp.bits.* stable
+    CPU asserts resp.ready when register file is available
+    → transfer on cycle where both are high
+
+  Back-pressure:
+    If RoCC deasserts cmd.ready → CPU pipeline stalls (inserts bubbles)
+    If CPU deasserts resp.ready → RoCC must hold resp.valid + resp.bits stable
+
+  Multi-cycle coprocessor:
+    Cycle 0:  cmd.valid=1, cmd.ready=1  → command accepted
+    Cycle 1–N: RoCC computing, cmd.ready=0 (busy), resp.valid=0
+    Cycle N:  resp.valid=1, resp.bits=result
+    Cycle N+1: resp.ready=1 from CPU → transfer complete
+</div>
+
+<!-- Handshake timing SVG -->
+<div class="svg-wrap">
+<svg viewBox="0 0 720 260" width="100%" style="max-width:720px;display:block;margin:0 auto">
+  <rect width="720" height="260" fill="#080d1a" rx="10"/>
+  <text x="360" y="22" fill="#67e8f9" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">RoCC Command + Response Handshake Timing</text>
+
+  <!-- Clock ticks -->
+  <text x="30" y="48" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CLK</text>
+  <line x1="70" y1="35" x2="70" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="70" y1="55" x2="160" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="160" y1="35" x2="160" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="160" y1="55" x2="250" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="250" y1="35" x2="250" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="250" y1="55" x2="340" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="340" y1="35" x2="340" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="340" y1="55" x2="430" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="430" y1="35" x2="430" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="430" y1="55" x2="520" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="520" y1="35" x2="520" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="520" y1="55" x2="610" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="610" y1="35" x2="610" y2="55" stroke="#475569" stroke-width="1"/>
+  <line x1="610" y1="55" x2="700" y2="55" stroke="#475569" stroke-width="1"/>
+  <!-- Cycle labels -->
+  <text x="115" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C0</text>
+  <text x="205" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C1</text>
+  <text x="295" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C2</text>
+  <text x="385" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C3</text>
+  <text x="475" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C4</text>
+  <text x="565" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C5</text>
+  <text x="655" y="68" fill="#64748b" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">C6</text>
+
+  <!-- cmd.valid: high C0-C1 -->
+  <text x="30" y="98" fill="#06b6d4" font-size="9" font-family="Outfit,sans-serif">cmd.valid</text>
+  <line x1="70"  y1="100" x2="70"  y2="82"  stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="70"  y1="82"  x2="250" y2="82"  stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="250" y1="82"  x2="250" y2="100" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="250" y1="100" x2="700" y2="100" stroke="#06b6d4" stroke-width="1.5"/>
+
+  <!-- cmd.ready: high C0 only -->
+  <text x="30" y="128" fill="#4ade80" font-size="9" font-family="Outfit,sans-serif">cmd.ready</text>
+  <line x1="70"  y1="130" x2="70"  y2="112" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="70"  y1="112" x2="160" y2="112" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="160" y1="112" x2="160" y2="130" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="160" y1="130" x2="430" y2="130" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="430" y1="130" x2="430" y2="112" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="430" y1="112" x2="700" y2="112" stroke="#4ade80" stroke-width="1.5"/>
+
+  <!-- Transaction marker C0 -->
+  <rect x="70" y="76" width="90" height="60" rx="3" fill="rgba(6,182,212,.1)" stroke="rgba(6,182,212,.4)" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="115" y="145" fill="#06b6d4" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">CMD accepted</text>
+
+  <!-- resp.valid: high C4-C5 -->
+  <text x="30" y="178" fill="#a78bfa" font-size="9" font-family="Outfit,sans-serif">resp.valid</text>
+  <line x1="70"  y1="180" x2="430" y2="180" stroke="#a78bfa" stroke-width="1.5"/>
+  <line x1="430" y1="180" x2="430" y2="162" stroke="#a78bfa" stroke-width="1.5"/>
+  <line x1="430" y1="162" x2="610" y2="162" stroke="#a78bfa" stroke-width="1.5"/>
+  <line x1="610" y1="162" x2="610" y2="180" stroke="#a78bfa" stroke-width="1.5"/>
+  <line x1="610" y1="180" x2="700" y2="180" stroke="#a78bfa" stroke-width="1.5"/>
+
+  <!-- resp.ready: high C5 -->
+  <text x="30" y="208" fill="#fbbf24" font-size="9" font-family="Outfit,sans-serif">resp.ready</text>
+  <line x1="70"  y1="210" x2="520" y2="210" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="520" y1="210" x2="520" y2="192" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="520" y1="192" x2="700" y2="192" stroke="#fbbf24" stroke-width="1.5"/>
+
+  <!-- Transaction marker C5 -->
+  <rect x="520" y="156" width="90" height="60" rx="3" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.4)" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="565" y="228" fill="#a78bfa" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">RESP accepted</text>
+
+  <!-- RoCC busy annotation -->
+  <text x="295" y="148" fill="#64748b" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">RoCC computing (cmd.ready=0)</text>
+  <text x="295" y="160" fill="#64748b" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">CPU pipeline stalled</text>
+</svg>
+<div class="svg-caption">Fig 1: RoCC command accepted at C0 (cmd.valid ∧ cmd.ready). RoCC deasserts cmd.ready while computing. Response accepted at C5 (resp.valid ∧ resp.ready). CPU stalls between C0 and C5.</div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="memory">4. RoCC Memory Channel</h2>
+
+<p>The optional RoCC memory interface lets the coprocessor issue its own load and store requests directly into the L1 data cache, without any software involvement. This is how accelerators like Hwacha and Gemmini transfer large data arrays — the CPU kicks off the operation with a single custom instruction, and the coprocessor DMA-reads hundreds of cache lines by itself.</p>
+
+<div class="formula-box">
+RoCC memory request flow:
+  1. Coprocessor asserts mem.req.valid with:
+       mem.req.bits.addr = physical address
+       mem.req.bits.cmd  = M_XRD (load) or M_XWR (store)
+       mem.req.bits.typ  = MT_D (doubleword), MT_W (word), etc.
+       mem.req.bits.data = store data (for writes)
+
+  2. L1 cache asserts mem.req.ready when it can accept
+  3. Transaction occurs (valid ∧ ready)
+  4. For loads: cache returns mem.resp.valid + mem.resp.bits.data
+     after L1 hit latency (~4 cycles) or L2 miss (~20 cycles)
+
+  Address translation:
+    RoCC must use PHYSICAL addresses when mem.req.phys=1
+    If mem.req.phys=0, the L1 TLB handles virtual→physical translation
+    → simpler: set phys=1 and use physical addresses directly
+      (requires that software maps buffers to known physical addresses)
+
+  Memory ordering:
+    RoCC memory requests are ordered relative to each other by the coprocessor
+    They are NOT ordered relative to CPU stores unless the software uses
+    fence instructions or the coprocessor checks the busy signal
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="verilog">5. Verilog — Complete RoCC MAC Coprocessor</h2>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — RoCC MAC coprocessor with pipelined multiply</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code>// RoCC-compatible MAC coprocessor
+// Supports 3 custom-0 operations:
+//   funct7=0, funct3=0 → MAC:   accum += rs1 * rs2
+//   funct7=0, funct3=1 → CLEAR: accum = 0
+//   funct7=0, funct3=2 → READ:  rd    = accum[63:0]
+//
+// Pipelined: 2-cycle multiply latency
+// Accepts back-to-back instructions when pipeline is not full
+
+module rocc_mac #(
+  parameter XLEN = 64   // 64 for RV64, 32 for RV32
+)(
+  input  logic              clk, rst_n,
+  // ─── RoCC Command Channel ───────────────────────────────
+  input  logic              cmd_valid,
+  output logic              cmd_ready,
+  input  logic [31:0]       cmd_inst,          // full instruction word
+  input  logic [XLEN-1:0]   cmd_rs1,
+  input  logic [XLEN-1:0]   cmd_rs2,
+  // ─── RoCC Response Channel ──────────────────────────────
+  output logic              resp_valid,
+  input  logic              resp_ready,
+  output logic [4:0]        resp_rd,
+  output logic [XLEN-1:0]   resp_data,
+  // ─── Control ────────────────────────────────────────────
+  output logic              busy,
+  output logic              interrupt
+);
+
+  // Instruction field extraction
+  logic [6:0] funct7;
+  logic [2:0] funct3;
+  logic [4:0] rd;
+  assign funct7 = cmd_inst[31:25];
+  assign funct3 = cmd_inst[14:12];
+  assign rd     = cmd_inst[11:7];
+
+  // Accumulator (128-bit to handle 64×64 overflow)
+  logic [127:0] accumulator;
+
+  // 2-stage multiply pipeline
+  logic              pipe1_valid;
+  logic [4:0]        pipe1_rd;
+  logic [2*XLEN-1:0] pipe1_product;
+  logic              pipe2_valid;
+  logic [4:0]        pipe2_rd;
+  logic [2*XLEN-1:0] pipe2_product;
+
+  // Accept new cmd when pipeline stage 1 is free
+  assign cmd_ready = !pipe1_valid || (pipe1_valid && !pipe2_valid);
+  assign busy      = pipe1_valid || pipe2_valid || resp_valid;
+  assign interrupt = 1'b0;  // no interrupt support in this impl
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      accumulator <= '0;
+      pipe1_valid <= 0; pipe1_rd <= '0; pipe1_product <= '0;
+      pipe2_valid <= 0; pipe2_rd <= '0; pipe2_product <= '0;
+      resp_valid  <= 0; resp_rd  <= '0; resp_data     <= '0;
+    end else begin
+
+      // ── Stage 1: accept command, start multiply ──────────
+      if (cmd_valid && cmd_ready) begin
+        case (funct3)
+          3'd0: begin   // MAC — pipeline the multiply
+            pipe1_valid   <= 1'b1;
+            pipe1_rd      <= rd;
+            pipe1_product <= $signed(cmd_rs1) * $signed(cmd_rs2);
+          end
+          3'd1: begin   // CLEAR
+            accumulator <= '0;
+            pipe1_valid <= 1'b0;
+          end
+          3'd2: begin   // READ accumulator
+            pipe1_valid <= 1'b0;
+            // Direct response (bypass pipeline for read)
+            resp_valid  <= 1'b1;
+            resp_rd     <= rd;
+            resp_data   <= accumulator[XLEN-1:0];
+          end
+          default: pipe1_valid <= 1'b0;
+        endcase
+      end else if (pipe2_valid) begin
+        pipe1_valid <= 1'b0;  // clear after advancing
+      end
+
+      // ── Stage 2: add to accumulator ─────────────────────
+      pipe2_valid   <= pipe1_valid;
+      pipe2_rd      <= pipe1_rd;
+      pipe2_product <= pipe1_product;
+
+      if (pipe2_valid) begin
+        accumulator <= accumulator + pipe2_product;
+        resp_valid  <= 1'b1;
+        resp_rd     <= pipe2_rd;
+        resp_data   <= accumulator[XLEN-1:0];  // return old accum value
+      end
+
+      // ── Clear response after CPU accepts ────────────────
+      if (resp_valid && resp_ready) begin
+        resp_valid <= 1'b0;
+      end
+
+    end
+  end
+
+endmodule</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="chipyard">6. Chipyard Integration</h2>
+
+<p>Chipyard is the UC Berkeley SoC generator that uses Rocket core with RoCC support. Integrating a custom RoCC accelerator requires a Scala config mixin that instantiates your accelerator and wires it to the Rocket tile.</p>
+
+<div class="code-wrap">
+  <div class="code-label">Scala — Chipyard RoCC integration (LazyRoCC pattern)</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code>// In src/main/scala/rocc/MacAccelerator.scala
+package chipyard.rocc
+
+import chisel3._
+import chisel3.util._
+import freechips.rocketchip.tile._
+import freechips.rocketchip.config._
+import freechips.rocketchip.diplomacy._
+
+// LazyRoCC: Diplomacy wrapper for the RoCC accelerator
+class MacAccelerator(opcodes: OpcodeSet)(implicit p: Parameters)
+    extends LazyRoCC(opcodes, nPTWPorts = 0) {
+  override lazy val module = new MacAcceleratorModule(this)
+}
+
+class MacAcceleratorModule(outer: MacAccelerator)(implicit p: Parameters)
+    extends LazyRoCCModuleImp(outer) {
+
+  // Wire to your Verilog (or write directly in Chisel)
+  val mac = Module(new rocc_mac(xLen = 64))  // BlackBox for Verilog
+
+  // Connect RoCC command channel
+  mac.io.clk        := clock
+  mac.io.rst_n      := !reset.asBool
+  mac.io.cmd_valid  := io.cmd.valid
+  io.cmd.ready      := mac.io.cmd_ready
+  mac.io.cmd_inst   := io.cmd.bits.inst.asUInt
+  mac.io.cmd_rs1    := io.cmd.bits.rs1
+  mac.io.cmd_rs2    := io.cmd.bits.rs2
+
+  // Connect RoCC response channel
+  io.resp.valid       := mac.io.resp_valid
+  mac.io.resp_ready   := io.resp.ready
+  io.resp.bits.rd     := mac.io.resp_rd
+  io.resp.bits.data   := mac.io.resp_data
+
+  // Control
+  io.busy       := mac.io.busy
+  io.interrupt  := mac.io.interrupt
+}
+
+// Config mixin — add to your SoC config
+class WithMacAccelerator extends Config((site, here, up) => {
+  case BuildRoCC => up(BuildRoCC, site) ++ Seq(
+    (p: Parameters) => {
+      val mac = LazyModule(new MacAccelerator(
+        OpcodeSet.custom0)(p))  // custom-0 opcode (0x0B)
+      mac
+    }
+  )
+})
+
+// Final SoC config
+class MacRocketConfig extends Config(
+  new WithMacAccelerator ++
+  new freechips.rocketchip.system.DefaultConfig
+)</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="testbench">7. Protocol Testbench</h2>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — RoCC MAC protocol testbench</div>
+  <button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.querySelector('code').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+  <div class="code-block"><code>`timescale 1ns/1ps
+module tb_rocc_mac;
+  localparam XLEN = 64;
+
+  logic              clk=0, rst_n;
+  logic              cmd_valid, resp_ready;
+  logic [31:0]       cmd_inst;
+  logic [XLEN-1:0]   cmd_rs1, cmd_rs2;
+  logic              cmd_ready, resp_valid, busy;
+  logic [4:0]        resp_rd;
+  logic [XLEN-1:0]   resp_data;
+
+  rocc_mac #(.XLEN(XLEN)) dut (.*);
+
+  always #5 clk = ~clk;
+
+  // Build instruction word: funct7|rs2|rs1|funct3|rd|opcode
+  function automatic [31:0] make_insn(
+    input [6:0] f7, input [4:0] rs2, input [4:0] rs1,
+    input [2:0] f3, input [4:0] rd
+  );
+    make_insn = {f7, rs2, rs1, f3, rd, 7'h0B};
+  endfunction
+
+  // Send one command, wait for response
+  task automatic send_cmd(
+    input [31:0] inst,
+    input [XLEN-1:0] rs1, rs2,
+    output [XLEN-1:0] result
+  );
+    @(posedge clk);
+    cmd_valid <= 1; cmd_inst <= inst;
+    cmd_rs1   <= rs1; cmd_rs2 <= rs2;
+    // Wait for cmd_ready
+    while (!cmd_ready) @(posedge clk);
+    @(posedge clk);
+    cmd_valid <= 0;
+    // Wait for response
+    resp_ready <= 1;
+    while (!resp_valid) @(posedge clk);
+    result = resp_data;
+    @(posedge clk);
+    resp_ready <= 0;
+  endtask
+
+  initial begin
+    rst_n=0; cmd_valid=0; resp_ready=0;
+    repeat(4) @(posedge clk);
+    rst_n = 1;
+
+    // Test 1: CLEAR (funct3=1)
+    logic [XLEN-1:0] res;
+    send_cmd(make_insn(0,0,0,1,10), 0, 0, res);
+    $display("CLEAR done");
+
+    // Test 2: MAC 3*4 (funct3=0, rd=x10, rs1=x11, rs2=x12)
+    send_cmd(make_insn(0,12,11,0,10), 3, 4, res);
+    $display("MAC(3,4): resp_data(prev accum)=%0d (expect 0)", res);
+    assert(res==0) else $error("MAC1 wrong");
+
+    // Test 3: MAC 5*6 = 30, accum should now be 12+30=42
+    send_cmd(make_insn(0,12,11,0,10), 5, 6, res);
+    $display("MAC(5,6): resp_data=%0d (expect 12)", res);
+    assert(res==12) else $error("MAC2 wrong");
+
+    // Test 4: READ accumulator (funct3=2)
+    send_cmd(make_insn(0,0,0,2,10), 0, 0, res);
+    $display("READ accum=%0d (expect 42)", res);
+    assert(res==42) else $error("READ wrong");
+
+    $display("All RoCC MAC tests PASSED"); $finish;
+  end
+endmodule</code></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+<h2 id="interview">8. Interview Q&amp;A</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>#</th><th>Question</th><th>Answer Points</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>What happens when a RoCC coprocessor deasserts cmd.ready?</td><td>The CPU pipeline stalls — it inserts pipeline bubbles and holds the custom instruction in the decode/issue stage until cmd.ready goes high again. This is the standard back-pressure mechanism. The CPU does not proceed to the next instruction while a RoCC command is pending and not yet accepted.</td></tr>
+<tr><td>2</td><td>Can a RoCC coprocessor access memory without going through the CPU?</td><td>Yes, via the optional RoCC memory channel. The coprocessor issues load/store requests directly to the L1 data cache using mem.req.valid/ready/bits. The cache processes these independently of the CPU's own memory requests. The coprocessor can load a full cache line (64 bytes) per request and issue multiple outstanding requests for high bandwidth.</td></tr>
+<tr><td>3</td><td>What is the busy signal used for in RoCC?</td><td>The busy signal tells the CPU that the coprocessor has outstanding work. When busy=1, the CPU will not context-switch (save/restore architectural state for another thread) because the coprocessor's internal state (e.g., the accumulator) is not part of the standard architectural register file and would be lost. The CPU OS will only allow context switching after busy deasserts.</td></tr>
+<tr><td>4</td><td>How does the RoCC response channel differ from a simple wire back to the register file?</td><td>The response uses a valid/ready handshake because the register file write port may be busy on the cycle the result is ready (another instruction might be using the write port). The RoCC coprocessor holds resp.valid + resp.bits stable until the CPU asserts resp.ready, at which point the register file write happens. This decouples the coprocessor's compute latency from the register file's availability.</td></tr>
+<tr><td>5</td><td>What is LazyRoCC in Chipyard/Rocket-chip?</td><td>LazyRoCC is the Diplomacy-based wrapper class for RoCC accelerators in the Rocket-chip/Chipyard framework. The "lazy" refers to Chisel's lazy module evaluation used by Diplomacy for parameter negotiation. You extend LazyRoCC, specify which opcode set to intercept (e.g. OpcodeSet.custom0), and implement the module logic in LazyRoCCModuleImp. The config mixin adds your accelerator to the Rocket tile's BuildRoCC sequence.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="checklist">
+  <h3>Day 3 Knowledge Checklist</h3>
+  <ul>
+    <li>☐ Name all RoCC command channel signals and their directions</li>
+    <li>☐ Name all RoCC response channel signals and their directions</li>
+    <li>☐ Explain the valid/ready handshake rule (when does a transfer happen?)</li>
+    <li>☐ Describe what happens when cmd.ready is deasserted</li>
+    <li>☐ Explain what the busy signal prevents the CPU from doing</li>
+    <li>☐ Write a minimal RoCC coprocessor in Verilog (cmd→compute→resp)</li>
+    <li>☐ Describe how the RoCC memory channel accesses the L1 cache</li>
+    <li>☐ Know what LazyRoCC is and how to integrate in Chipyard</li>
+  </ul>
+</div>
+
+<div class="prev-next">
+  <a href="/riscv-accelerator/day-02/"><span class="arrow">← Day 2</span>Custom ISA Extension</a>
+  <a href="/riscv-accelerator/day-04/" style="text-align:right"><span class="arrow">Next → Day 4</span>Systolic Array Design</a>
+</div>
+
+</div>
+
+<footer>
+  <p>© 2026 EcrioniX · RISC-V + Accelerator · <a href="/">Home</a> · <a href="/riscv-accelerator/">Course Index</a></p>
+  <div style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85">
+    <a href="/about/" style="color:#94a3b8">About</a> &middot;
+    <a href="/contact/" style="color:#94a3b8">Contact</a> &middot;
+    <a href="/legal/privacy.html" style="color:#94a3b8">Privacy Policy</a> &middot;
+    <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> &middot;
+    <a href="/legal/disclaimer.html" style="color:#94a3b8">Disclaimer</a>
+  </div>
+</footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>
+document.querySelectorAll('.copy-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const code=btn.nextElementSibling.querySelector('code');
+    navigator.clipboard.writeText(code.innerText);
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',1500);
+  });
+});
+</script>
+</body>
+</html>
