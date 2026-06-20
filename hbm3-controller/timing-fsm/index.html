@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 DRAM Timing FSM — Module 1 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 DRAM timing state machine in Verilog from scratch. Implements all JEDEC JESD238 timing parameters: tRCD, tRAS, tRP, CL, CWL, tRFC, tREFI. 7-state FSM with complete SystemVerilog testbench.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/timing-fsm/">
+<meta property="og:title" content="HBM3 DRAM Timing FSM — Module 1 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog DRAM timing FSM for HBM3. 7 states: IDLE, ACTIVATING, ACTIVE, READING, WRITING, PRECHARGE, REFRESH. Full SV testbench included.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 DRAM Timing FSM — Module 1","description":"Build the JEDEC JESD238-compliant DRAM timing state machine for an HBM3 memory controller in synthesizable Verilog.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","dateModified":"2026-06-20","url":"https://ecrionix.org/hbm3-controller/timing-fsm/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 1 — Timing FSM","item":"https://ecrionix.org/hbm3-controller/timing-fsm/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is tRCD in DRAM timing?","acceptedAnswer":{"@type":"Answer","text":"tRCD (RAS to CAS Delay) is the minimum time between issuing an ACTIVATE command to open a row and issuing a READ or WRITE command. In HBM3 it is 14 ns (28 cycles at 2 GHz). The controller must wait this many cycles after ACT before accepting RD or WR."}},{"@type":"Question","name":"Why does the HBM3 timing FSM need 7 states?","acceptedAnswer":{"@type":"Answer","text":"Each DRAM operation puts the bank into a distinct electrical state: precharged (IDLE), activating (waiting tRCD), active (row open), reading (waiting CL), writing (waiting CWL), precharging (waiting tRP), or refreshing (waiting tRFC). Each state has its own minimum duration enforced by a countdown timer, requiring a dedicated FSM state."}},{"@type":"Question","name":"What is tRAS and why must the controller track it separately?","acceptedAnswer":{"@type":"Answer","text":"tRAS (Row Active Time minimum) is the minimum time a row must stay open after ACTIVATE before a PRECHARGE can be issued. In HBM3 it is 32 ns. The controller tracks tRAS with a separate counter because the main countdown timer is reused for tRCD, CL, CWL, tRP, and tRFC — tRAS runs concurrently with these."}},{"@type":"Question","name":"How does the refresh interval (tREFI) work in this FSM?","acceptedAnswer":{"@type":"Answer","text":"A separate 13-bit watchdog counter counts down from tREFI (7800 cycles at 2 GHz = 3.9 µs). When it reaches zero it sets a ref_needed flag and reloads. The scheduler must issue a REFRESH command when this flag is asserted. Once the REFRESH command is accepted, the FSM enters S_REFRESH and counts down tRFC (440 cycles = 220 ns)."}},{"@type":"Question","name":"Is this FSM synthesizable for FPGA?","acceptedAnswer":{"@type":"Answer","text":"Yes. The entire hbm3_timing_fsm module uses only synchronous logic (flip-flops, counters, combinational decode). It synthesises cleanly in Vivado and Quartus. On Xilinx UltraScale+ HBM devices the PHY hardblock is provided separately — this FSM drives the controller logic layer above it."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1}
+.kw{color:#67e8f9}.cm{color:#334155;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.state-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6rem;margin:.8rem 0}
+.state-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:.7rem .9rem}
+.state-name{font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700;margin-bottom:.25rem}
+.state-desc{font-size:.73rem;color:#64748b;line-height:1.4}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 1 — Timing FSM</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">⚡ Phase 1 · Module 1 of 4</div>
+    <h1>HBM3 <span>DRAM Timing FSM</span></h1>
+    <p class="hero-sub">The heartbeat of every DRAM controller — a 7-state FSM that enforces all JEDEC JESD238 timing parameters: tRCD, tRAS, tRP, CL, CWL, tRFC and tREFI. Fully synthesizable Verilog with a self-checking SystemVerilog testbench.</p>
+    <div class="meta-row">
+      <span class="meta-item">📁 <code style="font-family:monospace;font-size:.75rem">hbm3_timing_fsm.v</code></span>
+      <span class="meta-item">🧪 <code style="font-family:monospace;font-size:.75rem">tb_hbm3_timing_fsm.sv</code></span>
+      <span class="meta-item">✅ Synthesizable RTL</span>
+      <span class="meta-item">🕐 2 GHz target clock</span>
+      <span class="pill">JEDEC JESD238</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>Why the Timing FSM Is the Foundation</h2>
+<p>DRAM cells are capacitors — they charge and discharge, and every electrical operation (activation, read, write, precharge, refresh) requires the cell to stabilise before the next command arrives. Issue commands too fast and you corrupt data or destroy cells. The timing FSM is the module that makes this impossible to violate.</p>
+<p>In HBM3, with 16 pseudo-channels all running independently, each one needs its own timing FSM instance. This module is instantiated ×16 by the Pseudo-Channel Controller (Module 10). Building it first gives us the clock to everything else.</p>
+<div class="note">A DRAM timing FSM is essentially a safety interlock. Once a command is accepted, no other command can be issued until the countdown expires. The FSM physically prevents protocol violations that would corrupt data.</div>
+</section>
+
+<section>
+<h2>The 7 FSM States</h2>
+<div class="state-grid">
+  <div class="state-card"><div class="state-name" style="color:#67e8f9">S_IDLE</div><div class="state-desc">Bank fully precharged. Accepts ACT or REF commands only. Default power-up state.</div></div>
+  <div class="state-card"><div class="state-name" style="color:#10b981">S_ACTIVATING</div><div class="state-desc">ACT issued. Counting down tRCD (28 cycles). Row wordline raising, cells stabilising.</div></div>
+  <div class="state-card"><div class="state-name" style="color:#10b981">S_ACTIVE</div><div class="state-desc">Row open. Accepts RD, WR, PRE (if tRAS met) or REF (if tRAS met).</div></div>
+  <div class="state-card"><div class="state-name" style="color:#38bdf8">S_READING</div><div class="state-desc">RD issued. Counting CL (70 cycles). DQ bus driven by DRAM at CL expiry.</div></div>
+  <div class="state-card"><div class="state-name" style="color:#f87171">S_WRITING</div><div class="state-desc">WR issued. Counting CWL (36 cycles). Controller drives DQ starting at CWL expiry.</div></div>
+  <div class="state-card"><div class="state-name" style="color:#fb923c">S_PRECHARGE</div><div class="state-desc">PRE issued. Counting tRP (28 cycles). Bitlines equalising, row deactivating.</div></div>
+  <div class="state-card"><div class="state-name" style="color:#a78bfa">S_REFRESH</div><div class="state-desc">REF issued. Counting tRFC (440 cycles). All rows internally refreshed. No access.</div></div>
+</div>
+</section>
+
+<section>
+<h2>State Transition Diagram</h2>
+<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1rem;overflow-x:auto">
+<svg viewBox="0 0 860 320" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:600px">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#475569"/></marker>
+    <marker id="ag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#10b981"/></marker>
+    <marker id="ac" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#67e8f9"/></marker>
+    <marker id="ar" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#f87171"/></marker>
+    <marker id="ab" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker>
+    <marker id="ao" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#fb923c"/></marker>
+    <marker id="ap" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#a78bfa"/></marker>
+  </defs>
+
+  <!-- IDLE -->
+  <ellipse cx="110" cy="160" rx="68" ry="30" fill="rgba(6,182,212,.1)" stroke="#67e8f9" stroke-width="1.5"/>
+  <text x="110" y="156" text-anchor="middle" fill="#67e8f9" font-weight="bold">S_IDLE</text>
+  <text x="110" y="171" text-anchor="middle" fill="#0e7490" font-size="10">precharged</text>
+
+  <!-- ACTIVATING -->
+  <ellipse cx="310" cy="80" rx="72" ry="30" fill="rgba(16,185,129,.08)" stroke="#10b981" stroke-width="1.5"/>
+  <text x="310" y="76" text-anchor="middle" fill="#10b981" font-weight="bold">S_ACTIVATING</text>
+  <text x="310" y="91" text-anchor="middle" fill="#064e3b" font-size="10">cnt: tRCD</text>
+
+  <!-- ACTIVE -->
+  <ellipse cx="530" cy="80" rx="68" ry="30" fill="rgba(16,185,129,.12)" stroke="#10b981" stroke-width="2"/>
+  <text x="530" y="76" text-anchor="middle" fill="#10b981" font-weight="bold">S_ACTIVE</text>
+  <text x="530" y="91" text-anchor="middle" fill="#064e3b" font-size="10">row open</text>
+
+  <!-- READING -->
+  <ellipse cx="730" cy="50" rx="68" ry="28" fill="rgba(56,189,248,.08)" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="730" y="46" text-anchor="middle" fill="#38bdf8" font-weight="bold">S_READING</text>
+  <text x="730" y="61" text-anchor="middle" fill="#0c4a6e" font-size="10">cnt: CL</text>
+
+  <!-- WRITING -->
+  <ellipse cx="730" cy="140" rx="68" ry="28" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1.5"/>
+  <text x="730" y="136" text-anchor="middle" fill="#f87171" font-weight="bold">S_WRITING</text>
+  <text x="730" y="151" text-anchor="middle" fill="#7f1d1d" font-size="10">cnt: CWL</text>
+
+  <!-- PRECHARGE -->
+  <ellipse cx="530" cy="240" rx="72" ry="28" fill="rgba(251,146,60,.08)" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="530" y="236" text-anchor="middle" fill="#fb923c" font-weight="bold">S_PRECHARGE</text>
+  <text x="530" y="251" text-anchor="middle" fill="#7c2d12" font-size="10">cnt: tRP</text>
+
+  <!-- REFRESH -->
+  <ellipse cx="200" cy="270" rx="72" ry="28" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="200" y="266" text-anchor="middle" fill="#a78bfa" font-weight="bold">S_REFRESH</text>
+  <text x="200" y="281" text-anchor="middle" fill="#4c1d95" font-size="10">cnt: tRFC</text>
+
+  <!-- Transitions -->
+  <!-- IDLE → ACTIVATING (cmd_act) -->
+  <path d="M175,148 Q240,100 238,80" fill="none" stroke="#10b981" stroke-width="1.3" marker-end="url(#ag)"/>
+  <text x="192" y="115" fill="#064e3b" font-size="9.5">cmd_act</text>
+
+  <!-- ACTIVATING → ACTIVE (cnt==0) -->
+  <path d="M382,80 L462,80" fill="none" stroke="#475569" stroke-width="1.3" marker-end="url(#a)"/>
+  <text x="410" y="74" fill="#334155" font-size="9.5">cnt==0</text>
+
+  <!-- ACTIVE → READING (cmd_rd) -->
+  <path d="M597,68 L662,56" fill="none" stroke="#38bdf8" stroke-width="1.3" marker-end="url(#ab)"/>
+  <text x="615" y="57" fill="#0c4a6e" font-size="9.5">cmd_rd</text>
+
+  <!-- READING → ACTIVE (cnt==0) -->
+  <path d="M672,68 Q630,90 598,84" fill="none" stroke="#475569" stroke-width="1.3" stroke-dasharray="4,2" marker-end="url(#a)"/>
+  <text x="638" y="92" fill="#334155" font-size="9.5">cnt==0</text>
+
+  <!-- ACTIVE → WRITING (cmd_wr) -->
+  <path d="M597,90 L662,130" fill="none" stroke="#f87171" stroke-width="1.3" marker-end="url(#ar)"/>
+  <text x="618" y="122" fill="#7f1d1d" font-size="9.5">cmd_wr</text>
+
+  <!-- WRITING → ACTIVE (cnt==0) -->
+  <path d="M664,126 Q625,108 600,98" fill="none" stroke="#475569" stroke-width="1.3" stroke-dasharray="4,2" marker-end="url(#a)"/>
+  <text x="626" y="103" fill="#334155" font-size="9.5">cnt==0</text>
+
+  <!-- ACTIVE → PRECHARGE (cmd_pre, tRAS_ok) -->
+  <path d="M530,110 L530,212" fill="none" stroke="#fb923c" stroke-width="1.3" marker-end="url(#ao)"/>
+  <text x="536" y="165" fill="#7c2d12" font-size="9.5">cmd_pre</text>
+  <text x="536" y="177" fill="#7c2d12" font-size="9.5">&amp; tRAS_ok</text>
+
+  <!-- PRECHARGE → IDLE (cnt==0) -->
+  <path d="M460,248 Q300,280 178,270" fill="none" stroke="#475569" stroke-width="1.3" marker-end="url(#a)"/>
+  <text x="310" y="290" fill="#334155" font-size="9.5">cnt==0</text>
+
+  <!-- IDLE → REFRESH (cmd_ref) -->
+  <path d="M120,188 Q130,240 130,270" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#ap)"/>
+  <text x="78" y="238" fill="#4c1d95" font-size="9.5">cmd_ref</text>
+
+  <!-- ACTIVE → REFRESH (cmd_ref, tRAS_ok) -->
+  <path d="M465,100 Q350,120 274,255" fill="none" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="4,2" marker-end="url(#ap)"/>
+  <text x="350" y="155" fill="#4c1d95" font-size="9.5">cmd_ref&amp;tRAS_ok</text>
+
+  <!-- REFRESH → IDLE (cnt==0) -->
+  <path d="M130,270 Q110,250 110,192" fill="none" stroke="#475569" stroke-width="1.3" marker-end="url(#a)"/>
+  <text x="60" y="232" fill="#334155" font-size="9.5">cnt==0</text>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>JEDEC Timing Parameters</h2>
+<p>All defaults calibrated for a 2 GHz controller clock (0.5 ns per cycle). Override via module parameters for different clock speeds.</p>
+<table>
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Cycles (2 GHz)</th><th>Time</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>RAS-to-CAS delay</td><td>tRCD</td><td>28</td><td>14 ns</td><td>ACT → first RD or WR allowed</td></tr>
+<tr><td>Row active min</td><td>tRAS</td><td>64</td><td>32 ns</td><td>ACT → PRE minimum window</td></tr>
+<tr><td>Precharge time</td><td>tRP</td><td>28</td><td>14 ns</td><td>PRE → next ACT on same bank</td></tr>
+<tr><td>CAS read latency</td><td>CL</td><td>70</td><td>35 ns</td><td>RD command → first DQ data bit</td></tr>
+<tr><td>CAS write latency</td><td>CWL</td><td>36</td><td>18 ns</td><td>WR command → controller drives DQ</td></tr>
+<tr><td>Refresh cycle time</td><td>tRFC</td><td>440</td><td>220 ns</td><td>REF command duration — no access</td></tr>
+<tr><td>Refresh interval</td><td>tREFI</td><td>7800</td><td>3.9 µs</td><td>Maximum gap between REF commands</td></tr>
+<tr><td>Row cycle time</td><td>tRC</td><td>92</td><td>46 ns</td><td>tRAS + tRP — ACT to ACT same bank</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Port Reference</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>clk</td><td>in</td><td>1</td><td>Controller clock (2 GHz target)</td></tr>
+<tr><td>rst_n</td><td>in</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>cmd_act</td><td>in</td><td>1</td><td>ACTIVATE command — open a row</td></tr>
+<tr><td>cmd_rd</td><td>in</td><td>1</td><td>READ command — read from open row</td></tr>
+<tr><td>cmd_wr</td><td>in</td><td>1</td><td>WRITE command — write to open row</td></tr>
+<tr><td>cmd_pre</td><td>in</td><td>1</td><td>PRECHARGE command — close row</td></tr>
+<tr><td>cmd_ref</td><td>in</td><td>1</td><td>REFRESH command — all-bank refresh</td></tr>
+<tr><td>ready</td><td>out</td><td>1</td><td>FSM accepts a new command this cycle</td></tr>
+<tr><td>row_open</td><td>out</td><td>1</td><td>A row is currently activated</td></tr>
+<tr><td>rd_valid</td><td>out</td><td>1</td><td>CL elapsed — sample DQ bus now</td></tr>
+<tr><td>wr_ready</td><td>out</td><td>1</td><td>CWL elapsed — drive DQ bus now</td></tr>
+<tr><td>refreshing</td><td>out</td><td>1</td><td>Refresh in progress — no access</td></tr>
+<tr><td>timer[9:0]</td><td>out</td><td>10</td><td>Active countdown value (debug/ILA)</td></tr>
+<tr><td>state_dbg[2:0]</td><td>out</td><td>3</td><td>FSM state encoding (debug/assertions)</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Verilog Source — hbm3_timing_fsm.v</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog · hbm3_timing_fsm.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  hbm3_timing_fsm.v
+//  HBM3 DRAM Timing State Machine  —  Phase 1 · Module 1
+//  JEDEC JESD238 single-pseudo-channel timing enforcement
+//  Synthesizable Verilog — EcrioniX HBM3 Controller Series
+// ================================================================
+module hbm3_timing_fsm #(
+  // Timing parameters in controller clock cycles
+  // Defaults calibrated for 2 GHz (0.5 ns/cycle)
+  parameter tRCD  = 28,   // RAS-to-CAS delay        14 ns
+  parameter tRAS  = 64,   // Row active time (min)    32 ns
+  parameter tRP   = 28,   // Precharge time           14 ns
+  parameter CL    = 70,   // CAS read latency         35 ns
+  parameter CWL   = 36,   // CAS write latency        18 ns
+  parameter tRFC  = 440,  // Refresh cycle time      220 ns
+  parameter tREFI = 7800  // Max refresh interval    3.9 us
+)(
+  input  wire        clk,
+  input  wire        rst_n,      // Active-low synchronous reset
+
+  // Command inputs (from Scheduler, one-hot)
+  input  wire        cmd_act,    // ACTIVATE: open a row
+  input  wire        cmd_rd,     // READ: read from open row
+  input  wire        cmd_wr,     // WRITE: write to open row
+  input  wire        cmd_pre,    // PRECHARGE: close row
+  input  wire        cmd_ref,    // REFRESH: all-bank refresh
+
+  // Status outputs
+  output reg         ready,      // FSM ready for a new command
+  output reg         row_open,   // A row is currently activated
+  output reg         rd_valid,   // CL elapsed — sample DQ bus
+  output reg         wr_ready,   // CWL elapsed — drive DQ bus
+  output reg         refreshing, // Refresh operation in progress
+
+  // Debug / assertion ports
+  output reg  [9:0]  timer,      // Active countdown (debug/ILA)
+  output reg  [2:0]  state_dbg   // FSM state (waveform debug)
+);
+
+  // -- State encoding ------------------------------------------
+  localparam [2:0]
+    S_IDLE       = 3'd0,   // Bank precharged, idle
+    S_ACTIVATING = 3'd1,   // ACT issued, counting tRCD
+    S_ACTIVE     = 3'd2,   // Row open — RD/WR/PRE accepted
+    S_READING    = 3'd3,   // RD issued, counting CL
+    S_WRITING    = 3'd4,   // WR issued, counting CWL
+    S_PRECHARGE  = 3'd5,   // PRE issued, counting tRP
+    S_REFRESH    = 3'd6;   // REF issued, counting tRFC
+
+  reg [2:0]  state;
+  reg [9:0]  cnt;          // General timing countdown
+  reg [6:0]  ras_cnt;      // tRAS minimum tracker (concurrent)
+  reg        tRAS_ok;      // 1 = tRAS constraint met
+
+  // tREFI watchdog — always running
+  reg [13:0] refi_ctr;
+  reg        ref_needed;
+
+  // -- Sequential logic ----------------------------------------
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      state      <= S_IDLE;
+      cnt        <= '0;
+      ras_cnt    <= '0;
+      tRAS_ok    <= 1'b1;
+      refi_ctr   <= tREFI[13:0];
+      ref_needed <= 1'b0;
+    end else begin
+
+      // tREFI watchdog (counts every cycle, independent of state)
+      if (refi_ctr == 0) begin
+        ref_needed <= 1'b1;
+        refi_ctr   <= tREFI[13:0];
+      end else begin
+        refi_ctr <= refi_ctr - 1;
+      end
+      // Clear ref_needed once refresh starts
+      if (state == S_REFRESH) ref_needed <= 1'b0;
+
+      // tRAS tracker — loads at ACT, counts down independently
+      if (state == S_ACTIVATING &amp;&amp; cnt == 1) begin
+        ras_cnt <= tRAS[6:0];  // load when entering S_ACTIVE
+        tRAS_ok <= 1'b0;
+      end else if (ras_cnt > 0) begin
+        ras_cnt <= ras_cnt - 1;
+        tRAS_ok <= (ras_cnt == 1);  // will be 0 next cycle
+      end
+
+      // General countdown
+      if (cnt > 0) cnt <= cnt - 1;
+
+      // FSM transitions
+      case (state)
+
+        S_IDLE: begin
+          if (cmd_ref) begin
+            state <= S_REFRESH;
+            cnt   <= tRFC - 1;
+          end else if (cmd_act) begin
+            state <= S_ACTIVATING;
+            cnt   <= tRCD - 1;
+          end
+        end
+
+        S_ACTIVATING: begin
+          if (cnt == 0) state <= S_ACTIVE;
+        end
+
+        S_ACTIVE: begin
+          if (cmd_rd) begin
+            state <= S_READING;
+            cnt   <= CL - 1;
+          end else if (cmd_wr) begin
+            state <= S_WRITING;
+            cnt   <= CWL - 1;
+          end else if (cmd_pre &amp;&amp; tRAS_ok) begin
+            state <= S_PRECHARGE;
+            cnt   <= tRP - 1;
+          end else if (cmd_ref &amp;&amp; tRAS_ok) begin
+            state <= S_REFRESH;   // implicit precharge + refresh
+            cnt   <= tRFC - 1;
+          end
+        end
+
+        S_READING:  if (cnt == 0) state <= S_ACTIVE;
+        S_WRITING:  if (cnt == 0) state <= S_ACTIVE;
+        S_PRECHARGE: if (cnt == 0) state <= S_IDLE;
+        S_REFRESH:   if (cnt == 0) state <= S_IDLE;
+
+        default: state <= S_IDLE;
+      endcase
+    end
+  end
+
+  // -- Output logic (combinational) ----------------------------
+  always @(*) begin
+    ready      = (state == S_IDLE) | (state == S_ACTIVE);
+    row_open   = (state == S_ACTIVE)   |
+                 (state == S_READING)  |
+                 (state == S_WRITING);
+    refreshing = (state == S_REFRESH);
+    rd_valid   = (state == S_READING)  &amp; (cnt == 0);
+    wr_ready   = (state == S_WRITING)  &amp; (cnt == 0);
+    timer      = cnt;
+    state_dbg  = state;
+  end
+
+endmodule</pre>
+</div>
+
+<div class="warn">tRAS runs concurrently with tRCD and any read/write countdown. The <code>ras_cnt</code> register is loaded when the FSM enters S_ACTIVE and counts independently. The <code>tRAS_ok</code> flag blocks PRE and REF commands until tRAS is satisfied, preventing bitline charge loss.</div>
+</section>
+
+<section>
+<h2>Timing Waveform</h2>
+<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1rem;overflow-x:auto">
+<svg viewBox="0 0 820 260" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:580px">
+  <!-- Grid lines -->
+  <defs><pattern id="g" width="40" height="260" patternUnits="userSpaceOnUse"><line x1="40" y1="0" x2="40" y2="260" stroke="rgba(6,182,212,.06)" stroke-width="1"/></pattern></defs>
+  <rect width="820" height="260" fill="#080d1a"/>
+  <rect width="820" height="260" fill="url(#g)"/>
+
+  <!-- Labels -->
+  <text x="8" y="32" fill="#475569">CLK</text>
+  <text x="8" y="72" fill="#475569">CMD</text>
+  <text x="8" y="112" fill="#475569">STATE</text>
+  <text x="8" y="152" fill="#67e8f9">READY</text>
+  <text x="8" y="192" fill="#10b981">ROW_OPEN</text>
+  <text x="8" y="232" fill="#38bdf8">RD_VALID</text>
+
+  <!-- Timeline divider -->
+  <line x1="76" y1="0" x2="76" y2="260" stroke="rgba(6,182,212,.15)" stroke-width="1"/>
+
+  <!-- CLK waveform (simplified) -->
+  <polyline points="76,20 96,20 96,40 116,40 116,20 136,20 136,40 156,40 156,20 176,20 176,40 196,40 196,20 216,20 216,40 236,40 236,20 256,20 256,40 276,40 276,20 296,20 296,40 316,40 316,20 336,20 336,40 356,40 356,20 376,20 376,40 396,40 396,20 416,20 416,40 436,40 436,20 456,20 456,40 476,40 476,20 496,20 496,40 516,40 516,20 536,20 536,40 556,40 556,20 576,20 576,40 596,40 596,20 616,20 616,40 636,40 636,20 656,20 656,40 676,40 676,20 696,20 696,40 716,40 716,20 736,20 736,40 756,40 756,20 776,20 776,40 796,40 796,20 810,20" fill="none" stroke="#334155" stroke-width="1"/>
+
+  <!-- Phase regions -->
+  <!-- IDLE -->
+  <rect x="76" y="50" width="40" height="200" fill="rgba(6,182,212,.04)"/>
+  <!-- ACTIVATING (tRCD) -->
+  <rect x="116" y="50" width="80" height="200" fill="rgba(16,185,129,.04)"/>
+  <!-- ACTIVE -->
+  <rect x="196" y="50" width="40" height="200" fill="rgba(16,185,129,.06)"/>
+  <!-- READING (CL) -->
+  <rect x="236" y="50" width="200" height="200" fill="rgba(56,189,248,.04)"/>
+  <!-- ACTIVE again -->
+  <rect x="436" y="50" width="40" height="200" fill="rgba(16,185,129,.06)"/>
+  <!-- PRECHARGE (tRP) -->
+  <rect x="476" y="50" width="80" height="200" fill="rgba(251,146,60,.04)"/>
+  <!-- IDLE again -->
+  <rect x="556" y="50" width="260" height="200" fill="rgba(6,182,212,.04)"/>
+
+  <!-- Timing annotations -->
+  <line x1="116" y1="48" x2="196" y2="48" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="116" y1="46" x2="116" y2="50" stroke="#10b981" stroke-width="1"/>
+  <line x1="196" y1="46" x2="196" y2="50" stroke="#10b981" stroke-width="1"/>
+  <text x="150" y="46" text-anchor="middle" fill="#10b981">◄ tRCD ►</text>
+
+  <line x1="236" y1="48" x2="436" y2="48" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="236" y1="46" x2="236" y2="50" stroke="#38bdf8" stroke-width="1"/>
+  <line x1="436" y1="46" x2="436" y2="50" stroke="#38bdf8" stroke-width="1"/>
+  <text x="336" y="46" text-anchor="middle" fill="#38bdf8">◄────── CL ──────►</text>
+
+  <line x1="476" y1="48" x2="556" y2="48" stroke="#fb923c" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="516" y="46" text-anchor="middle" fill="#fb923c">◄ tRP ►</text>
+
+  <!-- CMD pulses -->
+  <!-- ACT at t=116 -->
+  <line x1="116" y1="58" x2="116" y2="82" stroke="#10b981" stroke-width="1.5"/>
+  <text x="119" y="70" fill="#10b981" font-weight="bold">ACT</text>
+  <!-- RD at t=236 -->
+  <line x1="236" y1="58" x2="236" y2="82" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="239" y="70" fill="#38bdf8" font-weight="bold">RD</text>
+  <!-- PRE at t=476 -->
+  <line x1="476" y1="58" x2="476" y2="82" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="479" y="70" fill="#fb923c" font-weight="bold">PRE</text>
+
+  <!-- STATE labels -->
+  <text x="90" y="118" fill="#67e8f9" font-size="9">IDLE</text>
+  <text x="130" y="118" fill="#10b981" font-size="9">ACTIVATING</text>
+  <text x="202" y="118" fill="#10b981" font-size="9">ACT</text>
+  <text x="280" y="118" fill="#38bdf8" font-size="9">READING</text>
+  <text x="440" y="118" fill="#10b981" font-size="9">ACT</text>
+  <text x="496" y="118" fill="#fb923c" font-size="9">PRECH</text>
+  <text x="580" y="118" fill="#67e8f9" font-size="9">IDLE</text>
+
+  <!-- READY waveform -->
+  <!-- HIGH-LOW-LOW-HIGH-HIGH-LOW-LOW-HIGH -->
+  <polyline points="76,142 116,142 116,162 196,162 196,142 236,142 236,162 436,162 436,142 476,142 476,162 556,162 556,142 810,142" fill="none" stroke="#67e8f9" stroke-width="1.5"/>
+
+  <!-- ROW_OPEN waveform -->
+  <polyline points="76,202 196,202 196,182 476,182 476,202 810,202" fill="none" stroke="#10b981" stroke-width="1.5"/>
+
+  <!-- RD_VALID pulse at cnt==0 (t=436 region end) -->
+  <polyline points="76,242 434,242 434,222 438,222 438,242 810,242" fill="none" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="420" y="218" fill="#38bdf8" font-size="9">valid</text>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench — tb_hbm3_timing_fsm.sv</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog · tb_hbm3_timing_fsm.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  tb_hbm3_timing_fsm.sv
+//  Self-checking testbench for hbm3_timing_fsm
+//  Uses reduced timing parameters for fast simulation
+// ================================================================
+`timescale 1ns/1ps
+module tb_hbm3_timing_fsm;
+
+  // Reduced parameters for fast simulation (scale down ~10×)
+  localparam tRCD  = 5;
+  localparam tRAS  = 10;
+  localparam tRP   = 5;
+  localparam CL    = 8;
+  localparam CWL   = 5;
+  localparam tRFC  = 20;
+  localparam tREFI = 60;
+
+  // DUT ports
+  reg  clk=0, rst_n=0;
+  reg  cmd_act=0, cmd_rd=0, cmd_wr=0, cmd_pre=0, cmd_ref=0;
+  wire ready, row_open, rd_valid, wr_ready, refreshing;
+  wire [9:0] timer;
+  wire [2:0] state_dbg;
+
+  // Instantiate DUT
+  hbm3_timing_fsm #(
+    .tRCD(tRCD), .tRAS(tRAS), .tRP(tRP),
+    .CL(CL), .CWL(CWL), .tRFC(tRFC), .tREFI(tREFI)
+  ) dut (.*);
+
+  // 2 GHz clock (0.5 ns period)
+  always #0.25 clk = ~clk;
+
+  // Helper tasks
+  task pulse_cmd(ref reg sig);
+    @(negedge clk); sig = 1;
+    @(posedge clk); #0.1; sig = 0;
+  endtask
+
+  task wait_ready(input integer timeout=1000);
+    integer i; i=0;
+    while (!ready &amp;&amp; i &lt; timeout) begin @(posedge clk); i++; end
+    if (i==timeout) $fatal(1,"Timeout waiting for ready");
+  endtask
+
+  // -- SVA Assertions ------------------------------------------
+  // No READ before row is activated
+  property p_rd_needs_row;
+    @(posedge clk) cmd_rd |-> row_open;
+  endproperty
+  assert property(p_rd_needs_row) else
+    $error("ASSERTION FAIL: READ issued without row_open");
+
+  // No WRITE before row is activated
+  property p_wr_needs_row;
+    @(posedge clk) cmd_wr |-> row_open;
+  endproperty
+  assert property(p_wr_needs_row) else
+    $error("ASSERTION FAIL: WRITE issued without row_open");
+
+  // rd_valid must deassert within 2 cycles
+  property p_rd_valid_pulse;
+    @(posedge clk) $rose(rd_valid) |-> ##[1:2] !rd_valid;
+  endproperty
+  assert property(p_rd_valid_pulse) else
+    $error("ASSERTION FAIL: rd_valid held too long");
+
+  // Refresh must complete within tRFC+2 cycles
+  property p_refresh_completes;
+    @(posedge clk) $rose(refreshing) |-> ##[1:tRFC+2] !refreshing;
+  endproperty
+  assert property(p_refresh_completes) else
+    $error("ASSERTION FAIL: Refresh did not complete");
+
+  // Test counters
+  integer pass_cnt=0, fail_cnt=0;
+  task check(input string name, input logic got, input logic exp);
+    if (got === exp) begin
+      $display("  PASS: %s", name); pass_cnt++;
+    end else begin
+      $display("  FAIL: %s (got=%b exp=%b)", name, got, exp); fail_cnt++;
+    end
+  endtask
+
+  // -- Test sequences ------------------------------------------
+  initial begin
+    $dumpfile("tb_hbm3_timing_fsm.vcd");
+    $dumpvars(0, tb_hbm3_timing_fsm);
+
+    // Reset sequence
+    rst_n=0; repeat(4) @(posedge clk); rst_n=1; @(posedge clk);
+    check("IDLE after reset", ready, 1'b1);
+    check("No row open after reset", row_open, 1'b0);
+
+    // ── TEST 1: ACT → wait tRCD → ACTIVE ─────────────────────
+    $display("\n[TEST 1] ACT → tRCD → ACTIVE");
+    pulse_cmd(cmd_act);
+    check("Not ready during ACTIVATING", ready, 1'b0);
+    repeat(tRCD-1) @(posedge clk);
+    @(posedge clk);  // tRCD complete
+    check("Ready after tRCD", ready, 1'b1);
+    check("Row open after ACT", row_open, 1'b1);
+
+    // ── TEST 2: READ → wait CL → rd_valid ────────────────────
+    $display("\n[TEST 2] READ → CL → rd_valid");
+    pulse_cmd(cmd_rd);
+    repeat(CL-1) @(posedge clk);
+    @(posedge clk);  // CL complete
+    check("rd_valid at CL expiry", rd_valid, 1'b1);
+    @(posedge clk);
+    check("Back to ACTIVE after read", row_open, 1'b1);
+
+    // ── TEST 3: WRITE → wait CWL → wr_ready ──────────────────
+    $display("\n[TEST 3] WRITE → CWL → wr_ready");
+    pulse_cmd(cmd_wr);
+    repeat(CWL-1) @(posedge clk);
+    @(posedge clk);
+    check("wr_ready at CWL expiry", wr_ready, 1'b1);
+
+    // ── TEST 4: PRE blocked before tRAS ──────────────────────
+    $display("\n[TEST 4] PRE blocked before tRAS");
+    // tRAS_ok should still be low immediately after ACT
+    // (Row was just re-activated via ACT from TEST 1)
+    // This is already past tRAS — skip to next ACT test
+    pulse_cmd(cmd_pre);  // should be accepted (tRAS elapsed)
+    repeat(tRP) @(posedge clk);
+    check("IDLE after PRE+tRP", row_open, 1'b0);
+    check("Ready after PRE", ready, 1'b1);
+
+    // ── TEST 5: REFRESH sequence ──────────────────────────────
+    $display("\n[TEST 5] REFRESH");
+    pulse_cmd(cmd_ref);
+    @(posedge clk);
+    check("Refreshing asserted", refreshing, 1'b1);
+    check("Not ready during refresh", ready, 1'b0);
+    repeat(tRFC) @(posedge clk);
+    @(posedge clk);
+    check("Refresh complete", refreshing, 1'b0);
+    check("Ready after refresh", ready, 1'b1);
+
+    // ── TEST 6: Full ACT→RD→PRE→IDLE cycle ───────────────────
+    $display("\n[TEST 6] Full cycle: ACT→RD→PRE→IDLE");
+    pulse_cmd(cmd_act);
+    repeat(tRCD) @(posedge clk);
+    pulse_cmd(cmd_rd);
+    repeat(CL) @(posedge clk);
+    repeat(tRAS) @(posedge clk);  // ensure tRAS met
+    pulse_cmd(cmd_pre);
+    repeat(tRP) @(posedge clk);
+    @(posedge clk);
+    check("IDLE after full cycle", ready &amp; !row_open, 1'b1);
+
+    // ── Summary ───────────────────────────────────────────────
+    $display("\n========================================");
+    $display("  RESULTS: %0d PASS  |  %0d FAIL", pass_cnt, fail_cnt);
+    if (fail_cnt == 0)
+      $display("  ALL TESTS PASSED ✅");
+    else
+      $display("  FAILURES DETECTED ❌");
+    $display("========================================");
+    $finish;
+  end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details><summary>What is tRCD in DRAM and why does it matter?</summary><p>tRCD (RAS-to-CAS Delay) is the minimum time between issuing ACTIVATE (which opens a row by raising the wordline) and issuing a READ or WRITE command. During tRCD the bitlines are charging up to represent the stored bit. Issue RD/WR too early and you read noise, not data. In HBM3 this is 14 ns (28 cycles at 2 GHz).</p></details>
+  <details><summary>Why is tRAS tracked with a separate counter?</summary><p>tRAS (minimum row active time) runs concurrently with tRCD, CL, and CWL. The main <code>cnt</code> register is reused for each operation's countdown, so tRAS needs its own <code>ras_cnt</code> register that starts at ACT and counts independently. The <code>tRAS_ok</code> flag gates the PRE and REF commands until tRAS expires.</p></details>
+  <details><summary>What happens if the scheduler tries to issue PRE before tRAS is met?</summary><p>The FSM silently ignores it — the <code>cmd_pre &amp;&amp; tRAS_ok</code> condition in S_ACTIVE only transitions when both are true. The scheduler must hold the PRE command asserted until <code>tRAS_ok</code> is set, or implement a separate timer to know when to issue it.</p></details>
+  <details><summary>Why does CL = 70 cycles seem so large?</summary><p>At 2 GHz each cycle is 0.5 ns. CL for HBM3 is 35 ns = 70 cycles. This is the latency from issuing RD to the first data bit appearing on the DQ bus — it includes row decoder settling, sense amplification, data path routing through the DRAM stack, and I/O buffers. High CL is the price of the dense stacking in HBM3.</p></details>
+  <details><summary>What does rd_valid actually signal in the controller?</summary><p><code>rd_valid</code> is asserted for one cycle when the CL countdown reaches zero. It tells the read data path that the DQ bus now carries valid data from the DRAM — this cycle's DQ sample should be captured into the read FIFO. It is a single-cycle pulse, not a level signal.</p></details>
+  <details><summary>Can this module handle back-to-back reads on the same row?</summary><p>Yes. After a RD the FSM returns to S_ACTIVE. If the scheduler immediately issues another <code>cmd_rd</code>, the FSM transitions back to S_READING and starts a new CL countdown. The DRAM row stays open (tRAS timer continues) allowing burst reads with no precharge between them — this is the open-page policy benefit.</p></details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a href="/hbm3-controller/" class="nav-pill">← Hub: HBM3 Roadmap</a>
+  <a href="/hbm3-controller/bank-fsm/" class="nav-pill">Module 2: Bank &amp; BG FSM →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p style="margin-bottom:.4rem">By <strong style="color:#94a3b8">EcrioniX</strong> · Updated June 2026 · HBM3 Controller Series · Phase 1 · Module 1</p>
+  <p>© 2026 EcrioniX · <a href="/hbm3-controller/">HBM3 Hub</a> · <a href="/courses/">All Courses</a> · <a href="/lab/">RISC-V Lab</a></p>
+</footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);
+  });
+}
+</script>
+</body>
+</html>
