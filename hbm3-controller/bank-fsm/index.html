@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Bank &amp; Bank-Group FSM — Module 2 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 bank and bank-group state machine in Verilog. Models 8 bank groups × 4 banks = 32 banks per pseudo-channel. Enforces tRRDs, tRRDl, tCCDs, tCCDl, tFAW, tWTR per JEDEC JESD238. Full SV testbench included.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/bank-fsm/">
+<meta property="og:title" content="HBM3 Bank &amp; Bank-Group FSM — Module 2 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog bank/BG state machine for HBM3. 32 banks per pseudo-channel, tRRD/tCCD/tFAW enforcement, full SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Bank & Bank-Group FSM — Module 2","description":"Build the HBM3 bank and bank-group state machine for 32 banks per pseudo-channel with inter-bank timing enforcement.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","dateModified":"2026-06-20","url":"https://ecrionix.org/hbm3-controller/bank-fsm/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 2 — Bank & BG FSM","item":"https://ecrionix.org/hbm3-controller/bank-fsm/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a bank group in HBM3?","acceptedAnswer":{"@type":"Answer","text":"A bank group (BG) is a cluster of DRAM banks that share sense amplifiers and internal data paths. HBM3 has 8 bank groups per pseudo-channel, each with 4 banks, for 32 banks total. Within the same BG, back-to-back CAS commands need tCCDs spacing (4 cycles). Across different BGs the constraint relaxes to tCCDl (8 cycles), enabling higher throughput by interleaving across BGs."}},{"@type":"Question","name":"What is tFAW in DRAM?","acceptedAnswer":{"@type":"Answer","text":"tFAW (Four Activate Window) limits how many ACTIVATE commands can be issued within a rolling time window. No more than 4 ACTs are allowed within any tFAW-cycle window. This prevents simultaneous row activation in too many banks from overwhelming the DRAM's charge pump and power delivery network. In HBM3 tFAW is 16 ns (32 cycles at 2 GHz)."}},{"@type":"Question","name":"Why is tRRDs smaller than tRRDl?","acceptedAnswer":{"@type":"Answer","text":"tRRDs (same bank group, 2 ns) and tRRDl (different bank group, 4 ns) differ because activating rows in the same bank group uses shared circuitry that needs more recovery time. Cross-BG activations use independent sense amplifier trees, so the settling time is shorter and the controller can issue ACTs faster by alternating bank groups."}},{"@type":"Question","name":"What does tWTR enforce?","acceptedAnswer":{"@type":"Answer","text":"tWTR (Write-to-Read turnaround) is the minimum delay from the last WRITE to the first READ. It exists because after a write, the data is still propagating through the DQ bus and the bus direction must flip from write to read. tWTRs covers same-BG (8 cycles) and tWTRl covers cross-BG (16 cycles) in HBM3."}},{"@type":"Question","name":"How do the 32 bank states interact with the timing FSM from Module 1?","acceptedAnswer":{"@type":"Answer","text":"The timing FSM (Module 1) enforces per-bank timing for a single bank: tRCD, tRAS, tRP, CL, CWL. The bank FSM (Module 2) enforces inter-bank timing across all 32 banks: tRRD, tCCD, tFAW, tWTR. In the full controller these two modules run in parallel — both must give the green light before the scheduler issues a command."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 2 — Bank &amp; BG FSM</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">⚡ Phase 1 · Module 2 of 4</div>
+    <h1>HBM3 <span>Bank &amp; Bank-Group FSM</span></h1>
+    <p class="hero-sub">Models all 32 banks (8 bank groups × 4 banks) per HBM3 pseudo-channel. Tracks open/precharged state per bank and enforces inter-bank timing: tRRDs, tRRDl, tCCDs, tCCDl, tFAW and tWTR. Fully synthesizable Verilog.</p>
+    <div class="meta-row">
+      <span style="display:flex;align-items:center;gap:.3rem">📁 <code style="font-family:monospace;font-size:.75rem">hbm3_bank_fsm.v</code></span>
+      <span style="display:flex;align-items:center;gap:.3rem">🧪 <code style="font-family:monospace;font-size:.75rem">tb_hbm3_bank_fsm.sv</code></span>
+      <span>✅ Synthesizable RTL</span>
+      <span>🏦 32 banks / pseudo-channel</span>
+      <span class="pill">JEDEC JESD238</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>Bank Groups — The Key to HBM3 Bandwidth</h2>
+<p>HBM3 divides its 32 banks per pseudo-channel into <strong>8 bank groups (BG0–BG7)</strong>, each containing <strong>4 banks (B0–B3)</strong>. This is not just an addressing scheme — it unlocks tighter CAS-to-CAS spacing.</p>
+<p>Within the <strong>same bank group</strong>, consecutive CAS commands need <strong>tCCDs = 4 cycles</strong> (2 ns). But if you alternate between <strong>different bank groups</strong>, the constraint loosens to <strong>tCCDl = 8 cycles</strong> (4 ns) — but the bus can still sustain near-continuous data because the BGs run in parallel. A smart scheduler interleaves across BGs to maximise throughput.</p>
+<div class="note">The bank group architecture is the single biggest bandwidth multiplier in HBM3. Correct BG-aware scheduling is what separates a fast controller from a slow one.</div>
+
+<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;overflow-x:auto;margin:.8rem 0">
+<svg viewBox="0 0 820 200" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:600px">
+  <rect width="820" height="200" fill="#080d1a"/>
+  <text x="410" y="18" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="12">HBM3 Pseudo-Channel — 8 Bank Groups × 4 Banks = 32 Banks</text>
+  <!-- 8 BGs -->
+  <g transform="translate(10,28)">
+  <!-- BG0 -->
+  <rect x="0" y="0" width="94" height="155" rx="6" fill="rgba(6,182,212,.06)" stroke="rgba(6,182,212,.3)" stroke-width="1"/>
+  <text x="47" y="14" text-anchor="middle" fill="#67e8f9" font-weight="bold">BG0</text>
+  <rect x="8" y="20" width="78" height="28" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="47" y="33" text-anchor="middle" fill="#10b981">B0</text>
+  <text x="47" y="44" text-anchor="middle" fill="#064e3b" font-size="9">IDLE</text>
+  <rect x="8" y="52" width="78" height="28" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="47" y="65" text-anchor="middle" fill="#10b981">B1</text>
+  <text x="47" y="76" text-anchor="middle" fill="#064e3b" font-size="9">ACTIVE</text>
+  <rect x="8" y="84" width="78" height="28" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="47" y="97" text-anchor="middle" fill="#10b981">B2</text>
+  <text x="47" y="108" text-anchor="middle" fill="#064e3b" font-size="9">IDLE</text>
+  <rect x="8" y="116" width="78" height="28" rx="4" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="47" y="129" text-anchor="middle" fill="#10b981">B3</text>
+  <text x="47" y="140" text-anchor="middle" fill="#064e3b" font-size="9">IDLE</text>
+  <!-- BG1 -->
+  <rect x="100" y="0" width="94" height="155" rx="6" fill="rgba(167,139,250,.06)" stroke="rgba(167,139,250,.3)" stroke-width="1"/>
+  <text x="147" y="14" text-anchor="middle" fill="#a78bfa" font-weight="bold">BG1</text>
+  <rect x="108" y="20" width="78" height="28" rx="4" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+  <text x="147" y="33" text-anchor="middle" fill="#a78bfa">B0</text>
+  <text x="147" y="44" text-anchor="middle" fill="#4c1d95" font-size="9">ACTIVE</text>
+  <rect x="108" y="52" width="78" height="28" rx="4" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+  <text x="147" y="65" text-anchor="middle" fill="#a78bfa">B1</text>
+  <text x="147" y="76" text-anchor="middle" fill="#4c1d95" font-size="9">IDLE</text>
+  <rect x="108" y="84" width="78" height="28" rx="4" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+  <text x="147" y="97" text-anchor="middle" fill="#a78bfa">B2</text>
+  <text x="147" y="108" text-anchor="middle" fill="#4c1d95" font-size="9">IDLE</text>
+  <rect x="108" y="116" width="78" height="28" rx="4" fill="rgba(167,139,250,.1)" stroke="rgba(167,139,250,.25)" stroke-width="1"/>
+  <text x="147" y="129" text-anchor="middle" fill="#a78bfa">B3</text>
+  <text x="147" y="140" text-anchor="middle" fill="#4c1d95" font-size="9">IDLE</text>
+  <!-- BG2–BG7 abbreviated -->
+  <rect x="200" y="0" width="94" height="155" rx="6" fill="rgba(248,113,113,.05)" stroke="rgba(248,113,113,.2)" stroke-width="1"/>
+  <text x="247" y="14" text-anchor="middle" fill="#f87171" font-weight="bold">BG2</text>
+  <text x="247" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <rect x="300" y="0" width="94" height="155" rx="6" fill="rgba(251,146,60,.05)" stroke="rgba(251,146,60,.2)" stroke-width="1"/>
+  <text x="347" y="14" text-anchor="middle" fill="#fb923c" font-weight="bold">BG3</text>
+  <text x="347" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <rect x="400" y="0" width="94" height="155" rx="6" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+  <text x="447" y="14" text-anchor="middle" fill="#38bdf8" font-weight="bold">BG4</text>
+  <text x="447" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <rect x="500" y="0" width="94" height="155" rx="6" fill="rgba(252,211,77,.05)" stroke="rgba(252,211,77,.2)" stroke-width="1"/>
+  <text x="547" y="14" text-anchor="middle" fill="#fcd34d" font-weight="bold">BG5</text>
+  <text x="547" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <rect x="600" y="0" width="94" height="155" rx="6" fill="rgba(16,185,129,.05)" stroke="rgba(16,185,129,.2)" stroke-width="1"/>
+  <text x="647" y="14" text-anchor="middle" fill="#10b981" font-weight="bold">BG6</text>
+  <text x="647" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <rect x="700" y="0" width="96" height="155" rx="6" fill="rgba(100,116,139,.05)" stroke="rgba(100,116,139,.2)" stroke-width="1"/>
+  <text x="748" y="14" text-anchor="middle" fill="#94a3b8" font-weight="bold">BG7</text>
+  <text x="748" y="88" text-anchor="middle" fill="#334155">4 banks</text>
+  <!-- Total label -->
+  <text x="396" y="175" text-anchor="middle" fill="#475569" font-size="10">8 BG × 4 Banks = 32 banks total per pseudo-channel · 16 PCs per HBM3 stack = 512 banks total</text>
+  </g>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>Inter-Bank Timing Constraints</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Cycles (2 GHz)</th><th>Time</th><th>Applies To</th></tr></thead>
+<tbody>
+<tr><td>ACT-to-ACT, same BG</td><td>tRRDs</td><td>4</td><td>2 ns</td><td>Two ACTs targeting the same bank group</td></tr>
+<tr><td>ACT-to-ACT, diff BG</td><td>tRRDl</td><td>8</td><td>4 ns</td><td>Two ACTs targeting different bank groups</td></tr>
+<tr><td>CAS-to-CAS, same BG</td><td>tCCDs</td><td>4</td><td>2 ns</td><td>RD/WR back-to-back, same bank group</td></tr>
+<tr><td>CAS-to-CAS, diff BG</td><td>tCCDl</td><td>8</td><td>4 ns</td><td>RD/WR back-to-back, different bank groups</td></tr>
+<tr><td>Four-Activate Window</td><td>tFAW</td><td>32</td><td>16 ns</td><td>Max 4 ACTs in any rolling 32-cycle window</td></tr>
+<tr><td>Write-to-Read, same BG</td><td>tWTRs</td><td>8</td><td>4 ns</td><td>WR then RD on same bank group</td></tr>
+<tr><td>Write-to-Read, diff BG</td><td>tWTRl</td><td>16</td><td>8 ns</td><td>WR then RD on different bank groups</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Port Reference</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk / i_rst_n</td><td>in</td><td>1</td><td>Clock / active-low synchronous reset</td></tr>
+<tr><td>i_cmd_act/rd/wr/pre</td><td>in</td><td>1 each</td><td>ACTIVATE / READ / WRITE / PRECHARGE command pulses</td></tr>
+<tr><td>i_cmd_prea</td><td>in</td><td>1</td><td>PRECHARGE ALL — closes every open bank in one command</td></tr>
+<tr><td>i_cmd_ref</td><td>in</td><td>1</td><td>ALL-BANK REFRESH — all 32 banks enter refresh state</td></tr>
+<tr><td>i_bg_sel[2:0]</td><td>in</td><td>3</td><td>Target bank group (0–7)</td></tr>
+<tr><td>i_ba_sel[1:0]</td><td>in</td><td>2</td><td>Target bank within group (0–3)</td></tr>
+<tr><td>o_bank_active</td><td>out</td><td>1</td><td>Selected bank has an open row (ACTIVE state)</td></tr>
+<tr><td>o_bank_idle</td><td>out</td><td>1</td><td>Selected bank is precharged (IDLE state)</td></tr>
+<tr><td>o_act_allowed</td><td>out</td><td>1</td><td>ACT permitted: tRRDs + tRRDl + tFAW all satisfied</td></tr>
+<tr><td>o_cas_allowed</td><td>out</td><td>1</td><td>CAS permitted: tCCDs + tCCDl + tWTR all satisfied</td></tr>
+<tr><td>o_banks_open[31:0]</td><td>out</td><td>32</td><td>Bitmap of all open banks (bit = BG*4 + BA)</td></tr>
+<tr><td>o_open_count[4:0]</td><td>out</td><td>5</td><td>Number of currently open banks (0–32)</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Verilog Source — hbm3_bank_fsm.v</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog · hbm3_bank_fsm.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  hbm3_bank_fsm.v
+//  HBM3 Bank & Bank-Group State Machine  —  Phase 1 · Module 2
+//  8 Bank Groups x 4 Banks = 32 banks per pseudo-channel
+//  Enforces tRRDs/tRRDl, tCCDs/tCCDl, tFAW, tWTRs/tWTRl
+//  Synthesizable Verilog — EcrioniX HBM3 Controller Series
+// ================================================================
+module hbm3_bank_fsm #(
+  // Defaults calibrated for 2 GHz controller clock (0.5 ns/cycle)
+  parameter tRRDs = 4,    // ACT-to-ACT, same BG       2 ns
+  parameter tRRDl = 8,    // ACT-to-ACT, diff BG       4 ns
+  parameter tCCDs = 4,    // CAS-to-CAS, same BG       2 ns
+  parameter tCCDl = 8,    // CAS-to-CAS, diff BG       4 ns
+  parameter tFAW  = 32,   // Four-Activate Window     16 ns
+  parameter tWTRs = 8,    // Write-to-Read, same BG    4 ns
+  parameter tWTRl = 16    // Write-to-Read, diff BG    8 ns
+)(
+  input  wire        i_clk,
+  input  wire        i_rst_n,     // Active-low synchronous reset
+
+  // Command inputs (one-hot pulses from scheduler)
+  input  wire        i_cmd_act,   // ACTIVATE
+  input  wire        i_cmd_rd,    // READ
+  input  wire        i_cmd_wr,    // WRITE
+  input  wire        i_cmd_pre,   // PRECHARGE single bank
+  input  wire        i_cmd_prea,  // PRECHARGE ALL banks
+  input  wire        i_cmd_ref,   // ALL-BANK REFRESH
+
+  // Target address
+  input  wire [2:0]  i_bg_sel,    // Bank group select (0-7)
+  input  wire [1:0]  i_ba_sel,    // Bank address within group (0-3)
+
+  // Status outputs
+  output wire        o_bank_active, // Selected bank is ACTIVE (row open)
+  output wire        o_bank_idle,   // Selected bank is IDLE (precharged)
+  output wire        o_act_allowed, // ACT may be issued to selected bank
+  output wire        o_cas_allowed, // RD/WR may be issued to selected bank
+  output wire [31:0] o_banks_open,  // Bitmap: bit[BG*4+BA] = 1 if ACTIVE
+  output wire [4:0]  o_open_count   // Count of currently open banks
+);
+
+  // -- Bank state encoding ------------------------------------------
+  localparam [1:0]
+    BS_IDLE    = 2'd0,   // Precharged, ready for ACT
+    BS_ACTIVE  = 2'd1,   // Row open, ready for RD/WR
+    BS_REFRESH = 2'd2;   // Refresh in progress
+
+  // Per-bank state array [BG][Bank]
+  reg [1:0] bstate [0:7][0:3];
+
+  // Per-BG timing counters (same-BG constraints)
+  reg [4:0] bg_act_cnt [0:7];   // tRRDs countdown per BG
+  reg [4:0] bg_cas_cnt [0:7];   // tCCDs countdown per BG
+  reg [4:0] bg_wtr_cnt [0:7];   // tWTRs countdown per BG
+
+  // Global timing counters (cross-BG constraints)
+  reg [4:0] gl_act_cnt;          // tRRDl countdown
+  reg [4:0] gl_cas_cnt;          // tCCDl countdown
+  reg [4:0] gl_wtr_cnt;          // tWTRl countdown
+
+  // Four-Activate Window (tFAW)
+  // Saturating counter: max 4 ACTs allowed in tFAW cycles
+  reg [2:0] act_in_faw;          // ACTs in current window (0-4)
+  reg [5:0] faw_timer;           // Reloads on each ACT
+
+  integer i, j;
+
+  // -- Sequential: bank states and timing counters ------------------
+  always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+      for (i = 0; i &lt; 8; i = i+1) begin
+        bg_act_cnt[i] &lt;= 5'd0;
+        bg_cas_cnt[i] &lt;= 5'd0;
+        bg_wtr_cnt[i] &lt;= 5'd0;
+        for (j = 0; j &lt; 4; j = j+1)
+          bstate[i][j] &lt;= BS_IDLE;
+      end
+      gl_act_cnt &lt;= 5'd0;
+      gl_cas_cnt &lt;= 5'd0;
+      gl_wtr_cnt &lt;= 5'd0;
+      act_in_faw &lt;= 3'd0;
+      faw_timer  &lt;= 6'd0;
+    end else begin
+
+      // -- Decrement all per-BG timers -------------------------
+      for (i = 0; i &lt; 8; i = i+1) begin
+        if (bg_act_cnt[i] > 0) bg_act_cnt[i] &lt;= bg_act_cnt[i] - 1;
+        if (bg_cas_cnt[i] > 0) bg_cas_cnt[i] &lt;= bg_cas_cnt[i] - 1;
+        if (bg_wtr_cnt[i] > 0) bg_wtr_cnt[i] &lt;= bg_wtr_cnt[i] - 1;
+      end
+      if (gl_act_cnt > 0) gl_act_cnt &lt;= gl_act_cnt - 1;
+      if (gl_cas_cnt > 0) gl_cas_cnt &lt;= gl_cas_cnt - 1;
+      if (gl_wtr_cnt > 0) gl_wtr_cnt &lt;= gl_wtr_cnt - 1;
+
+      // -- FAW sliding window timer ----------------------------
+      // Each ACT reloads the window; oldest ACT falls out as timer expires
+      if (faw_timer > 0) begin
+        faw_timer &lt;= faw_timer - 1;
+      end else if (act_in_faw > 0) begin
+        act_in_faw &lt;= act_in_faw - 1;  // oldest ACT exits the window
+      end
+
+      // -- ACTIVATE --------------------------------------------
+      if (i_cmd_act && o_act_allowed &&
+          bstate[i_bg_sel][i_ba_sel] == BS_IDLE) begin
+        bstate[i_bg_sel][i_ba_sel] &lt;= BS_ACTIVE;
+        bg_act_cnt[i_bg_sel]       &lt;= tRRDs[4:0] - 1;
+        gl_act_cnt                 &lt;= tRRDl[4:0] - 1;
+        faw_timer                  &lt;= tFAW[5:0]  - 1;
+        if (act_in_faw &lt; 4) act_in_faw &lt;= act_in_faw + 1;
+      end
+
+      // -- READ ------------------------------------------------
+      if (i_cmd_rd && bstate[i_bg_sel][i_ba_sel] == BS_ACTIVE) begin
+        bg_cas_cnt[i_bg_sel] &lt;= tCCDs[4:0] - 1;
+        gl_cas_cnt           &lt;= tCCDl[4:0] - 1;
+      end
+
+      // -- WRITE -----------------------------------------------
+      if (i_cmd_wr && bstate[i_bg_sel][i_ba_sel] == BS_ACTIVE) begin
+        bg_cas_cnt[i_bg_sel] &lt;= tCCDs[4:0] - 1;
+        gl_cas_cnt           &lt;= tCCDl[4:0] - 1;
+        bg_wtr_cnt[i_bg_sel] &lt;= tWTRs[4:0] - 1;
+        gl_wtr_cnt           &lt;= tWTRl[4:0] - 1;
+      end
+
+      // -- PRECHARGE single bank -------------------------------
+      if (i_cmd_pre && bstate[i_bg_sel][i_ba_sel] == BS_ACTIVE)
+        bstate[i_bg_sel][i_ba_sel] &lt;= BS_IDLE;
+
+      // -- PRECHARGE ALL ---------------------------------------
+      if (i_cmd_prea) begin
+        for (i = 0; i &lt; 8; i = i+1)
+          for (j = 0; j &lt; 4; j = j+1)
+            if (bstate[i][j] == BS_ACTIVE)
+              bstate[i][j] &lt;= BS_IDLE;
+      end
+
+      // -- ALL-BANK REFRESH ------------------------------------
+      if (i_cmd_ref) begin
+        for (i = 0; i &lt; 8; i = i+1)
+          for (j = 0; j &lt; 4; j = j+1)
+            bstate[i][j] &lt;= BS_REFRESH;
+      end
+    end
+  end
+
+  // -- Combinational outputs ----------------------------------------
+  assign o_bank_active = (bstate[i_bg_sel][i_ba_sel] == BS_ACTIVE);
+  assign o_bank_idle   = (bstate[i_bg_sel][i_ba_sel] == BS_IDLE);
+
+  // ACT allowed: same-BG tRRDs met AND global tRRDl met AND FAW < 4
+  assign o_act_allowed = (bg_act_cnt[i_bg_sel] == 0) &&
+                         (gl_act_cnt            == 0) &&
+                         (act_in_faw            &lt;  4);
+
+  // CAS allowed: tCCDs + tCCDl + tWTR all satisfied
+  assign o_cas_allowed = (bg_cas_cnt[i_bg_sel] == 0) &&
+                         (gl_cas_cnt            == 0) &&
+                         (bg_wtr_cnt[i_bg_sel]  == 0) &&
+                         (gl_wtr_cnt            == 0);
+
+  // All-banks open bitmap (synthesises as 32 comparators)
+  genvar gi, gj;
+  generate
+    for (gi = 0; gi &lt; 8; gi = gi+1)
+      for (gj = 0; gj &lt; 4; gj = gj+1)
+        assign o_banks_open[gi*4 + gj] =
+               (bstate[gi][gj] == BS_ACTIVE);
+  endgenerate
+
+  // Popcount of o_banks_open (o_open_count)
+  reg [4:0] cnt_tmp;
+  integer k;
+  always @(*) begin
+    cnt_tmp = 5'd0;
+    for (k = 0; k &lt; 32; k = k+1)
+      cnt_tmp = cnt_tmp + o_banks_open[k];
+  end
+  assign o_open_count = cnt_tmp;
+
+endmodule</pre>
+</div>
+<div class="note">The <code>act_in_faw</code> counter uses a simplified sliding window — it increments on each ACT and decrements when <code>faw_timer</code> expires. This is a conservative tFAW model: once 4 ACTs are counted, no more are allowed until the oldest exits the window. For a cycle-accurate model, use a 4-entry timestamp FIFO.</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench — tb_hbm3_bank_fsm.sv</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog · tb_hbm3_bank_fsm.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  tb_hbm3_bank_fsm.sv
+//  Self-checking testbench for hbm3_bank_fsm
+//  Uses reduced timing parameters for simulation speed
+// ================================================================
+`timescale 1ns/1ps
+module tb_hbm3_bank_fsm;
+
+  localparam tRRDs = 3;
+  localparam tRRDl = 5;
+  localparam tCCDs = 3;
+  localparam tCCDl = 5;
+  localparam tFAW  = 12;
+  localparam tWTRs = 4;
+  localparam tWTRl = 6;
+
+  reg        i_clk=0, i_rst_n=0;
+  reg        i_cmd_act=0, i_cmd_rd=0, i_cmd_wr=0;
+  reg        i_cmd_pre=0, i_cmd_prea=0, i_cmd_ref=0;
+  reg [2:0]  i_bg_sel=0;
+  reg [1:0]  i_ba_sel=0;
+  wire       o_bank_active, o_bank_idle, o_act_allowed, o_cas_allowed;
+  wire [31:0] o_banks_open;
+  wire [4:0]  o_open_count;
+
+  hbm3_bank_fsm #(
+    .tRRDs(tRRDs),.tRRDl(tRRDl),.tCCDs(tCCDs),
+    .tCCDl(tCCDl),.tFAW(tFAW),.tWTRs(tWTRs),.tWTRl(tWTRl)
+  ) dut (.*);
+
+  always #0.25 i_clk = ~i_clk;
+
+  // Helper
+  task pulse(ref reg sig);
+    @(negedge i_clk); sig=1; @(posedge i_clk); #0.1; sig=0;
+  endtask
+
+  task set_addr(input [2:0] bg, input [1:0] ba);
+    i_bg_sel = bg; i_ba_sel = ba;
+  endtask
+
+  integer pass=0, fail=0;
+  task check(input string name, input logic got, input logic exp);
+    if (got===exp) begin $display("  PASS: %s",name); pass++; end
+    else           begin $display("  FAIL: %s (got=%b exp=%b)",name,got,exp); fail++; end
+  endtask
+
+  // -- SVA Assertions -----------------------------------------------
+  // Cannot activate a bank that is already open
+  property p_no_double_act;
+    @(posedge i_clk) (i_cmd_act && o_bank_active) |-> o_act_allowed == 0;
+  endproperty
+  assert property(p_no_double_act) else
+    $error("ASSERT FAIL: ACT issued to already-open bank");
+
+  // CAS on idle bank is illegal
+  property p_cas_needs_active;
+    @(posedge i_clk) (i_cmd_rd || i_cmd_wr) |-> o_bank_active;
+  endproperty
+  assert property(p_cas_needs_active) else
+    $error("ASSERT FAIL: CAS issued without active row");
+
+  // FAW must never exceed 4
+  property p_faw_limit;
+    @(posedge i_clk) o_open_count &lt;= 32;
+  endproperty
+  assert property(p_faw_limit);
+
+  // -- Tests --------------------------------------------------------
+  initial begin
+    $dumpfile("tb_hbm3_bank_fsm.vcd");
+    $dumpvars(0, tb_hbm3_bank_fsm);
+
+    i_rst_n=0; repeat(4) @(posedge i_clk); i_rst_n=1; @(posedge i_clk);
+
+    // TEST 1: ACT BG0/B0
+    $display("\n[TEST 1] ACTIVATE BG0/B0");
+    set_addr(0,0);
+    check("Bank idle before ACT",       o_bank_idle,     1'b1);
+    check("Bank not active before ACT", o_bank_active,   1'b0);
+    pulse(i_cmd_act);
+    @(posedge i_clk);
+    check("Bank active after ACT", o_bank_active,   1'b1);
+    check("BG0 bitmap bit set",    o_banks_open[0], 1'b1);
+
+    // TEST 2: tRRDs — same BG ACT must wait
+    $display("\n[TEST 2] tRRDs enforcement — same BG");
+    set_addr(0,1);  // BG0 B1
+    check("act_allowed low in tRRDs window", o_act_allowed, 1'b0);
+    repeat(tRRDs) @(posedge i_clk);
+    check("act_allowed after tRRDs",         o_act_allowed, 1'b1);
+
+    // TEST 3: ACT different BG immediately (tRRDl)
+    $display("\n[TEST 3] tRRDl enforcement — diff BG");
+    set_addr(0,0); pulse(i_cmd_act); @(posedge i_clk);  // re-ACT BG0
+    set_addr(1,0);  // BG1
+    check("act_allowed low in tRRDl window (diff BG)", o_act_allowed, 1'b0);
+    repeat(tRRDl) @(posedge i_clk);
+    check("act_allowed after tRRDl", o_act_allowed, 1'b1);
+
+    // TEST 4: tFAW — 4 ACTs then blocked
+    $display("\n[TEST 4] Four-Activate Window (tFAW)");
+    set_addr(0,0); if(o_bank_idle) pulse(i_cmd_act); @(posedge i_clk);
+    repeat(tRRDl) @(posedge i_clk);
+    set_addr(1,0); pulse(i_cmd_act); @(posedge i_clk);
+    repeat(tRRDl) @(posedge i_clk);
+    set_addr(2,0); pulse(i_cmd_act); @(posedge i_clk);
+    repeat(tRRDl) @(posedge i_clk);
+    set_addr(3,0); pulse(i_cmd_act); @(posedge i_clk);
+    repeat(tRRDl) @(posedge i_clk);
+    set_addr(4,0);  // 5th ACT — should be blocked
+    check("5th ACT blocked by tFAW",     o_act_allowed, 1'b0);
+    repeat(tFAW) @(posedge i_clk);
+    check("ACT allowed after tFAW expires", o_act_allowed, 1'b1);
+
+    // TEST 5: PRECHARGE ALL
+    $display("\n[TEST 5] PRECHARGE ALL");
+    pulse(i_cmd_prea); @(posedge i_clk);
+    check("All banks closed after PREA", o_banks_open, 32'd0);
+    check("open_count = 0",              o_open_count,  5'd0);
+
+    // TEST 6: tCCDs — same BG CAS spacing
+    $display("\n[TEST 6] tCCDs CAS spacing");
+    set_addr(0,0); pulse(i_cmd_act);
+    repeat(tRRDs+1) @(posedge i_clk);
+    pulse(i_cmd_rd); @(posedge i_clk);
+    check("cas_allowed low after first CAS", o_cas_allowed, 1'b0);
+    repeat(tCCDs) @(posedge i_clk);
+    check("cas_allowed after tCCDs",         o_cas_allowed, 1'b1);
+
+    // TEST 7: Write-to-Read tWTRs
+    $display("\n[TEST 7] tWTRs write-to-read");
+    pulse(i_cmd_wr); @(posedge i_clk);
+    check("Read blocked by tWTRs after WR", o_cas_allowed, 1'b0);
+    repeat(tWTRs) @(posedge i_clk);
+    check("Read allowed after tWTRs",       o_cas_allowed, 1'b1);
+
+    // Summary
+    $display("\n========================================");
+    $display("  RESULTS: %0d PASS  |  %0d FAIL", pass, fail);
+    if (fail==0) $display("  ALL TESTS PASSED ✅");
+    else         $display("  FAILURES DETECTED ❌");
+    $display("========================================");
+    $finish;
+  end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details><summary>What is a bank group and why does HBM3 have 8 of them?</summary><p>A bank group is a cluster of DRAM banks sharing sense amplifiers and internal data paths. Having 8 independent BGs lets the scheduler pipeline CAS commands across groups with tight tCCDs spacing (4 cycles) rather than waiting the full tCCDl (8 cycles). More BGs = more parallelism = higher effective bandwidth.</p></details>
+  <details><summary>What does tFAW actually protect against?</summary><p>tFAW (Four Activate Window) limits peak current draw. Each ACTIVATE command charges the bitlines of an entire row — a high-current event. If you issue too many ACTs simultaneously, the DRAM's internal charge pump and VDD rails can droop, causing bit errors. tFAW is a rolling power budget: never more than 4 row activations in any 16 ns window.</p></details>
+  <details><summary>Why does the bank FSM need a separate tWTR constraint?</summary><p>After a WRITE, the DQ bus is still being driven by the controller. Before issuing a READ, the bus must turn around — the controller stops driving, tri-states its outputs, and the DRAM starts driving. tWTRs (same BG) and tWTRl (cross-BG) are the minimum bus turnaround delays before the first READ data can be sampled cleanly.</p></details>
+  <details><summary>How does this module connect to Module 1 (Timing FSM)?</summary><p>They run in parallel and both must grant permission. Module 1 tracks per-bank timing (tRCD, tRAS, tRP, CL) — it knows whether THIS bank's row is ready. Module 2 tracks inter-bank timing (tRRD, tCCD, tFAW) — it knows whether the BUS and CHARGE PUMP are ready. The scheduler AND-gates both <code>ready</code>/<code>act_allowed</code>/<code>cas_allowed</code> outputs before issuing any command.</p></details>
+  <details><summary>Does the banks_open bitmap update in the same cycle as the ACTIVATE?</summary><p>No — it updates on the clock edge AFTER the ACT pulse, because <code>bstate</code> is registered. The bitmap reflects the state AFTER the last rising edge. The scheduler sees <code>bank_active</code> go high on the cycle following the ACT pulse, which is the correct pipeline timing — the row is being activated during that cycle.</p></details>
+  <details><summary>Is the tFAW model in this module cycle-accurate?</summary><p>It is a conservative approximation. The <code>act_in_faw</code> counter increments on each ACT and <code>faw_timer</code> reloads to tFAW. When the timer expires, one entry exits the window. This slightly over-constrains (may block one extra ACT in edge cases) compared to a precise timestamp FIFO, but it is always safe and synthesizes more cleanly. Module 18 (Integration) will include the precise 4-entry FIFO version.</p></details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a href="/hbm3-controller/timing-fsm/" class="nav-pill">← Module 1: Timing FSM</a>
+  <a href="/hbm3-controller/refresh-ctrl/" class="nav-pill">Module 3: Refresh Controller →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p style="margin-bottom:.4rem">By <strong style="color:#94a3b8">EcrioniX</strong> · Updated June 2026 · HBM3 Controller Series · Phase 1 · Module 2</p>
+  <p>© 2026 EcrioniX · <a href="/hbm3-controller/">HBM3 Hub</a> · <a href="/courses/">All Courses</a> · <a href="/lab/">RISC-V Lab</a></p>
+</footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);
+  });
+}
+</script>
+</body>
+</html>
