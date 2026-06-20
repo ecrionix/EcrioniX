@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 4 — Systolic Array Design: PE, Dataflow & Matrix Multiply | EcrioniX</title>
+<meta name="description" content="Day 4: Design a systolic array from scratch. Processing element (PE) architecture, weight-stationary vs output-stationary dataflow, 2×2 and 4×4 PE array in Verilog, matrix multiply data flow diagrams, and latency analysis. Foundation for connecting to RISC-V via RoCC on Day 5.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-04/">
+<meta property="og:title" content="RISC-V Accelerator Day 4 — Systolic Array Design | EcrioniX">
+<meta property="og:description" content="Systolic array PE design, weight-stationary dataflow, 4×4 matrix multiply in Verilog, latency analysis. RISC-V + Accelerator course Day 4.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 4 — Systolic Array Design","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","dateModified":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-04/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 4 — Systolic Array Design","item":"https://ecrionix.org/riscv-accelerator/day-04/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a systolic array?","acceptedAnswer":{"@type":"Answer","text":"A systolic array is a network of Processing Elements (PEs) where data flows rhythmically from one PE to the next in synchrony with a clock — like the rhythmic pumping of a heart (systole). Each PE performs a multiply-accumulate (MAC) operation and passes its inputs to adjacent PEs. Systolic arrays are ideal for matrix multiplication because the same data is reused across multiple PEs without going back to memory, dramatically reducing memory bandwidth requirements. Google's TPU and most AI accelerators use systolic arrays as their core compute engine."}},{"@type":"Question","name":"What is weight-stationary dataflow in a systolic array?","acceptedAnswer":{"@type":"Answer","text":"In weight-stationary dataflow, the weight matrix is preloaded into the PE array and stays stationary (fixed) in each PE throughout the computation. Input activations flow horizontally through the array, and partial sums accumulate vertically. Each PE holds one weight value and accumulates: acc += weight × input. This maximizes weight reuse — each weight is loaded once and used for every input row. Google's TPU uses weight-stationary dataflow. The alternative is output-stationary (each PE accumulates one output element) or input-stationary (inputs stay fixed)."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9;--cy-d:#0891b2}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.nav-links{display:flex;gap:1.4rem;list-style:none}
+.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}
+.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}
+strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.diagram{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.4rem;margin:1.8rem 0;overflow-x:auto}
+.diagram-title{font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem;text-align:center}
+.code-wrap{position:relative;margin:1.5rem 0}
+.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}
+th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}
+tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}
+.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}
+.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+.formula{background:rgba(6,182,212,.06);border:2px solid rgba(6,182,212,.18);border-radius:12px;padding:1.4rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.86rem;color:var(--cy-l);line-height:2;overflow-x:auto}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}
+footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/riscv-accelerator/">Course Index</a>
+    <a href="/riscv-accelerator/day-03/">Day 3</a>
+    <a href="/riscv-accelerator/day-05/">Day 5</a>
+    <a href="/physical-design/">Physical Design</a>
+  </div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 4 — Systolic Array Design</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 04 of 15</div>
+  <h1>Systolic Array Design<br><span class="g">PE Architecture, Dataflow & Matrix Multiply</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips">
+    <span class="chip">Processing Element (PE)</span><span class="chip">Systolic Array</span><span class="chip">Weight-Stationary</span>
+    <span class="chip">Output-Stationary</span><span class="chip">Matrix Multiply</span><span class="chip">MAC Unit</span><span class="chip">Dataflow</span>
+  </div>
+</div>
+<div class="content">
+
+<h2>What is a Systolic Array?</h2>
+<p>A <strong>systolic array</strong> is a 2D grid of simple Processing Elements (PEs) where data flows rhythmically from one PE to its neighbors on every clock edge — like blood pumped rhythmically by the heart (Greek: systole). Each PE does one thing: a multiply-accumulate (MAC) operation. The magic is that data flows <em>through</em> the array, being reused at every PE it passes, without returning to memory.</p>
+<p>Google's TPU, NVIDIA's Tensor Core, and virtually every AI inference chip uses a systolic array as its heart. Understanding this architecture is foundational for accelerator design.</p>
+
+<div class="concept">
+  <div class="concept-label">Why Systolic Arrays Win</div>
+  <p>Matrix multiply on a CPU requires loading each operand multiple times from memory. A 4×4 systolic array reuses each input element across 4 PEs before discarding it. For an N×N array: <strong>compute = N³ MACs, memory accesses = O(N²)</strong>. Arithmetic intensity = N — it grows with array size, making systolic arrays memory-bandwidth efficient.</p>
+</div>
+
+<h2>Processing Element (PE) Design</h2>
+<p>Each PE in a weight-stationary systolic array holds one weight value and computes: <code>acc += weight × input</code>. Inputs flow east (right), partial sums flow south (down).</p>
+
+<div class="diagram">
+  <div class="diagram-title">Single PE — weight-stationary</div>
+  <svg viewBox="0 0 480 200" style="width:100%;max-width:480px;display:block;margin:0 auto" font-family="Outfit,sans-serif">
+    <defs><marker id="a" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#475569"/></marker></defs>
+    <!-- PE box -->
+    <rect x="160" y="60" width="160" height="100" rx="10" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.4)" stroke-width="2"/>
+    <text x="240" y="100" fill="#67e8f9" font-size="13" font-weight="800" text-anchor="middle">PE</text>
+    <text x="240" y="118" fill="#94a3b8" font-size="10" text-anchor="middle">acc += w × in</text>
+    <text x="240" y="134" fill="#64748b" font-size="9" text-anchor="middle">w stored in reg</text>
+    <!-- in_left -->
+    <line x1="30" y1="110" x2="158" y2="110" stroke="#06b6d4" stroke-width="2" marker-end="url(#a)"/>
+    <text x="15" y="114" fill="#67e8f9" font-size="10" font-weight="700">in</text>
+    <!-- out_right -->
+    <line x1="320" y1="110" x2="445" y2="110" stroke="#06b6d4" stroke-width="2" marker-end="url(#a)"/>
+    <text x="452" y="114" fill="#67e8f9" font-size="10" font-weight="700">in_out</text>
+    <!-- psum_in top -->
+    <line x1="240" y1="20" x2="240" y2="58" stroke="#a78bfa" stroke-width="2" marker-end="url(#a)"/>
+    <text x="248" y="15" fill="#c4b5fd" font-size="10">psum_in</text>
+    <!-- psum_out bottom -->
+    <line x1="240" y1="160" x2="240" y2="195" stroke="#a78bfa" stroke-width="2" marker-end="url(#a)"/>
+    <text x="248" y="205" fill="#c4b5fd" font-size="10">psum_out</text>
+    <!-- weight label -->
+    <text x="380" y="68" fill="#fcd34d" font-size="9">w loaded at</text>
+    <text x="380" y="80" fill="#fcd34d" font-size="9">startup</text>
+  </svg>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — Processing Element (PE), weight-stationary</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">module</span> <span class="sig">pe</span> #(<span class="kw">parameter</span> <span class="num">W</span>=<span class="num">8</span>, <span class="kw">parameter</span> <span class="num">ACC</span>=<span class="num">32</span>) (
+  <span class="kw">input</span>               <span class="sig">clk</span>, <span class="sig">rst</span>, <span class="sig">load_w</span>,
+  <span class="kw">input</span>  [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]      <span class="sig">w_in</span>,      <span class="cm">// weight to load</span>
+  <span class="kw">input</span>  [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]      <span class="sig">a_in</span>,      <span class="cm">// activation flowing east</span>
+  <span class="kw">input</span>  [<span class="num">ACC</span>-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">psum_in</span>,   <span class="cm">// partial sum flowing south</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]  <span class="sig">a_out</span>,     <span class="cm">// activation passed east</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">ACC</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">psum_out</span>  <span class="cm">// accumulated sum passed south</span>
+);
+  <span class="kw">reg</span> [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">weight</span>;
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk</span>) <span class="kw">begin</span>
+    <span class="kw">if</span> (<span class="sig">rst</span>) <span class="kw">begin</span>
+      <span class="sig">weight</span> <= <span class="num">0</span>; <span class="sig">a_out</span> <= <span class="num">0</span>; <span class="sig">psum_out</span> <= <span class="num">0</span>;
+    <span class="kw">end else begin</span>
+      <span class="kw">if</span> (<span class="sig">load_w</span>) <span class="sig">weight</span> <= <span class="sig">w_in</span>;   <span class="cm">// preload weight</span>
+      <span class="sig">a_out</span>    <= <span class="sig">a_in</span>;               <span class="cm">// pass activation east</span>
+      <span class="sig">psum_out</span> <= <span class="sig">psum_in</span> + (<span class="sig">weight</span> * <span class="sig">a_in</span>);  <span class="cm">// MAC + pass south</span>
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>2×2 Systolic Array</h2>
+<div class="code-wrap">
+  <div class="code-label">Verilog — 2×2 systolic array for matrix multiply</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// Computes C = A × B where A,B are 2×2 matrices</span>
+<span class="cm">// Row activations flow east; partial sums flow south</span>
+<span class="kw">module</span> <span class="sig">systolic_2x2</span> #(<span class="kw">parameter</span> <span class="num">W</span>=<span class="num">8</span>, <span class="kw">parameter</span> <span class="num">ACC</span>=<span class="num">32</span>) (
+  <span class="kw">input</span>              <span class="sig">clk</span>, <span class="sig">rst</span>, <span class="sig">load_w</span>,
+  <span class="kw">input</span>  [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]   <span class="sig">w</span>[<span class="num">0</span>:<span class="num">1</span>][<span class="num">0</span>:<span class="num">1</span>],  <span class="cm">// weight matrix B</span>
+  <span class="kw">input</span>  [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]   <span class="sig">a_row0</span>[<span class="num">0</span>:<span class="num">1</span>],    <span class="cm">// row 0 of A</span>
+  <span class="kw">input</span>  [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]   <span class="sig">a_row1</span>[<span class="num">0</span>:<span class="num">1</span>],    <span class="cm">// row 1 of A</span>
+  <span class="kw">output</span> [<span class="num">ACC</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">C</span>[<span class="num">0</span>:<span class="num">1</span>][<span class="num">0</span>:<span class="num">1</span>]     <span class="cm">// result matrix C</span>
+);
+  <span class="cm">// Inter-PE wires</span>
+  <span class="kw">wire</span> [<span class="num">W</span>-<span class="num">1</span>:<span class="num">0</span>]   <span class="sig">a_mid</span>[<span class="num">0</span>:<span class="num">1</span>];   <span class="cm">// activation between col0→col1</span>
+  <span class="kw">wire</span> [<span class="num">ACC</span>-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">p_mid</span>[<span class="num">0</span>:<span class="num">1</span>];   <span class="cm">// psum between row0→row1</span>
+
+  <span class="cm">// Row 0</span>
+  pe #(<span class="num">W</span>,<span class="num">ACC</span>) pe00 (.clk(<span class="sig">clk</span>),.rst(<span class="sig">rst</span>),.load_w(<span class="sig">load_w</span>),
+    .w_in(<span class="sig">w</span>[<span class="num">0</span>][<span class="num">0</span>]),.a_in(<span class="sig">a_row0</span>[<span class="num">0</span>]),.psum_in(<span class="num">0</span>),
+    .a_out(<span class="sig">a_mid</span>[<span class="num">0</span>]),.psum_out(<span class="sig">p_mid</span>[<span class="num">0</span>]));
+
+  pe #(<span class="num">W</span>,<span class="num">ACC</span>) pe01 (.clk(<span class="sig">clk</span>),.rst(<span class="sig">rst</span>),.load_w(<span class="sig">load_w</span>),
+    .w_in(<span class="sig">w</span>[<span class="num">0</span>][<span class="num">1</span>]),.a_in(<span class="sig">a_mid</span>[<span class="num">0</span>]),.psum_in(<span class="num">0</span>),
+    .a_out(),.psum_out(<span class="sig">p_mid</span>[<span class="num">1</span>]));
+
+  <span class="cm">// Row 1</span>
+  pe #(<span class="num">W</span>,<span class="num">ACC</span>) pe10 (.clk(<span class="sig">clk</span>),.rst(<span class="sig">rst</span>),.load_w(<span class="sig">load_w</span>),
+    .w_in(<span class="sig">w</span>[<span class="num">1</span>][<span class="num">0</span>]),.a_in(<span class="sig">a_row1</span>[<span class="num">0</span>]),.psum_in(<span class="sig">p_mid</span>[<span class="num">0</span>]),
+    .a_out(<span class="sig">a_mid</span>[<span class="num">1</span>]),.psum_out(<span class="sig">C</span>[<span class="num">0</span>][<span class="num">0</span>]));
+
+  pe #(<span class="num">W</span>,<span class="num">ACC</span>) pe11 (.clk(<span class="sig">clk</span>),.rst(<span class="sig">rst</span>),.load_w(<span class="sig">load_w</span>),
+    .w_in(<span class="sig">w</span>[<span class="num">1</span>][<span class="num">1</span>]),.a_in(<span class="sig">a_mid</span>[<span class="num">1</span>]),.psum_in(<span class="sig">p_mid</span>[<span class="num">1</span>]),
+    .a_out(),.psum_out(<span class="sig">C</span>[<span class="num">0</span>][<span class="num">1</span>]));
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>Dataflow Comparison</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Dataflow</th><th>What's Stationary</th><th>Data Flowing</th><th>Used In</th><th>Best For</th></tr></thead>
+<tbody>
+<tr><td><strong>Weight-Stationary</strong></td><td>Weights (B matrix)</td><td>Activations east, psums south</td><td>Google TPU v1</td><td>Inference — weights loaded once</td></tr>
+<tr><td><strong>Output-Stationary</strong></td><td>Partial sums (C matrix)</td><td>Both A and B flow in</td><td>NVDLA, many edge AI chips</td><td>When accumulator bandwidth is limited</td></tr>
+<tr><td><strong>Input-Stationary</strong></td><td>Input activations (A matrix)</td><td>Weights and psums flow</td><td>Less common</td><td>Streaming inference</td></tr>
+<tr><td><strong>No Local Reuse</strong></td><td>Nothing</td><td>All operands stream in</td><td>GPUs (register file)</td><td>Flexible but memory-bandwidth hungry</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Latency & Throughput Analysis</h2>
+<div class="formula">
+For an N×N systolic array multiplying N×N matrices:
+  Fill latency    = 2N - 1 cycles   (time to fill the pipeline)
+  Compute cycles  = N cycles         (once filled, N outputs/cycle)
+  Total latency   = 3N - 1 cycles   (fill + drain)
+
+Throughput (steady state) = N² MACs / cycle
+
+Example: 128×128 array at 1 GHz:
+  Throughput = 128² × 2 = 32,768 GFlops = 32.7 TFlops
+  (×2 for FMA = multiply + add counted as 2 flops)
+
+Compare to: CPU core ≈ 0.05 TFlops, GPU ≈ 1000 TFlops (due to 1000s of cores)
+</div>
+
+<h2>Day 4 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>What is a systolic array and why is it efficient for matrix multiply?</div><div class="qa-a">A systolic array is a 2D grid of Processing Elements (PEs) where data flows rhythmically from PE to PE each clock cycle. Each PE does a MAC (multiply-accumulate) and passes its inputs to adjacent PEs. For N×N matrix multiply, a systolic array performs N³ MACs with only O(N²) memory accesses — arithmetic intensity scales as N. This means as the array size grows, the ratio of compute to memory bandwidth improves, making systolic arrays highly efficient for the compute-bound workloads found in neural network inference and training.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>Explain weight-stationary dataflow in a systolic array.</div><div class="qa-a">In weight-stationary dataflow, the weight matrix B is preloaded into the PE array — each PE holds exactly one weight element that remains fixed throughout the computation. Input activations (from matrix A) flow horizontally (east) through the array row by row. Partial sums accumulate vertically (south) as the activations pass through each PE. The key advantage: each weight value is loaded once into its PE and reused for every input vector, maximizing weight reuse and minimising weight memory bandwidth. Google's TPU v1 uses weight-stationary dataflow.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is the fill latency of an N×N systolic array?</div><div class="qa-a">The fill latency is 2N−1 cycles. The first input element reaches PE[0][0] at cycle 1, but PE[N-1][N-1] (bottom-right) only receives its first activation at cycle 2N−1 because it takes N−1 cycles for data to traverse N PEs horizontally and N−1 cycles to traverse vertically, staggered. After the fill phase (2N−1 cycles), the array is in steady state producing N outputs per cycle. Total latency for one matrix multiply is 3N−1 cycles (fill + N compute + drain). This pipeline latency is a one-time cost amortized over the computation.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What is the difference between a MAC unit and a PE in a systolic array?</div><div class="qa-a">A MAC (Multiply-Accumulate) unit is a pure arithmetic circuit: output = A × B + C. A PE (Processing Element) in a systolic array wraps a MAC unit with registers for pipelining and local state storage (the stationary weight). The PE also includes input/output registers to pass activations east and partial sums south with correct timing alignment. A PE is the complete building block of a systolic array; a MAC is just the arithmetic core inside it.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>How does a systolic array handle matrices larger than the array size?</div><div class="qa-a">Larger matrices are processed by tiling. The matrix is divided into tiles matching the array dimensions (N×N). The accelerator loads one tile of B into the array as stationary weights, then streams multiple tiles of A through it, accumulating partial sums. After processing all A tiles for a B tile, the partial sums are written to memory and the next B tile is loaded. The software (or DMA controller) manages the tiling schedule. Tiling adds software complexity but allows any matrix size to be processed on a fixed-size array.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>Why do AI accelerators use INT8 instead of FP32 in systolic arrays?</div><div class="qa-a">INT8 (8-bit integer) MACs are 4× smaller in silicon area than FP32 MACs, consume significantly less power, and can achieve 4× higher throughput on the same die area. Neural network inference is tolerant of quantisation noise — models can be quantised from FP32 training weights to INT8 with less than 1% accuracy loss when done carefully. For a fixed die area, an INT8 systolic array fits 16× more PEs than FP32 (4× per dimension in a 2D array), enabling 16× higher throughput. This is why TPUs, Apple Neural Engine, and most edge AI chips use INT8 or INT4 for inference.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-03/" class="day-nav-btn">← Day 3: RoCC Interface</a>
+  <a href="/riscv-accelerator/day-05/" class="day-nav-btn">Day 5: RoCC + Systolic →</a>
+</div>
+</div>
+<footer>
+  <p>© 2026 EcrioniX · RISC-V + Accelerator Day 4 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p>
+  <div style="margin-top:.9rem;font-size:.78rem;line-height:1.9"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div>
+</footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body>
+</html>

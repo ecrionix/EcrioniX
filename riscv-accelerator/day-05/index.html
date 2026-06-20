@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 5 — Systolic Array via RoCC: Full Integration | EcrioniX</title>
+<meta name="description" content="Day 5: Connect the Day 4 systolic array to the RISC-V RoCC interface. RoCC wrapper Verilog, cmd/resp handshake for matrix multiply, DMA via mem channel, Chipyard LazyRoCC Scala integration, and C driver. Full end-to-end systolic matmul accelerator.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-05/">
+<meta property="og:title" content="RISC-V Accelerator Day 5 — Systolic Array via RoCC | EcrioniX">
+<meta property="og:description" content="Full RoCC integration for the Day 4 systolic array. Wrapper Verilog, cmd/resp handshake, Chipyard Scala, C driver. Day 5 of RISC-V + Accelerator course.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 5 — Systolic Array via RoCC: Full Integration","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","dateModified":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-05/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 5 — Systolic Array via RoCC","item":"https://ecrionix.org/riscv-accelerator/day-05/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How does a systolic array connect to RISC-V via RoCC?","acceptedAnswer":{"@type":"Answer","text":"The systolic array is wrapped in a RoCC accelerator module. The host RISC-V core sends commands via the RoCC cmd channel (cmd.valid/ready + cmd.bits.inst/rs1/rs2). The cmd carries: funct7 to select operation (load_weight, run_matmul, read_result), rs1 as memory address, rs2 as matrix size. The RoCC wrapper decodes the command, controls the systolic array FSM (load weights → stream activations → collect results), and sends the result back via the resp channel (resp.valid/ready + resp.bits.rd/data). The mem channel handles DMA-style memory access for streaming large matrices."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9;--cy-d:#0891b2}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}.sc{color:#fb923c}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/riscv-accelerator/">Course Index</a><a href="/riscv-accelerator/day-04/">Day 4</a><a href="/riscv-accelerator/day-06/">Day 6</a><a href="/physical-design/">Physical Design</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 5 — Systolic Array via RoCC</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 05 of 15</div>
+  <h1>Systolic Array via RoCC<br><span class="g">Full End-to-End Integration</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~50 min read</div>
+  <div class="hero-chips">
+    <span class="chip">RoCC Wrapper</span><span class="chip">FSM Controller</span><span class="chip">Weight Load</span>
+    <span class="chip">Run MatMul</span><span class="chip">Chipyard Scala</span><span class="chip">C Driver</span><span class="chip">funct7 decode</span>
+  </div>
+</div>
+<div class="content">
+
+<h2>Connecting Systolic Array to RoCC</h2>
+<p>In Day 4 we built a standalone 2×2 systolic array. Now we wrap it with a RoCC interface so the RISC-V CPU can control it using custom instructions. The key design decisions: <strong>what does each funct7 command do, how does the FSM sequence load→compute→respond, and how does the C driver invoke it?</strong></p>
+
+<div class="concept">
+  <div class="concept-label">Integration Architecture</div>
+  <p>CPU issues <code>.insn r 0x0B, funct3, funct7, rd, rs1, rs2</code> → RoCC cmd channel → Controller FSM decodes funct7 → drives systolic array phases → sends result back via resp channel. Memory access (weight/activation DMA) uses RoCC mem channel.</p>
+</div>
+
+<h2>Command Encoding</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>funct7</th><th>Operation</th><th>rs1</th><th>rs2</th><th>Response</th></tr></thead>
+<tbody>
+<tr><td><code>0x00</code></td><td>LOAD_WEIGHT</td><td>Weight matrix base addr</td><td>Matrix size N</td><td>ACK when done</td></tr>
+<tr><td><code>0x01</code></td><td>RUN_MATMUL</td><td>Input matrix A addr</td><td>Output matrix C addr</td><td>Cycle count</td></tr>
+<tr><td><code>0x02</code></td><td>READ_STATUS</td><td>—</td><td>—</td><td>busy/idle status</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — RoCC wrapper FSM for systolic array</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">module</span> <span class="sig">rocc_systolic</span> (
+  <span class="kw">input</span>         <span class="sig">clk</span>, <span class="sig">rst</span>,
+  <span class="cm">// RoCC cmd channel</span>
+  <span class="kw">input</span>         <span class="sig">cmd_valid</span>,
+  <span class="kw">output</span>        <span class="sig">cmd_ready</span>,
+  <span class="kw">input</span>  [<span class="num">6</span>:<span class="num">0</span>] <span class="sig">funct7</span>,
+  <span class="kw">input</span>  [<span class="num">4</span>:<span class="num">0</span>] <span class="sig">rd</span>,
+  <span class="kw">input</span>  [<span class="num">63</span>:<span class="num">0</span>] <span class="sig">rs1</span>, <span class="sig">rs2</span>,
+  <span class="cm">// RoCC resp channel</span>
+  <span class="kw">output</span> <span class="kw">reg</span>    <span class="sig">resp_valid</span>,
+  <span class="kw">input</span>         <span class="sig">resp_ready</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">4</span>:<span class="num">0</span>]  <span class="sig">resp_rd</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">63</span>:<span class="num">0</span>] <span class="sig">resp_data</span>,
+  <span class="cm">// busy to stall CPU</span>
+  <span class="kw">output</span>        <span class="sig">busy</span>
+);
+  <span class="cm">// FSM states</span>
+  <span class="kw">localparam</span> <span class="sig">IDLE</span>        = <span class="num">3'd0</span>;
+  <span class="kw">localparam</span> <span class="sig">LOAD_W</span>     = <span class="num">3'd1</span>;  <span class="cm">// loading weights into PE array</span>
+  <span class="kw">localparam</span> <span class="sig">WAIT_LOAD</span>  = <span class="num">3'd2</span>;  <span class="cm">// waiting for DMA weight load</span>
+  <span class="kw">localparam</span> <span class="sig">RUN</span>        = <span class="num">3'd3</span>;  <span class="cm">// streaming activations, collecting output</span>
+  <span class="kw">localparam</span> <span class="sig">RESPOND</span>   = <span class="num">3'd4</span>;  <span class="cm">// sending result back</span>
+
+  <span class="kw">reg</span> [<span class="num">2</span>:<span class="num">0</span>]  <span class="sig">state</span>;
+  <span class="kw">reg</span> [<span class="num">63</span>:<span class="num">0</span>] <span class="sig">w_addr</span>, <span class="sig">a_addr</span>, <span class="sig">c_addr</span>;
+  <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">cycle_cnt</span>;
+  <span class="kw">reg</span> [<span class="num">4</span>:<span class="num">0</span>]  <span class="sig">saved_rd</span>;
+
+  <span class="kw">assign</span> <span class="sig">cmd_ready</span> = (<span class="sig">state</span> == <span class="sig">IDLE</span>);
+  <span class="kw">assign</span> <span class="sig">busy</span>      = (<span class="sig">state</span> != <span class="sig">IDLE</span>);
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk</span>) <span class="kw">begin</span>
+    <span class="kw">if</span> (<span class="sig">rst</span>) <span class="sig">state</span> <= <span class="sig">IDLE</span>;
+    <span class="kw">else case</span> (<span class="sig">state</span>)
+
+      <span class="sig">IDLE</span>: <span class="kw">if</span> (<span class="sig">cmd_valid</span>) <span class="kw">begin</span>
+        <span class="sig">saved_rd</span> <= <span class="sig">rd</span>;
+        <span class="sig">cycle_cnt</span> <= <span class="num">0</span>;
+        <span class="kw">case</span> (<span class="sig">funct7</span>)
+          <span class="num">7'h00</span>: <span class="kw">begin</span>  <span class="cm">// LOAD_WEIGHT</span>
+            <span class="sig">w_addr</span> <= <span class="sig">rs1</span>; <span class="sig">state</span> <= <span class="sig">LOAD_W</span>;
+          <span class="kw">end</span>
+          <span class="num">7'h01</span>: <span class="kw">begin</span>  <span class="cm">// RUN_MATMUL</span>
+            <span class="sig">a_addr</span> <= <span class="sig">rs1</span>; <span class="sig">c_addr</span> <= <span class="sig">rs2</span>; <span class="sig">state</span> <= <span class="sig">RUN</span>;
+          <span class="kw">end</span>
+          <span class="num">7'h02</span>: <span class="kw">begin</span>  <span class="cm">// READ_STATUS — immediate response</span>
+            <span class="sig">resp_data</span> <= <span class="num">64'd0</span>; <span class="sig">state</span> <= <span class="sig">RESPOND</span>;
+          <span class="kw">end</span>
+        <span class="kw">endcase</span>
+      <span class="kw">end</span>
+
+      <span class="sig">LOAD_W</span>:    <span class="sig">state</span> <= <span class="sig">WAIT_LOAD</span>;  <span class="cm">// initiate DMA via mem channel</span>
+      <span class="sig">WAIT_LOAD</span>: <span class="kw">if</span> (<span class="sig">dma_done</span>) <span class="sig">state</span> <= <span class="sig">RESPOND</span>;
+
+      <span class="sig">RUN</span>: <span class="kw">begin</span>
+        <span class="sig">cycle_cnt</span> <= <span class="sig">cycle_cnt</span> + <span class="num">1</span>;
+        <span class="kw">if</span> (<span class="sig">matmul_done</span>) <span class="kw">begin</span>
+          <span class="sig">resp_data</span> <= <span class="sig">cycle_cnt</span>; <span class="sig">state</span> <= <span class="sig">RESPOND</span>;
+        <span class="kw">end</span>
+      <span class="kw">end</span>
+
+      <span class="sig">RESPOND</span>: <span class="kw">begin</span>
+        <span class="sig">resp_valid</span> <= <span class="num">1</span>; <span class="sig">resp_rd</span> <= <span class="sig">saved_rd</span>;
+        <span class="kw">if</span> (<span class="sig">resp_ready</span>) <span class="kw">begin</span> <span class="sig">resp_valid</span> <= <span class="num">0</span>; <span class="sig">state</span> <= <span class="sig">IDLE</span>; <span class="kw">end</span>
+      <span class="kw">end</span>
+    <span class="kw">endcase</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>Chipyard LazyRoCC Scala Wrapper</h2>
+<div class="code-wrap">
+  <div class="code-label">Scala — Chipyard LazyRoCC integration</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// In src/main/scala/SystolicAccelerator.scala</span>
+<span class="kw">class</span> <span class="sig">SystolicAccelerator</span>(<span class="kw">implicit</span> p: Parameters)
+  <span class="kw">extends</span> LazyRoCC(
+    opcodes = OpcodeSet.custom0,   <span class="cm">// uses 0x0B opcode space</span>
+    nPTWPorts = <span class="num">0</span>
+  ) {
+  <span class="kw">override</span> <span class="kw">lazy val</span> module = <span class="kw">new</span> <span class="sig">SystolicAcceleratorImp</span>(<span class="kw">this</span>)
+}
+
+<span class="kw">class</span> <span class="sig">SystolicAcceleratorImp</span>(outer: SystolicAccelerator)
+  <span class="kw">extends</span> LazyRoCCModuleImp(outer) {
+
+  <span class="kw">val</span> <span class="sig">sys</span> = Module(<span class="kw">new</span> RoccSystolicBlackBox)
+
+  <span class="sig">sys</span>.io.clk       := clock
+  <span class="sig">sys</span>.io.rst       := reset
+  <span class="sig">sys</span>.io.cmd_valid := io.cmd.valid
+  io.cmd.ready     := <span class="sig">sys</span>.io.cmd_ready
+  <span class="sig">sys</span>.io.funct7    := io.cmd.bits.inst.funct
+  <span class="sig">sys</span>.io.rd        := io.cmd.bits.inst.rd
+  <span class="sig">sys</span>.io.rs1       := io.cmd.bits.rs1
+  <span class="sig">sys</span>.io.rs2       := io.cmd.bits.rs2
+
+  io.resp.valid       := <span class="sig">sys</span>.io.resp_valid
+  <span class="sig">sys</span>.io.resp_ready   := io.resp.ready
+  io.resp.bits.rd     := <span class="sig">sys</span>.io.resp_rd
+  io.resp.bits.data   := <span class="sig">sys</span>.io.resp_data
+  io.busy             := <span class="sig">sys</span>.io.busy
+  io.interrupt        := <span class="kw">false</span>.B
+}
+
+<span class="cm">// Config mixin</span>
+<span class="kw">class</span> <span class="sig">WithSystolicAccelerator</span> <span class="kw">extends</span> Config((site, here, up) => {
+  <span class="kw">case</span> BuildRoCC => up(BuildRoCC, site) ++ Seq(
+    (p: Parameters) => {
+      <span class="kw">val</span> acc = LazyModule(<span class="kw">new</span> SystolicAccelerator()(p))
+      acc
+    }
+  )
+})</pre>
+</div>
+
+<h2>C Driver</h2>
+<div class="code-wrap">
+  <div class="code-label">C — Host driver for systolic matrix multiply</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#include &lt;stdint.h&gt;</span>
+
+<span class="cm">// Custom instruction macros — funct7 encodes operation</span>
+<span class="pp">#define ROCC_FUNCT7_LOAD_WEIGHT  0x00</span>
+<span class="pp">#define ROCC_FUNCT7_RUN_MATMUL   0x01</span>
+<span class="pp">#define ROCC_FUNCT7_STATUS       0x02</span>
+
+<span class="pp">#define ROCC_INSN(funct7, rd, rs1, rs2) \
+  __asm__ volatile ( \
+    ".insn r 0x0B, 0, " #funct7 ", %0, %1, %2\n" \
+    : "=r"(rd) : "r"(rs1), "r"(rs2) \
+  )</span>
+
+<span class="cm">/* Load weight matrix B into systolic array PE registers */</span>
+<span class="kw">static inline</span> <span class="kw">void</span> <span class="sig">sys_load_weight</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *B, <span class="kw">int</span> N) {
+  <span class="kw">uint64_t</span> ack;
+  ROCC_INSN(<span class="num">0</span>, ack, (<span class="kw">uint64_t</span>)B, (<span class="kw">uint64_t</span>)N);
+  <span class="cm">/* blocks until weights are loaded */</span>
+}
+
+<span class="cm">/* Run matrix multiply: C = A × B (B already loaded) */</span>
+<span class="kw">static inline</span> <span class="kw">uint64_t</span> <span class="sig">sys_matmul</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *A, <span class="kw">int32_t</span> *C) {
+  <span class="kw">uint64_t</span> cycles;
+  ROCC_INSN(<span class="num">1</span>, cycles, (<span class="kw">uint64_t</span>)A, (<span class="kw">uint64_t</span>)C);
+  <span class="kw">return</span> cycles;   <span class="cm">/* returns cycle count for profiling */</span>
+}
+
+<span class="cm">/* Example: 4×4 INT8 matrix multiply */</span>
+<span class="kw">void</span> <span class="sig">example</span>() {
+  <span class="kw">int8_t</span>   A[<span class="num">4</span>][<span class="num">4</span>] = {{<span class="num">1</span>,<span class="num">2</span>,<span class="num">3</span>,<span class="num">4</span>},{<span class="num">5</span>,<span class="num">6</span>,<span class="num">7</span>,<span class="num">8</span>},{<span class="num">9</span>,<span class="num">10</span>,<span class="num">11</span>,<span class="num">12</span>},{<span class="num">13</span>,<span class="num">14</span>,<span class="num">15</span>,<span class="num">16</span>}};
+  <span class="kw">int8_t</span>   B[<span class="num">4</span>][<span class="num">4</span>] = {{<span class="num">1</span>,<span class="num">0</span>,<span class="num">0</span>,<span class="num">0</span>},{<span class="num">0</span>,<span class="num">1</span>,<span class="num">0</span>,<span class="num">0</span>},{<span class="num">0</span>,<span class="num">0</span>,<span class="num">1</span>,<span class="num">0</span>},{<span class="num">0</span>,<span class="num">0</span>,<span class="num">0</span>,<span class="num">1</span>}};  <span class="cm">// identity</span>
+  <span class="kw">int32_t</span>  C[<span class="num">4</span>][<span class="num">4</span>];
+
+  sys_load_weight((<span class="kw">int8_t</span>*)B, <span class="num">4</span>);
+  <span class="kw">uint64_t</span> cycles = sys_matmul((<span class="kw">int8_t</span>*)A, (<span class="kw">int32_t</span>*)C);
+  <span class="cm">// C should equal A (identity multiply)</span>
+  printf(<span class="pp">"MatMul done in %llu cycles\n"</span>, cycles);
+}</pre>
+</div>
+
+<h2>Day 5 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>How do you map multiple operations (load weight, run matmul, read status) to a single RoCC accelerator?</div><div class="qa-a">Use the funct7 field (7 bits) of the custom instruction to encode the operation type. The RoCC cmd includes cmd.bits.inst.funct (7 bits) — this is the primary dispatch field. The RoCC wrapper FSM reads funct7 when cmd_valid fires and enters the appropriate state. rs1/rs2 carry addresses or parameters. This gives 128 distinct operations per custom opcode space (custom-0/1/2/3), and with funct3 (3 bits) adds another 8 sub-operations for a total of 1024 distinct operations per opcode space.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>Why does the RoCC wrapper assert busy=1 during matrix multiply?</div><div class="qa-a">busy=1 stalls the RISC-V CPU pipeline — it prevents the CPU from issuing the next RoCC instruction until the current one completes. This is necessary because the systolic array takes multiple cycles to complete a matrix multiply, and if the CPU immediately issued another RoCC cmd before the current one finished, the cmd channel would receive a new command while the FSM is in the RUN state (not IDLE), and cmd_ready=0 would cause a stall anyway. busy=1 is the safer signal because it stalls the CPU at the issue stage before the command even enters the RoCC cmd channel, preventing pipeline hazards.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is the role of the LazyRoCC Diplomacy wrapper in Chipyard?</div><div class="qa-a">LazyRoCC is a Scala Diplomacy abstract class that handles the parameter negotiation and TileLink port generation for RoCC accelerators. By extending LazyRoCC and specifying OpcodeSet.custom0, the accelerator is automatically wired to the Rocket core's RoCC interface, the TileLink memory bus (for the mem channel), and the Page Table Walker (for virtual address translation if nPTWPorts > 0). The concrete implementation goes in LazyRoCCModuleImp — the Verilog RTL is typically wrapped as a BlackBox and instantiated there. The Config mixin (WithSystolicAccelerator) adds it to the chip configuration without modifying the core files.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>How does the RoCC mem channel differ from the cmd/resp channels?</div><div class="qa-a">The cmd/resp channels carry small data: a 64-bit rs1, rs2 (register values) and a 64-bit resp.data. They're designed for passing addresses, config values, or scalar results — not bulk data. The mem channel is a TileLink interface that connects directly to the L1D cache or L2, allowing the accelerator to perform load/store operations to arbitrary memory addresses. For matrix multiply, the weight matrix (potentially megabytes) must be transferred via the mem channel — the accelerator sends read requests for each row/element and buffers them into the PE array. This is effectively an in-accelerator DMA engine.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What happens if the CPU issues a RoCC instruction while busy=1?</div><div class="qa-a">When busy=1, the RISC-V CPU stalls at the instruction issue stage — the pipeline is frozen and no new instruction is dispatched to any execution unit, including the RoCC interface. This is a hard stall (the PC doesn't advance). The CPU waits until busy=0 (the accelerator returns to IDLE after sending its resp) before proceeding. This ensures ordering: the previous accelerator operation fully completes before the next begins. It is the hardware equivalent of a blocking function call. For performance, software can use poll-based status checking instead (READ_STATUS cmd) to overlap CPU work with accelerator computation.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>How would you verify the RoCC systolic accelerator in simulation?</div><div class="qa-a">Three levels: (1) <strong>Unit test</strong>: directly drive the Verilog rocc_systolic module's cmd/resp ports with a testbench — verify FSM state transitions, correct resp_data, busy timing. (2) <strong>Integration test</strong>: use Chipyard's Verilator simulation — write a bare-metal C test that calls sys_load_weight() and sys_matmul(), run it on the simulated Rocket+RoCC system, compare output matrix C against a golden software reference. (3) <strong>Formal/FPGA</strong>: run on FPGA (VCU118/ZCU106) with a larger test suite. The key check is correctness: C[i][j] must match Σ A[i][k]×B[k][j] for all i,j.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-04/" class="day-nav-btn">← Day 4: Systolic Array</a>
+  <a href="/riscv-accelerator/day-06/" class="day-nav-btn">Day 6: Memory Architecture →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 5 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem;line-height:1.9"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body>
+</html>

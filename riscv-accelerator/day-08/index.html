@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 8 — Performance Profiling: CSR Counters, Speedup & Bottleneck Analysis | EcrioniX</title>
+<meta name="description" content="Day 8: Measure and analyse accelerator performance. RISC-V CSR performance counters (cycle, instret, mhpmcounter), hardware event counters in Verilog, speedup calculation vs CPU baseline, Amdahl's Law, roofline model, and bottleneck identification. With C profiling code.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-08/">
+<meta property="og:title" content="RISC-V Accelerator Day 8 — Performance Profiling & Speedup Analysis | EcrioniX">
+<meta property="og:description" content="CSR counters, hardware event counters, speedup vs CPU, Amdahl's Law, roofline bottleneck. RISC-V + Accelerator Day 8.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 8 — Performance Profiling: CSR Counters, Speedup & Bottleneck Analysis","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-08/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 8 — Performance Profiling","item":"https://ecrionix.org/riscv-accelerator/day-08/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How do you measure accelerator performance using RISC-V CSR counters?","acceptedAnswer":{"@type":"Answer","text":"RISC-V has mandatory performance counters accessible as CSRs: cycle (mcycle) counts clock cycles, instret (minstret) counts retired instructions, and mhpmcounter3–31 are user-configurable event counters. To measure accelerator execution time: read cycle before and after the accelerator invocation using csrr rd, cycle. The difference gives the wall-clock cycles. Divide by clock frequency to get time. For the speedup ratio, also time the equivalent software implementation. Custom accelerator events (stall cycles, DMA bandwidth) should be exposed as MMIO counters that the CPU reads via MMIO_R() after the run."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+.formula{background:rgba(6,182,212,.06);border:2px solid rgba(6,182,212,.18);border-radius:12px;padding:1.4rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.86rem;color:var(--cy-l);line-height:2;overflow-x:auto}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/riscv-accelerator/">Course Index</a><a href="/riscv-accelerator/day-07/">Day 7</a><a href="/riscv-accelerator/day-09/">Day 9</a><a href="/em-calculator/">EM Calc</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 8 — Performance Profiling</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 08 of 15</div>
+  <h1>Performance Profiling<br><span class="g">CSR Counters, Speedup & Bottleneck Analysis</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips">
+    <span class="chip">mcycle / minstret</span><span class="chip">mhpmcounter</span><span class="chip">Speedup</span>
+    <span class="chip">Amdahl's Law</span><span class="chip">Roofline Model</span><span class="chip">Utilisation</span><span class="chip">Bottleneck</span>
+  </div>
+</div>
+<div class="content">
+
+<h2>Why Measure Performance?</h2>
+<p>An accelerator that is never measured is an accelerator that is never optimised. Performance profiling answers the most important design question: <strong>"Where is the time being spent?"</strong> Is the systolic array stalled waiting for data? Is the DMA saturating the memory bus? Is the CPU overhead (tiling loop, cache flush) dominating the runtime? Without measurement, you're guessing.</p>
+
+<div class="concept">
+  <div class="concept-label">Three Questions Performance Profiling Answers</div>
+  <p>1. <strong>How fast is it?</strong> — Absolute throughput (GFlops, GB/s). 2. <strong>How much faster than the baseline?</strong> — Speedup ratio vs CPU. 3. <strong>What's limiting it?</strong> — Compute-bound, memory-bound, or control overhead?</p>
+</div>
+
+<h2>RISC-V CSR Performance Counters</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>CSR Name</th><th>Address</th><th>Counts</th><th>Usage</th></tr></thead>
+<tbody>
+<tr><td><strong>mcycle</strong></td><td>0xB00</td><td>Clock cycles (free-running)</td><td>Wall-clock time measurement</td></tr>
+<tr><td><strong>minstret</strong></td><td>0xB02</td><td>Retired instructions</td><td>CPI = mcycle / minstret</td></tr>
+<tr><td><strong>mhpmcounter3–31</strong></td><td>0xB03–0xB1F</td><td>Configurable hardware events</td><td>Cache misses, branch mispredicts, stalls</td></tr>
+<tr><td><strong>mhpmevent3–31</strong></td><td>0x323–0x33F</td><td>Event selector for mhpmcounterN</td><td>Set to select which event to count</td></tr>
+<tr><td><strong>cycle (user)</strong></td><td>0xC00</td><td>Same as mcycle, user-readable</td><td>Use in user-space programs</td></tr>
+<tr><td><strong>time</strong></td><td>0xC01</td><td>Real-time clock (from CLINT)</td><td>Wall time in nanoseconds</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">C — Read RISC-V CSR cycle counter</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#include &lt;stdint.h&gt;</span>
+<span class="pp">#include &lt;stdio.h&gt;</span>
+
+<span class="cm">// Read cycle CSR using inline assembly</span>
+<span class="kw">static inline</span> <span class="kw">uint64_t</span> <span class="sig">read_cycle</span>() {
+  <span class="kw">uint64_t</span> c;
+  __asm__ <span class="kw">volatile</span>(<span class="pp">"csrr %0, cycle"</span> : <span class="pp">"=r"</span>(c));
+  <span class="kw">return</span> c;
+}
+
+<span class="kw">static inline</span> <span class="kw">uint64_t</span> <span class="sig">read_instret</span>() {
+  <span class="kw">uint64_t</span> i;
+  __asm__ <span class="kw">volatile</span>(<span class="pp">"csrr %0, instret"</span> : <span class="pp">"=r"</span>(i));
+  <span class="kw">return</span> i;
+}
+
+<span class="kw">typedef struct</span> { <span class="kw">uint64_t</span> cycles, instret; } <span class="sig">perf_t</span>;
+
+<span class="kw">static inline</span> <span class="sig">perf_t</span> <span class="sig">perf_start</span>() {
+  __asm__ <span class="kw">volatile</span>(<span class="pp">""</span> ::: <span class="pp">"memory"</span>);  <span class="cm">// compiler fence</span>
+  <span class="kw">return</span> (<span class="sig">perf_t</span>){ read_cycle(), read_instret() };
+}
+
+<span class="kw">static inline</span> <span class="sig">perf_t</span> <span class="sig">perf_end</span>(<span class="sig">perf_t</span> s) {
+  __asm__ <span class="kw">volatile</span>(<span class="pp">""</span> ::: <span class="pp">"memory"</span>);
+  <span class="kw">return</span> (<span class="sig">perf_t</span>){ read_cycle()-s.cycles, read_instret()-s.instret };
+}
+
+<span class="cm">// Usage: benchmark matrix multiply</span>
+<span class="kw">void</span> <span class="sig">benchmark</span>(<span class="kw">int8_t</span> *A, <span class="kw">int8_t</span> *B, <span class="kw">int32_t</span> *C_accel, <span class="kw">int32_t</span> *C_cpu, <span class="kw">int</span> N) {
+  <span class="kw">double</span> gflops = <span class="num">2.0</span> * N * N * N / <span class="num">1e9</span>;  <span class="cm">// 2N³ ops</span>
+
+  <span class="cm">// Benchmark: accelerator</span>
+  <span class="sig">perf_t</span> s = perf_start();
+  <span class="kw">uint32_t</span> accel_cycles = accel_matmul(A, B, C_accel, N);
+  <span class="sig">perf_t</span> accel = perf_end(s);
+
+  <span class="cm">// Benchmark: CPU reference</span>
+  s = perf_start();
+  cpu_matmul(A, B, C_cpu, N);         <span class="cm">// naive C triple-loop</span>
+  <span class="sig">perf_t</span> cpu = perf_end(s);
+
+  <span class="kw">double</span> clk_mhz = <span class="num">1000.0</span>;           <span class="cm">// assume 1 GHz</span>
+  <span class="kw">double</span> accel_ms = accel.cycles / clk_mhz / <span class="num">1e3</span>;
+  <span class="kw">double</span> cpu_ms   = cpu.cycles   / clk_mhz / <span class="num">1e3</span>;
+
+  printf(<span class="pp">"N=%d | Accel: %llu cyc (%.2f ms, %.2f GFlops) | "</span>
+         <span class="pp">"CPU: %llu cyc (%.2f ms, %.2f GFlops) | Speedup: %.1fx\n"</span>,
+    N, accel.cycles, accel_ms, gflops/accel_ms*<span class="num">1e3</span>,
+       cpu.cycles,   cpu_ms,   gflops/cpu_ms*<span class="num">1e3</span>,
+       (<span class="kw">double</span>)cpu.cycles / accel.cycles);
+}</pre>
+</div>
+
+<h2>Hardware Event Counter in Verilog</h2>
+<div class="code-wrap">
+  <div class="code-label">Verilog — Accelerator performance counters (MMIO-accessible)</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">module</span> <span class="sig">perf_counters</span> (
+  <span class="kw">input</span>        <span class="sig">clk</span>, <span class="sig">rst</span>, <span class="sig">clear</span>,
+  <span class="cm">// Events from accelerator datapath</span>
+  <span class="kw">input</span>        <span class="sig">accel_active</span>,    <span class="cm">// systolic array doing useful work</span>
+  <span class="kw">input</span>        <span class="sig">dma_active</span>,      <span class="cm">// DMA transferring data</span>
+  <span class="kw">input</span>        <span class="sig">stall_dma</span>,       <span class="cm">// accel stalled waiting for DMA</span>
+  <span class="kw">input</span>        <span class="sig">stall_resp</span>,      <span class="cm">// accel stalled waiting for resp_ready</span>
+  <span class="cm">// Readable via MMIO</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">cnt_total</span>,   <span class="cm">// total elapsed cycles</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">cnt_compute</span>, <span class="cm">// cycles accel is computing</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">cnt_dma</span>,     <span class="cm">// cycles DMA is active</span>
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">cnt_stall</span>    <span class="cm">// stall cycles</span>
+);
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk</span>) <span class="kw">begin</span>
+    <span class="kw">if</span> (<span class="sig">rst</span> || <span class="sig">clear</span>) <span class="kw">begin</span>
+      <span class="sig">cnt_total</span><=<span class="num">0</span>; <span class="sig">cnt_compute</span><=<span class="num">0</span>; <span class="sig">cnt_dma</span><=<span class="num">0</span>; <span class="sig">cnt_stall</span><=<span class="num">0</span>;
+    <span class="kw">end else begin</span>
+      <span class="sig">cnt_total</span>   <= <span class="sig">cnt_total</span>   + <span class="num">1</span>;
+      <span class="kw">if</span> (<span class="sig">accel_active</span>) <span class="sig">cnt_compute</span> <= <span class="sig">cnt_compute</span> + <span class="num">1</span>;
+      <span class="kw">if</span> (<span class="sig">dma_active</span>)   <span class="sig">cnt_dma</span>     <= <span class="sig">cnt_dma</span>     + <span class="num">1</span>;
+      <span class="kw">if</span> (<span class="sig">stall_dma</span> || <span class="sig">stall_resp</span>) <span class="sig">cnt_stall</span> <= <span class="sig">cnt_stall</span> + <span class="num">1</span>;
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>Amdahl's Law & Speedup Analysis</h2>
+<div class="formula">
+Amdahl's Law: Speedup = 1 / ((1-P) + P/S)
+  P = fraction of program that is parallelisable/accelerated
+  S = speedup of the accelerated portion
+
+Example: matrix multiply = 80% of total program time, accelerator = 100× faster
+  Speedup = 1 / (0.20 + 0.80/100) = 1 / 0.208 = 4.8×
+  → Even with 100× faster compute, total speedup is only 4.8× (20% is unaccelerated)
+
+Key insight: optimise the bottleneck. If DMA overhead = 30% of accelerator time:
+  true_speedup = 0.70 × compute_speedup × 1/(1-0.70+0.70/speedup)
+  → Improving compute beyond 10× returns diminishing benefit; DMA is the new limit
+</div>
+
+<h2>Utilisation Analysis</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Counter</th><th>Formula</th><th>Healthy Range</th><th>If Low → Fix</th></tr></thead>
+<tbody>
+<tr><td>Compute utilisation</td><td>cnt_compute / cnt_total</td><td>&gt;80%</td><td>Improve DMA prefetch, double-buffer</td></tr>
+<tr><td>DMA efficiency</td><td>cnt_dma / cnt_total</td><td>&lt;30%</td><td>Larger bursts, reduce transaction overhead</td></tr>
+<tr><td>Stall fraction</td><td>cnt_stall / cnt_total</td><td>&lt;10%</td><td>Fix backpressure, increase bandwidth</td></tr>
+<tr><td>MAC efficiency</td><td>actual_MACs / (peak_MACs × time)</td><td>&gt;85%</td><td>Reduce fill latency, increase tile size</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">C — Read hardware counters and print utilisation report</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#define REG_CNT_TOTAL   (ACC_BASE + 0x30)</span>
+<span class="pp">#define REG_CNT_COMPUTE (ACC_BASE + 0x34)</span>
+<span class="pp">#define REG_CNT_DMA     (ACC_BASE + 0x38)</span>
+<span class="pp">#define REG_CNT_STALL   (ACC_BASE + 0x3C)</span>
+
+<span class="kw">void</span> <span class="sig">print_perf_report</span>(<span class="kw">int</span> N, <span class="kw">double</span> freq_ghz) {
+  <span class="kw">uint32_t</span> total   = MMIO_R(REG_CNT_TOTAL);
+  <span class="kw">uint32_t</span> compute = MMIO_R(REG_CNT_COMPUTE);
+  <span class="kw">uint32_t</span> dma     = MMIO_R(REG_CNT_DMA);
+  <span class="kw">uint32_t</span> stall   = MMIO_R(REG_CNT_STALL);
+
+  <span class="kw">double</span> time_ms  = total / (freq_ghz * <span class="num">1e6</span>);
+  <span class="kw">double</span> gflops   = <span class="num">2.0</span> * N * N * N / <span class="num">1e9</span>;
+  <span class="kw">double</span> tflops   = gflops / time_ms * <span class="num">1000</span>;
+  <span class="kw">double</span> peak_mac = N * N;                   <span class="cm">// MACs/cycle for NxN array</span>
+  <span class="kw">double</span> mac_eff  = (gflops*<span class="num">1e9</span>/2) / ((double)total * peak_mac) * <span class="num">100</span>;
+
+  printf(<span class="pp">"=== Accelerator Performance Report ===\n"</span>);
+  printf(<span class="pp">"Matrix: %d×%d | Time: %.3f ms | %.2f TFlops\n"</span>, N, N, time_ms, tflops);
+  printf(<span class="pp">"Compute util: %5.1f%% | DMA util: %5.1f%% | Stall: %5.1f%%\n"</span>,
+    <span class="num">100.0</span>*compute/total, <span class="num">100.0</span>*dma/total, <span class="num">100.0</span>*stall/total);
+  printf(<span class="pp">"MAC efficiency: %.1f%% of peak\n"</span>, mac_eff);
+
+  <span class="kw">if</span> (<span class="num">100.0</span>*compute/total < <span class="num">70</span>)
+    printf(<span class="pp">"BOTTLENECK: Compute starved — improve DMA prefetch or double-buffer\n"</span>);
+  <span class="kw">if</span> (<span class="num">100.0</span>*stall/total > <span class="num">15</span>)
+    printf(<span class="pp">"BOTTLENECK: Stall cycles high — check resp_ready backpressure\n"</span>);
+}</pre>
+</div>
+
+<h2>Day 8 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>How do you measure accelerator execution time on RISC-V?</div><div class="qa-a">Read the cycle CSR before and after the accelerator invocation using <code>csrr rd, cycle</code>. The cycle counter increments every clock cycle and is a free-running 64-bit counter (wraps after 584 years at 1 GHz). Delta_cycles = cycle_end - cycle_start gives the wall-clock cycle count including all overhead: DMA, control, cache flush, and the actual accelerator compute. Divide by the clock frequency (in Hz) to get seconds. For fine-grained profiling, bracket individual phases (DMA, compute) separately. A compiler fence (<code>asm volatile("" ::: "memory")</code>) is needed before each read to prevent the compiler from reordering the CSR read past the measured code.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>What is CPI and how does it relate to accelerator design?</div><div class="qa-a">CPI (Cycles Per Instruction) = mcycle / minstret. For the RISC-V CPU core, ideal CPI = 1 (in-order). When the CPU issues a RoCC instruction and the accelerator asserts busy=1, the pipeline stalls — mcycle increments but minstret does not (the instruction hasn't retired). The CPI during accelerator execution is effectively (total_wall_cycles) / (few_instruction_count), which can be hundreds or thousands. This is by design — the accelerator is doing work during these cycles. CPI is useful for measuring CPU-side overhead: if the CPU executes many instructions during the accelerator run (e.g., in the tiling loop), those should also be counted in the overhead analysis.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is Amdahl's Law and what does it say about accelerator design?</div><div class="qa-a">Amdahl's Law: Speedup = 1 / ((1−P) + P/S), where P is the fraction of the program accelerated and S is the speedup of that fraction. It says that the non-accelerated portion (1−P) sets an upper bound on total speedup: even if S→∞, max speedup = 1/(1−P). For P=80% (matrix multiply is 80% of runtime), max speedup = 1/0.20 = 5×, regardless of how fast the accelerator is. Practical implication: before building a faster systolic array, first ensure the non-accelerated portion (data movement, control, pre/post-processing) is as small as possible. Often the 20% non-accelerated tail is more important to optimise than doubling the array's compute throughput.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What does "compute utilisation" mean for a systolic array, and what causes it to be low?</div><div class="qa-a">Compute utilisation = fraction of total cycles where the systolic array is actively performing MACs. 100% means the array never stalls. Causes of low utilisation: (1) DMA starvation — the array finishes one tile and waits for the DMA to load the next (fix: double-buffering), (2) Fill/drain latency — for small tiles (N < array_size), the 3N−1 fill+drain cycles dominate (fix: larger tiles), (3) Weight reload — changing the B matrix requires reloading all PE weights (fix: cache multiple weight sets or tile the B dimension), (4) Response backpressure — resp_ready=0 stalls the FSM. Good designs target >85% utilisation.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What are mhpmcounters and how do you configure them?</div><div class="qa-a">mhpmcounter3–mhpmcounter31 are 29 user-configurable 64-bit hardware performance counters in the RISC-V privileged ISA. Each has an associated mhpmevent CSR that selects which microarchitectural event to count. For a custom accelerator, you define a set of event codes in your RTL (e.g., event 0x01 = DMA_STALL, 0x02 = RESP_STALL) and wire the event signals to the counter increment inputs. At runtime, write the event code to mhpmevent3 (CSR 0x323) then read mhpmcounter3 (CSR 0xB03). Custom accelerator events can also be exposed as MMIO registers (simpler and doesn't require M-mode privilege) — the choice depends on whether the counters need to be accessible from user-space or only in privileged software.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>How do you determine whether an accelerator is compute-bound or memory-bound?</div><div class="qa-a">Use the roofline model: plot measured performance (GFlops) against arithmetic intensity (ops/byte). The compute roof is peak_GFlops (N² MACs/cycle × freq); the memory roof is bandwidth × intensity. If measured performance ≈ compute roof → compute-bound (adding bandwidth won't help; need more PEs). If measured performance ≈ memory roof → memory-bound (adding compute won't help; need more bandwidth or better data reuse). In practice: measure compute utilisation (from perf counters). If compute utilisation < 70% and DMA is active most of the time → memory-bound. If compute utilisation > 90% but throughput is below theoretical peak → compute-bound (likely fill latency or small tiles). The fix differs entirely: memory-bound → scratchpad, double-buffering; compute-bound → larger arrays, higher clock, INT4 quantisation.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-07/" class="day-nav-btn">← Day 7: AXI4 Integration</a>
+  <a href="/riscv-accelerator/" class="day-nav-btn">Course Index →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 8 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem;line-height:1.9"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body>
+</html>

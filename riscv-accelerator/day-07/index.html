@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 7 — AXI4 Integration & Tiling Strategy | EcrioniX</title>
+<meta name="description" content="Day 7: AXI4-based accelerator integration — AXI4 master/slave ports, address mapping, MMIO registers, tiling strategy for large matrices, AXILITE control plane vs AXI4 data plane, and full Verilog AXI4-Lite slave register block. Interview Q&A.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-07/">
+<meta property="og:title" content="RISC-V Accelerator Day 7 — AXI4 Integration & Tiling | EcrioniX">
+<meta property="og:description" content="AXI4 master/slave, MMIO register block, tiling strategy for large matrices. RISC-V + Accelerator Day 7.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 7 — AXI4 Integration & Tiling Strategy","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-07/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 7 — AXI4 Integration","item":"https://ecrionix.org/riscv-accelerator/day-07/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the difference between AXI4-Lite and AXI4 for accelerator integration?","acceptedAnswer":{"@type":"Answer","text":"AXI4-Lite is a simplified subset of AXI4 for low-bandwidth control register access — no burst support, fixed 32/64-bit transfers, simple valid/ready handshake. It is used for the control plane: the CPU writes MMIO registers to configure the accelerator (base address, size, start bit). AXI4 full is the data plane: supports bursts up to 256 beats, multiple outstanding transactions (AXI IDs), and narrow/unaligned transfers. The DMA engine uses full AXI4 for bulk data movement. A typical accelerator has one AXI4-Lite slave port (control) and one or two AXI4 master ports (data fetch from DRAM and write to output)."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+.formula{background:rgba(6,182,212,.06);border:2px solid rgba(6,182,212,.18);border-radius:12px;padding:1.4rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.86rem;color:var(--cy-l);line-height:2;overflow-x:auto}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/riscv-accelerator/">Course Index</a><a href="/riscv-accelerator/day-06/">Day 6</a><a href="/riscv-accelerator/day-08/">Day 8</a><a href="/physical-design/">Physical Design</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 7 — AXI4 Integration & Tiling</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 07 of 15</div>
+  <h1>AXI4 Integration<br><span class="g">MMIO, Control Plane & Tiling Strategy</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips">
+    <span class="chip">AXI4-Lite Slave</span><span class="chip">AXI4 Master</span><span class="chip">MMIO Registers</span>
+    <span class="chip">Tiling</span><span class="chip">Address Map</span><span class="chip">Interrupt</span><span class="chip">C Driver</span>
+  </div>
+</div>
+<div class="content">
+
+<h2>AXI4 for Accelerator Integration</h2>
+<p>When an accelerator is connected as a standalone IP block (not via RoCC but as an MMIO peripheral), AXI4 is the standard interconnect. The accelerator has two AXI ports: an <strong>AXI4-Lite slave</strong> for the control plane (CPU configures registers) and an <strong>AXI4 full master</strong> for the data plane (DMA reads/writes memory).</p>
+
+<div class="concept">
+  <div class="concept-label">Two-Port Architecture</div>
+  <p>Control plane (AXI4-Lite slave): CPU writes start/stop, addresses, sizes to MMIO registers. Data plane (AXI4 full master): Accelerator DMA reads A matrix and B weights from DRAM, writes C result back — without CPU involvement.</p>
+</div>
+
+<h2>MMIO Register Map</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Offset</th><th>Register</th><th>Bits</th><th>R/W</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>0x00</td><td>CTRL</td><td>[0]=start, [1]=reset, [2]=int_en</td><td>W</td><td>Control: start computation, soft reset, interrupt enable</td></tr>
+<tr><td>0x04</td><td>STATUS</td><td>[0]=busy, [1]=done, [2]=error</td><td>R</td><td>Accelerator status — poll or wait for interrupt</td></tr>
+<tr><td>0x08</td><td>MATRIX_N</td><td>[15:0]=N</td><td>W</td><td>Matrix dimension N (NxN matrices)</td></tr>
+<tr><td>0x10</td><td>A_ADDR</td><td>[31:0]</td><td>W</td><td>Physical base address of matrix A in DRAM</td></tr>
+<tr><td>0x18</td><td>B_ADDR</td><td>[31:0]</td><td>W</td><td>Physical base address of matrix B (weights)</td></tr>
+<tr><td>0x20</td><td>C_ADDR</td><td>[31:0]</td><td>W</td><td>Physical base address of result matrix C</td></tr>
+<tr><td>0x28</td><td>CYCLES</td><td>[31:0]</td><td>R</td><td>Cycle count of last operation (performance)</td></tr>
+<tr><td>0x2C</td><td>TILE_CFG</td><td>[15:0]=tile_M, [31:16]=tile_N</td><td>W</td><td>Tile dimensions for large matrix tiling</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — AXI4-Lite slave register block</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">module</span> <span class="sig">axilite_regs</span> #(<span class="kw">parameter</span> AW=<span class="num">32</span>, DW=<span class="num">32</span>) (
+  <span class="kw">input</span>            <span class="sig">clk</span>, <span class="sig">rst</span>,
+  <span class="cm">// AXI4-Lite Write Address</span>
+  <span class="kw">input</span>            <span class="sig">awvalid</span>, <span class="kw">output</span> <span class="sig">awready</span>,
+  <span class="kw">input</span> [AW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">awaddr</span>,
+  <span class="cm">// AXI4-Lite Write Data</span>
+  <span class="kw">input</span>            <span class="sig">wvalid</span>, <span class="kw">output</span> <span class="sig">wready</span>,
+  <span class="kw">input</span> [DW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">wdata</span>,
+  <span class="cm">// AXI4-Lite Write Response</span>
+  <span class="kw">output</span> <span class="kw">reg</span>       <span class="sig">bvalid</span>, <span class="kw">input</span> <span class="sig">bready</span>,
+  <span class="cm">// AXI4-Lite Read Address</span>
+  <span class="kw">input</span>            <span class="sig">arvalid</span>, <span class="kw">output</span> <span class="sig">arready</span>,
+  <span class="kw">input</span> [AW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">araddr</span>,
+  <span class="cm">// AXI4-Lite Read Data</span>
+  <span class="kw">output</span> <span class="kw">reg</span>       <span class="sig">rvalid</span>, <span class="kw">input</span> <span class="sig">rready</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [DW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">rdata</span>,
+  <span class="cm">// Register outputs to accelerator core</span>
+  <span class="kw">output</span> <span class="kw">reg</span>        <span class="sig">reg_start</span>, <span class="sig">reg_int_en</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">15</span>:<span class="num">0</span>] <span class="sig">reg_N</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [<span class="num">31</span>:<span class="num">0</span>] <span class="sig">reg_A_addr</span>, <span class="sig">reg_B_addr</span>, <span class="sig">reg_C_addr</span>,
+  <span class="kw">input</span>             <span class="sig">accel_busy</span>, <span class="sig">accel_done</span>,
+  <span class="kw">input</span>  [<span class="num">31</span>:<span class="num">0</span>]    <span class="sig">accel_cycles</span>
+);
+  <span class="kw">reg</span> [AW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">aw_addr_r</span>;
+  <span class="kw">reg</span>           <span class="sig">aw_pend</span>, <span class="sig">w_pend</span>;
+
+  <span class="kw">assign</span> <span class="sig">awready</span> = ~<span class="sig">aw_pend</span>;
+  <span class="kw">assign</span> <span class="sig">wready</span>  = ~<span class="sig">w_pend</span>;
+  <span class="kw">assign</span> <span class="sig">arready</span> = ~<span class="sig">rvalid</span>;
+
+  <span class="cm">// Write channel</span>
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk</span>) <span class="kw">begin</span>
+    <span class="sig">reg_start</span> <= <span class="num">0</span>;  <span class="cm">// auto-clear start bit</span>
+    <span class="kw">if</span> (<span class="sig">awvalid</span> && !<span class="sig">aw_pend</span>) <span class="kw">begin</span> <span class="sig">aw_addr_r</span><=<span class="sig">awaddr</span>; <span class="sig">aw_pend</span><=<span class="num">1</span>; <span class="kw">end</span>
+    <span class="kw">if</span> (<span class="sig">wvalid</span> && <span class="sig">aw_pend</span>) <span class="kw">begin</span>
+      <span class="kw">case</span> (<span class="sig">aw_addr_r</span>[<span class="num">5</span>:<span class="num">0</span>])
+        <span class="num">6'h00</span>: <span class="kw">begin</span> <span class="sig">reg_start</span><=<span class="sig">wdata</span>[<span class="num">0</span>]; <span class="sig">reg_int_en</span><=<span class="sig">wdata</span>[<span class="num">2</span>]; <span class="kw">end</span>
+        <span class="num">6'h08</span>: <span class="sig">reg_N</span>      <= <span class="sig">wdata</span>[<span class="num">15</span>:<span class="num">0</span>];
+        <span class="num">6'h10</span>: <span class="sig">reg_A_addr</span> <= <span class="sig">wdata</span>;
+        <span class="num">6'h18</span>: <span class="sig">reg_B_addr</span> <= <span class="sig">wdata</span>;
+        <span class="num">6'h20</span>: <span class="sig">reg_C_addr</span> <= <span class="sig">wdata</span>;
+      <span class="kw">endcase</span>
+      <span class="sig">aw_pend</span><=<span class="num">0</span>; <span class="sig">bvalid</span><=<span class="num">1</span>;
+    <span class="kw">end</span>
+    <span class="kw">if</span> (<span class="sig">bvalid</span> && <span class="sig">bready</span>) <span class="sig">bvalid</span><=<span class="num">0</span>;
+    <span class="cm">// Read channel</span>
+    <span class="kw">if</span> (<span class="sig">arvalid</span> && !<span class="sig">rvalid</span>) <span class="kw">begin</span>
+      <span class="sig">rvalid</span> <= <span class="num">1</span>;
+      <span class="kw">case</span> (<span class="sig">araddr</span>[<span class="num">5</span>:<span class="num">0</span>])
+        <span class="num">6'h04</span>: <span class="sig">rdata</span> <= {<span class="num">30</span>'b0, <span class="sig">accel_done</span>, <span class="sig">accel_busy</span>};
+        <span class="num">6'h28</span>: <span class="sig">rdata</span> <= <span class="sig">accel_cycles</span>;
+        <span class="kw">default</span>: <span class="sig">rdata</span> <= <span class="num">32'hDEAD</span>;
+      <span class="kw">endcase</span>
+    <span class="kw">end</span>
+    <span class="kw">if</span> (<span class="sig">rvalid</span> && <span class="sig">rready</span>) <span class="sig">rvalid</span><=<span class="num">0</span>;
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>Tiling Strategy for Large Matrices</h2>
+<p>An N×N systolic array cannot process matrices larger than N×N in one shot. Tiling divides the matrix into N×N sub-matrices (tiles) and processes them sequentially, accumulating partial results.</p>
+
+<div class="formula">
+C[M×K] = A[M×N] × B[N×K]
+
+Tile sizes: tile_M, tile_N, tile_K (usually = array dimension P)
+
+Tiling loop:
+  for mi in range(0, M, P):
+    for ki in range(0, K, P):
+      C[mi:mi+P, ki:ki+P] = 0          // init output tile
+      for ni in range(0, N, P):
+        // Load A tile [mi:mi+P, ni:ni+P] → SPM bank A
+        // Load B tile [ni:ni+P, ki:ki+P] → weight array (via RoCC)
+        // run_matmul → partial sum accumulates in C tile
+      // Write C tile [mi:mi+P, ki:ki+P] → DRAM
+
+Total tiles = (M/P) × (N/P) × (K/P)
+Total cycles ≈ tiles × (3P - 1) + DMA_overhead
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">C — MMIO driver for AXI4-connected accelerator</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#define ACC_BASE    0x60000000UL</span>
+<span class="pp">#define REG_CTRL    (ACC_BASE + 0x00)</span>
+<span class="pp">#define REG_STATUS  (ACC_BASE + 0x04)</span>
+<span class="pp">#define REG_N       (ACC_BASE + 0x08)</span>
+<span class="pp">#define REG_A_ADDR  (ACC_BASE + 0x10)</span>
+<span class="pp">#define REG_B_ADDR  (ACC_BASE + 0x18)</span>
+<span class="pp">#define REG_C_ADDR  (ACC_BASE + 0x20)</span>
+<span class="pp">#define REG_CYCLES  (ACC_BASE + 0x28)</span>
+
+<span class="pp">#define MMIO_W(addr, val)  (*(volatile uint32_t*)(addr) = (val))</span>
+<span class="pp">#define MMIO_R(addr)       (*(volatile uint32_t*)(addr))</span>
+
+<span class="pp">#define STATUS_BUSY  (1 << 0)</span>
+<span class="pp">#define STATUS_DONE  (1 << 1)</span>
+<span class="pp">#define CTRL_START   (1 << 0)</span>
+
+<span class="kw">uint32_t</span> <span class="sig">accel_matmul</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *A, <span class="kw">const</span> <span class="kw">int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> N) {
+  <span class="cm">// Configure registers</span>
+  MMIO_W(REG_N,      N);
+  MMIO_W(REG_A_ADDR, (<span class="kw">uint32_t</span>)A);
+  MMIO_W(REG_B_ADDR, (<span class="kw">uint32_t</span>)B);
+  MMIO_W(REG_C_ADDR, (<span class="kw">uint32_t</span>)C);
+
+  <span class="cm">// Flush CPU cache before DMA reads</span>
+  cache_flush((<span class="kw">void</span>*)A, N*N); cache_flush((<span class="kw">void</span>*)B, N*N);
+  cache_inval((<span class="kw">void</span>*)C, N*N*<span class="kw">sizeof</span>(<span class="kw">int32_t</span>));
+
+  <span class="cm">// Kick off accelerator</span>
+  MMIO_W(REG_CTRL, CTRL_START);
+
+  <span class="cm">// Poll until done (or use interrupt)</span>
+  <span class="kw">while</span> (!(MMIO_R(REG_STATUS) & STATUS_DONE));
+
+  <span class="kw">return</span> MMIO_R(REG_CYCLES);
+}</pre>
+</div>
+
+<h2>Day 7 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>What is the difference between AXI4-Lite and AXI4 full, and which is used for accelerator control vs data?</div><div class="qa-a">AXI4-Lite is a simplified subset with no burst support, fixed-width (32/64-bit) transfers, and a single outstanding transaction. It is ideal for the control plane: CPU writes configuration registers (addresses, matrix size, start bit) to the accelerator's MMIO register block. AXI4 full supports burst transfers (up to 256 beats), multiple outstanding transactions (via AXI IDs), and optional narrow/unaligned transfers. The accelerator's DMA uses full AXI4 as a master to fetch megabytes of matrix data from DRAM efficiently. A typical accelerator has: one AXI4-Lite slave (control) + one or two AXI4 full master ports (data read/write).</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>Why is the start bit auto-cleared in the MMIO register?</div><div class="qa-a">The start bit triggers a one-shot action — it tells the accelerator to begin one computation. If it remained set (sticky), re-reading the register or a spurious write could accidentally restart the accelerator while it's computing. Auto-clearing on the next clock cycle after capture ensures the accelerator starts exactly once per CPU write. The CPU checks the STATUS register (busy/done bits) to know when the operation completes — it doesn't need the start bit to remain set after triggering.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>Explain the tiling algorithm for matrix multiply on a fixed-size systolic array.</div><div class="qa-a">For matrices A[M×N] and B[N×K] on a P×P systolic array: divide each dimension into P-sized tiles. Three nested loops: outer loops over M and K tiles (output tile coordinates), inner loop over N tiles (accumulation dimension). For each (mi, ki, ni) tile combination: load B tile into the weight array, stream A tile through the array, accumulate the partial sum into the C tile. After all N tiles are processed for one (mi, ki) output tile, write the final C tile to DRAM. The total number of array invocations is (M/P × K/P × N/P) — same FLOP count as direct computation, but broken into P×P chunks that fit the hardware.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What is address alignment and why does it matter for AXI4 bursts?</div><div class="qa-a">AXI4 requires burst transactions to be aligned to the burst size boundary. For a 64-bit (8-byte) data bus with 16-beat bursts, the burst must start at an address that is a multiple of 8×16 = 128 bytes. Misaligned bursts may require splitting into two transactions, halving effective bandwidth. In practice, the DMA engine should align matrix tile base addresses to at least 64-byte cache line boundaries (and ideally to full burst boundaries) for maximum throughput. The software driver is responsible for allocating aligned buffers (using memalign or posix_memalign) and ensuring tile address calculations produce aligned addresses.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What is the write response channel (B channel) in AXI4 and can it be ignored?</div><div class="qa-a">The B channel carries a write response (BRESP: OKAY, SLVERR, DECERR) from the slave back to the master, acknowledging that the write was accepted and executed. In simulation and basic designs it is tempting to ignore it, but in production SoC designs it must be properly handled: (1) The master cannot issue the next write address until it has received BVALID (or uses multiple outstanding transactions with different IDs). (2) BRESP indicates errors — SLVERR means the slave rejected the write (e.g., write to a read-only register). (3) An outstanding write without accepting BVALID can stall the AXI interconnect if the response buffer fills. Always connect bready = 1 at minimum, or implement a proper response handler.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>How do you implement interrupt-driven accelerator completion instead of polling?</div><div class="qa-a">The accelerator drives an interrupt output (irq) high when done=1 and int_en=1 (configured in the CTRL register). The interrupt line connects to the RISC-V PLIC (Platform Level Interrupt Controller), which routes it to the CPU's external interrupt input. In software: (1) Register an interrupt handler that reads the STATUS register and clears the done flag, (2) Set int_en=1 before starting, (3) CPU puts itself in WFI (Wait For Interrupt) state or continues other work. The handler wakes the CPU on completion. Interrupt-driven completion allows the CPU to overlap other computation with the accelerator, improving overall throughput vs polling which wastes CPU cycles in a busy-wait loop.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-06/" class="day-nav-btn">← Day 6: Memory Architecture</a>
+  <a href="/riscv-accelerator/day-08/" class="day-nav-btn">Day 8: Performance Profiling →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 7 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem;line-height:1.9"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body>
+</html>

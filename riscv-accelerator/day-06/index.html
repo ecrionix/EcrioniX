@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 6 — Memory Architecture: Scratchpad, DMA & Cache Coherency | EcrioniX</title>
+<meta name="description" content="Day 6: Memory architecture for RISC-V accelerators. Scratchpad memory (SPM) vs L1/L2 cache, DMA engine design in Verilog, AXI4 burst transfers, cache coherency issues with accelerators, and double-buffering for throughput. With Verilog and C examples.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-06/">
+<meta property="og:title" content="RISC-V Accelerator Day 6 — Memory Architecture for Accelerators | EcrioniX">
+<meta property="og:description" content="Scratchpad vs cache, DMA engine Verilog, AXI4 bursts, cache coherency, double-buffering. RISC-V + Accelerator course Day 6.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 6 — Memory Architecture: Scratchpad, DMA & Cache Coherency","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-06/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 6 — Memory Architecture","item":"https://ecrionix.org/riscv-accelerator/day-06/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the difference between scratchpad memory and a cache for accelerators?","acceptedAnswer":{"@type":"Answer","text":"A cache is a transparent memory hierarchy layer managed by hardware — data is fetched and evicted automatically based on access patterns, using tag arrays and replacement policies (LRU, etc.). A scratchpad (SPM, SRAM buffer, or TCM) is software-managed on-chip SRAM at a fixed address range — the software explicitly controls what data is in the scratchpad and when. For accelerators, scratchpads are preferred because: (1) deterministic latency — no cache miss penalty, (2) DMA-friendly — the software preloads exactly what the accelerator needs, (3) no tag overhead — all SRAM bits store data, (4) no coherency complexity — the scratchpad is private to the accelerator. Google's TPU uses 256 MB of software-managed unified buffer instead of a cache."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/riscv-accelerator/">Course Index</a><a href="/riscv-accelerator/day-05/">Day 5</a><a href="/riscv-accelerator/day-07/">Day 7</a><a href="/physical-design/">Physical Design</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 6 — Memory Architecture</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 06 of 15</div>
+  <h1>Memory Architecture<br><span class="g">Scratchpad, DMA & Cache Coherency</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips">
+    <span class="chip">Scratchpad (SPM)</span><span class="chip">DMA Engine</span><span class="chip">AXI4 Burst</span>
+    <span class="chip">Cache Coherency</span><span class="chip">Double-Buffering</span><span class="chip">TCM</span><span class="chip">SRAM</span>
+  </div>
+</div>
+<div class="content">
+
+<h2>Why Memory Architecture Determines Accelerator Performance</h2>
+<p>The systolic array from Days 4–5 can execute N² MACs per cycle — but it's useless if it's starved for data. <strong>Memory bandwidth is almost always the bottleneck in real accelerator deployments</strong>. A 128×128 INT8 systolic array needs 128² × 2 = 32,768 bytes of new data per cycle to stay fully utilised. At 1 GHz that's 32 TB/s — far beyond any off-chip memory. The solution is a hierarchy of on-chip memory that feeds the array fast enough.</p>
+
+<div class="concept">
+  <div class="concept-label">Roofline Model Rule</div>
+  <p>Performance is bounded by min(compute_roof, bandwidth × arithmetic_intensity). For matrix multiply, arithmetic intensity = N (ops/byte). A scratchpad that fits the working set eliminates off-chip bandwidth as the bottleneck by keeping data on-chip across multiple reuse passes.</p>
+</div>
+
+<h2>Scratchpad vs Cache</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Property</th><th>Cache (L1/L2)</th><th>Scratchpad (SPM/TCM)</th></tr></thead>
+<tbody>
+<tr><td>Management</td><td>Hardware (HW-managed eviction)</td><td>Software (explicit DMA load/store)</td></tr>
+<tr><td>Access latency</td><td>Variable (hit=1–10cyc, miss=100+cyc)</td><td>Fixed (1–3 cycles always)</td></tr>
+<tr><td>Area efficiency</td><td>Lower — tag arrays consume 15–20% area</td><td>Higher — all bits are data</td></tr>
+<tr><td>Coherency</td><td>Hardware coherence protocol (MESI)</td><td>Software flush/invalidate</td></tr>
+<tr><td>Predictability</td><td>Low (miss rate varies)</td><td>High (deterministic latency)</td></tr>
+<tr><td>Best for</td><td>General-purpose CPU workloads</td><td>Accelerators with known access patterns</td></tr>
+<tr><td>Example</td><td>ARM Cortex-A L1D cache</td><td>Google TPU unified buffer (256 MB SPM)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>DMA Engine Design</h2>
+<p>A DMA (Direct Memory Access) engine transfers data between DRAM and the scratchpad without CPU intervention. The accelerator controller configures the DMA (source address, destination, byte count) and the DMA runs autonomously, interrupting or setting a done flag when complete.</p>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — Simple AXI4-Lite DMA engine</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">module</span> <span class="sig">dma_engine</span> #(<span class="kw">parameter</span> AW=<span class="num">32</span>, DW=<span class="num">64</span>, LEN_W=<span class="num">16</span>) (
+  <span class="kw">input</span>               <span class="sig">clk</span>, <span class="sig">rst</span>,
+  <span class="cm">// Config interface (from accelerator controller)</span>
+  <span class="kw">input</span>               <span class="sig">start</span>,
+  <span class="kw">input</span>  [AW-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">src_addr</span>,   <span class="cm">// DRAM source</span>
+  <span class="kw">input</span>  [AW-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">dst_addr</span>,   <span class="cm">// scratchpad destination</span>
+  <span class="kw">input</span>  [LEN_W-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">byte_len</span>,   <span class="cm">// bytes to transfer</span>
+  <span class="kw">output</span> <span class="kw">reg</span>          <span class="sig">done</span>,
+  <span class="cm">// AXI4 Read Address Channel → DRAM</span>
+  <span class="kw">output</span> <span class="kw">reg</span>          <span class="sig">arvalid</span>,
+  <span class="kw">input</span>               <span class="sig">arready</span>,
+  <span class="kw">output</span> [AW-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">araddr</span>,
+  <span class="kw">output</span> [<span class="num">7</span>:<span class="num">0</span>]        <span class="sig">arlen</span>,      <span class="cm">// burst length - 1</span>
+  <span class="cm">// AXI4 Read Data Channel</span>
+  <span class="kw">input</span>               <span class="sig">rvalid</span>,
+  <span class="kw">output</span>              <span class="sig">rready</span>,
+  <span class="kw">input</span>  [DW-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">rdata</span>,
+  <span class="kw">input</span>               <span class="sig">rlast</span>,
+  <span class="cm">// Scratchpad write port</span>
+  <span class="kw">output</span> <span class="kw">reg</span>          <span class="sig">spm_wen</span>,
+  <span class="kw">output</span> <span class="kw">reg</span> [AW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">spm_waddr</span>,
+  <span class="kw">output</span> [DW-<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">spm_wdata</span>
+);
+  <span class="kw">localparam</span> <span class="sig">IDLE</span>=<span class="num">2'd0</span>, <span class="sig">AR</span>=<span class="num">2'd1</span>, <span class="sig">RDATA</span>=<span class="num">2'd2</span>, <span class="sig">DONE</span>=<span class="num">2'd3</span>;
+  <span class="kw">reg</span> [<span class="num">1</span>:<span class="num">0</span>]    <span class="sig">state</span>;
+  <span class="kw">reg</span> [AW-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">cur_src</span>, <span class="sig">cur_dst</span>;
+  <span class="kw">reg</span> [LEN_W-<span class="num">1</span>:<span class="num">0</span>] <span class="sig">remaining</span>;
+
+  <span class="kw">assign</span> <span class="sig">araddr</span>   = <span class="sig">cur_src</span>;
+  <span class="kw">assign</span> <span class="sig">arlen</span>    = (<span class="sig">remaining</span> >> <span class="num">3</span>) - <span class="num">1</span>;   <span class="cm">// 64-bit bursts</span>
+  <span class="kw">assign</span> <span class="sig">rready</span>   = (<span class="sig">state</span> == <span class="sig">RDATA</span>);
+  <span class="kw">assign</span> <span class="sig">spm_wdata</span>= <span class="sig">rdata</span>;
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> <span class="sig">clk</span>) <span class="kw">begin</span>
+    <span class="kw">if</span> (<span class="sig">rst</span>) <span class="kw">begin</span> <span class="sig">state</span><=<span class="sig">IDLE</span>; <span class="sig">done</span><=<span class="num">0</span>; <span class="kw">end</span>
+    <span class="kw">else case</span>(<span class="sig">state</span>)
+      <span class="sig">IDLE</span>: <span class="kw">if</span>(<span class="sig">start</span>) <span class="kw">begin</span>
+        <span class="sig">cur_src</span> <= <span class="sig">src_addr</span>; <span class="sig">cur_dst</span> <= <span class="sig">dst_addr</span>;
+        <span class="sig">remaining</span> <= <span class="sig">byte_len</span>; <span class="sig">arvalid</span> <= <span class="num">1</span>; <span class="sig">done</span> <= <span class="num">0</span>; <span class="sig">state</span> <= <span class="sig">AR</span>;
+      <span class="kw">end</span>
+      <span class="sig">AR</span>: <span class="kw">if</span>(<span class="sig">arready</span>) <span class="kw">begin</span> <span class="sig">arvalid</span><=<span class="num">0</span>; <span class="sig">state</span><=<span class="sig">RDATA</span>; <span class="kw">end</span>
+      <span class="sig">RDATA</span>: <span class="kw">if</span>(<span class="sig">rvalid</span>) <span class="kw">begin</span>
+        <span class="sig">spm_wen</span> <= <span class="num">1</span>; <span class="sig">spm_waddr</span> <= <span class="sig">cur_dst</span>;
+        <span class="sig">cur_dst</span> <= <span class="sig">cur_dst</span> + <span class="num">8</span>; <span class="sig">remaining</span> <= <span class="sig">remaining</span> - <span class="num">8</span>;
+        <span class="kw">if</span>(<span class="sig">rlast</span>) <span class="sig">state</span> <= (<span class="sig">remaining</span>><span class="num">8</span>) ? <span class="sig">AR</span> : <span class="sig">DONE</span>;
+      <span class="kw">end else</span> <span class="sig">spm_wen</span> <= <span class="num">0</span>;
+      <span class="sig">DONE</span>: <span class="kw">begin</span> <span class="sig">done</span><=<span class="num">1</span>; <span class="sig">state</span><=<span class="sig">IDLE</span>; <span class="kw">end</span>
+    <span class="kw">endcase</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<h2>Double-Buffering for Zero-Stall Throughput</h2>
+<p>Without double-buffering: compute waits for DMA, DMA waits for compute → 50% utilisation. With double-buffering, two scratchpad banks alternate — while the accelerator reads bank A, the DMA loads the next tile into bank B. When compute finishes, swap banks instantly.</p>
+
+<div class="code-wrap">
+  <div class="code-label">C — Double-buffering control logic</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#define SPM_BANK_A  0x50000000UL</span>
+<span class="pp">#define SPM_BANK_B  0x50080000UL  // second half of scratchpad</span>
+<span class="pp">#define TILE_BYTES  (128*128)     // one 128×128 INT8 tile</span>
+
+<span class="kw">void</span> <span class="sig">double_buffered_matmul</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *A, <span class="kw">int</span> num_tiles) {
+  <span class="kw">uint64_t</span> *bank[<span class="num">2</span>] = {(<span class="kw">uint64_t</span>*)SPM_BANK_A, (<span class="kw">uint64_t</span>*)SPM_BANK_B};
+  <span class="kw">int</span> cur = <span class="num">0</span>;
+
+  <span class="cm">// Prefetch first tile into bank[0]</span>
+  dma_start((<span class="kw">uint64_t</span>)A, (<span class="kw">uint64_t</span>)bank[<span class="num">0</span>], TILE_BYTES);
+  dma_wait();
+
+  <span class="kw">for</span> (<span class="kw">int</span> t = <span class="num">0</span>; t < num_tiles; t++) {
+    <span class="kw">int</span> nxt = <span class="num">1</span> - cur;
+    <span class="cm">// Prefetch NEXT tile into other bank (overlaps with compute)</span>
+    <span class="kw">if</span> (t + <span class="num">1</span> < num_tiles)
+      dma_start((<span class="kw">uint64_t</span>)(A + (t+<span class="num">1</span>)*TILE_BYTES), (<span class="kw">uint64_t</span>)bank[nxt], TILE_BYTES);
+
+    <span class="cm">// Compute on current bank — runs while DMA loads next tile</span>
+    sys_matmul((<span class="kw">int8_t</span>*)bank[cur], result_buf);
+
+    dma_wait();   <span class="cm">// ensure next tile is ready before swap</span>
+    cur = nxt;    <span class="cm">// swap banks</span>
+  }
+}</pre>
+</div>
+
+<h2>Cache Coherency Issues</h2>
+<p>When an accelerator accesses memory directly (via DMA), the CPU's cache may have stale copies of the same data. This causes <strong>coherency bugs</strong> that are among the hardest to debug in SoC design.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Scenario</th><th>Problem</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>CPU writes A[], accelerator reads A[]</td><td>CPU's dirty cache line not yet flushed to DRAM — accelerator reads stale data</td><td>CPU must flush/clean cache lines for A[] before starting DMA</td></tr>
+<tr><td>Accelerator writes C[], CPU reads C[]</td><td>CPU cache has old C[] — reads stale value after accelerator writes</td><td>CPU must invalidate cache lines for C[] after DMA completes</td></tr>
+<tr><td>Accelerator uses hardware-coherent bus (CCI-500)</td><td>None — snooping maintains coherency automatically</td><td>No software action needed; area/power cost for coherency</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="code-wrap">
+  <div class="code-label">C — Cache flush/invalidate for coherency (bare-metal RISC-V)</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// Flush CPU cache lines before DMA reads (D$ → DRAM)</span>
+<span class="kw">static inline void</span> <span class="sig">cache_flush</span>(<span class="kw">void</span> *addr, <span class="kw">size_t</span> len) {
+  <span class="kw">uintptr_t</span> a = (<span class="kw">uintptr_t</span>)addr & ~<span class="num">63UL</span>;  <span class="cm">// align to 64-byte cache line</span>
+  <span class="kw">for</span> (; a < (<span class="kw">uintptr_t</span>)addr + len; a += <span class="num">64</span>)
+    __asm__ <span class="kw">volatile</span>(<span class="pp">"cbo.flush (%0)"</span> :: <span class="pp">"r"</span>(a)); <span class="cm">// RISC-V Zicbom extension</span>
+  __asm__ <span class="kw">volatile</span>(<span class="pp">"fence"</span>);
+}
+
+<span class="cm">// Invalidate CPU cache lines after DMA writes (DRAM → D$)</span>
+<span class="kw">static inline void</span> <span class="sig">cache_inval</span>(<span class="kw">void</span> *addr, <span class="kw">size_t</span> len) {
+  <span class="kw">uintptr_t</span> a = (<span class="kw">uintptr_t</span>)addr & ~<span class="num">63UL</span>;
+  <span class="kw">for</span> (; a < (<span class="kw">uintptr_t</span>)addr + len; a += <span class="num">64</span>)
+    __asm__ <span class="kw">volatile</span>(<span class="pp">"cbo.inval (%0)"</span> :: <span class="pp">"r"</span>(a));
+  __asm__ <span class="kw">volatile</span>(<span class="pp">"fence"</span>);
+}
+
+<span class="cm">// Correct usage pattern:</span>
+<span class="kw">void</span> <span class="sig">safe_accelerator_run</span>(<span class="kw">int8_t</span> *A, <span class="kw">int32_t</span> *C, <span class="kw">size_t</span> n) {
+  cache_flush(A, n*n);              <span class="cm">// ensure A is in DRAM before DMA reads</span>
+  cache_inval(C, n*n*<span class="kw">sizeof</span>(<span class="kw">int32_t</span>)); <span class="cm">// invalidate C before accel writes</span>
+  sys_matmul(A, C);                 <span class="cm">// run accelerator</span>
+  <span class="cm">// After return: C in DRAM. CPU will re-fetch from DRAM on next access.</span>
+}</pre>
+</div>
+
+<h2>Day 6 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>Why do AI accelerators use scratchpad memory instead of caches?</div><div class="qa-a">Caches are designed for general-purpose workloads with unpredictable access patterns. AI accelerators have highly structured, predictable access patterns (tiled matrix multiply, convolution) that can be explicitly scheduled by software. A scratchpad gives: (1) deterministic latency (no miss penalty), (2) higher area efficiency (no tag arrays — 15–20% area savings), (3) simpler coherency (software-managed means no hardware protocol overhead), and (4) higher bandwidth (can be designed as multi-bank SRAM with parallel access). Google's TPU uses a 256 MB software-managed unified buffer — larger than most L3 caches — as the primary on-chip memory for both weights and activations.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>What is double-buffering in an accelerator context and why does it matter?</div><div class="qa-a">Double-buffering uses two scratchpad banks (A and B) that alternate roles. While the accelerator computes on data in bank A, the DMA simultaneously loads the next data tile into bank B. When compute finishes, the banks swap roles instantly (just a pointer swap). This hides the DMA latency completely behind computation, achieving near-100% compute utilisation compared to ~50% without double-buffering. The cost is 2× scratchpad area. Triple-buffering (adding a third bank) further helps when DMA latency exceeds compute time, but 2× is the standard choice for most accelerators.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is a cache coherency bug in accelerator design and how do you prevent it?</div><div class="qa-a">A cache coherency bug occurs when the CPU and accelerator have inconsistent views of the same memory. Example: CPU writes input array A to memory, but the write is held in the CPU's dirty L1 cache. The DMA then reads A from DRAM — it sees stale data because the dirty cache line was never written back. Result: the accelerator computes with wrong inputs, and the bug is data-dependent and non-deterministic. Prevention: (1) CPU must flush dirty cache lines for the input buffer to DRAM before starting DMA (cbo.flush on RISC-V, DCCIVAC on ARM). (2) CPU must invalidate cache lines for the output buffer after DMA writes, so the CPU re-fetches from DRAM (cbo.inval). (3) Use a hardware-coherent interconnect (CCI-400/500, ARM ACE) which handles this automatically via snooping.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What is AXI4 burst transfer and why is it important for DMA?</div><div class="qa-a">AXI4 burst allows a single address transaction to transfer up to 256 data beats. Instead of sending one address for each 64-bit data word, the DMA sends one AR (address read) transaction with arlen=N-1, then receives N consecutive rdata beats from the memory controller. This dramatically reduces address channel bandwidth — transferring 256×64-bit=2KB requires 1 arvalid handshake instead of 256. For a DMA transferring megabytes of matrix data, burst mode is essential: without it, the address channel becomes the bottleneck. AXI4 also supports INCR (incrementing) burst type which is the natural mode for linear DMA transfers.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>How do you size the scratchpad for an N×N systolic array?</div><div class="qa-a">The scratchpad must hold the working set for at least one compute tile: (1) Weight tile: N×N elements (held in PEs, not scratchpad), (2) Activation tile: N×K elements (K = inner dimension), (3) Output tile: N×M elements (accumulated partial sums). For double-buffering, multiply by 2 for activation and output buffers. A 128×128 INT8 array with K=M=128 needs: activations = 2×128×128×1 = 32 KB, outputs = 2×128×128×4 = 128 KB (INT32), plus weight buffer = 128×128×1 = 16 KB. Total ≈ 176 KB minimum. Practical designs add margin (2–4×) for flexibility: 512 KB to 1 MB scratchpad for a 128-PE array.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>What is the roofline model and how does it apply to accelerator memory design?</div><div class="qa-a">The roofline model sets an upper bound on performance: perf = min(peak_compute, bandwidth × arithmetic_intensity). Arithmetic intensity (ops/byte) is the key metric — it tells you whether the workload is compute-bound or memory-bound. For matrix multiply, intensity = 2N ops per 3N bytes loaded = ~2/3 × N ops/byte. For N=128, intensity = 85 ops/byte. If bandwidth = 1 TB/s (on-chip scratchpad), compute roof = 128² × 2 × freq. At 1 GHz: roof = 32 TFlops, bandwidth roof = 85 × 1TB/s = 85 TFlops — compute-bound, which is ideal. Going off-chip (HBM ≈ 1 TB/s), the same calculation still holds for N≥64. The design goal is to keep the working set in the scratchpad so bandwidth stays at the on-chip level.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-05/" class="day-nav-btn">← Day 5: RoCC + Systolic</a>
+  <a href="/riscv-accelerator/day-07/" class="day-nav-btn">Day 7: AXI4 Integration →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 6 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem;line-height:1.9"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body>
+</html>
