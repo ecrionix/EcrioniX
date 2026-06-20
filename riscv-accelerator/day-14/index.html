@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 14 — Physical Design: Floorplan, Power Domains, CTS & Timing Closure | EcrioniX</title>
+<meta name="description" content="Day 14: Physical design for the RISC-V + accelerator SoC. Floorplanning macro placement, power domain partitioning, clock tree synthesis for the systolic array, static timing analysis, and tips for timing closure on the critical accumulator datapath.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-14/">
+<meta property="og:title" content="RISC-V Accelerator Day 14 — Physical Design: Floorplan, Power Domains & CTS | EcrioniX">
+<meta property="og:description" content="SoC floorplan, power domain for accelerator, clock tree synthesis, accumulator critical path, timing closure. RISC-V + Accelerator Day 14.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 14 — Physical Design: Floorplan, Power Domains & CTS","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-14/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 14","item":"https://ecrionix.org/riscv-accelerator/day-14/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does the systolic array need its own power domain?","acceptedAnswer":{"@type":"Answer","text":"The systolic array is the highest power block in the SoC — a 16×16 INT8 array switching at 1 GHz can consume 100–500 mW depending on the process node. Having its own power domain (separate power rail, isolation cells, and power switch) allows the OS or runtime to power-gate the accelerator when not in use, saving significant leakage power. Power gating also enables the accelerator to run at a different voltage than the CPU (for optimal power-performance trade-off): at peak performance, the accelerator voltage can be raised above nominal (OCV); at idle, lowered to near-threshold. Without a separate power domain, the accelerator is always on, always leaking, regardless of whether it's computing."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/riscv-accelerator/">Course Index</a></li><li><a href="/riscv-accelerator/day-13/">Day 13</a></li><li><a href="/riscv-accelerator/day-15/">Day 15</a></li><li><a href="/physical-design/">Physical Design Course</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 14 — Physical Design</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 14 of 15</div>
+  <h1>Physical Design Considerations<br><span class="g">Floorplan, Power Domains & CTS</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips"><span class="chip">Floorplan</span><span class="chip">Power Domain</span><span class="chip">Isolation Cells</span><span class="chip">CTS</span><span class="chip">Critical Path</span><span class="chip">Timing Closure</span><span class="chip">EM Check</span></div>
+</div>
+<div class="content">
+<h2>SoC Floorplan Strategy</h2>
+<p>The systolic array is the most regular, dense, and power-hungry block. It should be placed as a hard macro in a corner of the die with: (1) its scratchpad memories directly adjacent to minimise wire length, (2) the DMA engine between the systolic array and the AXI crossbar, (3) the RISC-V CPU core near the boot ROM and UART for short control paths.</p>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Block</th><th>Placement Strategy</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Systolic array</td><td>Hard macro, bottom-left corner</td><td>Regular array, dense, away from pads</td></tr>
+<tr><td>Scratchpad SRAM</td><td>Directly above systolic array</td><td>Minimise data wire length</td></tr>
+<tr><td>DMA engine</td><td>Between SRAM and AXI crossbar</td><td>On the data path, short wire to both</td></tr>
+<tr><td>RISC-V CPU</td><td>Top-right, near AXI crossbar</td><td>Control traffic, near IO pads</td></tr>
+<tr><td>UART / PLIC</td><td>Near IO pads</td><td>Short routing to chip boundary</td></tr>
+<tr><td>PLL / Clock</td><td>Centre, clock spine entry point</td><td>Equal distance to all clock endpoints</td></tr>
+</tbody>
+</table></div>
+
+<h2>Power Domain Partitioning</h2>
+<div class="concept"><div class="concept-label">Two Power Domains</div><p><strong>PD_ALWAYS_ON</strong>: RISC-V CPU, UART, PLIC, boot ROM, AXI crossbar — always powered. <strong>PD_ACCEL</strong>: Systolic array + DMA + scratchpad — can be power-gated when idle. Isolation cells on all signals crossing from PD_ACCEL to PD_ALWAYS_ON clamp outputs to a safe value when PD_ACCEL is off.</p></div>
+
+<div class="code-wrap"><div class="code-label">Verilog — Power intent (UPF 2.1 snippet)</div><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre"><span class="cm"># Always-on domain</span>
+create_power_domain PD_ALWAYS_ON -elements {cpu uart plic crossbar}
+create_supply_net   VDD_AON -domain PD_ALWAYS_ON
+connect_supply_net  VDD_AON -ports {VDD}
+
+<span class="cm"># Accelerator domain — can be gated</span>
+create_power_domain PD_ACCEL -elements {systolic_array dma sram}
+create_supply_net   VDD_ACCEL -domain PD_ACCEL
+create_power_switch PS_ACCEL  -domain PD_ACCEL \
+  -input_supply_port  {vin VDD_AON} \
+  -output_supply_port {vout VDD_ACCEL} \
+  -control_port       {sleep accel_power_gate} \
+  -on_state           {on_state vin {!sleep}}
+
+<span class="cm"># Isolation cells: clamp accel outputs LOW when off</span>
+set_isolation ISO_ACCEL \
+  -domain PD_ACCEL \
+  -isolation_signal  accel_iso_en \
+  -isolation_sense   high \
+  -clamp_value       0 \
+  -applies_to        outputs</pre>
+</div>
+
+<h2>Critical Path: Accumulator in the PE</h2>
+<p>The critical timing path in the systolic array is: <strong>psum_in → 8×8 multiplier → 32-bit adder → psum_out register</strong>. At 1 GHz (1 ns period), this must complete in under ~0.85 ns (after setup margin). The multiplier alone is typically 0.5–0.7 ns in 7nm. Fix options:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Fix</th><th>Cost</th><th>Benefit</th></tr></thead>
+<tbody>
+<tr><td>Pipeline the multiplier (2-stage)</td><td>+1 cycle latency</td><td>Halves multiplier path</td></tr>
+<tr><td>Use higher-drive cells on critical net</td><td>+area, +power</td><td>Reduces net delay</td></tr>
+<tr><td>Place adder near multiplier (manual)</td><td>PD effort</td><td>Reduces wire delay</td></tr>
+<tr><td>Reduce clock frequency to 800 MHz</td><td>−20% throughput</td><td>Easiest; no RTL change</td></tr>
+<tr><td>Use DSP hard macro for multiply-add</td><td>DSP count</td><td>Fastest; dedicated silicon</td></tr>
+</tbody>
+</table></div>
+
+<h2>Day 14 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>What is a floorplan and why is it important for SoC design?</div><div class="qa-a">A floorplan is the spatial arrangement of major functional blocks (macros, power domains, clock regions, IO pads) on the die before detailed placement and routing. It is important because: (1) Wire length between blocks is fixed by their relative positions — placing the systolic array far from its scratchpad creates long data wires with high latency and power, (2) Power distribution (PDN — power delivery network) must be planned to deliver adequate current to high-power blocks like the systolic array; poor floorplanning leads to IR drop, (3) Clock tree synthesis (CTS) works best when all registers are in a compact, symmetric region — a poorly shaped floorplan creates an unbalanced clock tree with high skew, (4) The floorplan determines which blocks share routing channels, affecting congestion. A good floorplan is shaped to match the design's dataflow — data flows short distances, control flows longer distances.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>What is an isolation cell and when is it required?</div><div class="qa-a">An isolation cell is inserted at every signal that crosses from a power-gated domain to an always-on domain. When the power-gated domain (PD_ACCEL) is turned off, its outputs float to an unknown state — this could propagate as random logic into the always-on domain (PD_ALWAYS_ON), causing incorrect behaviour. An isolation cell clamps the output to a defined safe value (0 or 1, specified in the UPF via -clamp_value) when the isolate enable signal is high (domain is off). It is placed on the always-on side, powered by VDD_AON, so it remains functional even when PD_ACCEL is gated. Without isolation cells, power-gating is functionally dangerous — the floating outputs corrupt the CPU's AXI response channel or interrupt signals.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is clock tree synthesis (CTS) and what causes clock skew?</div><div class="qa-a">Clock tree synthesis builds the distribution network from the PLL/clock source to every flip-flop's clock pin. The goal is to minimise clock skew (difference in arrival time at different FFs) and insertion delay. The CTS tool inserts buffer trees to drive the large capacitive load of thousands of FFs. Clock skew causes: (1) Hold violations — if the clock arrives too late at the launching FF and too early at the capturing FF, the new data can overwrite the old data before it's captured, (2) Setup violations — skew in the other direction tightens the effective setup window. For the systolic array, all 16×16 = 256 PE registers must have near-identical clock arrival times (skew budget ~ clock_period × 5% = 50 ps at 1 GHz). CTS achieves this using a balanced H-tree or shielded clock trunk. The PE array's regular structure makes it an ideal CTS target.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What is IR drop and how does it affect the systolic array?</div><div class="qa-a">IR drop is the voltage reduction across the power supply network caused by the resistance of metal interconnects (V = I × R). When the systolic array switches all 256 PEs simultaneously (worst-case: 0→1 transition on all MAC inputs), the instantaneous current spike causes the local supply voltage to drop below nominal VDD. Lower voltage means slower gates (Vt margin reduction increases delay), which can cause setup violations — the accumulator add may not complete before the clock edge. Mitigation: (1) Decap cells (on-chip decoupling capacitors) placed near the systolic array absorb the transient current spike, (2) Multiple power straps (wide M8/M9 rails) reduce the resistance path, (3) The power switch (for PD_ACCEL) must be sized to supply the peak current (calculate I = P/V; for 500mW at 0.7V, I = 714mA). IR drop analysis must be run in signoff to verify the drop is < 5% of VDD.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What is OCV (On-Chip Variation) and how does it affect timing signoff?</div><div class="qa-a">OCV refers to variation in transistor characteristics across the die due to process gradients, temperature gradients, and IR drop. Two FFs on the same chip may have different drive strengths and delays even though they're identical in the netlist. For timing signoff, OCV is modelled using derating factors: the launch path (from the launching FF to the net) is analysed at slow corner (worst delay), and the capture path (from the clock source to the capturing FF's clock pin) is analysed at fast corner (best delay). This creates a pessimistic but safe timing analysis. Advanced tools use AOCV (Advanced OCV) tables that derate paths based on distance and number of stages — longer paths have more variation averaging and need less derate. For the systolic array, the regular placement means adjacent PEs have similar OCV, which is a beneficial side effect of the regular structure.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>How do you handle the power-up sequence for a multi-domain SoC?</div><div class="qa-a">The always-on domain (PD_ALWAYS_ON) powers up first and must be fully stable before the accelerator domain (PD_ACCEL) powers up. The power-up sequence: (1) VDD_AON ramps to nominal — stabilisation time typically 100 µs, (2) PLL acquires lock on the system clock — 50–200 µs, (3) CPU comes out of reset, executes boot code, (4) Boot code initialises PLIC, UART, and other always-on peripherals, (5) When the application decides to use the accelerator: write accel_power_gate=0 (enable power switch), wait for VDD_ACCEL to stabilise (~10 µs), deassert accel_iso_en (release isolation), then deassert the accelerator's reset signal. The order matters: if the reset is released while isolation is still active, the accelerator sees clamped inputs and may initialise to a wrong state. If isolation is released before VDD_ACCEL is stable, floating signals corrupt the always-on domain. Always add settling time between power switch enable and isolation release.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-13/" class="day-nav-btn">← Day 13: FPGA Implementation</a>
+  <a href="/riscv-accelerator/day-15/" class="day-nav-btn">Day 15: Capstone →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 14 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body></html>

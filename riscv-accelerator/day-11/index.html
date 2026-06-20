@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 11 — Performance Optimisation: Tiling, Pipelining & Double-Buffering | EcrioniX</title>
+<meta name="description" content="Day 11: Optimise systolic array throughput. Loop tiling to maximise data reuse, software pipelining to overlap compute and DMA, double-buffering scratchpad banks, quantisation (INT8 vs FP32), and roofline-guided optimisation strategy.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-11/">
+<meta property="og:title" content="RISC-V Accelerator Day 11 — Performance Optimisation: Tiling & Pipelining | EcrioniX">
+<meta property="og:description" content="Tiling strategy, software pipelining, double-buffering, INT8 quantisation, roofline model optimisation. RISC-V + Accelerator Day 11.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 11 — Performance Optimisation: Tiling, Pipelining & Double-Buffering","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-11/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 11","item":"https://ecrionix.org/riscv-accelerator/day-11/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is double-buffering in accelerator design?","acceptedAnswer":{"@type":"Answer","text":"Double-buffering uses two scratchpad memory banks (A and B). While the accelerator computes on data in bank A, the DMA simultaneously loads the next tile into bank B. When compute finishes, the roles flip: the accelerator switches to bank B and the DMA loads into bank A. This overlaps computation with data movement, hiding DMA latency and keeping the systolic array busy nearly 100% of the time, as long as compute and DMA take roughly equal time per tile."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+.formula{background:rgba(6,182,212,.06);border:2px solid rgba(6,182,212,.18);border-radius:12px;padding:1.4rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.86rem;color:var(--cy-l);line-height:2;overflow-x:auto}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/riscv-accelerator/">Course Index</a></li><li><a href="/riscv-accelerator/day-10/">Day 10</a></li><li><a href="/riscv-accelerator/day-12/">Day 12</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 11 — Performance Optimisation</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 11 of 15</div>
+  <h1>Performance Optimisation<br><span class="g">Tiling, Pipelining & Double-Buffering</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips"><span class="chip">Loop Tiling</span><span class="chip">Double-Buffering</span><span class="chip">Software Pipeline</span><span class="chip">INT8 vs FP32</span><span class="chip">Roofline</span><span class="chip">Data Reuse</span></div>
+</div>
+<div class="content">
+<h2>The Optimisation Goal</h2>
+<p>A naive tiling loop stalls the systolic array every tile while waiting for the DMA to load the next one. The goal of optimisation is to <strong>eliminate idle time</strong> by overlapping compute and data movement so the array stays busy nearly 100% of cycles.</p>
+
+<div class="formula">
+Without double-buffering:
+  time_per_tile = T_compute + T_dma      (serial: compute then load)
+
+With double-buffering:
+  time_per_tile = max(T_compute, T_dma)  (parallel: compute while loading)
+
+Speedup = (T_compute + T_dma) / max(T_compute, T_dma)
+For T_compute ≈ T_dma: Speedup ≈ 2×
+</div>
+
+<div class="code-wrap"><div class="code-label">C — Double-buffered tiling loop</div><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#define P   16          // tile size = array dimension</span>
+<span class="pp">#define SPM_A ((int8_t*)0x20000000)  // scratchpad bank A</span>
+<span class="pp">#define SPM_B ((int8_t*)0x20004000)  // scratchpad bank B</span>
+
+<span class="kw">void</span> <span class="sig">tiled_matmul_db</span>(<span class="kw">int8_t</span> *A, <span class="kw">int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> M, <span class="kw">int</span> N, <span class="kw">int</span> K) {
+  <span class="kw">int8_t</span> *banks[<span class="num">2</span>] = { SPM_A, SPM_B };
+  <span class="kw">int</span>     bank = <span class="num">0</span>;
+
+  <span class="kw">for</span> (<span class="kw">int</span> mi = <span class="num">0</span>; mi < M; mi += P) {
+    <span class="kw">for</span> (<span class="kw">int</span> ki = <span class="num">0</span>; ki < K; ki += P) {
+
+      <span class="cm">// Prologue: DMA load first tile into bank[0], no compute yet</span>
+      dma_load_tile(A, mi, <span class="num">0</span>, banks[<span class="num">0</span>], P, N);
+      dma_wait();
+
+      <span class="kw">for</span> (<span class="kw">int</span> ni = <span class="num">0</span>; ni < N; ni += P) {
+        <span class="kw">int</span> next_ni = ni + P;
+        <span class="kw">int</span> next_bank = <span class="num">1</span> - bank;
+
+        <span class="cm">// Start DMA for NEXT tile into next bank (async)</span>
+        <span class="kw">if</span> (next_ni < N)
+          dma_load_tile_async(A, mi, next_ni, banks[next_bank], P, N);
+
+        <span class="cm">// Compute on CURRENT tile in current bank</span>
+        accel_load_weight(B + ni*K + ki, P);
+        accel_run(banks[bank], C + mi*K + ki, P);
+        accel_wait();
+
+        <span class="cm">// Wait for DMA to finish before next iteration</span>
+        dma_wait();
+        bank = next_bank;
+      }
+    }
+  }
+}</pre>
+</div>
+
+<h2>INT8 vs FP32 Comparison</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Metric</th><th>FP32</th><th>INT8</th><th>INT4</th></tr></thead>
+<tbody>
+<tr><td>Bits per weight</td><td>32</td><td>8</td><td>4</td></tr>
+<tr><td>Memory bandwidth</td><td>1×</td><td>4× less</td><td>8× less</td></tr>
+<tr><td>Compute density</td><td>1×</td><td>4× more MACs/cycle</td><td>8× more MACs/cycle</td></tr>
+<tr><td>Power</td><td>1×</td><td>~3× lower</td><td>~5× lower</td></tr>
+<tr><td>Accuracy drop</td><td>0%</td><td>&lt;1% (with calibration)</td><td>1–3% (QAT needed)</td></tr>
+<tr><td>Typical use</td><td>Training</td><td>Edge inference</td><td>Extreme edge / IoT</td></tr>
+</tbody>
+</table></div>
+
+<h2>Day 11 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>What is loop tiling and why does it improve accelerator performance?</div><div class="qa-a">Loop tiling (also called loop blocking) reorders the iteration space of a nested loop to work on small sub-matrices (tiles) that fit in fast on-chip memory (scratchpad or cache) instead of streaming through DRAM for every element access. For matrix multiply C = A×B, the naive triple-loop reads each element of B N times from DRAM. With tiling (tile size P): load a P×P tile of B into the scratchpad, reuse it for all P rows of A in the same tile, then move to the next tile. This converts N DRAM reads per B element into 1 DRAM read per B element, reducing memory bandwidth by N/P. The result is more compute per byte fetched — higher arithmetic intensity and better roofline position.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>Explain double-buffering and how it eliminates memory stalls.</div><div class="qa-a">Double-buffering uses two scratchpad banks alternating between compute and load roles. In each tile iteration: the DMA asynchronously loads the next tile into the idle bank while the systolic array computes on the current bank. At the end of each tile, the banks swap roles. This hides DMA latency behind compute latency — if both take the same time, the systolic array is never idle. The hardware requirement is two independently addressable scratchpad banks and a DMA that can transfer to one bank while the array reads from another (no bank conflicts). In software, the key is issuing the DMA transfer before starting compute (dma_load_tile_async → accel_run → dma_wait), not after (which reintroduces the serial stall).</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>What is post-training quantisation (PTQ) and how does it enable INT8 inference?</div><div class="qa-a">Post-training quantisation converts FP32 model weights and activations to INT8 without retraining. For each tensor, it determines a scale factor (S) and zero point (Z): x_int8 = round(x_fp32 / S) + Z. The scale is calibrated using a representative dataset: run a few batches through the model, record the min/max (or percentile range) of each activation, and compute S = (max - min) / 255. During inference: load INT8 weights (4× smaller), perform INT8 MACs (4× more compute density), dequantise the result back to FP32 (or INT32) before the next layer's scale calibration. Accuracy loss is typically under 1% for CNNs with per-channel weight quantisation. For more aggressive INT4, quantisation-aware training (QAT) is needed during the original training to minimise accuracy loss.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>How do you determine the optimal tile size P for a systolic array?</div><div class="qa-a">The optimal P balances three constraints: (1) Hardware: P must equal the systolic array dimension (a 16×16 array requires P=16; larger tiles need re-use via the tiling loop), (2) Scratchpad capacity: 2×P×P bytes (double-buffered A tile) + P×P bytes (B weights) must fit in the scratchpad. For P=16 with INT8: 2×256 + 256 = 768 bytes, (3) DMA/compute balance: T_dma(P) ≈ T_compute(P) for maximum double-buffering efficiency. T_compute = 3P−1 cycles; T_dma = P² / bandwidth × freq. Solve for P: P = bandwidth × (3P-1) / freq × P² → iterate numerically. In practice, P = array_size is forced by the hardware; the software tiling loop handles matrices of any size using P×P chunks.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What is the roofline model and how do you use it to guide optimisation?</div><div class="qa-a">The roofline model plots achievable performance (GFlops/s, y-axis) against arithmetic intensity (FLOPs/byte, x-axis) for a given platform. Two lines form the "roof": the horizontal line at peak compute (N² MACs/cycle × freq) and the diagonal at peak memory bandwidth × arithmetic intensity. Any kernel's actual performance sits at or below the intersection of both roofs. To use it: (1) Measure the kernel's arithmetic intensity (FLOPs / bytes of DRAM traffic), (2) Plot it on the roofline — if it's to the left of the ridge point, it's memory-bound; to the right, it's compute-bound, (3) For memory-bound: increase data reuse via tiling; for compute-bound: increase array size or clock. The model tells you the maximum possible speedup from each type of optimisation before you implement it.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>What is software pipelining and how does it apply to the tiling loop?</div><div class="qa-a">Software pipelining reorders loop iterations so that multiple stages of successive iterations overlap in time — similar to a hardware pipeline but managed by software. In the tiling loop: stage 1 = DMA load, stage 2 = accelerator compute. Naive loop executes them serially: load(i) → compute(i) → load(i+1) → compute(i+1). Software-pipelined version: load(i) → [compute(i) + load(i+1)] → [compute(i+1) + load(i+2)] → ... → compute(last). The first iteration (prologue) and last iteration (epilogue) don't overlap, but all middle iterations do. This is exactly what double-buffering implements in the tiling loop. The software pipelining depth equals the number of concurrent stages — with DMA + compute, depth = 2. Adding prefetch + DMA + compute gives depth = 3, hiding both fetch and transfer latency.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-10/" class="day-nav-btn">← Day 10: SoC Integration</a>
+  <a href="/riscv-accelerator/day-12/" class="day-nav-btn">Day 12: Verification →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 11 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body></html>

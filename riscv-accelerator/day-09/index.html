@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISC-V Accelerator Day 9 — Bare-Metal C Software Driver: MMIO, Polling, Interrupt & DMA Setup | EcrioniX</title>
+<meta name="description" content="Day 9: Write a complete bare-metal C software driver for a memory-mapped accelerator. MMIO register access macros, polling vs interrupt-driven completion, DMA buffer setup, cache coherency, and a full inference API. No OS required.">
+<link rel="canonical" href="https://ecrionix.org/riscv-accelerator/day-09/">
+<meta property="og:title" content="RISC-V Accelerator Day 9 — Bare-Metal C Software Driver | EcrioniX">
+<meta property="og:description" content="Complete bare-metal C driver: MMIO macros, polling, interrupt handler, DMA setup, aligned buffers, cache flush, inference API.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"RISC-V Accelerator Day 9 — Bare-Metal C Software Driver","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-20","url":"https://ecrionix.org/riscv-accelerator/day-09/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"RISC-V + Accelerator","item":"https://ecrionix.org/riscv-accelerator/"},{"@type":"ListItem","position":3,"name":"Day 9","item":"https://ecrionix.org/riscv-accelerator/day-09/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a bare-metal C driver for an MMIO accelerator?","acceptedAnswer":{"@type":"Answer","text":"A bare-metal driver is software that runs directly on the CPU without an operating system. It accesses accelerator control registers through MMIO (memory-mapped I/O): a fixed physical address range where reads and writes go to hardware registers instead of RAM. The driver uses volatile pointers to prevent compiler optimisation from caching or reordering register accesses, sets up DMA buffer addresses, starts the accelerator, and either polls the STATUS register or waits for an interrupt to know when results are ready."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0d1424;--bdr:rgba(148,163,184,.12);--text:#e2e8f0;--cy:#06b6d4;--cy-l:#67e8f9}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.4rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .4rem;color:#475569}
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.3);color:var(--cy-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#06b6d4,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:.8rem}.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(6,182,212,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}strong{color:#f8fafc}
+.concept{background:rgba(6,182,212,.05);border:1px solid rgba(6,182,212,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--cy);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+.code-wrap{position:relative;margin:1.5rem 0}.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(6,182,212,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--cy-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(6,182,212,.2)}
+.table-wrap{overflow-x:auto;margin:1.5rem 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.7rem 1rem;border:1px solid rgba(6,182,212,.1);text-align:left}th{background:rgba(6,182,212,.07);color:var(--cy);font-weight:700}tr:hover{background:rgba(6,182,212,.02)}
+.qa-item{margin-bottom:1.3rem;padding:1.2rem 1.4rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr)}
+.qa-q{font-weight:700;color:#f8fafc;margin-bottom:.5rem;display:flex;gap:.6rem}.qa-q-num{color:var(--cy);font-family:'JetBrains Mono',monospace;font-size:.85rem;flex-shrink:0}.qa-a{color:#94a3b8;font-size:.9rem;line-height:1.8;margin:0}
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600;font-family:'Outfit',sans-serif;text-decoration:none;display:inline-block}
+.day-nav-btn:hover{background:rgba(6,182,212,.15);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/riscv-accelerator/">Course Index</a></li><li><a href="/riscv-accelerator/day-08/">Day 8</a></li><li><a href="/riscv-accelerator/day-10/">Day 10</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/riscv-accelerator/">RISC-V + Accelerator</a><span>›</span><span>Day 9 — Bare-Metal C Driver</span></div>
+<div class="hero">
+  <div class="hero-tag">RISC-V + Accelerator · Day 09 of 15</div>
+  <h1>Bare-Metal C Software Driver<br><span class="g">MMIO, Polling, Interrupt & DMA API</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips"><span class="chip">volatile MMIO</span><span class="chip">Polling</span><span class="chip">Interrupt Handler</span><span class="chip">DMA Setup</span><span class="chip">Aligned Buffers</span><span class="chip">Cache Flush</span><span class="chip">Inference API</span></div>
+</div>
+<div class="content">
+<h2>Driver Architecture</h2>
+<p>A bare-metal accelerator driver has three layers: <strong>register access</strong> (volatile MMIO macros), <strong>transport</strong> (polling or interrupt), and <strong>API</strong> (high-level functions like <code>accel_matmul()</code>). No OS, no malloc, no libc — just direct hardware control.</p>
+<div class="concept"><div class="concept-label">Why volatile?</div><p>Without <code>volatile</code>, the compiler assumes reads return the same value and may cache STATUS in a register — so your polling loop never sees the done bit go high. <code>volatile</code> forces every read to go to the actual hardware address.</p></div>
+
+<div class="code-wrap"><div class="code-label">C — Full driver header: accel.h</div><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#pragma once</span>
+<span class="pp">#include &lt;stdint.h&gt;</span>
+<span class="pp">#include &lt;stddef.h&gt;</span>
+
+<span class="cm">// Accelerator MMIO base (from SoC address map)</span>
+<span class="pp">#define ACCEL_BASE   0x60000000UL</span>
+
+<span class="pp">#define REG_CTRL     (ACCEL_BASE + 0x00)</span>
+<span class="pp">#define REG_STATUS   (ACCEL_BASE + 0x04)</span>
+<span class="pp">#define REG_N        (ACCEL_BASE + 0x08)</span>
+<span class="pp">#define REG_A_ADDR   (ACCEL_BASE + 0x10)</span>
+<span class="pp">#define REG_B_ADDR   (ACCEL_BASE + 0x18)</span>
+<span class="pp">#define REG_C_ADDR   (ACCEL_BASE + 0x20)</span>
+<span class="pp">#define REG_CYCLES   (ACCEL_BASE + 0x28)</span>
+
+<span class="pp">#define CTRL_START   (1u &lt;&lt; 0)</span>
+<span class="pp">#define CTRL_RESET   (1u &lt;&lt; 1)</span>
+<span class="pp">#define CTRL_INT_EN  (1u &lt;&lt; 2)</span>
+<span class="pp">#define STATUS_BUSY  (1u &lt;&lt; 0)</span>
+<span class="pp">#define STATUS_DONE  (1u &lt;&lt; 1)</span>
+<span class="pp">#define STATUS_ERR   (1u &lt;&lt; 2)</span>
+
+<span class="pp">#define MMIO_W(a,v)  (*(volatile uint32_t*)(a) = (uint32_t)(v))</span>
+<span class="pp">#define MMIO_R(a)    (*(volatile uint32_t*)(a))</span>
+
+<span class="cm">// Cache line size for flush alignment</span>
+<span class="pp">#define CACHE_LINE   64</span>
+<span class="pp">#define ALIGN64      __attribute__((aligned(64)))</span>
+
+<span class="kw">void</span>     <span class="sig">accel_reset</span>(<span class="kw">void</span>);
+<span class="kw">uint32_t accel_matmul_poll</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *A, <span class="kw">const</span> <span class="kw">int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> N);
+<span class="kw">void</span>     <span class="sig">accel_matmul_async</span>(<span class="kw">const</span> <span class="kw">int8_t</span> *A, <span class="kw">const</span> <span class="kw">int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> N);
+<span class="kw">void</span>     <span class="sig">accel_irq_handler</span>(<span class="kw">void</span>);   <span class="cm">// register with PLIC</span>
+<span class="kw">int</span>      <span class="sig">accel_wait_done</span>(<span class="kw">uint32_t</span> timeout_ms);</pre>
+</div>
+
+<div class="code-wrap"><div class="code-label">C — Driver implementation: accel.c</div><button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="pp">#include "accel.h"</span>
+
+<span class="kw">static volatile int</span> <span class="sig">_done_flag</span> = <span class="num">0</span>;
+
+<span class="kw">static void</span> <span class="sig">cache_flush_range</span>(<span class="kw">const void</span> *ptr, <span class="kw">size_t</span> bytes) {
+  <span class="kw">uintptr_t</span> p = (<span class="kw">uintptr_t</span>)ptr & ~(<span class="kw">uintptr_t</span>)(CACHE_LINE-<span class="num">1</span>);
+  <span class="kw">uintptr_t</span> end = (<span class="kw">uintptr_t</span>)ptr + bytes;
+  <span class="kw">for</span> (; p < end; p += CACHE_LINE)
+    __asm__ <span class="kw">volatile</span>(<span class="pp">"cbo.flush (%0)"</span> :: <span class="pp">"r"</span>(p) : <span class="pp">"memory"</span>);
+}
+
+<span class="kw">static void</span> <span class="sig">cache_inval_range</span>(<span class="kw">void</span> *ptr, <span class="kw">size_t</span> bytes) {
+  <span class="kw">uintptr_t</span> p = (<span class="kw">uintptr_t</span>)ptr & ~(<span class="kw">uintptr_t</span>)(CACHE_LINE-<span class="num">1</span>);
+  <span class="kw">uintptr_t</span> end = (<span class="kw">uintptr_t</span>)ptr + bytes;
+  <span class="kw">for</span> (; p < end; p += CACHE_LINE)
+    __asm__ <span class="kw">volatile</span>(<span class="pp">"cbo.inval (%0)"</span> :: <span class="pp">"r"</span>(p) : <span class="pp">"memory"</span>);
+}
+
+<span class="kw">void</span> <span class="sig">accel_reset</span>() {
+  MMIO_W(REG_CTRL, CTRL_RESET);
+  <span class="kw">for</span> (<span class="kw">volatile int</span> i=<span class="num">0</span>; i<<span class="num">16</span>; i++);  <span class="cm">// hold reset ~16 cycles</span>
+  MMIO_W(REG_CTRL, <span class="num">0</span>);
+}
+
+<span class="kw">uint32_t</span> <span class="sig">accel_matmul_poll</span>(<span class="kw">const int8_t</span> *A, <span class="kw">const int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> N) {
+  <span class="kw">size_t</span> ab_sz = (<span class="kw">size_t</span>)N*N*<span class="kw">sizeof</span>(<span class="kw">int8_t</span>);
+  <span class="kw">size_t</span> c_sz  = (<span class="kw">size_t</span>)N*N*<span class="kw">sizeof</span>(<span class="kw">int32_t</span>);
+
+  cache_flush_range(A, ab_sz);   <span class="cm">// push CPU writes to DRAM</span>
+  cache_flush_range(B, ab_sz);
+  cache_inval_range(C, c_sz);    <span class="cm">// discard stale CPU view of C</span>
+
+  MMIO_W(REG_N,      N);
+  MMIO_W(REG_A_ADDR, (<span class="kw">uint32_t</span>)(<span class="kw">uintptr_t</span>)A);
+  MMIO_W(REG_B_ADDR, (<span class="kw">uint32_t</span>)(<span class="kw">uintptr_t</span>)B);
+  MMIO_W(REG_C_ADDR, (<span class="kw">uint32_t</span>)(<span class="kw">uintptr_t</span>)C);
+  MMIO_W(REG_CTRL, CTRL_START);
+
+  <span class="kw">while</span> (!(MMIO_R(REG_STATUS) & STATUS_DONE));  <span class="cm">// poll</span>
+  <span class="kw">return</span> MMIO_R(REG_CYCLES);
+}
+
+<span class="kw">void</span> <span class="sig">accel_matmul_async</span>(<span class="kw">const int8_t</span> *A, <span class="kw">const int8_t</span> *B, <span class="kw">int32_t</span> *C, <span class="kw">int</span> N) {
+  cache_flush_range(A, N*N); cache_flush_range(B, N*N);
+  cache_inval_range(C, N*N*<span class="num">4</span>);
+  _done_flag = <span class="num">0</span>;
+  MMIO_W(REG_N, N); MMIO_W(REG_A_ADDR, (<span class="kw">uint32_t</span>)A);
+  MMIO_W(REG_B_ADDR, (<span class="kw">uint32_t</span>)B); MMIO_W(REG_C_ADDR, (<span class="kw">uint32_t</span>)C);
+  MMIO_W(REG_CTRL, CTRL_START | CTRL_INT_EN);  <span class="cm">// fire + enable IRQ</span>
+}
+
+<span class="kw">void</span> <span class="sig">accel_irq_handler</span>() {
+  <span class="kw">uint32_t</span> st = MMIO_R(REG_STATUS);
+  <span class="kw">if</span> (st & STATUS_DONE) _done_flag = <span class="num">1</span>;
+  MMIO_W(REG_CTRL, <span class="num">0</span>);  <span class="cm">// clear int_en to deassert IRQ</span>
+}
+
+<span class="kw">int</span> <span class="sig">accel_wait_done</span>(<span class="kw">uint32_t</span> timeout_ms) {
+  <span class="kw">uint64_t</span> t0, now, freq = <span class="num">1000000</span>;  <span class="cm">// 1 MHz mtime tick</span>
+  __asm__ <span class="kw">volatile</span>(<span class="pp">"csrr %0, time"</span>:<span class="pp">"=r"</span>(t0));
+  <span class="kw">do</span> {
+    <span class="kw">if</span> (_done_flag) <span class="kw">return</span> <span class="num">0</span>;
+    __asm__ <span class="kw">volatile</span>(<span class="pp">"csrr %0, time"</span>:<span class="pp">"=r"</span>(now));
+  } <span class="kw">while</span> ((now - t0) < (<span class="kw">uint64_t</span>)timeout_ms * (freq/<span class="num">1000</span>));
+  <span class="kw">return</span> -<span class="num">1</span>;  <span class="cm">// timeout</span>
+}</pre>
+</div>
+
+<h2>Polling vs Interrupt Comparison</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Aspect</th><th>Polling</th><th>Interrupt-Driven</th></tr></thead>
+<tbody>
+<tr><td>CPU during wait</td><td>Spinning (wastes cycles)</td><td>WFI or doing other work</td></tr>
+<tr><td>Latency</td><td>Very low (immediate detect)</td><td>IRQ latency (~10–50 cycles)</td></tr>
+<tr><td>Code complexity</td><td>Simple loop</td><td>ISR registration, PLIC config</td></tr>
+<tr><td>Best use case</td><td>Short ops (&lt;10µs)</td><td>Long ops, overlapping work</td></tr>
+<tr><td>Power</td><td>High (CPU active)</td><td>Low (CPU can sleep in WFI)</td></tr>
+</tbody>
+</table></div>
+
+<h2>Day 9 — Interview Questions</h2>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q1</span>Why must MMIO pointers be declared volatile in C?</div><div class="qa-a">Without volatile, the C compiler assumes that a memory location's value doesn't change unless the current program writes to it. For STATUS registers, the hardware changes the value asynchronously — the done bit goes high when the accelerator finishes. If the compiler caches the first read (0x00 = not done) in a register and never re-reads the address, the polling loop becomes infinite. volatile forces every access to generate a real load instruction against the exact memory address, preventing the compiler from eliminating or reordering the access. This applies to both read (status polling) and write (register configuration) operations.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q2</span>What is the correct order of operations when setting up a DMA transfer?</div><div class="qa-a">The correct sequence is: (1) Allocate and fill source buffers (A, B matrices), (2) cache_flush source buffers — push CPU cache contents to DRAM so the DMA sees correct data, (3) cache_inval destination buffer C — discard any stale CPU cache lines for C so the CPU doesn't read old data after DMA writes, (4) Write DMA addresses and sizes to MMIO registers, (5) Start the accelerator. After completion: (6) The DMA has written C to DRAM, (7) CPU reads C — cache_inval ensures the CPU fetches fresh data from DRAM. Skipping step 2 causes the DMA to read stale data from DRAM. Skipping step 3 causes the CPU to read old cached data instead of DMA results.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q3</span>How do you register an interrupt handler for the accelerator on a RISC-V bare-metal system?</div><div class="qa-a">On RISC-V, external interrupts route through the PLIC (Platform Level Interrupt Controller). To register a handler: (1) Set the interrupt priority at the PLIC source register (PLIC_BASE + 4×irq_id), (2) Enable the interrupt at the PLIC hart enable register, (3) Set the PLIC threshold to 0 (allow all priorities), (4) Set the mie CSR bit for external interrupts (MEIE bit 11), (5) Set mstatus.MIE=1 to enable global interrupts. When the accelerator asserts its IRQ line, the PLIC claims it, the CPU jumps to mtvec (trap vector), and your trap handler dispatches to accel_irq_handler() based on mcause = 0x8000000B (external interrupt). After the handler, write the IRQ ID to the PLIC complete register.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q4</span>What is buffer alignment and why does it matter for DMA?</div><div class="qa-a">DMA engines typically require source and destination buffers to be aligned to the AXI bus width boundary (e.g., 64-byte cache line, or 128-byte burst boundary). Misaligned buffers require the DMA to issue partial-beat transactions at the start and end, reducing efficiency and sometimes causing protocol violations. In bare-metal C: declare buffers with __attribute__((aligned(64))) or allocate with posix_memalign(). Also ensure tile address arithmetic produces aligned addresses — if the base is 64-byte aligned and each tile is a multiple of 64 bytes in size, all tile addresses are automatically aligned. Misalignment bugs are silent: the DMA may silently corrupt data at the boundary without an error flag.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q5</span>What is a memory barrier and when do you need one in a driver?</div><div class="qa-a">A memory barrier (fence) prevents the CPU and compiler from reordering memory accesses across the barrier point. In RISC-V assembly, fence rw,rw ensures all prior reads and writes are visible before any subsequent ones. In bare-metal drivers, barriers are needed: (1) Before writing the START bit — all configuration registers must be written and visible to hardware before the start, (2) After the done bit is read — result data must be fetched after the done flag, not speculatively, (3) Around cache flush/inval operations. In C, __asm__ volatile("fence rw,rw" ::: "memory") or __asm__ volatile("" ::: "memory") (compiler fence only). Using volatile on MMIO macros handles most cases, but DMA completion barriers between MMIO and memory accesses may still need explicit fences.</div></div>
+<div class="qa-item"><div class="qa-q"><span class="qa-q-num">Q6</span>How do you implement a timeout for accelerator polling in bare-metal C?</div><div class="qa-a">Read the RISC-V time CSR (0xC01) before the poll loop — this is the system real-time clock driven by the CLINT, ticking at a fixed frequency (e.g., 1 MHz or 10 MHz). Convert the timeout_ms to ticks: ticks = timeout_ms × (freq / 1000). In the poll loop, re-read the time CSR and compare (now - start) >= ticks. If true, exit with an error code. This avoids depending on the cycle counter (which is affected by pipeline stalls) and instead uses real wall time. Always implement a timeout in production drivers — a stuck accelerator (hardware bug, protocol deadlock, power issue) would otherwise hang the CPU indefinitely in a pure poll loop.</div></div>
+
+<div class="day-nav">
+  <a href="/riscv-accelerator/day-08/" class="day-nav-btn">← Day 8: Performance Profiling</a>
+  <a href="/riscv-accelerator/day-10/" class="day-nav-btn">Day 10: Full SoC Integration →</a>
+</div>
+</div>
+<footer><p>© 2026 EcrioniX · RISC-V + Accelerator Day 9 · <a href="/riscv-accelerator/">Course Index</a> · <a href="/">Home</a></p><div style="margin-top:.9rem;font-size:.78rem"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a></div></footer>
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>function copyCode(btn){const pre=btn.nextElementSibling;navigator.clipboard.writeText(pre.innerText).then(()=>{btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',2000);});}</script>
+</body></html>
