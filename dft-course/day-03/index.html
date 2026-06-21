@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DFT Day 3 — Scan Insertion &amp; Compression: EDT, X-Tolerance &amp; Compression Ratio | EcrioniX</title>
+<meta name="description" content="Deep dive into scan insertion flow using Tessent/TetraMAX, EDT (Embedded Deterministic Test) compressor/decompressor architecture, X-tolerance, compression ratio calculation, and scan chain reordering. DFT course Day 3.">
+<meta name="keywords" content="scan insertion DFT, EDT embedded deterministic test, scan compression, X-tolerance ATPG, compression ratio scan, decompressor compactor, Tessent scan insertion, TetraMAX scan, scan chain reordering, PRPG XOR network, MISR compactor, DFT interview questions scan compression">
+<link rel="canonical" href="https://ecrionix.org/dft-course/day-03/">
+<meta property="og:title" content="DFT Day 3 — Scan Insertion &amp; Compression: EDT, X-Tolerance &amp; Compression Ratio | EcrioniX">
+<meta property="og:description" content="Deep dive into scan insertion flow using Tessent/TetraMAX, EDT (Embedded Deterministic Test) compressor/decompressor architecture, X-tolerance, compression ratio calculation, and scan chain reordering. DFT course Day 3.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Article","headline":"DFT Day 3 — Scan Insertion & Compression: EDT, X-Tolerance & Compression Ratio","description":"Scan insertion flow using Tessent/TetraMAX, EDT compressor/decompressor architecture, X-tolerance handling, compression ratio calculation, and scan chain reordering for DFT engineers.","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX","logo":{"@type":"ImageObject","url":"https://ecrionix.org/favicon1.png"}},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/dft-course/day-03/","mainEntityOfPage":{"@type":"WebPage","@id":"https://ecrionix.org/dft-course/day-03/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"DFT Course","item":"https://ecrionix.org/dft-course/"},{"@type":"ListItem","position":3,"name":"Day 3 — Scan Insertion & Compression","item":"https://ecrionix.org/dft-course/day-03/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is EDT and why is it used instead of full scan?","acceptedAnswer":{"@type":"Answer","text":"EDT (Embedded Deterministic Test) is a scan compression architecture that places a decompressor on-chip between the external ATE channels and the internal scan chains, and a compactor between the internal scan chains and the ATE outputs. A handful of external channels (e.g., 16) drive hundreds or thousands of internal scan chains, reducing test time and ATE pin count by 32x or more. Full scan without compression requires one ATE channel per scan chain — prohibitively expensive for modern designs with thousands of chains."}},{"@type":"Question","name":"What causes X-tolerance issues in EDT compactors?","acceptedAnswer":{"@type":"Answer","text":"X states (unknown logic values) arise from uninitialized memory elements, tri-state buses, or analog IP blocks that don't have a deterministic scan response. In a MISR-based compactor, an X on any scan cell corrupts the entire accumulated signature because XOR operations spread the unknown through all subsequent bits. EDT handles X-tolerance by: (1) designing the XOR compactor network so that X from one chain cancels with another chain's contribution, (2) using X-aware ATPG that avoids activating X-producing nodes, and (3) breaking compaction at scan segments that contain uncontrolled X sources."}},{"@type":"Question","name":"How is compression ratio calculated?","acceptedAnswer":{"@type":"Answer","text":"Compression Ratio = Number of internal scan chains / Number of external ATE channels. For example, if a design has 512 internal scan chains driven by 16 external ATE pins, the compression ratio is 512/16 = 32:1. Test time reduction is approximately equal to the compression ratio because you fill 32 chains in the time previously needed to fill one. Area overhead for the decompressor/compactor logic is typically 1–3% of total chip area."}},{"@type":"Question","name":"What is the difference between deterministic and pseudo-random test patterns?","acceptedAnswer":{"@type":"Answer","text":"Pseudo-random patterns are generated by a Linear Feedback Shift Register (LFSR) without targeting specific faults — they achieve moderate coverage quickly but plateau around 85–95% for random-pattern-resistant faults. Deterministic patterns are computed by ATPG tools targeting specific stuck-at or transition faults — they efficiently achieve 99%+ coverage. EDT is deterministic: the decompressor expands a small number of care bits (the deterministic seed) into a full scan pattern, giving deterministic coverage with pseudo-random-like hardware economy."}},{"@type":"Question","name":"What happens if a scan chain has a break?","acceptedAnswer":{"@type":"Answer","text":"A scan chain break means one or more flip-flops in the chain are disconnected from the shift path. Symptoms: (1) shifted-out data does not match the shifted-in pattern during scan continuity test, (2) fault coverage drops because the broken chain's flip-flops are no longer controllable or observable through scan. Diagnosis uses a walking-one test (shift in a single 1 and observe its position as it shifts out) to locate the break. Causes include missing scan connections after ECO changes, incorrect cell replacement, or place-and-route connectivity errors."}]}}]}</script>
+<style>
+:root{
+  --bg:#020617;--bg2:#080d1a;--bg3:#0d1424;
+  --bdr:rgba(148,163,184,.12);--text:#e2e8f0;
+  --em:#10b981;--em-l:#34d399;--em-d:#059669;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75;font-size:16px}
+a{color:var(--em);text-decoration:none}a:hover{text-decoration:underline}
+
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.95rem;font-weight:800;color:#fff}
+.nav-links{display:flex;gap:1.4rem;list-style:none}
+.nav-links a{color:#94a3b8;font-size:.82rem;font-weight:500}.nav-links a:hover{color:#fff}
+
+.bc{padding:.55rem 1.5rem;font-size:.78rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.bc span{margin:0 .4rem;color:#475569}
+
+.hero{padding:3rem 1.5rem 2.5rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.08) 0%,transparent 70%)}
+.hero-tag{display:inline-block;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--em-l);font-size:.72rem;font-weight:700;padding:.25rem .9rem;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.8rem}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.8rem}
+.hero h1 .g{background:linear-gradient(135deg,#10b981,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-meta{color:#64748b;font-size:.82rem;margin-bottom:1rem}
+.hero-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem}
+.chip{background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);color:var(--em-l);font-size:.73rem;padding:.2rem .65rem;border-radius:5px}
+
+.day-nav-top{display:flex;justify-content:space-between;align-items:center;max-width:860px;margin:1.2rem auto 0;padding:0 1.5rem}
+.day-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:var(--em-l);padding:.45rem 1rem;border-radius:20px;font-size:.8rem;font-weight:600}
+.day-pill:hover{background:rgba(16,185,129,.16);text-decoration:none}
+.day-pill-dim{color:#64748b;border-color:rgba(100,116,139,.2);background:rgba(100,116,139,.05)}
+.day-pill-dim:hover{color:#94a3b8;background:rgba(100,116,139,.1)}
+
+.content{max-width:860px;margin:0 auto;padding:2rem 1.5rem 5rem}
+h2{font-size:1.5rem;font-weight:800;color:#f8fafc;margin:2.5rem 0 .9rem;padding-bottom:.6rem;border-bottom:2px solid rgba(16,185,129,.2)}
+h3{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:#cbd5e1;margin-bottom:1.1rem;line-height:1.85}
+strong{color:#f8fafc}
+
+.concept{background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:1.3rem 1.5rem;margin:1.5rem 0}
+.concept-label{font-size:.68rem;font-weight:700;color:var(--em);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+.concept p{margin:0;color:#e2e8f0;font-size:.95rem}
+
+.diagram{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.4rem;margin:1.8rem 0;overflow-x:auto}
+.diagram-title{font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem;text-align:center}
+
+.code-wrap{position:relative;margin:1.5rem 0}
+.code-label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+pre{background:var(--bg3);border:1px solid rgba(16,185,129,.12);border-radius:10px;padding:1.3rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#e2e8f0;line-height:1.7;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#f472b6}.cm{color:#64748b;font-style:italic}.num{color:#fcd34d}.sig{color:var(--em-l)}.pp{color:#c084fc}
+.copy-btn{position:absolute;top:.6rem;right:.6rem;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:var(--em-l);padding:.25rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;font-family:'Outfit',sans-serif;font-weight:600}
+.copy-btn:hover{background:rgba(16,185,129,.2)}
+
+.table-wrap{overflow-x:auto;margin:1.5rem 0}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:.7rem 1rem;border:1px solid rgba(16,185,129,.1);text-align:left}
+th{background:rgba(16,185,129,.07);color:var(--em);font-weight:700}
+tr:hover{background:rgba(16,185,129,.02)}
+
+.formula{background:rgba(16,185,129,.06);border:2px solid rgba(16,185,129,.18);border-radius:12px;padding:1.4rem;margin:1.5rem 0;font-family:'JetBrains Mono',monospace;font-size:.9rem;color:var(--em-l);line-height:2;overflow-x:auto}
+
+.qa-section{margin-top:2.5rem}
+details{margin-bottom:1.1rem;background:var(--bg2);border-radius:12px;border:1px solid var(--bdr);overflow:hidden}
+summary{font-weight:700;color:#f8fafc;padding:1rem 1.4rem;cursor:pointer;display:flex;align-items:center;gap:.6rem;list-style:none;user-select:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▶";color:var(--em);font-size:.75rem;flex-shrink:0;transition:transform .2s}
+details[open] summary::before{transform:rotate(90deg)}
+.qa-body{padding:.2rem 1.4rem 1.1rem;color:#94a3b8;font-size:.9rem;line-height:1.8}
+
+.day-nav{display:flex;justify-content:space-between;align-items:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+.day-nav-btn{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:var(--em-l);padding:.6rem 1.3rem;border-radius:8px;font-size:.85rem;font-weight:600}
+.day-nav-btn:hover{background:rgba(16,185,129,.15);text-decoration:none}
+
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.82rem;color:#64748b;background:var(--bg2)}
+footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--em);color:#020617;border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(16,185,129,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/dft-course/">DFT Course</a>
+    <a href="/">All Courses</a>
+    <a href="/em-calculator/">Lab</a>
+  </div>
+</nav>
+
+<div class="bc">
+  <a href="/">Home</a><span>›</span>
+  <a href="/dft-course/">DFT Course</a><span>›</span>
+  <span>Day 3 — Scan Insertion &amp; Compression</span>
+</div>
+
+<div class="hero">
+  <div class="hero-tag">DFT Course · Day 03 of 12</div>
+  <h1>Scan Insertion &amp; Compression<br><span class="g">EDT, X-Tolerance &amp; Compression Ratio</span></h1>
+  <div class="hero-meta">By EcrioniX · Updated June 2026 · ~45 min read</div>
+  <div class="hero-chips">
+    <span class="chip">Scan Insertion</span>
+    <span class="chip">EDT</span>
+    <span class="chip">Decompressor</span>
+    <span class="chip">Compactor</span>
+    <span class="chip">X-Tolerance</span>
+    <span class="chip">Compression Ratio</span>
+    <span class="chip">Chain Reordering</span>
+    <span class="chip">Tessent TCL</span>
+  </div>
+</div>
+
+<div class="day-nav-top">
+  <a class="day-pill day-pill-dim" href="/dft-course/day-02/">&#8592; Day 2: Scan Design</a>
+  <a class="day-pill" href="/dft-course/day-04/">Day 4: ATPG &#8594;</a>
+</div>
+
+<div class="content">
+
+<!-- ═══════ SCAN INSERTION ═══════ -->
+<h2>What is Scan Insertion?</h2>
+
+<p>In Day 2 we saw how a scan flip-flop (scan FF) differs from a standard FF — it adds a 2:1 mux before the D input, controlled by the scan enable (SE) signal. <strong>Scan insertion</strong> is the automated EDA flow step where every standard flip-flop in the synthesized netlist is replaced by its scan-capable equivalent, and the resulting scan cells are stitched together into one or more contiguous shift-register chains.</p>
+
+<p>The two dominant tools performing scan insertion are <strong>Siemens Tessent</strong> (formerly Mentor Tessent) and <strong>Synopsys TetraMAX</strong> (now folded into the VC Formal/DFT suite). Both accept a gate-level netlist, a scan library (specifying which scan cell replaces which standard cell), and a set of DFT constraints — and produce an augmented netlist ready for ATPG.</p>
+
+<p>At the gate level, a mux-scan flip-flop looks like a standard D flip-flop with an additional input. The scan data input SI (or scan_in) feeds the mux when SE=1. The functional data input D feeds the mux when SE=0. The output Q is shared for both modes.</p>
+
+<div class="code-wrap">
+  <div class="code-label">Verilog — Mux-Scan Flip-Flop (behavioral model)</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// Mux-scan flip-flop — industry-standard DFT cell</span>
+<span class="kw">module</span> <span class="sig">scan_dff</span> (
+  <span class="kw">input</span>  <span class="sig">clk</span>,      <span class="cm">// clock</span>
+  <span class="kw">input</span>  <span class="sig">d</span>,        <span class="cm">// functional data</span>
+  <span class="kw">input</span>  <span class="sig">si</span>,       <span class="cm">// scan-in (from previous FF in chain)</span>
+  <span class="kw">input</span>  <span class="sig">se</span>,       <span class="cm">// scan enable: 1=shift, 0=capture</span>
+  <span class="kw">output</span> <span class="kw">reg</span> <span class="sig">q</span>,    <span class="cm">// functional output</span>
+  <span class="kw">output</span>     <span class="sig">so</span>    <span class="cm">// scan-out = q (feeds next FF's si)</span>
+);
+  <span class="kw">wire</span> <span class="sig">d_mux</span> = se ? si : d;  <span class="cm">// mux: select scan or functional</span>
+
+  <span class="kw">always</span> @(<span class="kw">posedge</span> clk)
+    q &lt;= d_mux;
+
+  <span class="kw">assign</span> so = q;  <span class="cm">// scan-out daisy-chains to next FF's si</span>
+<span class="kw">endmodule</span></pre>
+</div>
+
+<p>The critical observation: during normal functional operation (SE=0), the scan infrastructure is completely transparent — the mux simply passes D through. The overhead is one mux worth of logic per FF (approximately 2–5% area penalty across the full design) plus the routing of the SI/SE signals.</p>
+
+<div class="concept">
+  <div class="concept-label">Key Concept — Scan Enable Timing</div>
+  <p>The SE signal must be held stable before the rising clock edge and must not glitch during the capture cycle. A glitch on SE during capture would cause some FFs to capture scan data instead of functional data, corrupting the test response. DFT sign-off tools perform SE glitch analysis as part of the scan verification flow.</p>
+</div>
+
+<!-- ═══════ SCAN CHAIN ARCHITECTURE ═══════ -->
+<h2>Scan Chain Architecture</h2>
+
+<p>Once every FF has been converted to a scan FF, the EDA tool stitches them into <strong>scan chains</strong> — long shift registers that snake through the design. The first FF in a chain connects its SI port to a <em>scan-in</em> primary port (driven by the ATE). The last FF's SO port connects to a <em>scan-out</em> primary port (sampled by the ATE). Every intermediate FF feeds the next one: FF<sub>k</sub>.SO → FF<sub>k+1</sub>.SI.</p>
+
+<p>A design with 10,000 flip-flops could be organized as 10 chains of 1,000 FFs each, or 100 chains of 100 FFs each. The tradeoff is fundamental: fewer, longer chains mean fewer ATE I/O pins but longer shift time; more, shorter chains reduce shift time but require more ATE channels.</p>
+
+<div class="diagram">
+  <div class="diagram-title">4-FF Scan Chain — Shift Mode (SE=1)</div>
+  <svg viewBox="0 0 700 160" style="width:100%;max-width:700px;display:block;margin:0 auto" font-family="Outfit,sans-serif">
+    <defs>
+      <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+        <path d="M1,1 L1,7 L7,4 z" fill="#10b981"/>
+      </marker>
+    </defs>
+    <!-- ATE scan-in -->
+    <rect x="8" y="55" width="70" height="50" rx="8" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+    <text x="43" y="76" fill="#34d399" font-size="10" font-weight="700" text-anchor="middle">ATE</text>
+    <text x="43" y="91" fill="#94a3b8" font-size="9" text-anchor="middle">scan_in</text>
+    <!-- Arrow ATE → FF1 -->
+    <line x1="78" y1="80" x2="110" y2="80" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <!-- FF1 -->
+    <rect x="112" y="45" width="100" height="70" rx="8" fill="rgba(16,185,129,.06)" stroke="rgba(16,185,129,.25)" stroke-width="1.5"/>
+    <text x="162" y="70" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">FF1</text>
+    <text x="162" y="85" fill="#64748b" font-size="9" text-anchor="middle">scan_ff</text>
+    <text x="118" y="100" fill="#34d399" font-size="8">SI</text>
+    <text x="196" y="100" fill="#34d399" font-size="8">SO</text>
+    <!-- Arrow FF1 → FF2 -->
+    <line x1="212" y1="80" x2="244" y2="80" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <!-- FF2 -->
+    <rect x="246" y="45" width="100" height="70" rx="8" fill="rgba(16,185,129,.06)" stroke="rgba(16,185,129,.25)" stroke-width="1.5"/>
+    <text x="296" y="70" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">FF2</text>
+    <text x="296" y="85" fill="#64748b" font-size="9" text-anchor="middle">scan_ff</text>
+    <text x="252" y="100" fill="#34d399" font-size="8">SI</text>
+    <text x="330" y="100" fill="#34d399" font-size="8">SO</text>
+    <!-- Arrow FF2 → FF3 -->
+    <line x1="346" y1="80" x2="378" y2="80" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <!-- FF3 -->
+    <rect x="380" y="45" width="100" height="70" rx="8" fill="rgba(16,185,129,.06)" stroke="rgba(16,185,129,.25)" stroke-width="1.5"/>
+    <text x="430" y="70" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">FF3</text>
+    <text x="430" y="85" fill="#64748b" font-size="9" text-anchor="middle">scan_ff</text>
+    <text x="386" y="100" fill="#34d399" font-size="8">SI</text>
+    <text x="464" y="100" fill="#34d399" font-size="8">SO</text>
+    <!-- Arrow FF3 → FF4 -->
+    <line x1="480" y1="80" x2="512" y2="80" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <!-- FF4 -->
+    <rect x="514" y="45" width="100" height="70" rx="8" fill="rgba(16,185,129,.06)" stroke="rgba(16,185,129,.25)" stroke-width="1.5"/>
+    <text x="564" y="70" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">FF4</text>
+    <text x="564" y="85" fill="#64748b" font-size="9" text-anchor="middle">scan_ff</text>
+    <text x="520" y="100" fill="#34d399" font-size="8">SI</text>
+    <text x="598" y="100" fill="#34d399" font-size="8">SO</text>
+    <!-- Arrow FF4 → ATE out -->
+    <line x1="614" y1="80" x2="640" y2="80" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <!-- ATE scan-out -->
+    <rect x="642" y="55" width="50" height="50" rx="8" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+    <text x="667" y="76" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">ATE</text>
+    <text x="667" y="91" fill="#94a3b8" font-size="8" text-anchor="middle">s_out</text>
+    <!-- SE label -->
+    <text x="162" y="135" fill="#64748b" font-size="9" text-anchor="middle">SE=1: shift mode active on all FFs</text>
+    <line x1="50" y1="130" x2="630" y2="130" stroke="rgba(16,185,129,.15)" stroke-width="1" stroke-dasharray="4,3"/>
+  </svg>
+</div>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Chain Length</th><th>Shift Cycles / Pattern</th><th>ATE Pins Required</th><th>Best For</th></tr></thead>
+<tbody>
+<tr><td>100 FFs / chain</td><td>100 cycles</td><td>Many (1 per chain)</td><td>Fast test, high pin-count ATE</td></tr>
+<tr><td>1,000 FFs / chain</td><td>1,000 cycles</td><td>Moderate</td><td>Balanced — typical pre-compression</td></tr>
+<tr><td>10,000 FFs / chain</td><td>10,000 cycles</td><td>Few</td><td>Low-pin ATE; slow without compression</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ═══════ EDT ═══════ -->
+<h2>EDT — Embedded Deterministic Test</h2>
+
+<p>Without compression, testing a chip with 50,000 FFs organized in 50 chains of 1,000 FFs requires 50 ATE output pins and 50 ATE input pins. Each test pattern takes 1,000 shift cycles. For 5,000 patterns, that is 5 million clock cycles of shift time — even at 100 MHz, that's 50 ms per device. At high-volume manufacturing with millions of units, test cost becomes a significant fraction of chip cost.</p>
+
+<p><strong>EDT (Embedded Deterministic Test)</strong>, commercialized by Mentor Graphics (now Siemens EDA) as the Tessent EDT product, solves this by placing two small logic blocks on-chip:</p>
+
+<ul style="color:#cbd5e1;padding-left:1.5rem;margin-bottom:1.1rem;line-height:2">
+  <li><strong>Decompressor</strong> — sits between the ATE's few external channels and the chip's many internal scan chains. It expands N external bits into M internal bits deterministically.</li>
+  <li><strong>Compactor (Compressor)</strong> — sits between the chip's many internal scan chains and the ATE's few output channels. It reduces M response bits to N output bits.</li>
+</ul>
+
+<p>The key insight is that most bits of a deterministic ATPG pattern are "don't care" (X) — only a small number of positions must be set to specific values to sensitize and propagate a fault. The decompressor uses this to reconstruct the full pattern from a compressed seed. This is why the technique is called <em>deterministic</em> — the decompressor is not a random generator; it computes an exact expansion of each seed.</p>
+
+<div class="concept">
+  <div class="concept-label">EDT vs LFSR-Based BIST</div>
+  <p>LFSR-based BIST (Built-In Self-Test) also uses hardware to generate patterns on-chip, but the patterns are pseudo-random — not targeted at specific faults. EDT's decompressor generates <em>deterministic</em> patterns that map exactly to ATPG-computed test vectors, achieving 99%+ coverage vs ~85–92% for LFSR BIST.</p>
+</div>
+
+<!-- ═══════ EDT ARCHITECTURE ═══════ -->
+<h2>EDT Architecture Deep Dive</h2>
+
+<h3>Decompressor — XOR Network Expanding External to Internal</h3>
+
+<p>The decompressor receives N external channel bits (say 16 bits from ATE) every shift clock cycle and expands them to drive M internal scan chain heads (say 512 chains). It is structurally similar to a <strong>PRPG (Pseudo-Random Pattern Generator)</strong> but is programmable. The expansion is achieved through a sparse XOR network: each internal chain head is driven by the XOR of a small subset of external channels.</p>
+
+<p>For example, internal chain 0 might be driven by XOR(ext[0], ext[3], ext[11]). Internal chain 1 might be driven by XOR(ext[2], ext[7]). This network is designed by the EDT tool such that the set of equations is solvable — given any target pattern for the internal chains, there exists a compressed seed (the external channel values) that decompresses to it.</p>
+
+<h3>Compactor — XOR Network Reducing Internal to External</h3>
+
+<p>The compactor (also called the compressor or MISR-like network) XORs together the outputs of many internal scan chains and delivers the result to a few external output pins. A <strong>MISR (Multiple-Input Signature Register)</strong> is the classic form: an LFSR that accumulates the XOR of all scan chain outputs, producing a final signature. If any scan response bit differs from expected, the MISR signature changes — the ATE detects the mismatch.</p>
+
+<h3>X-Tolerance — Why Unknowns Are Dangerous</h3>
+
+<p>The XOR compaction has a fundamental vulnerability: <strong>X states</strong> (unknown values). If a flip-flop in a scan chain responds with X (because it feeds from an uninitialized memory, a floating tri-state bus, or an analog IP output), that X propagates through the XOR network and corrupts the accumulated signature. This is called <em>X-aliasing</em> — a bad chip may produce the same corrupted signature as a good chip with the same X sources, hiding real defects.</p>
+
+<p>EDT handles X-tolerance through two mechanisms:</p>
+
+<ul style="color:#cbd5e1;padding-left:1.5rem;margin-bottom:1.1rem;line-height:2">
+  <li><strong>X-aware ATPG</strong> — The ATPG tool models X sources during pattern generation and avoids assigning values to internal chains known to produce X responses.</li>
+  <li><strong>XOR network design</strong> — The compactor's XOR network is designed so that X contributions from one chain are XOR-cancelled by the known response of another chain (when the X source is predictable).</li>
+</ul>
+
+<div class="diagram">
+  <div class="diagram-title">EDT Architecture — 16 External ATE Channels → 512 Internal Scan Chains → 16 ATE Outputs</div>
+  <svg viewBox="0 0 760 220" style="width:100%;max-width:760px;display:block;margin:0 auto" font-family="Outfit,sans-serif">
+    <defs>
+      <marker id="arr4" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+        <path d="M0,0 L0,7 L7,3.5 z" fill="#10b981"/>
+      </marker>
+    </defs>
+    <!-- ATE left -->
+    <rect x="8" y="40" width="90" height="140" rx="10" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+    <text x="53" y="65" fill="#67e8f9" font-size="11" font-weight="700" text-anchor="middle">ATE</text>
+    <text x="53" y="82" fill="#94a3b8" font-size="9" text-anchor="middle">16 external</text>
+    <text x="53" y="96" fill="#94a3b8" font-size="9" text-anchor="middle">channels</text>
+    <text x="53" y="130" fill="#64748b" font-size="8" text-anchor="middle">scan_in[0..15]</text>
+    <!-- Arrow ATE → Decompressor -->
+    <line x1="98" y1="110" x2="140" y2="110" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr4)"/>
+    <!-- Decompressor -->
+    <rect x="142" y="20" width="130" height="180" rx="10" fill="rgba(16,185,129,.06)" stroke="rgba(16,185,129,.25)" stroke-width="1.5"/>
+    <text x="207" y="50" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">Decompressor</text>
+    <text x="207" y="67" fill="#94a3b8" font-size="9" text-anchor="middle">XOR network</text>
+    <text x="207" y="82" fill="#94a3b8" font-size="9" text-anchor="middle">16 in → 512 out</text>
+    <text x="207" y="110" fill="#64748b" font-size="8" text-anchor="middle">PRPG-like</text>
+    <text x="207" y="125" fill="#64748b" font-size="8" text-anchor="middle">sparse XOR</text>
+    <text x="207" y="155" fill="#fcd34d" font-size="8" text-anchor="middle">Compression</text>
+    <text x="207" y="168" fill="#fcd34d" font-size="8" text-anchor="middle">Ratio = 32:1</text>
+    <!-- Arrow Decomp → Scan Chains -->
+    <line x1="272" y1="110" x2="310" y2="110" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr4)"/>
+    <!-- Scan Chains block -->
+    <rect x="312" y="20" width="140" height="180" rx="10" fill="rgba(16,185,129,.04)" stroke="rgba(16,185,129,.2)" stroke-width="1.5"/>
+    <text x="382" y="50" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">512 Internal</text>
+    <text x="382" y="65" fill="#f8fafc" font-size="11" font-weight="700" text-anchor="middle">Scan Chains</text>
+    <text x="382" y="85" fill="#64748b" font-size="8" text-anchor="middle">each ~200 FFs</text>
+    <!-- Mini chain lines -->
+    <line x1="325" y1="100" x2="438" y2="100" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+    <line x1="325" y1="115" x2="438" y2="115" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+    <line x1="325" y1="130" x2="438" y2="130" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+    <line x1="325" y1="145" x2="438" y2="145" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+    <text x="382" y="165" fill="#64748b" font-size="7" text-anchor="middle">· · · 512 chains total · · ·</text>
+    <!-- Arrow Scan → Compactor -->
+    <line x1="452" y1="110" x2="490" y2="110" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr4)"/>
+    <!-- Compactor -->
+    <rect x="492" y="20" width="130" height="180" rx="10" fill="rgba(245,158,11,.06)" stroke="rgba(245,158,11,.25)" stroke-width="1.5"/>
+    <text x="557" y="50" fill="#fcd34d" font-size="11" font-weight="700" text-anchor="middle">Compactor</text>
+    <text x="557" y="67" fill="#94a3b8" font-size="9" text-anchor="middle">XOR network</text>
+    <text x="557" y="82" fill="#94a3b8" font-size="9" text-anchor="middle">512 in → 16 out</text>
+    <text x="557" y="110" fill="#64748b" font-size="8" text-anchor="middle">MISR-like</text>
+    <text x="557" y="125" fill="#64748b" font-size="8" text-anchor="middle">signature</text>
+    <text x="557" y="150" fill="#f87171" font-size="8" text-anchor="middle">X-tolerance</text>
+    <text x="557" y="163" fill="#f87171" font-size="8" text-anchor="middle">critical here</text>
+    <!-- Arrow Compactor → ATE right -->
+    <line x1="622" y1="110" x2="655" y2="110" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr4)"/>
+    <!-- ATE right -->
+    <rect x="657" y="40" width="90" height="140" rx="10" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+    <text x="702" y="65" fill="#67e8f9" font-size="11" font-weight="700" text-anchor="middle">ATE</text>
+    <text x="702" y="82" fill="#94a3b8" font-size="9" text-anchor="middle">16 output</text>
+    <text x="702" y="96" fill="#94a3b8" font-size="9" text-anchor="middle">channels</text>
+    <text x="702" y="130" fill="#64748b" font-size="8" text-anchor="middle">compare vs</text>
+    <text x="702" y="142" fill="#64748b" font-size="8" text-anchor="middle">expected</text>
+  </svg>
+</div>
+
+<!-- ═══════ COMPRESSION RATIO ═══════ -->
+<h2>Compression Ratio Calculation</h2>
+
+<p>The <strong>compression ratio</strong> is the single most important figure of merit for scan compression. It tells you how much faster the compressed test runs compared to an uncompressed full-scan test with the same fault coverage.</p>
+
+<div class="formula">
+Compression Ratio = Internal scan chains / External ATE channels
+
+Example:
+  512 internal scan chains / 16 external ATE pins = 32:1 compression
+
+Test time reduction ≈ Compression Ratio
+  Uncompressed: 512 patterns × 1000 shift cycles = 512,000 cycles
+  Compressed:   512 patterns × (1000/32) cycles  =  16,000 cycles
+</div>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>External Channels</th><th>Internal Chains</th><th>Compression Ratio</th><th>Approx. Test Time Savings</th><th>Area Overhead</th></tr></thead>
+<tbody>
+<tr><td>32 pins</td><td>512 chains</td><td>16:1</td><td>~94%</td><td>~0.5%</td></tr>
+<tr><td>16 pins</td><td>512 chains</td><td>32:1</td><td>~97%</td><td>~1.0%</td></tr>
+<tr><td>8 pins</td><td>512 chains</td><td>64:1</td><td>~98.4%</td><td>~1.5%</td></tr>
+<tr><td>4 pins</td><td>512 chains</td><td>128:1</td><td>~99.2%</td><td>~2.5%</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>In practice, <strong>32:1</strong> is the most common compression ratio in production designs — it balances test time reduction against X-tolerance limits and decompressor area. Higher ratios are achievable but require more sophisticated X-masking and larger decompressor/compactor networks. The area overhead scales roughly logarithmically because the XOR network grows as O(M log M) rather than O(M²).</p>
+
+<div class="concept">
+  <div class="concept-label">Test Time is Test Cost</div>
+  <p>ATE time is billed at $0.50–$5.00 per second depending on the tester platform. For a chip with 50 million FFs, reducing test time from 10 seconds to 0.3 seconds (32:1 compression) directly saves several dollars per unit — at 10M units/year, that's tens of millions of dollars annually.</p>
+</div>
+
+<!-- ═══════ SCAN CHAIN REORDERING ═══════ -->
+<h2>Scan Chain Reordering</h2>
+
+<p>After all scan FFs are identified and organized into chains, the placement tool may <strong>reorder</strong> which FF is connected to which within a chain. The default stitching order from synthesis is typically topological (based on netlist hierarchy), which often means FF1 is in one corner of the chip and FF2 is physically across the chip — requiring long routing wires for the SI/SO connections.</p>
+
+<p>Scan chain reordering reorganizes the stitching so that physically adjacent flip-flops are adjacent in the scan chain. The same set of FFs form the same chains, but the internal order changes. This has two significant benefits:</p>
+
+<ul style="color:#cbd5e1;padding-left:1.5rem;margin-bottom:1.1rem;line-height:2">
+  <li><strong>Routing reduction</strong> — SI/SO connections become short local wires instead of long cross-chip routes. This reduces routing congestion and can improve timing closure.</li>
+  <li><strong>Scan power reduction</strong> — During shift mode, every FF toggles on every clock cycle. When adjacent FFs in the chain have no functional relationship, their values are essentially random — causing maximum switching activity in the combinational logic between them. Proximity-based reordering groups functionally related FFs together, reducing the switching activity during scan shift.</li>
+</ul>
+
+<p>Scan power during shift can reach 3–5× the chip's normal power consumption — a genuine reliability and test fixture concern. Techniques beyond reordering include <strong>scan segmentation</strong> (inserting enable gates to clock only active chain segments) and <strong>low-power scan</strong> cell types that reduce toggle rates.</p>
+
+<!-- ═══════ SCAN INSERTION FLOW ═══════ -->
+<h2>Scan Insertion Flow — Step by Step</h2>
+
+<p>A production scan insertion flow in Tessent (Siemens) involves these stages. The tool reads the synthesized netlist and produces a scan-inserted netlist ready for place-and-route and subsequent ATPG.</p>
+
+<div class="code-wrap">
+  <div class="code-label">Tessent TCL — Scan Insertion Flow</div>
+  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm"># ── Step 1: Set up Tessent context ──────────────────────────</span>
+<span class="sig">set_context</span> dft -design_id top_chip
+
+<span class="cm"># ── Step 2: Read synthesized netlist and libraries ──────────</span>
+<span class="sig">read_verilog</span>     top_chip_synth.v
+<span class="sig">read_cell_library</span> {tsmc7nm_tt.lib tsmc7nm_scan.lib}
+<span class="sig">set_current_design</span> top_chip
+
+<span class="cm"># ── Step 3: Define DFT constraints ──────────────────────────</span>
+<span class="sig">add_clock</span>  0 clk -period 2.0
+<span class="sig">add_input_constraint</span>  rst_n 0    <span class="cm">;# reset active low held</span>
+<span class="sig">add_scan_enable</span> scan_en         <span class="cm">;# SE port name</span>
+
+<span class="cm"># ── Step 4: Define EDT compression parameters ───────────────</span>
+<span class="sig">set_edt_options</span> \
+  -num_channels 16 \
+  -num_scan_chains 512 \
+  -x_tolerance 0.15  <span class="cm">;# allow 15% X bits in compactor</span>
+
+<span class="cm"># ── Step 5: Insert scan cells and EDT logic ─────────────────</span>
+<span class="sig">insert_test_logic</span>
+
+<span class="cm"># ── Step 6: Verify scan connectivity ────────────────────────</span>
+<span class="sig">verify_test_logic</span>
+<span class="sig">report_scan_chains</span> -summary
+
+<span class="cm"># ── Step 7: Write out the scan-inserted netlist ─────────────</span>
+<span class="sig">write_design</span> -verilog top_chip_scan.v
+<span class="sig">write_design</span> -sdc    top_chip_scan.sdc</pre>
+</div>
+
+<p>The <code>verify_test_logic</code> step is critical — it simulates the scan chain by shifting a known pattern and checking connectivity, flag any broken chains before the design goes to P&amp;R. Fixing broken chains post-layout is far more expensive than fixing them at this netlist stage.</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Flow Step</th><th>Tool Action</th><th>Output</th></tr></thead>
+<tbody>
+<tr><td>1. Set DFT constraints</td><td>Define clocks, resets, SE port, black boxes</td><td>Constraint database</td></tr>
+<tr><td>2. Cell replacement</td><td>Replace std FFs with scan FFs from library</td><td>Augmented netlist</td></tr>
+<tr><td>3. Chain stitching</td><td>Connect SI/SO ports into chains</td><td>Scan chains defined</td></tr>
+<tr><td>4. EDT insertion</td><td>Add decompressor + compactor logic blocks</td><td>EDT-compressed netlist</td></tr>
+<tr><td>5. Scan verify</td><td>Simulate scan shift, check chain continuity</td><td>Chain integrity report</td></tr>
+<tr><td>6. Write output</td><td>Export scan-inserted Verilog + SDC</td><td>Scan netlist for P&amp;R</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ═══════ FAQ ═══════ -->
+<h2>Interview Questions &amp; Answers</h2>
+<div class="qa-section">
+
+<details>
+<summary>What is EDT and why is it used instead of full scan without compression?</summary>
+<div class="qa-body">EDT (Embedded Deterministic Test) places a hardware decompressor between the ATE's external channels and the chip's internal scan chains, and a compactor on the output side. A small number of external ATE pins (e.g., 16) can drive hundreds of internal scan chains simultaneously, because most pattern bits are "don't care" and can be derived from a compressed seed. This reduces test time proportional to the compression ratio (32x, 64x) and allows complex chips to be tested on lower pin-count (cheaper) ATE equipment. Without compression, you need one ATE channel per scan chain — for a chip with 512 chains, that requires 512 ATE I/O pins, which is impractical and expensive.</div>
+</details>
+
+<details>
+<summary>What causes X-tolerance issues in EDT compactors?</summary>
+<div class="qa-body">X states (unknown logic values) arise from scan cells that are reachable from uninitialized memory arrays, tri-state buses in high-Z state, analog/mixed-signal IP blocks, or gated clock domains that aren't active during test. When these X values enter the XOR compactor, they corrupt the accumulated signature — a process called X-aliasing. The compactor cannot distinguish between a real fault response and an X-corrupted response, so faults may be masked. EDT addresses this by designing the XOR network to cancel predictable X sources, by using X-aware ATPG that avoids sensitizing X-producing paths, and by setting an X-tolerance threshold that limits how many X bits the compactor can safely handle per pattern.</div>
+</details>
+
+<details>
+<summary>How is compression ratio calculated?</summary>
+<div class="qa-body">Compression Ratio = (Number of internal scan chains) / (Number of external ATE channels). For example: 512 internal scan chains / 16 external ATE pins = 32:1 compression. The test time reduction approximately equals the compression ratio because the decompressor fills 32 chains simultaneously in the same shift time that would previously fill only one chain. A 32:1 compression ratio reduces a 50-second test to under 2 seconds. The area overhead for the decompressor and compactor logic is typically 0.5–2% of total chip area.</div>
+</details>
+
+<details>
+<summary>What is the difference between deterministic and pseudo-random test patterns?</summary>
+<div class="qa-body">Pseudo-random patterns are generated algorithmically (LFSR) without targeting specific faults. They cover faults quickly up to ~85–92% and then plateau — random-pattern-resistant faults (those requiring very specific input combinations) are left undetected. Deterministic patterns are computed by ATPG algorithms (D-algorithm, PODEM, FAN) that explicitly target each undetected fault and compute the exact input assignments needed to detect it. Deterministic patterns achieve 99%+ stuck-at coverage. EDT is deterministic: the decompressor computes an exact expansion of each compressed seed, reproducing the full ATPG-computed pattern inside the chip even though only a few external bits are transferred per clock cycle.</div>
+</details>
+
+<details>
+<summary>What happens if a scan chain has a break?</summary>
+<div class="qa-body">A scan chain break disconnects the SI→Q→SO shift path at some point. Symptoms during test: (1) the scan continuity test fails — a walking-1 pattern shifted in does not appear correctly at scan-out; (2) fault coverage drops dramatically for faults on flip-flops beyond the break point, because they are no longer loadable or readable through scan. To locate the break, a binary-search walking-1 test pinpoints which FF position the break is at. Common causes: missing net connection after an ECO (Engineering Change Order), incorrect cell replacement where the scan port was not re-connected, or a place-and-route open on the SI routing wire. Breaks must be fixed at netlist level before tapeout.</div>
+</details>
+
+</div>
+
+<!-- ═══════ BOTTOM NAV ═══════ -->
+<div class="day-nav">
+  <a class="day-nav-btn" href="/dft-course/day-02/">&#8592; Day 2: Scan Design Fundamentals</a>
+  <a class="day-nav-btn" href="/dft-course/day-04/">Day 4: ATPG &#8594;</a>
+</div>
+
+</div><!-- /content -->
+
+<footer>
+  <div style="margin-bottom:.6rem">
+    <strong style="color:#e2e8f0">EcrioniX</strong> — VLSI &amp; Semiconductor Engineering Education
+  </div>
+  <div style="margin-bottom:.8rem">By EcrioniX · Updated June 2026</div>
+  <div style="display:flex;gap:1.4rem;justify-content:center;flex-wrap:wrap">
+    <a href="/dft-course/">DFT Course</a>
+    <a href="/physical-design/">Physical Design</a>
+    <a href="/riscv-from-scratch/">RISC-V</a>
+    <a href="/privacy-policy/">Privacy</a>
+    <a href="/about/">About</a>
+  </div>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.parentElement.querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='Copied!';
+    btn.style.color='#10b981';
+    setTimeout(()=>{btn.textContent=orig;btn.style.color='';},2000);
+  });
+}
+</script>
+</body>
+</html>
