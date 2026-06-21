@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Row Activation &amp; Page Policy — Module 4 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 page policy engine in Verilog. Open-page, closed-page, and adaptive page policies. Row hit/miss/conflict detection, page hit rate tracking, hit-rate-based policy switching, and ACT/PRE decision logic. Phase 1 · Module 4.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/page-policy/">
+<meta property="og:title" content="HBM3 Row Activation &amp; Page Policy — Module 4 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog page policy engine for HBM3. Open/closed/adaptive policy, row hit/miss/conflict detection, rolling hit rate, ACT/PRE decision logic, full SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Row Activation & Page Policy — Module 4","description":"Build the HBM3 page policy engine: open-page, closed-page, and adaptive policy with rolling hit rate measurement and ACT/PRE decision logic.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/page-policy/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 4 — Page Policy","item":"https://ecrionix.org/hbm3-controller/page-policy/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a DRAM page policy?","acceptedAnswer":{"@type":"Answer","text":"A page policy determines what the memory controller does with a DRAM row after a read or write access. Under open-page policy, the row stays activated (sensed) so that subsequent accesses to the same row can skip the ACTIVATE command and save tRCD latency. Under closed-page policy, the controller immediately issues PRECHARGE after every access, restoring the row to its idle state and paying tRP but guaranteeing minimum latency for the next access regardless of which row it targets."}},{"@type":"Question","name":"What is the difference between a row hit, miss, and conflict?","acceptedAnswer":{"@type":"Answer","text":"A row hit occurs when the requested row is already activated in the target bank — the controller issues only RD or WR, saving tRCD cycles. A row miss (also called a row empty) occurs when the bank is idle (precharged) — the controller must first ACTIVATE the row (tRCD), then issue RD/WR. A row conflict occurs when the bank has a different row open — the controller must first PRECHARGE the open row (tRP), then ACTIVATE the new row (tRCD), then issue RD/WR. Row conflicts are the most expensive scenario."}},{"@type":"Question","name":"When should I use open-page vs closed-page policy?","acceptedAnswer":{"@type":"Answer","text":"Open-page policy is best for workloads with high spatial locality — sequential or strided access patterns that repeatedly hit the same row. Neural network weight matrices, video frame buffers, and cache-line sequential reads are classic examples. Closed-page policy is better for random-access workloads where row hits are rare, because it eliminates the tRP penalty of a row conflict: you always pay tRCD but never pay tRP+tRCD. Adaptive policy measures the actual hit rate and switches dynamically."}},{"@type":"Question","name":"How does the adaptive policy measure hit rate?","acceptedAnswer":{"@type":"Answer","text":"The adaptive policy uses a rolling 256-request window: it counts the total number of requests and the number that were row hits. Every 256 requests the hit rate is calculated as hits/256, which fits in an 8-bit fixed-point value where 128 represents 50%. If the measured hit rate exceeds the threshold (128 = 50%), the controller acts as open-page; below the threshold it acts as closed-page. The window resets every 256 requests so the policy adapts to changing workload patterns without needing a supervisor."}},{"@type":"Question","name":"What is tRCD and why does it cost cycles?","acceptedAnswer":{"@type":"Answer","text":"tRCD (RAS-to-CAS Delay) is the minimum time that must elapse between issuing an ACTIVATE command and issuing a READ or WRITE to the activated row. During tRCD, the sense amplifiers are latching the charge from the bit lines — the row data is being resolved from a tiny capacitor voltage difference into a full logic level. Accessing the row before the sense amplifiers have settled produces unreliable data. In HBM3 at 2 GHz, tRCD = 18 cycles (9 ns)."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.concept{background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-radius:10px;padding:1rem 1.2rem;margin:.8rem 0}
+.concept h3{color:#10b981;margin-top:0}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;margin:.8rem 0}
+@media(max-width:600px){.grid3{grid-template-columns:1fr}}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Lab</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 4 — Page Policy</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">⚡ Phase 1 · Module 4 of 4</div>
+    <h1>HBM3 <span>Row Activation &amp; Page Policy</span></h1>
+    <p class="hero-sub">Open-page, closed-page, and adaptive page policies with rolling hit rate measurement. Row hit/miss/conflict detection, ACT/PRE decision logic, and policy auto-switching — fully synthesizable Verilog with SV testbench.</p>
+    <div class="meta-row">
+      <span style="display:flex;align-items:center;gap:.3rem">📁 <code style="font-family:monospace;font-size:.75rem">hbm3_page_policy.v</code></span>
+      <span style="display:flex;align-items:center;gap:.3rem">🧪 <code style="font-family:monospace;font-size:.75rem">tb_hbm3_page_policy.sv</code></span>
+      <span>✅ Synthesizable RTL</span>
+      <span class="pill">Open / Closed / Adaptive</span>
+      <span class="pill">JEDEC JESD238</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>What Is a Page Policy and Why Does It Matter?</h2>
+<p>Every DRAM bank has a <strong>sense amplifier array</strong> that can hold one open row at a time. When a row is activated (ACTivated), its contents are latched into the sense amplifiers and the row stays "open" until a PRECHARGE (PRE) command closes it. The <strong>page policy</strong> decides what to do with that open row after an access completes.</p>
+<p>This decision directly affects the bandwidth/latency tradeoff. Keeping a row open (open-page) gives near-zero overhead for repeated accesses to the same row but causes a tRP + tRCD penalty when the next access needs a different row. Closing the row immediately (closed-page) wastes tRP on every access but eliminates conflict penalties. The optimal choice depends entirely on the workload's <strong>spatial locality</strong>.</p>
+
+<div class="note">In HBM3, the difference between a row hit and a row conflict is 27 cycles (18 cycles tRCD saved vs tRP + tRCD penalty added). At 2 GHz, that is 13.5 ns per access — enough to lose 40+ GB/s of bandwidth on a random-access workload if you chose the wrong policy.</div>
+
+<h3>The Three Scenarios Every Controller Must Handle</h3>
+<p>When a new memory request arrives, the page policy engine checks the current state of the target bank and classifies the request into one of three scenarios:</p>
+
+<div class="grid3">
+<div class="concept">
+  <h3 style="color:#10b981">Row Hit</h3>
+  <p>The requested row is already open in the target bank. Issue only RD or WR. No ACT or PRE needed. Fastest path — saves tRCD entirely.</p>
+  <p style="font-family:monospace;font-size:.78rem;color:#67e8f9">Latency: CL only</p>
+</div>
+<div class="concept" style="border-color:rgba(252,211,77,.2);background:rgba(252,211,77,.03)">
+  <h3 style="color:#fcd34d">Row Miss (Empty)</h3>
+  <p>The bank is precharged — no row is open. Issue ACT, wait tRCD, then issue RD/WR. Medium penalty — one extra timing step.</p>
+  <p style="font-family:monospace;font-size:.78rem;color:#fcd34d">Latency: tRCD + CL</p>
+</div>
+<div class="concept" style="border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.03)">
+  <h3 style="color:#f87171">Row Conflict</h3>
+  <p>A different row is open in the target bank. Must PRE the existing row, wait tRP, ACT the new row, wait tRCD, then RD/WR. Highest penalty.</p>
+  <p style="font-family:monospace;font-size:.78rem;color:#f87171">Latency: tRP + tRCD + CL</p>
+</div>
+</div>
+</section>
+
+<section>
+<h2>Access Latency by Scenario</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Commands Issued</th><th>Extra Latency (cycles)</th><th>Extra Latency (ns)</th><th>Best Policy</th></tr></thead>
+<tbody>
+<tr><td>Row hit</td><td>RD / WR only</td><td>0</td><td>0</td><td>Open-page (keeps row open)</td></tr>
+<tr><td>Row empty (miss)</td><td>ACT → RD/WR</td><td>+18 (tRCD)</td><td>+9 ns</td><td>Either (row must be opened)</td></tr>
+<tr><td>Row conflict</td><td>PRE → ACT → RD/WR</td><td>+18 + 14 = +32 (tRP+tRCD)</td><td>+16 ns</td><td>Closed-page avoids this</td></tr>
+</tbody>
+</table>
+
+<p><strong>tRCD = 18 cycles (9 ns)</strong> — RAS-to-CAS delay: time for sense amplifiers to resolve row data after ACTIVATE.<br>
+<strong>tRP = 14 cycles (7 ns)</strong> — Row Precharge time: time to restore bit-lines to idle voltage after PRECHARGE.<br>
+<strong>CL = 20 cycles (10 ns)</strong> — CAS latency: read pipeline delay from CAS command to first data valid at output pins.</p>
+</section>
+
+<section>
+<h2>Open-Page Policy</h2>
+<p>In open-page mode the controller never issues a PRECHARGE unless forced by a row conflict or refresh. After every RD or WR, the row stays in the sense amplifiers. If the next access hits the same row — a <strong>row hit</strong> — it gets through in just CL cycles with no overhead. This is ideal for:</p>
+<ul style="color:#94a3b8;font-size:.88rem;margin:.5rem 0 .8rem 1.5rem;line-height:1.8">
+  <li>Sequential cache-line reads (same row, incrementing column address)</li>
+  <li>Neural network matrix multiply (row-major tile traversal)</li>
+  <li>Video decode / display readback (horizontal scanline = same row)</li>
+  <li>DMA transfers of contiguous physical pages</li>
+</ul>
+<p>The risk: every cross-row access becomes a <strong>row conflict</strong> (tRP + tRCD penalty), because there is always an open row that needs to be precharged first. On a random-access workload, open-page can be worse than closed-page by up to 1.8×.</p>
+<div class="warn">Open-page policy with 32 banks means the controller can hold 32 simultaneously open rows — one per bank. The bank FSM (Module 2) tracks which row is open in each bank via the o_banks_open bitmap. The page policy engine consults i_open_row to determine if the incoming request hits the currently open row in the target bank.</div>
+</section>
+
+<section>
+<h2>Closed-Page Policy</h2>
+<p>In closed-page mode the controller issues a PRECHARGE immediately after every RD or WR command completes. No row stays open between accesses. The next access always finds an empty bank and must issue ACT (tRCD penalty), but it <strong>never</strong> incurs the tRP penalty — because there is no open row to precharge first.</p>
+<p>The result: every access pays tRCD, but the latency is <strong>consistent and predictable</strong>. There are no conflict spikes. This makes closed-page the right choice for:</p>
+<ul style="color:#94a3b8;font-size:.88rem;margin:.5rem 0 .8rem 1.5rem;line-height:1.8">
+  <li>Random key-value lookups (hash tables, pointer chasing)</li>
+  <li>Randomized graph traversal (pointer-heavy BFS/DFS)</li>
+  <li>Workloads with low row hit rate (&lt; 30%)</li>
+  <li>Real-time applications where latency spikes are unacceptable</li>
+</ul>
+<div class="note">In closed-page mode, o_issue_pre is asserted after every accepted request so that the timing FSM can schedule the PRECHARGE before the next command arrives. The PRE command and the following idle tRP slot happen "for free" if the next request targets a different bank — the controller pipelines across banks during the precharge wait.</div>
+</section>
+
+<section>
+<h2>Adaptive Policy — Measuring and Switching Hit Rate</h2>
+<p>The adaptive policy monitors the <strong>actual row hit rate</strong> in a rolling 256-request window and selects open or closed page based on the measured result. This allows the controller to respond to workload phase changes without any software involvement.</p>
+
+<h3>Hit Rate Measurement</h3>
+<p>The module counts requests in an 8-bit counter (<code style="font-family:monospace;font-size:.82rem">r_req_count</code>). Every time a request is a row hit, an 8-bit hit counter (<code style="font-family:monospace;font-size:.82rem">r_hit_count</code>) increments. When <code style="font-family:monospace;font-size:.82rem">r_req_count</code> wraps past 255 (i.e. every 256 requests), the ratio <code style="font-family:monospace;font-size:.82rem">r_hit_count / 256</code> is directly readable as an 8-bit fixed-point hit rate, where:</p>
+<ul style="color:#94a3b8;font-size:.88rem;margin:.5rem 0 .8rem 1.5rem;line-height:1.8">
+  <li><strong>255</strong> = 100% hit rate (all 256 requests were row hits)</li>
+  <li><strong>128</strong> = 50% hit rate (adaptive threshold — default)</li>
+  <li><strong>0</strong> = 0% hit rate (every request was a miss or conflict)</li>
+</ul>
+
+<h3>Policy Switching Logic</h3>
+<p>At each 256-request window boundary, the module evaluates:</p>
+<ul style="color:#94a3b8;font-size:.88rem;margin:.5rem 0 .8rem 1.5rem;line-height:1.8">
+  <li>If <code style="font-family:monospace;font-size:.82rem">r_hit_count &gt; 128</code> → switch to or maintain <strong>open-page</strong> mode</li>
+  <li>If <code style="font-family:monospace;font-size:.82rem">r_hit_count ≤ 128</code> → switch to or maintain <strong>closed-page</strong> mode</li>
+</ul>
+<p>The threshold of 128 (50%) is optimal for symmetric hit/miss cost distributions. In practice, because row conflicts cost more than misses, a lower threshold (e.g. 100 = ~39%) may give better overall performance. This is left as a parameter for tuning.</p>
+</section>
+
+<section>
+<h2>Timing Diagram — Hit / Miss / Conflict Side-by-Side</h2>
+<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;overflow-x:auto;margin:.8rem 0">
+<svg viewBox="0 0 820 260" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:620px">
+  <rect width="820" height="260" fill="#080d1a"/>
+  <text x="410" y="16" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="12">Page Policy — Row Hit vs Miss vs Conflict Timing</text>
+
+  <!-- Column headers -->
+  <text x="155" y="35" text-anchor="middle" fill="#10b981" font-weight="bold" font-size="11">ROW HIT</text>
+  <text x="400" y="35" text-anchor="middle" fill="#fcd34d" font-weight="bold" font-size="11">ROW MISS (Empty)</text>
+  <text x="650" y="35" text-anchor="middle" fill="#f87171" font-weight="bold" font-size="11">ROW CONFLICT</text>
+
+  <!-- Dividers -->
+  <line x1="280" y1="25" x2="280" y2="255" stroke="rgba(148,163,184,.12)" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="530" y1="25" x2="530" y2="255" stroke="rgba(148,163,184,.12)" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <!-- ROW HIT: RD/WR directly -->
+  <!-- Clock ticks -->
+  <text x="88" y="58" fill="#64748b" text-anchor="end" font-size="9">addr</text>
+  <rect x="92" y="48" width="50" height="14" rx="2" fill="rgba(6,182,212,.2)" stroke="rgba(6,182,212,.4)" stroke-width="1"/>
+  <text x="117" y="59" text-anchor="middle" fill="#67e8f9" font-size="9">REQ</text>
+
+  <text x="88" y="80" fill="#64748b" text-anchor="end" font-size="9">cmd</text>
+  <rect x="142" y="70" width="60" height="14" rx="2" fill="rgba(16,185,129,.2)" stroke="rgba(16,185,129,.4)" stroke-width="1"/>
+  <text x="172" y="81" text-anchor="middle" fill="#10b981" font-size="9">RD/WR</text>
+
+  <text x="88" y="102" fill="#64748b" text-anchor="end" font-size="9">data</text>
+  <rect x="202" y="92" width="60" height="14" rx="2" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="232" y="103" text-anchor="middle" fill="#10b981" font-size="9">DATA</text>
+
+  <!-- Hit latency brace -->
+  <line x1="92" y1="120" x2="262" y2="120" stroke="#10b981" stroke-width="1"/>
+  <line x1="92" y1="116" x2="92" y2="124" stroke="#10b981" stroke-width="1"/>
+  <line x1="262" y1="116" x2="262" y2="124" stroke="#10b981" stroke-width="1"/>
+  <text x="177" y="133" text-anchor="middle" fill="#10b981" font-size="9">CL = 20 cy</text>
+  <text x="155" y="148" text-anchor="middle" fill="#475569" font-size="9">(no ACT or PRE needed)</text>
+
+  <!-- ROW MISS -->
+  <text x="333" y="58" fill="#64748b" text-anchor="end" font-size="9">addr</text>
+  <rect x="337" y="48" width="50" height="14" rx="2" fill="rgba(6,182,212,.2)" stroke="rgba(6,182,212,.4)" stroke-width="1"/>
+  <text x="362" y="59" text-anchor="middle" fill="#67e8f9" font-size="9">REQ</text>
+
+  <text x="333" y="80" fill="#64748b" text-anchor="end" font-size="9">cmd</text>
+  <rect x="337" y="70" width="50" height="14" rx="2" fill="rgba(252,211,77,.2)" stroke="rgba(252,211,77,.4)" stroke-width="1"/>
+  <text x="362" y="81" text-anchor="middle" fill="#fcd34d" font-size="9">ACT</text>
+  <rect x="390" y="70" width="50" height="14" rx="2" fill="rgba(16,185,129,.2)" stroke="rgba(16,185,129,.4)" stroke-width="1"/>
+  <text x="415" y="81" text-anchor="middle" fill="#10b981" font-size="9">RD/WR</text>
+
+  <text x="333" y="102" fill="#64748b" text-anchor="end" font-size="9">data</text>
+  <rect x="440" y="92" width="60" height="14" rx="2" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="470" y="103" text-anchor="middle" fill="#10b981" font-size="9">DATA</text>
+
+  <!-- Miss latency brace -->
+  <line x1="337" y1="120" x2="500" y2="120" stroke="#fcd34d" stroke-width="1"/>
+  <line x1="337" y1="116" x2="337" y2="124" stroke="#fcd34d" stroke-width="1"/>
+  <line x1="500" y1="116" x2="500" y2="124" stroke="#fcd34d" stroke-width="1"/>
+  <text x="419" y="133" text-anchor="middle" fill="#fcd34d" font-size="9">tRCD(18) + CL(20) = 38 cy</text>
+  <text x="400" y="148" text-anchor="middle" fill="#475569" font-size="9">(bank was idle — ACT required)</text>
+
+  <!-- ROW CONFLICT -->
+  <text x="575" y="58" fill="#64748b" text-anchor="end" font-size="9">addr</text>
+  <rect x="579" y="48" width="40" height="14" rx="2" fill="rgba(6,182,212,.2)" stroke="rgba(6,182,212,.4)" stroke-width="1"/>
+  <text x="599" y="59" text-anchor="middle" fill="#67e8f9" font-size="9">REQ</text>
+
+  <text x="575" y="80" fill="#64748b" text-anchor="end" font-size="9">cmd</text>
+  <rect x="579" y="70" width="36" height="14" rx="2" fill="rgba(248,113,113,.2)" stroke="rgba(248,113,113,.4)" stroke-width="1"/>
+  <text x="597" y="81" text-anchor="middle" fill="#f87171" font-size="9">PRE</text>
+  <rect x="618" y="70" width="36" height="14" rx="2" fill="rgba(252,211,77,.2)" stroke="rgba(252,211,77,.4)" stroke-width="1"/>
+  <text x="636" y="81" text-anchor="middle" fill="#fcd34d" font-size="9">ACT</text>
+  <rect x="657" y="70" width="46" height="14" rx="2" fill="rgba(16,185,129,.2)" stroke="rgba(16,185,129,.4)" stroke-width="1"/>
+  <text x="680" y="81" text-anchor="middle" fill="#10b981" font-size="9">RD/WR</text>
+
+  <text x="575" y="102" fill="#64748b" text-anchor="end" font-size="9">data</text>
+  <rect x="703" y="92" width="50" height="14" rx="2" fill="rgba(16,185,129,.12)" stroke="rgba(16,185,129,.3)" stroke-width="1"/>
+  <text x="728" y="103" text-anchor="middle" fill="#10b981" font-size="9">DATA</text>
+
+  <!-- Conflict brace -->
+  <line x1="579" y1="120" x2="753" y2="120" stroke="#f87171" stroke-width="1"/>
+  <line x1="579" y1="116" x2="579" y2="124" stroke="#f87171" stroke-width="1"/>
+  <line x1="753" y1="116" x2="753" y2="124" stroke="#f87171" stroke-width="1"/>
+  <text x="666" y="133" text-anchor="middle" fill="#f87171" font-size="9">tRP(14)+tRCD(18)+CL(20)=52 cy</text>
+  <text x="650" y="148" text-anchor="middle" fill="#475569" font-size="9">(wrong row open — PRE+ACT)</text>
+
+  <!-- Summary row -->
+  <rect x="30" y="165" width="240" height="30" rx="5" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.2)" stroke-width="1"/>
+  <text x="150" y="184" text-anchor="middle" fill="#10b981" font-weight="bold" font-size="11">Hit: 20 cy — Best Case</text>
+
+  <rect x="285" y="165" width="240" height="30" rx="5" fill="rgba(252,211,77,.08)" stroke="rgba(252,211,77,.2)" stroke-width="1"/>
+  <text x="405" y="184" text-anchor="middle" fill="#fcd34d" font-weight="bold" font-size="11">Miss: 38 cy — Medium</text>
+
+  <rect x="540" y="165" width="248" height="30" rx="5" fill="rgba(248,113,113,.08)" stroke="rgba(248,113,113,.2)" stroke-width="1"/>
+  <text x="664" y="184" text-anchor="middle" fill="#f87171" font-weight="bold" font-size="11">Conflict: 52 cy — Worst</text>
+
+  <text x="410" y="240" text-anchor="middle" fill="#475569" font-size="10">All timings at 2 GHz · tRCD=18 cy (9 ns) · tRP=14 cy (7 ns) · CL=20 cy (10 ns) — JEDEC JESD238 HBM3</text>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>Port Reference — hbm3_page_policy</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>in</td><td>1</td><td>System clock (2 GHz)</td></tr>
+<tr><td>i_rst_n</td><td>in</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>i_req_valid</td><td>in</td><td>1</td><td>New memory request arriving this cycle</td></tr>
+<tr><td>i_req_row[14:0]</td><td>in</td><td>15</td><td>Row address of incoming request</td></tr>
+<tr><td>i_req_bg[2:0]</td><td>in</td><td>3</td><td>Target bank group (0–7)</td></tr>
+<tr><td>i_req_ba[1:0]</td><td>in</td><td>2</td><td>Target bank within group (0–3)</td></tr>
+<tr><td>i_bank_active</td><td>in</td><td>1</td><td>From bank FSM: target bank has an open row</td></tr>
+<tr><td>i_open_row[14:0]</td><td>in</td><td>15</td><td>Currently open row in target bank (from bank FSM)</td></tr>
+<tr><td>i_policy_sel[1:0]</td><td>in</td><td>2</td><td>Policy select: 00=open, 01=closed, 10=adaptive</td></tr>
+<tr><td>o_page_hit</td><td>out</td><td>1</td><td>Request targets currently open row — RD/WR directly</td></tr>
+<tr><td>o_page_miss</td><td>out</td><td>1</td><td>Bank is idle — need ACT then RD/WR</td></tr>
+<tr><td>o_page_conflict</td><td>out</td><td>1</td><td>Different row open — need PRE + ACT + RD/WR</td></tr>
+<tr><td>o_issue_pre</td><td>out</td><td>1</td><td>Assert to issue PRECHARGE (closed-page or conflict)</td></tr>
+<tr><td>o_issue_act</td><td>out</td><td>1</td><td>Assert to issue ACTIVATE (miss or conflict)</td></tr>
+<tr><td>o_hit_rate[7:0]</td><td>out</td><td>8</td><td>Rolling 256-request hit rate (8-bit, 128=50%)</td></tr>
+<tr><td>o_policy_active[1:0]</td><td>out</td><td>2</td><td>Effective policy: 00=open, 01=closed, 10=adaptive (same as input unless adaptive overrides)</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Verilog Source — hbm3_page_policy.v</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog · hbm3_page_policy.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  hbm3_page_policy.v
+//  HBM3 Page Policy Engine  —  Phase 1 · Module 4
+//  Open-page, closed-page, and adaptive policy
+//  Row hit/miss/conflict detection, rolling hit rate,
+//  ACT/PRE decision logic
+//  Synthesizable Verilog — EcrioniX HBM3 Controller Series
+// ================================================================
+`timescale 1ns/1ps
+`default_nettype none
+
+module hbm3_page_policy (
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // --- Incoming Request ---
+    input  wire        i_req_valid,       // New request this cycle
+    input  wire [14:0] i_req_row,         // Requested row address
+    input  wire [2:0]  i_req_bg,          // Bank group (0-7)
+    input  wire [1:0]  i_req_ba,          // Bank within group (0-3)
+
+    // --- Current Bank State (from Bank FSM, Module 2) ---
+    input  wire        i_bank_active,     // Target bank has open row
+    input  wire [14:0] i_open_row,        // Currently open row in target bank
+
+    // --- Policy Selection ---
+    input  wire [1:0]  i_policy_sel,      // 00=open 01=closed 10=adaptive
+
+    // --- Page Status Outputs ---
+    output reg         o_page_hit,        // Request hits open row
+    output reg         o_page_miss,       // Bank idle — need ACT
+    output reg         o_page_conflict,   // Wrong row open — need PRE+ACT
+
+    // --- Command Issue Signals ---
+    output reg         o_issue_pre,       // Issue PRECHARGE
+    output reg         o_issue_act,       // Issue ACTIVATE
+
+    // --- Adaptive Policy Metrics ---
+    output reg  [7:0]  o_hit_rate,        // Rolling hit rate (128 = 50%)
+    output reg  [1:0]  o_policy_active    // Effective policy (may differ from sel in adaptive)
+);
+
+// Policy encoding constants
+localparam POL_OPEN    = 2'b00;
+localparam POL_CLOSED  = 2'b01;
+localparam POL_ADAPTIVE= 2'b10;
+
+// Adaptive threshold: 128/256 = 50%
+localparam ADAPT_THRESH = 8'd128;
+
+// ================================================================
+//  Row Hit / Miss / Conflict Detection (combinational)
+// ================================================================
+reg w_hit, w_miss, w_conflict;
+
+always @(*) begin
+    w_hit      = 1'b0;
+    w_miss     = 1'b0;
+    w_conflict = 1'b0;
+    if (i_req_valid) begin
+        if (i_bank_active) begin
+            if (i_open_row == i_req_row)
+                w_hit = 1'b1;      // Same row — hit
+            else
+                w_conflict = 1'b1; // Different row — conflict
+        end else begin
+            w_miss = 1'b1;         // No open row — miss
+        end
+    end
+end
+
+// ================================================================
+//  Rolling 256-Request Hit Rate Counter
+// ================================================================
+reg [7:0]  r_req_count;   // Counts 0-255, wraps at 256
+reg [7:0]  r_hit_count;   // Hits in current window
+
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        r_req_count &lt;= 8'd0;
+        r_hit_count &lt;= 8'd0;
+        o_hit_rate  &lt;= 8'd0;
+    end else if (i_req_valid) begin
+        if (r_req_count == 8'd255) begin
+            // Window boundary: publish hit rate and reset counters
+            o_hit_rate  &lt;= r_hit_count;    // hits out of 256 requests
+            r_hit_count &lt;= w_hit ? 8'd1 : 8'd0;
+            r_req_count &lt;= 8'd0;
+        end else begin
+            r_req_count &lt;= r_req_count + 8'd1;
+            if (w_hit)
+                r_hit_count &lt;= r_hit_count + 8'd1;
+        end
+    end
+end
+
+// ================================================================
+//  Effective Policy Resolution (adaptive picks open or closed)
+// ================================================================
+reg [1:0] r_effective_policy;
+
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        r_effective_policy &lt;= POL_CLOSED; // Safe default
+    end else begin
+        case (i_policy_sel)
+            POL_OPEN    : r_effective_policy &lt;= POL_OPEN;
+            POL_CLOSED  : r_effective_policy &lt;= POL_CLOSED;
+            POL_ADAPTIVE: begin
+                // Switch every window boundary based on measured hit rate
+                if (o_hit_rate &gt; ADAPT_THRESH)
+                    r_effective_policy &lt;= POL_OPEN;
+                else
+                    r_effective_policy &lt;= POL_CLOSED;
+            end
+            default: r_effective_policy &lt;= POL_CLOSED;
+        endcase
+    end
+end
+
+// ================================================================
+//  Page Status + Command Issue Outputs
+// ================================================================
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        o_page_hit      &lt;= 1'b0;
+        o_page_miss     &lt;= 1'b0;
+        o_page_conflict &lt;= 1'b0;
+        o_issue_pre     &lt;= 1'b0;
+        o_issue_act     &lt;= 1'b0;
+        o_policy_active &lt;= POL_CLOSED;
+    end else begin
+        o_page_hit      &lt;= w_hit;
+        o_page_miss     &lt;= w_miss;
+        o_page_conflict &lt;= w_conflict;
+        o_policy_active &lt;= r_effective_policy;
+
+        // Default de-assert
+        o_issue_pre &lt;= 1'b0;
+        o_issue_act &lt;= 1'b0;
+
+        if (i_req_valid) begin
+            case (r_effective_policy)
+                POL_OPEN: begin
+                    // Hit: no commands (row already open)
+                    // Miss: issue ACT
+                    // Conflict: issue PRE + ACT
+                    if (w_miss)     o_issue_act &lt;= 1'b1;
+                    if (w_conflict) begin o_issue_pre &lt;= 1'b1; o_issue_act &lt;= 1'b1; end
+                end
+                POL_CLOSED: begin
+                    // Always close after access; need ACT for every new access
+                    // Hit still gets RD/WR; but we always issue PRE after (handled externally)
+                    // On next cycle, bank is idle → miss → ACT needed
+                    if (w_hit || w_miss) o_issue_act &lt;= !i_bank_active;
+                    if (w_conflict)      begin o_issue_pre &lt;= 1'b1; o_issue_act &lt;= 1'b1; end
+                    // Always schedule PRE after every access
+                    o_issue_pre &lt;= i_req_valid; // External logic must delay PRE by tWR
+                end
+                POL_ADAPTIVE: begin
+                    // Resolved to open or closed above — reuse open/closed logic
+                    if (o_hit_rate &gt; ADAPT_THRESH) begin
+                        // Behave as open-page
+                        if (w_miss)     o_issue_act &lt;= 1'b1;
+                        if (w_conflict) begin o_issue_pre &lt;= 1'b1; o_issue_act &lt;= 1'b1; end
+                    end else begin
+                        // Behave as closed-page
+                        if (!i_bank_active) o_issue_act &lt;= 1'b1;
+                        if (w_conflict)     begin o_issue_pre &lt;= 1'b1; o_issue_act &lt;= 1'b1; end
+                        o_issue_pre &lt;= i_req_valid;
+                    end
+                end
+                default: begin end
+            endcase
+        end
+    end
+end
+
+endmodule
+`default_nettype wire</pre>
+</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench — tb_hbm3_page_policy.sv</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog · tb_hbm3_page_policy.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  tb_hbm3_page_policy.sv
+//  Self-checking testbench for hbm3_page_policy
+//  5 Tests: page hit, page miss, page conflict,
+//           adaptive threshold crossing, closed-page PRE issue
+// ================================================================
+`timescale 1ns/1ps
+
+module tb_hbm3_page_policy;
+
+// ---- DUT Ports ----
+logic        clk, rst_n;
+logic        req_valid;
+logic [14:0] req_row;
+logic [2:0]  req_bg;
+logic [1:0]  req_ba;
+logic        bank_active;
+logic [14:0] open_row;
+logic [1:0]  policy_sel;
+
+wire         page_hit, page_miss, page_conflict;
+wire         issue_pre, issue_act;
+wire  [7:0]  hit_rate;
+wire  [1:0]  policy_active;
+
+hbm3_page_policy dut (
+    .i_clk          (clk),
+    .i_rst_n        (rst_n),
+    .i_req_valid    (req_valid),
+    .i_req_row      (req_row),
+    .i_req_bg       (req_bg),
+    .i_req_ba       (req_ba),
+    .i_bank_active  (bank_active),
+    .i_open_row     (open_row),
+    .i_policy_sel   (policy_sel),
+    .o_page_hit     (page_hit),
+    .o_page_miss    (page_miss),
+    .o_page_conflict(page_conflict),
+    .o_issue_pre    (issue_pre),
+    .o_issue_act    (issue_act),
+    .o_hit_rate     (hit_rate),
+    .o_policy_active(policy_active)
+);
+
+// 2 GHz clock
+initial clk = 0;
+always #0.25 clk = ~clk;
+
+int pass_cnt = 0, fail_cnt = 0;
+
+task check(input string name, input logic got, input logic exp);
+    if (got === exp) begin
+        $display("  PASS  %s", name); pass_cnt++;
+    end else begin
+        $display("  FAIL  %s: got=%0b exp=%0b", name, got, exp); fail_cnt++;
+    end
+endtask
+
+task tick(input int n = 1);
+    repeat(n) @(posedge clk); #0.1;
+endtask
+
+task reset_dut;
+    rst_n = 0; req_valid = 0; req_row = 0; req_bg = 0; req_ba = 0;
+    bank_active = 0; open_row = 0; policy_sel = 2'b00;
+    tick(4); rst_n = 1; tick(2);
+endtask
+
+// ================================================================
+//  SVA Assertions
+// ================================================================
+// Only one of hit/miss/conflict can be high when req_valid
+property one_hot_status;
+    @(posedge clk) disable iff (!rst_n)
+    req_valid |-> $onehot0({page_hit, page_miss, page_conflict});
+endproperty
+assert property (one_hot_status) else $error("SVA FAIL: multiple status bits asserted");
+
+// issue_act must not fire on a page hit in open-page mode
+property no_act_on_hit;
+    @(posedge clk) disable iff (!rst_n)
+    (page_hit &amp;&amp; policy_active == 2'b00) |-> !issue_act;
+endproperty
+assert property (no_act_on_hit) else $error("SVA FAIL: ACT issued on page hit in open-page mode");
+
+// ================================================================
+//  TEST 1 — Page Hit (open-page, same row already active)
+// ================================================================
+task test1_page_hit;
+    $display("\n[TEST 1] Page Hit — Open-Page Policy");
+    reset_dut();
+    policy_sel  = 2'b00;    // open-page
+    bank_active = 1'b1;
+    open_row    = 15'h0042; // row 0x42 is open
+    req_row     = 15'h0042; // same row — hit
+    req_bg      = 3'd0;
+    req_ba      = 2'd0;
+    req_valid   = 1'b1;
+    tick(1); req_valid = 0; tick(1);
+    check("page_hit asserted",    page_hit,     1'b1);
+    check("page_miss NOT set",    page_miss,    1'b0);
+    check("page_conflict NOT set",page_conflict,1'b0);
+    check("issue_act NOT set",    issue_act,    1'b0);
+endtask
+
+// ================================================================
+//  TEST 2 — Page Miss (open-page, bank idle)
+// ================================================================
+task test2_page_miss;
+    $display("\n[TEST 2] Page Miss — Bank Idle");
+    reset_dut();
+    policy_sel  = 2'b00;    // open-page
+    bank_active = 1'b0;     // bank is idle
+    open_row    = 15'd0;
+    req_row     = 15'h0010;
+    req_valid   = 1'b1;
+    tick(1); req_valid = 0; tick(1);
+    check("page_miss asserted",   page_miss,    1'b1);
+    check("page_hit NOT set",     page_hit,     1'b0);
+    check("page_conflict NOT set",page_conflict,1'b0);
+    check("issue_act asserted",   issue_act,    1'b1);
+endtask
+
+// ================================================================
+//  TEST 3 — Page Conflict (different row open)
+// ================================================================
+task test3_page_conflict;
+    $display("\n[TEST 3] Page Conflict — Different Row Open");
+    reset_dut();
+    policy_sel  = 2'b00;    // open-page
+    bank_active = 1'b1;
+    open_row    = 15'h00AA; // row 0xAA is open
+    req_row     = 15'h00BB; // different row — conflict
+    req_valid   = 1'b1;
+    tick(1); req_valid = 0; tick(1);
+    check("page_conflict asserted",page_conflict,1'b1);
+    check("page_hit NOT set",      page_hit,     1'b0);
+    check("page_miss NOT set",     page_miss,    1'b0);
+    check("issue_pre asserted",    issue_pre,    1'b1);
+    check("issue_act asserted",    issue_act,    1'b1);
+endtask
+
+// ================================================================
+//  TEST 4 — Adaptive Threshold Crossing
+// ================================================================
+task test4_adaptive_threshold;
+    $display("\n[TEST 4] Adaptive Policy — Threshold Crossing");
+    reset_dut();
+    policy_sel  = 2'b10;    // adaptive
+    bank_active = 1'b1;
+    open_row    = 15'h0050;
+
+    // Send 256 all-hit requests — hit rate should exceed threshold
+    req_row = 15'h0050; // always matches open_row
+    repeat(256) begin
+        req_valid = 1'b1; tick(1); req_valid = 0; tick(1);
+    end
+    tick(2);
+    check("hit_rate high after 256 hits", hit_rate &gt; 8'd128, 1'b1);
+
+    // Send 256 all-conflict requests — hit rate should drop below threshold
+    req_row = 15'h0099; // never matches open_row
+    repeat(256) begin
+        req_valid = 1'b1; tick(1); req_valid = 0; tick(1);
+    end
+    tick(2);
+    check("hit_rate low after 256 conflicts", hit_rate &lt; 8'd128, 1'b1);
+endtask
+
+// ================================================================
+//  TEST 5 — Closed-Page PRE Issue
+// ================================================================
+task test5_closed_pre_issue;
+    $display("\n[TEST 5] Closed-Page — PRE Issued on Every Access");
+    reset_dut();
+    policy_sel  = 2'b01;    // closed-page
+    bank_active = 1'b1;
+    open_row    = 15'h0007;
+    req_row     = 15'h0007; // hit in closed-page mode
+    req_valid   = 1'b1;
+    tick(1); req_valid = 0; tick(1);
+    check("page_hit in closed-page", page_hit,  1'b1);
+    check("issue_pre in closed-page",issue_pre, 1'b1);
+endtask
+
+// ================================================================
+//  Main
+// ================================================================
+initial begin
+    $dumpfile("dump_pp.vcd"); $dumpvars(0, tb_hbm3_page_policy);
+    test1_page_hit();
+    test2_page_miss();
+    test3_page_conflict();
+    test4_adaptive_threshold();
+    test5_closed_pre_issue();
+    $display("\n========================================");
+    $display("  RESULTS: %0d PASS  /  %0d FAIL", pass_cnt, fail_cnt);
+    $display("========================================");
+    $finish;
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+<details>
+  <summary>What is a DRAM page policy?</summary>
+  <p>A page policy determines what the memory controller does with an activated DRAM row after completing a read or write. Under open-page policy, the row remains in the sense amplifiers for subsequent accesses. Under closed-page policy, a PRECHARGE command is issued immediately after each access, returning the bank to idle. The choice trades off row-hit bandwidth against row-conflict latency.</p>
+</details>
+<details>
+  <summary>What is the difference between a row hit, miss, and conflict?</summary>
+  <p>A row hit occurs when the requested row is already activated — only RD/WR is issued (CL latency). A row miss (empty bank) requires ACT + RD/WR (tRCD + CL latency). A row conflict requires PRE + ACT + RD/WR because a different row is already open (tRP + tRCD + CL — the most expensive path). Minimizing conflicts is the primary goal of any page policy engine.</p>
+</details>
+<details>
+  <summary>When should I use open-page vs closed-page policy?</summary>
+  <p>Open-page is ideal for high-locality workloads: sequential reads, matrix multiply, video decode. Closed-page suits random-access patterns: hash tables, pointer chasing, graph traversal. If you don't know the workload in advance — or it changes dynamically — adaptive policy measures the actual hit rate every 256 requests and switches automatically.</p>
+</details>
+<details>
+  <summary>How does the adaptive policy measure the hit rate?</summary>
+  <p>The module counts requests and row hits in a rolling 256-request window. At the window boundary, the 8-bit hit_count is exported directly as o_hit_rate (where 128 = 50%). If the measured rate exceeds 128, the controller adopts open-page behavior for the next window. Otherwise it uses closed-page. The window resets every 256 requests so the policy tracks phase changes in the workload without manual intervention.</p>
+</details>
+<details>
+  <summary>What is tRCD and why does it matter?</summary>
+  <p>tRCD (RAS-to-CAS Delay) is the minimum time after an ACTIVATE command before a READ or WRITE can be issued. During tRCD, the sense amplifiers are amplifying the tiny charge difference on the bit lines into a full logic level — accessing the row early would read unresolved, noisy data. In HBM3 at 2 GHz, tRCD = 18 cycles (9 ns). Eliminating tRCD via row hits is the single biggest latency saving available to a memory controller.</p>
+</details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/refresh-ctrl/">← Module 3 — Refresh Controller</a>
+  <a class="nav-pill" href="/hbm3-controller/write-path/">Module 5 — Write Path →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div style="margin-bottom:.5rem">
+    <a href="/hbm3-controller/">HBM3 Controller Series</a> · <a href="/courses/">All Courses</a> · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a>
+  </div>
+  By EcrioniX · Updated June 2026
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Refresh Controller — Module 3 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 refresh controller in Verilog. tREFI watchdog counter, tRFC blocking window, all-bank refresh (ABR) scheduling, per-bank refresh (PBR) mode, refresh postpone logic, and refresh collision arbitration. Phase 1 · Module 3.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/refresh-ctrl/">
+<meta property="og:title" content="HBM3 Refresh Controller — Module 3 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog refresh controller for HBM3. tREFI watchdog, tRFC blocking, ABR/PBR scheduling, refresh debt tracking, full SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Refresh Controller — Module 3","description":"Build the HBM3 refresh controller with tREFI watchdog, refresh debt tracking, ABR/PBR scheduling, and tRFC blocking window.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/refresh-ctrl/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 3 — Refresh Controller","item":"https://ecrionix.org/hbm3-controller/refresh-ctrl/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does DRAM need periodic refresh?","acceptedAnswer":{"@type":"Answer","text":"DRAM stores data as electrical charge in capacitors. Those capacitors leak charge over time due to junction leakage in the transistors. Without periodic refresh, data is lost within milliseconds. The JEDEC standard specifies tREFI (refresh interval) as the maximum time between refresh operations — in HBM3 this is 3.9 µs (7,800 cycles at 2 GHz). Every bank must be refreshed at least once per tREFI to guarantee data retention."}},{"@type":"Question","name":"What is the difference between ABR and PBR refresh in HBM3?","acceptedAnswer":{"@type":"Answer","text":"ABR (All-Bank Refresh) refreshes all 32 banks simultaneously in a single tRFC=440 cycle (220 ns) operation. The entire memory array is unavailable during tRFC. PBR (Per-Bank Refresh) targets one bank at a time using tRFCpb=140 cycles (70 ns), leaving the other 31 banks accessible. PBR reduces average memory-unavailability by 3.1x but requires the controller to track refresh state per bank and schedule 32 individual refresh operations within each tREFI window."}},{"@type":"Question","name":"What is refresh debt and why is it dangerous?","acceptedAnswer":{"@type":"Answer","text":"Refresh debt is the count of tREFI intervals that have elapsed without a refresh being serviced. JEDEC allows up to 8 consecutive refresh operations to be postponed (pulled in) so the scheduler can delay refresh when a time-critical burst is running. But the debt must be paid back — if debt reaches 8 (maximum postponement), the next refresh is mandatory and cannot be skipped. Beyond 8 postponed refreshes, data corruption is possible because the oldest rows exceeded their retention time."}},{"@type":"Question","name":"What happens during the tRFC blocking window?","acceptedAnswer":{"@type":"Answer","text":"When a refresh command is accepted (ref_ack asserted), all 32 banks enter an unavailable state for tRFC cycles (440 cycles for ABR, 140 cycles for PBR on the targeted bank). The controller must not issue any ACT, RD, WR, or PRE commands during this window. The o_refreshing output signal gates the scheduler: as long as it is asserted, the scheduler must stall. Only after tRFC expires can normal operation resume."}},{"@type":"Question","name":"How does the per-bank refresh (PBR) bitmap work?","acceptedAnswer":{"@type":"Answer","text":"The PBR tracker maintains a 32-bit bitmap where each bit represents one of the 32 banks. When a bank's PBR refresh is serviced (i_pbr_ack asserted for i_pbr_bank), the corresponding bit is cleared. Each time tREFI expires, all bits are set again (every bank needs a new refresh). The scheduler always targets the lowest-numbered bank with its bit set, which implements a round-robin priority that ensures no bank starves."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.concept{background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-radius:10px;padding:1rem 1.2rem;margin:.8rem 0}
+.concept h3{color:#10b981;margin-top:0}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Lab</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 3 — Refresh Controller</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">⚡ Phase 1 · Module 3 of 4</div>
+    <h1>HBM3 <span>Refresh Controller</span></h1>
+    <p class="hero-sub">tREFI watchdog counter, refresh debt accumulation, all-bank and per-bank refresh scheduling, tRFC blocking window, and collision arbitration. Fully synthesizable Verilog with self-checking SV testbench.</p>
+    <div class="meta-row">
+      <span style="display:flex;align-items:center;gap:.3rem">📁 <code style="font-family:monospace;font-size:.75rem">hbm3_refresh_ctrl.v</code></span>
+      <span style="display:flex;align-items:center;gap:.3rem">🧪 <code style="font-family:monospace;font-size:.75rem">tb_hbm3_refresh_ctrl.sv</code></span>
+      <span>✅ Synthesizable RTL</span>
+      <span class="pill">tREFI = 7800 cy</span>
+      <span class="pill">tRFC = 440 cy</span>
+      <span class="pill">JEDEC JESD238</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>Why DRAM Needs Periodic Refresh</h2>
+<p>DRAM stores each bit as charge on a tiny capacitor — typically 10–30 fF. Unlike SRAM (which uses a cross-coupled latch), DRAM capacitors are not self-refreshing. Transistor junction leakage continuously drains the charge at a rate of roughly 1–10 fA per cell. At room temperature, the charge decays to an unreadable level within <strong>32–64 ms</strong>; at higher temperatures (e.g. 85 °C), retention drops to around <strong>16 ms</strong>.</p>
+<p>To prevent data loss, the memory controller must periodically issue a <strong>REFRESH</strong> command that reads and rewrites every row in the array. JEDEC specifies the maximum time between refresh operations as <strong>tREFI</strong>. In HBM3 at 2 GHz, tREFI = <strong>7,800 clock cycles (3.9 µs)</strong>. Every row must be refreshed at least once per retention interval — with HBM3's 32,768 rows per bank, this works out to one refresh command every 3.9 µs.</p>
+<div class="note">HBM3 operates in pseudo-channels, each with its own independent refresh controller. The refresh signal does not need to be coordinated across pseudo-channels, which allows for refresh staggering to avoid simultaneous power spikes across the die stack.</div>
+
+<h3>The Refresh Penalty</h3>
+<p>Every refresh command forces the memory array offline for the <strong>refresh cycle time (tRFC)</strong>. During tRFC, no ACT, RD, WR, or PRE can be issued to the affected banks. The HBM3 specification defines two refresh modes with different tradeoffs:</p>
+
+<table>
+<thead><tr><th>Mode</th><th>Banks Refreshed</th><th>Duration</th><th>Array Unavailability</th></tr></thead>
+<tbody>
+<tr><td>ABR — All-Bank Refresh</td><td>All 32 banks</td><td>tRFC = 440 cy (220 ns)</td><td>100% — full blackout</td></tr>
+<tr><td>PBR — Per-Bank Refresh</td><td>1 of 32 banks</td><td>tRFCpb = 140 cy (70 ns)</td><td>3.1% — other 31 banks stay accessible</td></tr>
+</tbody>
+</table>
+
+<p>The choice between ABR and PBR is set by <code style="font-family:monospace;font-size:.82rem">i_pbr_mode</code>. Most modern HBM3 controllers default to PBR during sustained traffic and fall back to ABR during idle periods where the latency penalty is irrelevant.</p>
+</section>
+
+<section>
+<h2>ABR vs PBR — All-Bank Refresh vs Per-Bank Refresh</h2>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.8rem 0">
+<div class="concept">
+  <h3>ABR — All-Bank Refresh</h3>
+  <p>One REFRESH command refreshes all 32 banks simultaneously. The entire pseudo-channel stalls for <strong>440 cycles (220 ns)</strong>. Simple to implement — the tREFI counter fires, the controller issues one REF, waits tRFC, resumes. Latency spike is predictable and easy to hide with write buffers. Best for bursty or idle workloads where occasional 220 ns stalls are acceptable.</p>
+</div>
+<div class="concept">
+  <h3>PBR — Per-Bank Refresh</h3>
+  <p>One PBR command targets a single bank for <strong>140 cycles (70 ns)</strong>. The other 31 banks remain active. The scheduler must track which banks need refresh (32-bit bitmap) and service each within tREFI. Full PBR requires 32 × 140 = 4,480 cycles per tREFI interval — 57% of tREFI. Delivers 3.1× lower average unavailability but demands precise per-bank scheduling.</p>
+</div>
+</div>
+
+<p>For a high-bandwidth memory system like HBM3, PBR is strongly preferred during active traffic. The 31 available banks mean a scheduler can almost always find a non-refreshing bank to service, hiding the refresh latency entirely behind ongoing transactions.</p>
+<div class="warn">JEDEC requires that when operating in PBR mode, each bank must receive its own refresh within tREFI. A controller that issues ABR to "catch up" after PBR misses is non-compliant. Choose one mode and stick to it unless transitioning via the defined mode-switch sequence.</div>
+</section>
+
+<section>
+<h2>tREFI Watchdog and Refresh Debt Accumulation</h2>
+<p>The core of the refresh controller is a <strong>13-bit watchdog counter</strong> that counts down from 7,800 to zero. When it reaches zero, it fires <code style="font-family:monospace;font-size:.82rem">o_ref_req</code> and reloads. If the timing FSM or scheduler cannot accept the refresh immediately (e.g., a critical write burst is finishing), the controller increments a <strong>refresh debt counter</strong> instead of waiting.</p>
+
+<h3>Refresh Postponement Rules</h3>
+<p>JEDEC allows up to <strong>8 consecutive refreshes to be postponed</strong> (the "pull-in" window). This gives the scheduler up to 8 × 3.9 µs = 31.2 µs of freedom to avoid issuing refresh at the worst possible moment. However:</p>
+
+<table>
+<thead><tr><th>Debt Level</th><th>o_ref_count[3:0]</th><th>o_ref_urgent</th><th>Scheduler Action</th></tr></thead>
+<tbody>
+<tr><td>0–3 refreshes owed</td><td>0x0 – 0x3</td><td>0</td><td>Normal — can postpone for timing-critical ops</td></tr>
+<tr><td>4–7 refreshes owed</td><td>0x4 – 0x7</td><td>1</td><td>Urgent — must prioritize refresh over new requests</td></tr>
+<tr><td>8 refreshes owed</td><td>0x8</td><td>1 (critical)</td><td>Mandatory — cannot issue any ACT/RD/WR until serviced</td></tr>
+</tbody>
+</table>
+
+<p>When <code style="font-family:monospace;font-size:.82rem">i_ref_ack</code> pulses (the timing FSM has accepted a refresh), the debt counter decrements and the tRFC blocking window begins. The watchdog counter does not pause during tRFC — it keeps counting so the next tREFI deadline is correctly tracked.</p>
+
+<div class="note">The refresh debt counter caps at 8. Once at 8, additional tREFI expirations do not increment further — instead, <code style="font-family:monospace;font-size:.82rem">o_ref_urgent</code> stays asserted and the scheduler must not issue commands until the debt drains below 8.</div>
+</section>
+
+<section>
+<h2>Refresh Scheduling — Postpone and Priority Logic</h2>
+<p>The refresh controller does not directly issue DRAM commands — it generates <strong>request signals</strong> that the command scheduler arbitrates against read/write traffic. The key outputs are:</p>
+<ul style="color:#94a3b8;font-size:.88rem;margin:.5rem 0 .8rem 1.5rem;line-height:1.8">
+  <li><strong>o_ref_req</strong> — ABR refresh is due (tREFI watchdog expired, debt &gt; 0)</li>
+  <li><strong>o_pbr_req + o_pbr_target</strong> — PBR refresh needed for bank <code style="font-family:monospace">o_pbr_target[4:0]</code></li>
+  <li><strong>o_ref_urgent</strong> — debt ≥ 4, scheduler must stop deferring</li>
+  <li><strong>o_refreshing</strong> — tRFC/tRFCpb blocking window active, commands must stall</li>
+</ul>
+
+<h3>Collision Arbitration</h3>
+<p>A <strong>refresh collision</strong> occurs when a refresh request arrives while a bank is in the middle of an ACT→RD/WR sequence. The scheduler has three options:</p>
+<table>
+<thead><tr><th>Situation</th><th>Response</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>Bank idle when refresh fires</td><td>Issue REF immediately</td><td>tRFC only</td></tr>
+<tr><td>Bank active, read/write pending, debt &lt; 4</td><td>Finish current command, then refresh</td><td>tRFC + small delay</td></tr>
+<tr><td>Bank active, debt = 8 (critical)</td><td>Abort read/write, issue PRE, then REF</td><td>tRP + tRFC (full penalty)</td></tr>
+</tbody>
+</table>
+<p>The refresh controller itself does not make this arbitration decision — it merely signals urgency via <code style="font-family:monospace;font-size:.82rem">o_ref_urgent</code> and <code style="font-family:monospace;font-size:.82rem">o_ref_count</code>. The scheduler (covered in Module 5) implements the policy.</p>
+</section>
+
+<section>
+<h2>Timing Diagram — tREFI → Refresh → tRFC Block</h2>
+<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;overflow-x:auto;margin:.8rem 0">
+<svg viewBox="0 0 820 220" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:600px">
+  <rect width="820" height="220" fill="#080d1a"/>
+  <text x="410" y="16" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="12">HBM3 Refresh Timing — tREFI Watchdog → ref_req → ref_ack → tRFC Block</text>
+
+  <!-- Labels column -->
+  <text x="78" y="45" text-anchor="end" fill="#94a3b8">clk</text>
+  <text x="78" y="80" text-anchor="end" fill="#94a3b8">tREFI cnt</text>
+  <text x="78" y="115" text-anchor="end" fill="#10b981">o_ref_req</text>
+  <text x="78" y="150" text-anchor="end" fill="#06b6d4">i_ref_ack</text>
+  <text x="78" y="185" text-anchor="end" fill="#f87171">o_refreshing</text>
+
+  <!-- Clock pulses -->
+  <polyline points="85,55 85,35 100,35 100,55 115,55 115,35 130,35 130,55 145,55 145,35 160,35 160,55 175,55 175,35 190,35 190,55 205,55 205,35 220,35 220,55 235,55 235,35 250,35 250,55 265,55 265,35 280,35 280,55 295,55 295,35 310,35 310,55 325,55 325,35 340,35 340,55 355,55 355,35 370,35 370,55 385,55 385,35 400,35 400,55 415,55 415,35 430,35 430,55 445,55 445,35 460,35 460,55 475,55 475,35 490,35 490,55 505,55 505,35 520,35 520,55 535,55 535,35 550,35 550,55 565,55 565,35 580,35 580,55 595,55 595,35 610,35 610,55 625,55 625,35 640,35 640,55 655,55 655,35 670,35 670,55 685,55 685,35 700,35 700,55 715,55 715,35 730,35 730,55 745,55 745,35 760,35 760,55 775,55 775,35 790,35 790,55 805,55" fill="none" stroke="#475569" stroke-width="1"/>
+
+  <!-- tREFI countdown bar — counting down from 7800 to 0 -->
+  <rect x="85" y="68" width="270" height="18" rx="3" fill="rgba(6,182,212,.15)" stroke="rgba(6,182,212,.3)" stroke-width="1"/>
+  <text x="88" y="81" fill="#67e8f9" font-size="9">7800 → 0 (3.9 µs / 7800 cy)</text>
+  <!-- Arrow at expiry -->
+  <line x1="355" y1="68" x2="355" y2="86" stroke="#fcd34d" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <text x="357" y="97" fill="#fcd34d" font-size="9">EXPIRE</text>
+  <!-- Reload bar -->
+  <rect x="385" y="68" width="200" height="18" rx="3" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.2)" stroke-width="1"/>
+  <text x="388" y="81" fill="#475569" font-size="9">7800 → … (next interval)</text>
+
+  <!-- o_ref_req — goes high at expiry, stays high until ref_ack -->
+  <polyline points="85,122 355,122 355,108 400,108 400,122 805,122" fill="none" stroke="#10b981" stroke-width="2"/>
+
+  <!-- i_ref_ack — single pulse -->
+  <polyline points="85,157 395,157 395,143 410,143 410,157 805,157" fill="none" stroke="#06b6d4" stroke-width="2"/>
+
+  <!-- o_refreshing — high from ref_ack for tRFC=440 cycles, shown as block -->
+  <rect x="410" y="171" width="200" height="18" rx="2" fill="rgba(248,113,113,.25)" stroke="#f87171" stroke-width="1.5"/>
+  <text x="420" y="183" fill="#f87171" font-size="9">tRFC = 440 cycles (220 ns)</text>
+  <polyline points="85,189 410,189 410,171" fill="none" stroke="#f87171" stroke-width="2"/>
+  <polyline points="610,171 610,189 805,189" fill="none" stroke="#f87171" stroke-width="2"/>
+
+  <!-- Annotations -->
+  <line x1="85" y1="200" x2="355" y2="200" stroke="#475569" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="220" y="213" text-anchor="middle" fill="#475569" font-size="9">tREFI = 7800 cy (3.9 µs)</text>
+  <line x1="410" y1="200" x2="610" y2="200" stroke="#f87171" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="510" y="213" text-anchor="middle" fill="#f87171" font-size="9">tRFC = 440 cy (220 ns)</text>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>Timing Parameters Reference</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Cycles (2 GHz)</th><th>Time</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Refresh interval</td><td>tREFI</td><td>7,800</td><td>3.9 µs</td><td>Maximum time between refresh commands</td></tr>
+<tr><td>Refresh cycle time (ABR)</td><td>tRFC</td><td>440</td><td>220 ns</td><td>All-bank refresh unavailability window</td></tr>
+<tr><td>Per-bank refresh cycle time</td><td>tRFCpb</td><td>140</td><td>70 ns</td><td>Per-bank refresh unavailability for targeted bank</td></tr>
+<tr><td>Max refresh postponement</td><td>tREFW (debt)</td><td>8 × tREFI</td><td>31.2 µs</td><td>Maximum accumulated refresh debt before mandatory service</td></tr>
+<tr><td>Refresh urgent threshold</td><td>—</td><td>4 × tREFI</td><td>15.6 µs</td><td>Point at which scheduler must prioritize refresh</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Port Reference — hbm3_refresh_ctrl</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>in</td><td>1</td><td>System clock (2 GHz)</td></tr>
+<tr><td>i_rst_n</td><td>in</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>i_ref_ack</td><td>in</td><td>1</td><td>Pulse: timing FSM accepted ABR refresh, start tRFC</td></tr>
+<tr><td>i_pbr_ack</td><td>in</td><td>1</td><td>Pulse: per-bank refresh accepted, bank identified by i_pbr_bank</td></tr>
+<tr><td>i_pbr_bank[4:0]</td><td>in</td><td>5</td><td>Which bank (0–31) was just refreshed via PBR</td></tr>
+<tr><td>o_ref_req</td><td>out</td><td>1</td><td>ABR refresh request — tREFI watchdog has expired</td></tr>
+<tr><td>o_pbr_req</td><td>out</td><td>1</td><td>PBR refresh request — at least one bank needs refresh</td></tr>
+<tr><td>o_pbr_target[4:0]</td><td>out</td><td>5</td><td>Lowest-priority bank number for next PBR (round-robin)</td></tr>
+<tr><td>o_refreshing</td><td>out</td><td>1</td><td>tRFC/tRFCpb blocking window active — no ACT/RD/WR allowed</td></tr>
+<tr><td>o_ref_count[3:0]</td><td>out</td><td>4</td><td>Current refresh debt (0–8); 8 = critical, must service now</td></tr>
+<tr><td>o_ref_urgent</td><td>out</td><td>1</td><td>Asserted when debt ≥ 4 — scheduler must prioritize refresh</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Verilog Source — hbm3_refresh_ctrl.v</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog · hbm3_refresh_ctrl.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  hbm3_refresh_ctrl.v
+//  HBM3 Refresh Controller  —  Phase 1 · Module 3
+//  tREFI watchdog, refresh debt counter, ABR/PBR scheduling,
+//  tRFC blocking window, per-bank refresh bitmap tracking
+//  Synthesizable Verilog — EcrioniX HBM3 Controller Series
+// ================================================================
+`timescale 1ns/1ps
+`default_nettype none
+
+module hbm3_refresh_ctrl (
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // --- Refresh Acknowledgements from Timing FSM ---
+    input  wire        i_ref_ack,        // ABR refresh accepted — start tRFC
+    input  wire        i_pbr_ack,        // PBR accepted — clear target bank bit
+    input  wire [4:0]  i_pbr_bank,       // Bank refreshed via PBR (0-31)
+
+    // --- Refresh Request Outputs to Scheduler ---
+    output reg         o_ref_req,        // ABR needed (tREFI expired)
+    output reg         o_pbr_req,        // PBR needed (any bank bit set)
+    output reg  [4:0]  o_pbr_target,     // Lowest unrefreshed bank number
+    output reg         o_refreshing,     // tRFC blocking window active
+    output reg  [3:0]  o_ref_count,      // Refresh debt (0-8)
+    output reg         o_ref_urgent      // Debt &gt;= 4: scheduler must prioritize
+);
+
+// ================================================================
+//  Timing Parameters (2 GHz clock)
+// ================================================================
+localparam TREFI    = 13'd7800;   // 3.9 us  — refresh interval
+localparam TRFC     = 9'd440;     // 220 ns  — all-bank refresh cycle
+localparam TRFCPB   = 8'd140;     // 70 ns   — per-bank refresh cycle
+localparam DEBT_MAX = 4'd8;       // JEDEC max postpone limit
+localparam DEBT_URG = 4'd4;       // Urgency threshold
+
+// ================================================================
+//  tREFI Watchdog Counter (13 bits, counts down from 7800)
+// ================================================================
+reg [12:0] r_refi_cnt;
+reg        r_refi_expired;
+
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        r_refi_cnt     &lt;= TREFI - 1;
+        r_refi_expired &lt;= 1'b0;
+    end else begin
+        r_refi_expired &lt;= 1'b0;
+        if (r_refi_cnt == 13'd0) begin
+            r_refi_cnt     &lt;= TREFI - 1;
+            r_refi_expired &lt;= 1'b1;
+        end else begin
+            r_refi_cnt &lt;= r_refi_cnt - 13'd1;
+        end
+    end
+end
+
+// ================================================================
+//  Refresh Debt Counter (0 to 8)
+// ================================================================
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        o_ref_count &lt;= 4'd0;
+    end else begin
+        if (r_refi_expired &amp;&amp; !i_ref_ack) begin
+            // tREFI expired without service — accumulate debt (cap at 8)
+            if (o_ref_count &lt; DEBT_MAX)
+                o_ref_count &lt;= o_ref_count + 4'd1;
+        end else if (!r_refi_expired &amp;&amp; i_ref_ack &amp;&amp; o_ref_count &gt; 4'd0) begin
+            // Refresh acknowledged — pay down debt
+            o_ref_count &lt;= o_ref_count - 4'd1;
+        end
+        // Both expired and ack in same cycle: net zero change
+    end
+end
+
+// ================================================================
+//  ABR Request and Urgent Flags
+// ================================================================
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        o_ref_req    &lt;= 1'b0;
+        o_ref_urgent &lt;= 1'b0;
+    end else begin
+        // ref_req asserted any time debt > 0 OR watchdog just fired
+        o_ref_req    &lt;= (o_ref_count &gt; 4'd0) | r_refi_expired;
+        o_ref_urgent &lt;= (o_ref_count &gt;= DEBT_URG);
+    end
+end
+
+// ================================================================
+//  tRFC Blocking Window Counter
+// ================================================================
+reg [8:0] r_rfc_cnt;
+
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        r_rfc_cnt    &lt;= 9'd0;
+        o_refreshing &lt;= 1'b0;
+    end else begin
+        if (i_ref_ack &amp;&amp; !o_refreshing) begin
+            // ABR accepted — start tRFC countdown
+            r_rfc_cnt    &lt;= TRFC - 9'd1;
+            o_refreshing &lt;= 1'b1;
+        end else if (o_refreshing) begin
+            if (r_rfc_cnt == 9'd0) begin
+                o_refreshing &lt;= 1'b0;
+            end else begin
+                r_rfc_cnt &lt;= r_rfc_cnt - 9'd1;
+            end
+        end
+    end
+end
+
+// ================================================================
+//  Per-Bank Refresh Bitmap (32 banks)
+//  Bit[n] = 1 means bank n needs a PBR refresh this interval
+// ================================================================
+reg [31:0] r_pbr_bitmap;
+integer    pbr_i;
+
+// Find lowest set bit (priority encoder)
+reg [4:0] r_pbr_next;
+always @(*) begin
+    r_pbr_next = 5'd31;
+    for (pbr_i = 30; pbr_i &gt;= 0; pbr_i = pbr_i - 1)
+        if (r_pbr_bitmap[pbr_i]) r_pbr_next = pbr_i[4:0];
+end
+
+always @(posedge i_clk) begin
+    if (!i_rst_n) begin
+        r_pbr_bitmap &lt;= 32'hFFFF_FFFF; // all banks need refresh on reset
+        o_pbr_req    &lt;= 1'b0;
+        o_pbr_target &lt;= 5'd0;
+    end else begin
+        // On tREFI expiry, reload all bits (new refresh interval)
+        if (r_refi_expired)
+            r_pbr_bitmap &lt;= 32'hFFFF_FFFF;
+
+        // Clear bit for bank that just received PBR
+        if (i_pbr_ack)
+            r_pbr_bitmap[i_pbr_bank] &lt;= 1'b0;
+
+        // Update outputs
+        o_pbr_req    &lt;= |r_pbr_bitmap;
+        o_pbr_target &lt;= r_pbr_next;
+    end
+end
+
+endmodule
+`default_nettype wire</pre>
+</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench — tb_hbm3_refresh_ctrl.sv</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog · tb_hbm3_refresh_ctrl.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// ================================================================
+//  tb_hbm3_refresh_ctrl.sv
+//  Self-checking testbench for hbm3_refresh_ctrl
+//  5 Tests: basic refresh, debt accumulation, critical debt (8),
+//           PBR sequence, tRFC blocking enforcement
+// ================================================================
+`timescale 1ns/1ps
+
+module tb_hbm3_refresh_ctrl;
+
+// ---- DUT Ports ----
+logic        clk, rst_n;
+logic        ref_ack, pbr_ack;
+logic [4:0]  pbr_bank;
+wire         ref_req, pbr_req, refreshing, ref_urgent;
+wire  [4:0]  pbr_target;
+wire  [3:0]  ref_count;
+
+hbm3_refresh_ctrl dut (
+    .i_clk       (clk),
+    .i_rst_n     (rst_n),
+    .i_ref_ack   (ref_ack),
+    .i_pbr_ack   (pbr_ack),
+    .i_pbr_bank  (pbr_bank),
+    .o_ref_req   (ref_req),
+    .o_pbr_req   (pbr_req),
+    .o_pbr_target(pbr_target),
+    .o_refreshing(refreshing),
+    .o_ref_count (ref_count),
+    .o_ref_urgent(ref_urgent)
+);
+
+// 2 GHz clock: 0.5 ns period
+initial clk = 0;
+always #0.25 clk = ~clk;
+
+// ---- Helpers ----
+int pass_cnt = 0, fail_cnt = 0;
+
+task check(input string name, input logic got, input logic exp);
+    if (got === exp) begin
+        $display("  PASS  %s", name); pass_cnt++;
+    end else begin
+        $display("  FAIL  %s: got=%0b exp=%0b", name, got, exp); fail_cnt++;
+    end
+endtask
+
+task tick(input int n = 1);
+    repeat(n) @(posedge clk);
+    #0.1;
+endtask
+
+task reset_dut;
+    rst_n = 0; ref_ack = 0; pbr_ack = 0; pbr_bank = 0;
+    tick(4);
+    rst_n = 1;
+    tick(2);
+endtask
+
+// ================================================================
+//  SVA Assertions
+// ================================================================
+// ref_count must never exceed 8
+property debt_cap;
+    @(posedge clk) disable iff (!rst_n)
+    ref_count &lt;= 4'd8;
+endproperty
+assert property (debt_cap) else $error("SVA FAIL: ref_count exceeded 8");
+
+// o_ref_urgent must be 1 whenever ref_count >= 4
+property urgent_correct;
+    @(posedge clk) disable iff (!rst_n)
+    (ref_count &gt;= 4'd4) |-> ref_urgent;
+endproperty
+assert property (urgent_correct) else $error("SVA FAIL: ref_urgent not set when count>=4");
+
+// refreshing must de-assert within 441 cycles of ref_ack
+property rfc_window;
+    @(posedge clk) disable iff (!rst_n)
+    $rose(ref_ack) |-> ##[440:441] !refreshing;
+endproperty
+assert property (rfc_window) else $error("SVA FAIL: tRFC window wrong duration");
+
+// ================================================================
+//  TEST 1 — Basic ABR Refresh Cycle
+// ================================================================
+task test1_basic_refresh;
+    $display("\n[TEST 1] Basic ABR Refresh Cycle");
+    reset_dut();
+    // Wait for watchdog to expire (7800 cycles)
+    tick(7800);
+    tick(2); // propagation
+    check("ref_req after tREFI", ref_req, 1'b1);
+    // Acknowledge refresh
+    ref_ack = 1; tick(1); ref_ack = 0;
+    tick(2);
+    check("refreshing after ack", refreshing, 1'b1);
+    check("ref_count after ack", ref_count == 4'd0, 1'b1);
+    // Wait for tRFC to expire
+    tick(440);
+    check("refreshing clear after tRFC", refreshing, 1'b0);
+endtask
+
+// ================================================================
+//  TEST 2 — Debt Accumulation to 4 (Urgent)
+// ================================================================
+task test2_debt_to_4;
+    $display("\n[TEST 2] Debt Accumulation to 4 (Urgent)");
+    reset_dut();
+    // Miss 4 refresh intervals
+    repeat(4) begin
+        tick(7800);
+        tick(2); // let counter reload
+    end
+    tick(2);
+    check("ref_count == 4", ref_count == 4'd4, 1'b1);
+    check("ref_urgent asserted", ref_urgent, 1'b1);
+    // Service one refresh
+    ref_ack = 1; tick(1); ref_ack = 0;
+    tick(2);
+    check("debt decremented to 3", ref_count == 4'd3, 1'b1);
+    check("ref_urgent cleared", ref_urgent, 1'b0);
+endtask
+
+// ================================================================
+//  TEST 3 — Critical Debt (8 Postponements)
+// ================================================================
+task test3_debt_critical;
+    $display("\n[TEST 3] Critical Debt — 8 Postponements");
+    reset_dut();
+    // Miss 8 refresh intervals
+    repeat(9) begin
+        tick(7800);
+        tick(2);
+    end
+    tick(2);
+    check("ref_count capped at 8", ref_count == 4'd8, 1'b1);
+    check("ref_urgent critical", ref_urgent, 1'b1);
+    check("ref_req asserted", ref_req, 1'b1);
+endtask
+
+// ================================================================
+//  TEST 4 — PBR Sequence (3 banks)
+// ================================================================
+task test4_pbr_sequence;
+    $display("\n[TEST 4] PBR Bank Sequence");
+    reset_dut();
+    tick(5);
+    check("PBR bitmap full on reset", pbr_req, 1'b1);
+    check("PBR target starts at 0", pbr_target == 5'd0, 1'b1);
+    // Refresh bank 0
+    pbr_bank = 5'd0; pbr_ack = 1; tick(1); pbr_ack = 0;
+    tick(2);
+    check("target advances to 1", pbr_target == 5'd1, 1'b1);
+    // Refresh banks 1 and 2
+    pbr_bank = 5'd1; pbr_ack = 1; tick(1); pbr_ack = 0; tick(2);
+    pbr_bank = 5'd2; pbr_ack = 1; tick(1); pbr_ack = 0; tick(2);
+    check("target at 3 after 0-2 done", pbr_target == 5'd3, 1'b1);
+    check("pbr_req still set", pbr_req, 1'b1);
+endtask
+
+// ================================================================
+//  TEST 5 — tRFC Blocking Window
+// ================================================================
+task test5_rfc_blocking;
+    $display("\n[TEST 5] tRFC Blocking Window Duration");
+    reset_dut();
+    tick(7800); tick(2);
+    ref_ack = 1; tick(1); ref_ack = 0;
+    tick(1);
+    check("refreshing starts immediately", refreshing, 1'b1);
+    tick(438); // 1 + 438 = 439 cycles into tRFC
+    check("refreshing still high at 439", refreshing, 1'b1);
+    tick(1);  // cycle 440
+    check("refreshing clears at 440", refreshing, 1'b0);
+endtask
+
+// ================================================================
+//  Main
+// ================================================================
+initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0, tb_hbm3_refresh_ctrl);
+    test1_basic_refresh();
+    test2_debt_to_4();
+    test3_debt_critical();
+    test4_pbr_sequence();
+    test5_rfc_blocking();
+    $display("\n========================================");
+    $display("  RESULTS: %0d PASS  /  %0d FAIL", pass_cnt, fail_cnt);
+    $display("========================================");
+    $finish;
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+<details>
+  <summary>Why does DRAM need periodic refresh?</summary>
+  <p>DRAM stores data as charge on leaky capacitors. Without refresh, the charge decays below the sense amplifier threshold within 32–64 ms at room temperature. The controller must issue a REFRESH command at least once per tREFI (3.9 µs in HBM3) to rewrite every row before the charge is lost.</p>
+</details>
+<details>
+  <summary>What is the difference between ABR and PBR refresh?</summary>
+  <p>ABR (All-Bank Refresh) refreshes all 32 banks simultaneously in tRFC=440 cycles (220 ns). The entire pseudo-channel stalls. PBR (Per-Bank Refresh) targets one bank in tRFCpb=140 cycles (70 ns), leaving 31 banks accessible. PBR reduces average memory unavailability by 3.1× but requires per-bank tracking and scheduling across 32 banks per tREFI interval.</p>
+</details>
+<details>
+  <summary>What is refresh debt and why is it capped at 8?</summary>
+  <p>Refresh debt is the count of tREFI intervals that passed without a refresh being serviced. JEDEC allows up to 8 consecutive refresh operations to be postponed (the "pull-in" window) so the scheduler can delay refresh during critical bursts. Beyond 8 postponements, retention time is exceeded and data corruption becomes possible — so the debt is hard-capped at 8 and the controller asserts urgent override signals.</p>
+</details>
+<details>
+  <summary>What happens during the tRFC blocking window?</summary>
+  <p>After ref_ack is asserted, all 32 banks (in ABR mode) or the targeted bank (in PBR mode) are unavailable for tRFC/tRFCpb cycles. The o_refreshing signal gates the scheduler — no ACT, RD, WR, or PRE can be issued. The tREFI watchdog continues counting during tRFC, so the next deadline is tracked correctly even while the array is busy.</p>
+</details>
+<details>
+  <summary>How does the PBR priority encoder select the next target bank?</summary>
+  <p>The refresh controller maintains a 32-bit bitmap where each bit represents one bank. After every tREFI expiry, all 32 bits are set (every bank needs refresh). When a bank receives PBR service (i_pbr_ack + i_pbr_bank), its bit is cleared. The priority encoder selects the lowest-numbered bank with its bit still set, implementing a deterministic round-robin order (bank 0, 1, 2, ... 31) that prevents any bank from starving.</p>
+</details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/bank-fsm/">← Module 2 — Bank &amp; BG FSM</a>
+  <a class="nav-pill" href="/hbm3-controller/page-policy/">Module 4 — Page Policy →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div style="margin-bottom:.5rem">
+    <a href="/hbm3-controller/">HBM3 Controller Series</a> · <a href="/courses/">All Courses</a> · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a>
+  </div>
+  By EcrioniX · Updated June 2026
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+</script>
+</body>
+</html>
