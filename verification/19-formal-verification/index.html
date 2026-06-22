@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formal Verification — Day 19 | EcrioniX Verification Series</title>
+  <meta name="description" content="Formal verification: model checking vs theorem proving, SVA assume/assert/cover in formal tools, bounded model checking (BMC), unbounded proof via k-induction, vacuity checking, CEX interpretation, and JasperGold workflow.">
+  <meta name="keywords" content="formal verification SystemVerilog, model checking, bounded model checking BMC, k-induction, JasperGold, SymbiYosys, SVA assume assert cover, vacuity check, counterexample CEX, CDC verification">
+  <link rel="canonical" href="https://ecrionix.org/verification/19-formal-verification/">
+  <meta property="og:title" content="Formal Verification — Day 19 | EcrioniX Verification Series">
+  <meta property="og:description" content="Formal verification: model checking vs theorem proving, SVA assume/assert/cover in formal tools, bounded model checking (BMC), unbounded proof via k-induction, vacuity checking, CEX interpretation, and JasperGold workflow.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/19-formal-verification/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"Formal Verification","description":"Formal verification: model checking vs theorem proving, SVA assume/assert/cover in formal tools, bounded model checking (BMC), unbounded proof via k-induction, vacuity checking, CEX interpretation, and JasperGold workflow.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/19-formal-verification/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 19 — Formal Verification","item":"https://ecrionix.org/verification/19-formal-verification/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between simulation and formal verification?","acceptedAnswer":{"@type":"Answer","text":"Simulation executes specific input sequences and checks outputs for those particular stimulus patterns — it can miss bugs that no test happens to trigger. Formal verification mathematically explores all possible input combinations and state transitions, either proving a property holds for every reachable state (complete proof) or producing a concrete counterexample that violates it. Simulation scales to full-chip but provides incomplete coverage; formal is exhaustive within its scope but faces capacity limits on large designs."}},
+      {"@type":"Question","name":"What is bounded model checking (BMC) and when is it enough?","acceptedAnswer":{"@type":"Answer","text":"Bounded model checking (BMC) unrolls the design state machine for a fixed number of clock cycles (depth k) and converts the reachability question into a SAT or SMT problem. If no property violation is found within k steps, BMC guarantees bug-freedom up to that depth — not for all time. BMC is sufficient when bugs are expected to be shallow (protocol violations, FIFO overflow/underflow) and as a fast bug-hunting pass before attempting full unbounded proof. For complete correctness you need k-induction or abstract interpretation on top of BMC."}},
+      {"@type":"Question","name":"How does k-induction extend BMC into an unbounded proof?","acceptedAnswer":{"@type":"Answer","text":"k-induction has two steps. The base case is standard BMC: check no violation occurs in the first k steps from reset. The inductive step assumes the property holds for k consecutive steps starting from an arbitrary reachable state, then proves it still holds at step k+1. If both pass, the property is proven for all time. Strengthening lemmas (auxiliary invariants about unreachable states) are sometimes added when the inductive step fails because the tool assumes an overly broad set of starting states."}},
+      {"@type":"Question","name":"What is vacuity in formal verification and why is it dangerous?","acceptedAnswer":{"@type":"Answer","text":"A property is vacuously true when its antecedent (the trigger condition) is never satisfied in any reachable state, so the implication holds trivially — not because the design is correct but because the condition never fires. For example, 'if req then ack within 4 cycles' passes vacuously if req is never asserted due to an overly restrictive assume constraint. Vacuity checking (built into JasperGold via 'check_vacuity') detects these silent misfires and flags properties that should be rewritten or whose assume constraints should be relaxed."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .diagram{background:rgba(15,23,42,.8);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.5rem;margin:1.2rem 0;overflow-x:auto}
+    .diagram svg{display:block;max-width:100%;height:auto}
+    .badge-row{display:flex;gap:.5rem;flex-wrap:wrap;margin:.7rem 0 1.2rem}
+    .badge{display:inline-block;border-radius:100px;padding:.2rem .75rem;font-size:.72rem;font-weight:700}
+    .badge-sky{background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--sky)}
+    .badge-violet{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);color:var(--violet)}
+    .badge-green{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);color:var(--green)}
+    .badge-amber{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--amber)}
+    .verdict-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0 1.5rem}
+    @media(max-width:600px){.verdict-grid{grid-template-columns:1fr}}
+    .verdict-card{background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:12px;padding:1rem 1.2rem}
+    .verdict-card h4{font-size:.85rem;font-weight:700;margin-bottom:.5rem}
+    .verdict-card p{font-size:.82rem;margin-bottom:0;line-height:1.65}
+    .verdict-card.pass{border-color:rgba(74,222,128,.3)}.verdict-card.pass h4{color:var(--green)}
+    .verdict-card.fail{border-color:rgba(251,191,36,.3)}.verdict-card.fail h4{color:var(--amber)}
+    .verdict-card.proven{border-color:rgba(56,189,248,.3)}.verdict-card.proven h4{color:var(--sky)}
+    .verdict-card.vacuous{border-color:rgba(167,139,250,.3)}.verdict-card.vacuous h4{color:var(--violet)}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 19 of 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/18-code-coverage/" class="dnbtn dnbtn-prev">&#8592; Day 18</a>
+    <a href="/verification/20-equivalence-checking/" class="dnbtn dnbtn-next">Day 20 &#8594;</a>
+  </div>
+</div>
+
+<div class="bc">
+  <a href="/">Home</a><span>&#8250;</span><a href="/verification/">Verification Series</a><span>&#8250;</span>Day 19 &mdash; Formal Verification
+</div>
+
+<div class="hero">
+  <div class="hero-tag">&#9654; Verification Series &mdash; Day 19</div>
+  <h1>Formal Verification</h1>
+  <p class="hero-sub">Prove your RTL correct for <em>every</em> possible input, not just the tests you thought of. Master model checking, bounded model checking (BMC), k-induction, SVA assume/assert/cover in a formal context, counterexample analysis, vacuity detection, and industry flows using JasperGold and SymbiYosys.</p>
+  <div class="hero-meta">
+    <span>&#128337; 22 min read</span>
+    <span>&#128187; SV + JasperGold examples</span>
+    <span>By EcrioniX &middot; Updated 22 Jun 2026</span>
+  </div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+      <li><a href="#sim-vs-formal">Simulation vs Formal — The Core Difference</a></li>
+      <li><a href="#mc-vs-tp">Model Checking vs Theorem Proving</a></li>
+      <li><a href="#sva-formal">SVA assume / assert / cover in Formal Context</a></li>
+      <li><a href="#bmc">Bounded Model Checking (BMC)</a></li>
+      <li><a href="#kinduction">k-Induction for Unbounded Proofs</a></li>
+      <li><a href="#cex">Counterexample (CEX) Reading and Interpretation</a></li>
+      <li><a href="#vacuity">Vacuity Checking</a></li>
+      <li><a href="#apps">Typical Formal Applications</a></li>
+      <li><a href="#jaspergold">JasperGold Workflow</a></li>
+      <li><a href="#symbiyosys">SymbiYosys Open-Source Workflow</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- SECTION 1 -->
+  <h2 id="sim-vs-formal">1 &mdash; Simulation vs Formal: The Core Difference</h2>
+
+  <p>Every verification engineer learns simulation first — write a testbench, apply stimulus, check outputs. Simulation is fast, highly scalable, and easy to debug. But it has an irreducible blind spot: it only checks the states you happen to reach with the stimuli you happen to write. Corner cases that no test covers remain invisible.</p>
+
+  <p>Formal verification attacks this from the opposite direction. Instead of running specific input sequences, a formal tool constructs a mathematical model of all possible state transitions the design can make, then uses SAT solvers, BDD engines, or SMT solvers to exhaustively explore every reachable state and prove whether a given property can be violated.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="13">
+      <!-- Simulation side -->
+      <rect x="20" y="20" width="300" height="180" rx="12" fill="rgba(56,189,248,0.06)" stroke="#38bdf8" stroke-width="1.2"/>
+      <text x="170" y="48" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="14">SIMULATION</text>
+      <circle cx="80" cy="90" r="24" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="1"/>
+      <text x="80" y="95" text-anchor="middle" fill="#38bdf8" font-size="11">S0</text>
+      <circle cx="170" cy="90" r="24" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="1"/>
+      <text x="170" y="95" text-anchor="middle" fill="#38bdf8" font-size="11">S1</text>
+      <circle cx="260" cy="90" r="24" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="1"/>
+      <text x="260" y="95" text-anchor="middle" fill="#38bdf8" font-size="11">S2</text>
+      <line x1="104" y1="90" x2="146" y2="90" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow-sky)"/>
+      <line x1="194" y1="90" x2="236" y2="90" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow-sky)"/>
+      <text x="170" y="140" text-anchor="middle" fill="#64748b" font-size="11">Only tested paths explored</text>
+      <text x="170" y="158" text-anchor="middle" fill="#64748b" font-size="11">Corner cases may be missed</text>
+      <text x="170" y="185" text-anchor="middle" fill="#94a3b8" font-size="10">Scale: Full-chip ✓  Coverage: Partial</text>
+      <!-- Formal side -->
+      <rect x="400" y="20" width="300" height="180" rx="12" fill="rgba(167,139,250,0.06)" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="550" y="48" text-anchor="middle" fill="#a78bfa" font-weight="700" font-size="14">FORMAL</text>
+      <circle cx="460" cy="85" r="22" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="460" y="90" text-anchor="middle" fill="#a78bfa" font-size="11">S0</text>
+      <circle cx="550" cy="70" r="22" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="550" y="75" text-anchor="middle" fill="#a78bfa" font-size="11">S1</text>
+      <circle cx="550" cy="120" r="22" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="550" y="125" text-anchor="middle" fill="#a78bfa" font-size="11">S2</text>
+      <circle cx="640" cy="95" r="22" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="640" y="100" text-anchor="middle" fill="#a78bfa" font-size="11">S3</text>
+      <line x1="482" y1="80" x2="528" y2="74" stroke="#a78bfa" stroke-width="1.2"/>
+      <line x1="482" y1="90" x2="528" y2="114" stroke="#a78bfa" stroke-width="1.2"/>
+      <line x1="572" y1="72" x2="618" y2="88" stroke="#a78bfa" stroke-width="1.2"/>
+      <line x1="572" y1="118" x2="618" y2="102" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="550" y="158" text-anchor="middle" fill="#64748b" font-size="11">ALL reachable states explored</text>
+      <text x="550" y="185" text-anchor="middle" fill="#94a3b8" font-size="10">Scale: Block/subsystem  Coverage: Complete</text>
+      <defs>
+        <marker id="arrow-sky" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <p>The table below compares the two methodologies across the dimensions that matter most in practice.</p>
+
+  <table>
+    <thead><tr><th>Dimension</th><th>Simulation</th><th>Formal Verification</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Input coverage</strong></td><td>Specific test vectors only</td><td>All possible inputs (exhaustive)</td></tr>
+      <tr><td><strong>State space</strong></td><td>Subset of reachable states</td><td>All reachable states (within bound/proof)</td></tr>
+      <tr><td><strong>Bug discovery</strong></td><td>Only bugs that test stimuli trigger</td><td>Any bug reachable from reset, guaranteed</td></tr>
+      <tr><td><strong>Proof strength</strong></td><td>None — absence of bugs not proven</td><td>Mathematical proof (unbounded) or bounded guarantee</td></tr>
+      <tr><td><strong>Scalability</strong></td><td>Full SoC, millions of gates</td><td>Block or subsystem, ~100 K–2 M state bits practical</td></tr>
+      <tr><td><strong>Debug flow</strong></td><td>Waveform from testbench run</td><td>Counterexample (CEX) waveform from solver</td></tr>
+      <tr><td><strong>Property language</strong></td><td>SVA in simulation context</td><td>SVA assume / assert / cover in formal context</td></tr>
+      <tr><td><strong>Common tools</strong></td><td>VCS, Questa, Xcelium</td><td>JasperGold, Questa Formal, OneSpin, SymbiYosys</td></tr>
+      <tr><td><strong>Time to result</strong></td><td>Minutes to hours</td><td>Seconds (BMC) to hours (full proof)</td></tr>
+      <tr><td><strong>Best for</strong></td><td>Complex protocols, full-chip integration</td><td>Safety-critical logic, datapath, CDC, reachability</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>Key insight:</strong> Formal and simulation are complementary, not competing. Modern chip projects use simulation for integration and feature testing, and formal for targeted deep proofs on critical blocks — controllers, arbiters, FIFOs, datapath units.</div>
+
+  <!-- SECTION 2 -->
+  <h2 id="mc-vs-tp">2 &mdash; Model Checking vs Theorem Proving</h2>
+
+  <p>The term "formal verification" covers two fundamentally different techniques. Most RTL engineers encounter <strong>model checking</strong> because it operates directly on hardware models without requiring manual proofs. <strong>Theorem proving</strong> is more powerful but requires an expert human prover and is used primarily in processor verification and safety-critical software.</p>
+
+  <h3>Model Checking</h3>
+  <p>Model checking automatically explores the complete reachable state space of a finite-state machine and checks whether a temporal logic property holds in every state. For RTL, the design is compiled into a transition relation, and a SAT or SMT solver searches for any state sequence that violates the property. If none exists, the property is proven. If one does, the tool returns a concrete counterexample trace.</p>
+  <ul>
+    <li><strong>Fully automatic</strong> — no user-supplied proof steps required</li>
+    <li>Works on synthesizable RTL compiled to a Boolean formula</li>
+    <li>Returns either a proof or a concrete bug trace</li>
+    <li>State explosion limits scale — used on blocks, not full chips</li>
+    <li>Algorithms: BDD-based (symbolic), SAT-based (BMC), IC3/PDR (Property Directed Reachability)</li>
+  </ul>
+
+  <h3>Theorem Proving</h3>
+  <p>Theorem proving uses an interactive proof assistant (Coq, Isabelle, HOL4, ACL2) in which a human engineer writes formal proofs that a mathematical specification is equivalent to a model of the design. The tool checks each proof step for logical consistency.</p>
+  <ul>
+    <li>Handles unbounded state spaces that model checking cannot touch</li>
+    <li>Requires significant manual effort and formal methods expertise</li>
+    <li>Used by ARM, Intel, and AMD on processor pipelines and microarchitecture</li>
+    <li>Not directly tied to RTL — operates on abstract models</li>
+  </ul>
+
+  <div class="callout info"><strong>Day 19 focus:</strong> We concentrate on model checking — the technique you will use with JasperGold, SymbiYosys, and Questa Formal on real RTL. Theorem proving is a specialist discipline covered in advanced academic settings.</div>
+
+  <!-- SECTION 3 -->
+  <h2 id="sva-formal">3 &mdash; SVA assume / assert / cover in Formal Context</h2>
+
+  <p>SystemVerilog Assertions use the same <code>assume</code>, <code>assert</code>, and <code>cover</code> keywords in both simulation and formal tools — but their roles differ fundamentally in a formal environment.</p>
+
+  <h3>assert — the property being proven</h3>
+  <p>In formal mode, <code>assert property (P)</code> instructs the solver to prove that <em>P holds in every reachable state</em>. The tool attempts to find any sequence of legal inputs that causes P to be false. If it finds one, it reports a counterexample. If it cannot, it reports PROVEN (bounded or unbounded depending on the algorithm).</p>
+
+  <h3>assume — constraining the input space</h3>
+  <p>In simulation, <code>assume</code> is used to guide a testbench generator. In formal, <code>assume property (C)</code> is a <em>mathematical constraint</em> that restricts which input sequences the solver is allowed to consider. The solver will only explore traces where C holds. This models the legal environment of a block — for example, assuming an AHB master never asserts HWRITE and HMASTLOCK simultaneously unless the bus is owned.</p>
+
+  <div class="callout warn"><strong>Over-constraining hazard:</strong> Every additional <code>assume</code> shrinks the search space. If your assumes are too restrictive, the tool proves properties that are only correct under those narrowed conditions, giving you false confidence. Vacuity checking (Section 7) detects this.</div>
+
+  <h3>cover — reachability witnesses</h3>
+  <p><code>cover property (C)</code> in formal asks the solver to find at least one trace where C is true, starting from reset. It proves that a state is <em>reachable</em>. This is invaluable for verifying that your assume constraints do not accidentally prevent meaningful scenarios.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// -------------------------------------------------------</span>
+<span class="cm">// Formal property module for an AXI-lite arbiter</span>
+<span class="cm">// Bind into DUT: bind axi_arbiter axi_arbiter_props u_props(.*);</span>
+<span class="cm">// -------------------------------------------------------</span>
+<span class="kw">module</span> <span class="fn">axi_arbiter_props</span> (
+  <span class="kw">input</span> <span class="kw">logic</span>        clk, rst_n,
+  <span class="kw">input</span> <span class="kw">logic</span>        req_a, req_b,
+  <span class="kw">input</span> <span class="kw">logic</span>        gnt_a, gnt_b,
+  <span class="kw">input</span> <span class="kw">logic</span>        busy
+);
+
+  <span class="cm">// Default clocking for all properties in this module</span>
+  <span class="kw">default clocking</span> <span class="fn">cb</span> @(<span class="fn">posedge</span> clk); <span class="kw">endclocking</span>
+  <span class="kw">default disable iff</span> (!rst_n);
+
+  <span class="cm">// --- ASSUME: model the legal environment ---</span>
+  <span class="cm">// Grants are only driven by DUT; requester holds req until granted</span>
+  <span class="kw">assume property</span> (gnt_a |-> req_a);   <span class="cm">// can't get grant without req</span>
+  <span class="kw">assume property</span> (gnt_b |-> req_b);
+  <span class="cm">// Requesters don't withdraw req mid-transaction</span>
+  <span class="kw">assume property</span> (req_a && !gnt_a |=> req_a);
+
+  <span class="cm">// --- ASSERT: prove correctness properties ---</span>
+  <span class="cm">// Mutual exclusion: both grants never high simultaneously</span>
+  <span class="kw">assert property</span> (!(gnt_a && gnt_b))
+    <span class="kw">else</span> <span class="fn">$error</span>(<span class="str">"FORMAL FAIL: dual grant"</span>);
+
+  <span class="cm">// Liveness: if req_a high, grant arrives within 4 cycles</span>
+  <span class="kw">assert property</span> (req_a |-> ##[1:4] gnt_a)
+    <span class="kw">else</span> <span class="fn">$error</span>(<span class="str">"FORMAL FAIL: starvation A"</span>);
+
+  <span class="cm">// --- COVER: prove interesting states are reachable ---</span>
+  <span class="kw">cover property</span> (req_a && req_b && !gnt_a && !gnt_b);  <span class="cm">// both waiting</span>
+  <span class="kw">cover property</span> (gnt_a ##1 gnt_b);                     <span class="cm">// A then B</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <!-- SECTION 4 -->
+  <h2 id="bmc">4 &mdash; Bounded Model Checking (BMC)</h2>
+
+  <p>Bounded Model Checking (BMC) is the most widely used formal algorithm in industry because it is fast, automatic, and excellent at bug hunting. The core idea is to unroll the design's transition relation for a fixed number of clock cycles k and encode the entire unrolled execution as a Boolean satisfiability (SAT) problem.</p>
+
+  <h3>How BMC works</h3>
+  <ol>
+    <li>The design RTL is compiled to a Boolean transition relation <code>T(s, i, s')</code> — from state s with input i, the next state is s'.</li>
+    <li>The property assertion is negated: the tool looks for a trace where NOT-P holds.</li>
+    <li>The path is unrolled: <code>Init(s0) ∧ T(s0,i0,s1) ∧ T(s1,i1,s2) ∧ ... ∧ ¬P(sk)</code></li>
+    <li>A SAT solver is invoked on this formula. A satisfying assignment is a counterexample.</li>
+    <li>If UNSAT, no violation exists within k steps. Increment k and retry.</li>
+  </ol>
+
+  <div class="diagram">
+    <svg viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="12">
+      <text x="350" y="22" text-anchor="middle" fill="#a78bfa" font-weight="700" font-size="13">BMC — Unrolling the Design</text>
+      <!-- States -->
+      <rect x="30" y="45" width="80" height="40" rx="8" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="70" y="70" text-anchor="middle" fill="#a78bfa">s₀ (Init)</text>
+      <rect x="170" y="45" width="80" height="40" rx="8" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="210" y="70" text-anchor="middle" fill="#a78bfa">s₁</text>
+      <rect x="310" y="45" width="80" height="40" rx="8" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1.2"/>
+      <text x="350" y="70" text-anchor="middle" fill="#a78bfa">s₂</text>
+      <text x="460" y="70" fill="#64748b" font-size="18">. . .</text>
+      <rect x="530" y="45" width="80" height="40" rx="8" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="570" y="65" text-anchor="middle" fill="#fbbf24">sₖ</text>
+      <text x="570" y="80" text-anchor="middle" fill="#fbbf24" font-size="10">¬P checked</text>
+      <!-- Arrows -->
+      <line x1="110" y1="65" x2="168" y2="65" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-v)"/>
+      <line x1="250" y1="65" x2="308" y2="65" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-v)"/>
+      <line x1="390" y1="65" x2="450" y2="65" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-v)"/>
+      <line x1="490" y1="65" x2="528" y2="65" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-v)"/>
+      <!-- Labels -->
+      <text x="139" y="58" text-anchor="middle" fill="#64748b" font-size="10">T(i₀)</text>
+      <text x="279" y="58" text-anchor="middle" fill="#64748b" font-size="10">T(i₁)</text>
+      <text x="419" y="58" text-anchor="middle" fill="#64748b" font-size="10">T(iₖ₋₁)</text>
+      <text x="350" y="115" text-anchor="middle" fill="#64748b" font-size="11">SAT? → counterexample found   UNSAT? → no bug in k steps</text>
+      <defs><marker id="arr-v" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#a78bfa"/></marker></defs>
+    </svg>
+  </div>
+
+  <h3>BMC limitations and when to stop</h3>
+  <p>BMC result "no violation in k steps" is <em>not</em> a proof of correctness — it is only a guarantee up to depth k. Depth k must be large enough to reach the state where a bug could manifest. For a FIFO of depth 16, any overflow bug will be reachable within 16 write cycles. For a complex protocol, the depth may need to be hundreds. If BMC passes at depth k and no guidance exists for k, use k-induction (Section 5) to escalate to an unbounded proof.</p>
+
+  <div class="callout tip"><strong>BMC as a fast bug hunter:</strong> Run BMC at depth 20–50 first. It finds shallow bugs in minutes — the vast majority of RTL bugs are shallow. Use k-induction for the complete proof once bugs are fixed.</div>
+
+  <!-- SECTION 5 -->
+  <h2 id="kinduction">5 &mdash; k-Induction for Unbounded Proofs</h2>
+
+  <p>k-induction extends BMC into a complete, unbounded proof. It is the primary algorithm behind IC3/PDR (Property Directed Reachability), the current state-of-the-art for hardware model checking, but the classical formulation is the easiest to reason about.</p>
+
+  <h3>Base Case — identical to BMC</h3>
+  <p>Prove that the property P holds for all paths of length k starting from the initial state. This is exactly BMC at depth k.</p>
+
+  <h3>Inductive Step — the key addition</h3>
+  <p>Assume P holds for k consecutive steps starting from <em>some arbitrary state</em> (not necessarily the initial state). Prove that P must also hold at step k+1. If both base case and inductive step pass, P is proven for all time by mathematical induction.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Conceptual mapping: k-induction in SVA terms</span>
+<span class="cm">// The tool handles the math; you write the property.</span>
+
+<span class="cm">// Property: FIFO never goes above its depth parameter</span>
+<span class="kw">parameter int</span> DEPTH = <span class="num">16</span>;
+<span class="kw">logic</span> [<span class="num">4</span>:<span class="num">0</span>] count; <span class="cm">// 0..16</span>
+
+<span class="cm">// Assert: count is always <= DEPTH (no overflow)</span>
+<span class="kw">assert property</span> @(<span class="fn">posedge</span> clk) <span class="kw">disable iff</span> (!rst_n)
+  (count <= DEPTH);
+
+<span class="cm">// A helper invariant (strengthening lemma) to help the inductive step:</span>
+<span class="cm">// count can only change by +1 or -1 per cycle</span>
+<span class="kw">assert property</span> @(<span class="fn">posedge</span> clk) <span class="kw">disable iff</span> (!rst_n)
+  (count == $<span class="fn">past</span>(count) + push - pop);</pre>
+  </div>
+
+  <h3>Why the inductive step sometimes fails</h3>
+  <p>The inductive step starts from an arbitrary state, not a guaranteed reachable state. The solver can construct a starting state that is actually unreachable from reset, but which leads to a property violation at step k+1. The fix is to add <strong>strengthening lemmas</strong> — auxiliary invariants about valid design states — as additional <code>assert</code> properties that constrain the starting state. This is the main engineering challenge in k-induction-based formal proofs.</p>
+
+  <table>
+    <thead><tr><th>Technique</th><th>Proof scope</th><th>User effort</th><th>Tool support</th></tr></thead>
+    <tbody>
+      <tr><td>BMC depth k</td><td>Up to k cycles from reset</td><td>Low</td><td>Universal</td></tr>
+      <tr><td>k-Induction</td><td>Unbounded (if inductive step passes)</td><td>Medium (lemmas)</td><td>JasperGold, Questa Formal, SymbiYosys</td></tr>
+      <tr><td>IC3 / PDR</td><td>Unbounded (automatic invariant synthesis)</td><td>Low (automatic)</td><td>JasperGold, Yosys+sby</td></tr>
+      <tr><td>Abstract interpretation</td><td>Unbounded (over-approximation)</td><td>High (abstraction)</td><td>OneSpin, specialist tools</td></tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 6 -->
+  <h2 id="cex">6 &mdash; Counterexample (CEX) Reading and Interpretation</h2>
+
+  <p>When a formal tool finds a property violation, it produces a <strong>counterexample (CEX)</strong> — a concrete sequence of states and input values that drives the design from reset to a state where the assertion fails. Reading a CEX correctly is a critical skill: it is your primary debug artifact in formal verification, equivalent to a failing waveform in simulation.</p>
+
+  <h3>Structure of a CEX</h3>
+  <ul>
+    <li><strong>Length:</strong> Minimum number of cycles to reach the violation from reset</li>
+    <li><strong>Initial state:</strong> All state elements at cycle 0 (usually after reset deassertion)</li>
+    <li><strong>Input sequence:</strong> The exact primary input values each cycle that the solver applied</li>
+    <li><strong>State trace:</strong> All register and signal values at each cycle</li>
+    <li><strong>Violation point:</strong> The cycle where the asserted property evaluates to false</li>
+  </ul>
+
+  <h3>CEX reading workflow</h3>
+  <ol>
+    <li>Load the CEX in the waveform viewer (JasperGold opens GTKWave or its own viewer automatically)</li>
+    <li>Locate the assertion failure marker — the cycle where the assert fires</li>
+    <li>Trace backward: which signal drove the bad value? Which state was the machine in?</li>
+    <li>Trace forward from cycle 0: which input sequence enabled reaching that state?</li>
+    <li>Determine: is this a real design bug, or an invalid environment (missing assume constraint)?</li>
+  </ol>
+
+  <div class="callout warn"><strong>Spurious CEX:</strong> If the CEX trace shows an input sequence that your protocol spec says cannot happen (because you forgot to constrain it with assume), the violation is not a real bug — you need to add an assume, then re-run. This is why assume correctness is critical.</div>
+
+  <h3>CEX replay in simulation</h3>
+  <p>JasperGold can export a CEX as a SystemVerilog testbench or Tcl-driven simulation. Running the CEX through your simulator lets you use all your existing debug infrastructure — waveforms, assertions, UVM report handlers — to understand the bug root cause faster than stepping through the formal GUI alone.</p>
+
+  <!-- SECTION 7 -->
+  <h2 id="vacuity">7 &mdash; Vacuity Checking</h2>
+
+  <p>Vacuity is one of the most dangerous silent failures in formal verification. A property is <strong>vacuously true</strong> when its antecedent (the trigger condition) is never satisfied in any trace the tool considers, so the implication passes trivially — not because the design is correct but because the trigger never fires.</p>
+
+  <h3>Classic vacuity example</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Intent: whenever req is asserted, ack must follow within 4 cycles</span>
+<span class="kw">assert property</span> @(<span class="fn">posedge</span> clk)
+  (req |-> ##[1:4] ack);
+
+<span class="cm">// Hidden problem: this assume blocks req from EVER being asserted:</span>
+<span class="kw">assume property</span> @(<span class="fn">posedge</span> clk)
+  (!req);  <span class="cm">// too restrictive!</span>
+
+<span class="cm">// The assert passes (PROVEN) but is 100% meaningless.</span>
+<span class="cm">// req never fires, so the implication is vacuously satisfied.</span></pre>
+  </div>
+
+  <h3>How to detect vacuity</h3>
+  <ul>
+    <li><strong>JasperGold:</strong> Run <code>check_vacuity</code> after each <code>prove</code> run. The tool checks whether the antecedent of each implication was ever triggered in any valid trace.</li>
+    <li><strong>Cover witnesses:</strong> For every <code>assert property (A |-> B)</code>, add a companion <code>cover property (A)</code>. If the cover is UNREACHABLE, the assert is vacuous.</li>
+    <li><strong>Mutation:</strong> Temporarily negate the consequent — if the property still passes, it was vacuous.</li>
+  </ul>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Best practice: pair every implication assert with a cover</span>
+<span class="kw">assert property</span> @(<span class="fn">posedge</span> clk) (req |-> ##[<span class="num">1</span>:<span class="num">4</span>] ack);
+
+<span class="cm">// Cover proves req CAN be asserted under current assumes</span>
+<span class="kw">cover property</span>  @(<span class="fn">posedge</span> clk) (req);
+
+<span class="cm">// In JasperGold Tcl:</span>
+<span class="cm">// prove -property {assert_req_ack}</span>
+<span class="cm">// check_vacuity -property {assert_req_ack}</span></pre>
+  </div>
+
+  <!-- SECTION 8 -->
+  <h2 id="apps">8 &mdash; Typical Formal Verification Applications</h2>
+
+  <p>Formal verification is not a replacement for simulation across all domains. It is most powerful for a defined set of high-value applications where exhaustive proof matters and the design scope fits within tool capacity.</p>
+
+  <h3>Clock Domain Crossing (CDC)</h3>
+  <p>CDC verification checks that every signal crossing a clock domain boundary is properly synchronized. A formal CDC tool builds a model of all possible metastability scenarios and proves that no data corruption can propagate to the receiving clock domain. Tools: Meridian CDC (Real Intent), SpyGlass (Synopsys). Formal CDC catches protocol-level bugs that structural CDC lint cannot — for example, multi-bit bus synchronization without gray encoding.</p>
+
+  <h3>Datapath Equivalence Checking</h3>
+  <p>After RTL optimization, retiming, or technology mapping, equivalence checking formally proves that two representations compute identical functions for all inputs. This is how synthesis tools are verified — proving the gate-level netlist is equivalent to the RTL. Cadence Conformal and Synopsys Formality are standard tools. No testbench needed; the proof is purely combinational (for combinational equivalence) or sequential.</p>
+
+  <h3>Reachability Analysis</h3>
+  <p>Proving that a design can never reach a specific "bad" state — a deadlock condition, a forbidden FSM state combination, an illegal address decode — is a direct application of model checking. The bad state is encoded as an assertion, and the tool proves it is unreachable from reset under all legal input sequences.</p>
+
+  <h3>Protocol Property Verification</h3>
+  <p>AXI, AHB, APB, PCIe, and USB all have formal VIP (Verification IP) available. The VIP provides assume constraints for the initiator side and assert properties for the target side (or vice versa). Running formal against your controller with VIP constraints gives exhaustive proof of protocol compliance — something thousands of simulation tests cannot match.</p>
+
+  <h3>Safety and Liveness</h3>
+  <ul>
+    <li><strong>Safety:</strong> "Bad thing never happens" — mutual exclusion, no overflow, no metastability. Directly encoded as <code>assert</code>.</li>
+    <li><strong>Liveness:</strong> "Good thing eventually happens" — eventually granted, eventually acknowledged. Harder for model checkers; requires fair trace assumptions. JasperGold supports liveness via justice / compassion constraints.</li>
+  </ul>
+
+  <!-- SECTION 9 -->
+  <h2 id="jaspergold">9 &mdash; JasperGold Workflow</h2>
+
+  <p>Cadence JasperGold is the industry-dominant formal verification platform. It wraps a multi-engine formal backend (SAT, BDD, IC3/PDR, abstract interpretation) behind a property-centric GUI and Tcl scripting interface. The typical project flow is:</p>
+
+  <ol>
+    <li><strong>Design elaboration:</strong> Compile the RTL and bind the property module</li>
+    <li><strong>Environment setup:</strong> Define primary inputs, clocks, resets, assume constraints</li>
+    <li><strong>Property specification:</strong> Load SVA file or inline property module</li>
+    <li><strong>Prove:</strong> Run the formal engines on the assert targets</li>
+    <li><strong>Analyze results:</strong> PROVEN, BOUNDED, CEX (failing), or VACUOUS</li>
+    <li><strong>Debug:</strong> Inspect CEX in waveform viewer, fix RTL or assumes</li>
+    <li><strong>Signoff:</strong> Achieve PROVEN status or documented BOUNDED depth for all targets</li>
+  </ol>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># -------------------------------------------------------</span>
+<span class="cm"># JasperGold Tcl script: axi_arbiter_formal.tcl</span>
+<span class="cm"># -------------------------------------------------------</span>
+
+<span class="cm"># 1. Elaborate design</span>
+<span class="fn">analyze</span> -sv09 {
+  src/axi_arbiter.sv
+  props/axi_arbiter_props.sv
+}
+<span class="fn">elaborate</span> -top axi_arbiter -bbox_m {sram_macro}
+
+<span class="cm"># 2. Clock and reset</span>
+<span class="fn">clock</span> clk
+<span class="fn">reset</span> -expression {!rst_n}
+
+<span class="cm"># 3. Assume environment constraints (beyond SVA file)</span>
+<span class="fn">assume</span> -name env_stable_req {req_a || req_b}  <span class="cm"># at least one active</span>
+
+<span class="cm"># 4. Prove all asserts</span>
+<span class="fn">prove</span> -all
+
+<span class="cm"># 5. Check vacuity on every proven property</span>
+<span class="fn">check_vacuity</span> -all
+
+<span class="cm"># 6. Dump result report</span>
+<span class="fn">report</span> -results -file jg_results.rpt -force
+
+<span class="cm"># 7. Save session for waveform debug</span>
+<span class="fn">save_session</span> -session axi_arbiter_session</pre>
+  </div>
+
+  <h3>JasperGold result codes</h3>
+
+  <div class="verdict-grid">
+    <div class="verdict-card proven">
+      <h4>PROVEN</h4>
+      <p>The property holds for all reachable states and all valid input sequences. Unbounded guarantee (IC3/PDR) or bounded at declared depth (BMC).</p>
+    </div>
+    <div class="verdict-card fail">
+      <h4>CEX (Counterexample)</h4>
+      <p>The tool found a concrete trace that violates the property. A waveform is available showing the exact sequence of events leading to the failure.</p>
+    </div>
+    <div class="verdict-card vacuous">
+      <h4>VACUOUS</h4>
+      <p>The property is structurally true but the trigger antecedent was never active. Property needs rework or assume constraints need relaxing.</p>
+    </div>
+    <div class="verdict-card pass">
+      <h4>BOUNDED</h4>
+      <p>No violation found within the declared depth k. Not a full proof — must either increase depth or escalate to k-induction/IC3 for a complete result.</p>
+    </div>
+  </div>
+
+  <!-- SECTION 10 -->
+  <h2 id="symbiyosys">10 &mdash; SymbiYosys Open-Source Formal Flow</h2>
+
+  <p>SymbiYosys (sby) is the open-source formal verification frontend maintained by YosysHQ. It wraps the Yosys synthesis framework and connects to open-source SAT/SMT solvers (Boolector, Yices2, Z3, ABC). It is fully capable of BMC, k-induction, and cover checking on synthesizable Verilog and SystemVerilog (via Verific or sv2v preprocessing).</p>
+
+  <h3>sby configuration file</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># arbiter_proof.sby</span>
+[<span class="fn">options</span>]
+mode bmc       <span class="cm"># or prove (k-induction), cover</span>
+depth 40       <span class="cm"># unroll 40 cycles for BMC</span>
+
+[<span class="fn">engines</span>]
+smtbmc boolector   <span class="cm"># or: smtbmc yices; abc bmc3</span>
+
+[<span class="fn">script</span>]
+read -formal src/axi_arbiter.sv
+read -formal props/axi_arbiter_props.sv
+prep -top axi_arbiter
+
+[<span class="fn">files</span>]
+src/axi_arbiter.sv
+props/axi_arbiter_props.sv</pre>
+  </div>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># Run BMC then k-induction prove</span>
+$ sby -f arbiter_proof.sby
+
+<span class="cm"># For unbounded proof (k-induction):</span>
+<span class="cm"># Change mode to "prove" in .sby file, then:</span>
+$ sby -f arbiter_prove.sby
+
+<span class="cm"># View counterexample if fail:</span>
+$ gtkwave arbiter_proof/engine_0/trace.vcd</pre>
+  </div>
+
+  <h3>Complete SVA property example with assume</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// -------------------------------------------------------</span>
+<span class="cm">// Formal properties for a synchronous FIFO</span>
+<span class="cm">// Place in fifo_formal.sv, compile alongside fifo.sv</span>
+<span class="cm">// -------------------------------------------------------</span>
+<span class="kw">module</span> <span class="fn">fifo_formal</span> #(
+  <span class="kw">parameter int</span> DEPTH = <span class="num">16</span>,
+  <span class="kw">parameter int</span> WIDTH = <span class="num">8</span>
+) (
+  <span class="kw">input</span> <span class="kw">logic</span>             clk, rst_n,
+  <span class="kw">input</span> <span class="kw">logic</span>             push, pop,
+  <span class="kw">input</span> <span class="kw">logic</span> [WIDTH-<span class="num">1</span>:<span class="num">0</span>] din,
+  <span class="kw">output</span> <span class="kw">logic</span>[WIDTH-<span class="num">1</span>:<span class="num">0</span>] dout,
+  <span class="kw">input</span> <span class="kw">logic</span>             full, empty,
+  <span class="kw">input</span> <span class="kw">logic</span> [<span class="num">4</span>:<span class="num">0</span>]      count
+);
+
+  <span class="kw">default clocking</span> <span class="fn">cb</span> @(<span class="fn">posedge</span> clk); <span class="kw">endclocking</span>
+  <span class="kw">default disable iff</span> (!rst_n);
+
+  <span class="cm">// ---- ASSUME: valid environment ----</span>
+  <span class="cm">// Never push to a full FIFO (bus protocol guarantee)</span>
+  <span class="kw">assume property</span> (!full || !push);
+  <span class="cm">// Never pop from an empty FIFO</span>
+  <span class="kw">assume property</span> (!empty || !pop);
+
+  <span class="cm">// ---- ASSERT: correctness properties ----</span>
+  <span class="cm">// Count never exceeds DEPTH</span>
+  <span class="kw">assert property</span> (count <= DEPTH)
+    <span class="kw">else</span> <span class="fn">$error</span>(<span class="str">"OVERFLOW: count=%0d > DEPTH"</span>, count);
+
+  <span class="cm">// Count never goes negative</span>
+  <span class="kw">assert property</span> (count != <span class="num">'1</span>)   <span class="cm">// unsigned never wraps below 0</span>
+    <span class="kw">else</span> <span class="fn">$error</span>(<span class="str">"UNDERFLOW: count wrapped"</span>);
+
+  <span class="cm">// Full flag is consistent with count</span>
+  <span class="kw">assert property</span> (full == (count == DEPTH));
+  <span class="kw">assert property</span> (empty == (count == <span class="num">0</span>));
+
+  <span class="cm">// After push (no simultaneous pop), count increments by 1</span>
+  <span class="kw">assert property</span> (push && !pop |=> count == $<span class="fn">past</span>(count) + <span class="num">1</span>);
+
+  <span class="cm">// ---- COVER: prove these states are reachable ----</span>
+  <span class="kw">cover property</span> (full);          <span class="cm">// FIFO can fill</span>
+  <span class="kw">cover property</span> (empty ##1 full); <span class="cm">// empty to full in one burst</span>
+  <span class="kw">cover property</span> (push && pop);   <span class="cm">// simultaneous push-pop</span>
+
+<span class="kw">endmodule</span>
+
+<span class="cm">// Bind into DUT (add to testbench or elaboration script):</span>
+<span class="cm">// bind sync_fifo fifo_formal #(.DEPTH(16),.WIDTH(8)) fml(.*);</span></pre>
+  </div>
+
+  <!-- SECTION 11 - FAQ -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+
+    <details>
+      <summary>What is the difference between simulation and formal verification?</summary>
+      <div class="ans">Simulation executes specific input sequences and checks outputs for those particular stimulus patterns — it can miss bugs that no test happens to trigger. Formal verification mathematically explores all possible input combinations and state transitions, either proving a property holds for every reachable state (complete proof) or producing a concrete counterexample that violates it. Simulation scales to full-chip but provides incomplete coverage; formal is exhaustive within its scope but faces capacity limits on large designs.</div>
+    </details>
+
+    <details>
+      <summary>What is bounded model checking (BMC) and when is it enough?</summary>
+      <div class="ans">Bounded model checking unrolls the design state machine for a fixed number of clock cycles k and converts the reachability question into a SAT problem. If no property violation is found within k steps, BMC guarantees bug-freedom up to that depth — not for all time. BMC is sufficient when bugs are expected to be shallow (protocol violations, FIFO overflow) and as a fast bug-hunting pass before attempting full unbounded proof. For complete correctness you need k-induction or abstract interpretation on top of BMC.</div>
+    </details>
+
+    <details>
+      <summary>How does k-induction extend BMC into an unbounded proof?</summary>
+      <div class="ans">k-induction has two steps. The base case is standard BMC: check no violation occurs in the first k steps from reset. The inductive step assumes the property holds for k consecutive steps starting from an arbitrary reachable state, then proves it still holds at step k+1. If both pass, the property is proven for all time. Strengthening lemmas (auxiliary invariants about unreachable states) are sometimes added when the inductive step fails because the tool assumes an overly broad set of starting states.</div>
+    </details>
+
+    <details>
+      <summary>What is vacuity in formal verification and why is it dangerous?</summary>
+      <div class="ans">A property is vacuously true when its antecedent (the trigger condition) is never satisfied in any reachable state, so the implication holds trivially — not because the design is correct but because the condition never fires. For example, 'if req then ack within 4 cycles' passes vacuously if req is never asserted due to an overly restrictive assume constraint. Vacuity checking (built into JasperGold via check_vacuity) detects these silent misfires and flags properties that should be rewritten or whose assume constraints should be relaxed.</div>
+    </details>
+
+  </div>
+
+  <div class="takeaways">
+    <h3>&#10003; Day 19 Key Takeaways</h3>
+    <ul>
+      <li>Formal proves correctness for every possible input — simulation cannot; use both together</li>
+      <li>Model checking is fully automatic; theorem proving requires expert human proofs</li>
+      <li>In formal context: <code>assume</code> restricts inputs, <code>assert</code> is proven exhaustively, <code>cover</code> proves reachability</li>
+      <li>BMC gives a bounded depth guarantee — fast bug hunting but not a complete proof</li>
+      <li>k-induction and IC3/PDR extend BMC to unbounded proofs via mathematical induction</li>
+      <li>CEX (counterexample) is your debug artifact — trace back from violation cycle to root cause</li>
+      <li>Always check vacuity: a property that passes but whose trigger never fires gives false confidence</li>
+      <li>Pair every implication assert with a <code>cover</code> of the antecedent to catch vacuity manually</li>
+      <li>JasperGold result codes: PROVEN / CEX / BOUNDED / VACUOUS — each demands a different response</li>
+      <li>SymbiYosys provides a free, capable formal flow for open-source and academic projects</li>
+    </ul>
+  </div>
+
+  <a href="/verification/20-equivalence-checking/" class="next-card">
+    <div>
+      <div class="next-label">Next Up &mdash; Day 20</div>
+      <div class="next-title">Equivalence Checking</div>
+      <div class="next-desc">Combinational and sequential equivalence checking — proving synthesis, retiming, and optimization did not change design behavior.</div>
+    </div>
+    <div class="next-arrow">&#8594;</div>
+  </a>
+
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>VLSI &amp; Verification Education &mdash; ecrionix.org</p>
+  <p style="margin-top:.5rem"><a href="/legal/privacy.html" style="color:var(--sky)">Privacy Policy</a> &nbsp;&middot;&nbsp; <a href="/legal/terms.html" style="color:var(--sky)">Terms of Use</a></p>
+  <p style="margin-top:.4rem;font-size:.78rem">&#169; 2026 EcrioniX. All rights reserved.</p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">&#8679;</button>
+
+<script>
+  // Hamburger menu
+  document.getElementById('hamburger').addEventListener('click', function(){
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+
+  // Back-to-top
+  var st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', function(){
+    st.classList.toggle('visible', window.scrollY > 400);
+  });
+  st.addEventListener('click', function(){
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+
+  // Copy buttons
+  function copyCode(btn){
+    var pre = btn.nextElementSibling;
+    navigator.clipboard.writeText(pre.innerText).then(function(){
+      btn.textContent = 'Copied!';
+      setTimeout(function(){ btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+</script>
+</body>
+</html>

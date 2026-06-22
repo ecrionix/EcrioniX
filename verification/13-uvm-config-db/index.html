@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Config DB — Day 13 | EcrioniX Verification Series</title>
+  <meta name="description" content="Master uvm_config_db: set() and get() API, virtual interface passing, configuration objects, path wildcards, precedence rules, common errors and +UVM_CONFIG_DB_TRACE debug.">
+  <meta name="keywords" content="uvm_config_db, config_db set get, virtual interface UVM, UVM configuration object, UVM_CONFIG_DB_TRACE, UVM path wildcards, build_phase config, UVM null vif error">
+  <link rel="canonical" href="https://ecrionix.org/verification/13-uvm-config-db/">
+  <meta property="og:title" content="UVM Config DB — Day 13 | EcrioniX Verification Series">
+  <meta property="og:description" content="Master uvm_config_db: set() and get() API, virtual interface passing, configuration objects, path wildcards, precedence rules, common errors and +UVM_CONFIG_DB_TRACE debug.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/13-uvm-config-db/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"UVM Config DB","description":"Master uvm_config_db: set() and get() API, virtual interface passing, configuration objects, path wildcards, precedence rules, common errors and +UVM_CONFIG_DB_TRACE debug.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/13-uvm-config-db/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 13 — UVM Config DB","item":"https://ecrionix.org/verification/13-uvm-config-db/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is uvm_config_db and why is it needed?","acceptedAnswer":{"@type":"Answer","text":"uvm_config_db is UVM's global key-value store that lets top-level testbench modules pass virtual interfaces, integers, strings, and configuration objects down into the UVM component hierarchy without the components needing a direct reference to each other. It solves the problem of bridging the static SystemVerilog module world (where interfaces live) with the dynamic UVM class world. The top module calls uvm_config_db#(virtual my_if)::set() at time zero, and any UVM component can call ::get() during build_phase to retrieve it."}},
+      {"@type":"Question","name":"What is the difference between set() scope and instance path?","acceptedAnswer":{"@type":"Answer","text":"The set() call takes four arguments: (context, inst_path, field_name, value). The context is the component doing the set (use null from a module). The inst_path is a hierarchical path relative to that context — it can include wildcards (* for any single level, % for any substring within a level). For example, uvm_config_db#(virtual my_if)::set(null, \"uvm_test_top.env.agent*\", \"vif\", my_vif) will match any agent at that level. The get() call uses the calling component as context, so the path must resolve correctly relative to the component's full hierarchical path."}},
+      {"@type":"Question","name":"Why does my driver get a null virtual interface even though I called set()?","acceptedAnswer":{"@type":"Answer","text":"The most common causes are: (1) The inst_path in set() doesn't match the component's actual UVM path — run with +UVM_CONFIG_DB_TRACE to see exactly what paths are being tried. (2) set() is called after build_phase has already run for the component that calls get() — always call set() before run_test(). (3) The field name string in set() and get() don't match exactly (case-sensitive). (4) The type parameter doesn't match — make sure both set() and get() use the same #(type) parameter."}},
+      {"@type":"Question","name":"When should I use a configuration object instead of individual set() calls?","acceptedAnswer":{"@type":"Answer","text":"Use a configuration object (a class extending uvm_object) when you have more than two or three parameters to pass to a component or group of components. Bundle all related settings (enable_coverage, agent_is_active, bus_width, timeout_ns, etc.) into one config class, then pass the whole object with a single uvm_config_db#(my_cfg)::set() call. This is cleaner, easier to randomise, and the config object can itself be printed, compared, and copied using UVM field macros, which simplifies debug enormously."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .diagram-wrap{background:#0d1117;border:1px solid #1e293b;border-radius:12px;padding:1.5rem;margin:1.2rem 0 1.8rem;overflow-x:auto}
+    .byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    .byline a{color:#38bdf8;text-decoration:none;font-weight:600}
+    .err-table td:first-child{color:#f87171;font-family:'Cascadia Code','Fira Code',monospace;font-size:.8rem}
+    .err-table td:nth-child(2){color:var(--amber)}
+    .err-table td:nth-child(3){color:#86efac}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 13 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/12-uvm-factory/" class="dnbtn dnbtn-prev">← Day 12</a>
+    <a href="/verification/14-uvm-phasing/" class="dnbtn dnbtn-next">Day 14 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 13 — UVM Config DB</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM Core</div>
+  <h1>UVM Config DB</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub"><code>uvm_config_db</code> is UVM's global configuration store — the bridge between the static SystemVerilog module world (where interfaces live) and the dynamic UVM class hierarchy. Every non-trivial testbench uses it to pass virtual interfaces into drivers and monitors, distribute configuration objects to agents, and tune parameters without editing component source code.</p>
+  <div class="hero-meta"><span>⏱ 28 min read</span><span>📖 Day 13 of 25</span><span>🎯 config_db · vif passing · wildcards · debug</span></div>
+</div>
+
+<!-- Inline SVG diagram -->
+<div class="body">
+<div class="diagram-wrap">
+<svg viewBox="0 0 780 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:780px;display:block;margin:0 auto">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#38bdf8"/>
+    </marker>
+    <marker id="arr2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#a78bfa"/>
+    </marker>
+  </defs>
+  <!-- top module box -->
+  <rect x="10" y="20" width="180" height="60" rx="8" fill="none" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="100" y="45" text-anchor="middle" fill="#38bdf8" font-size="11" font-family="Outfit,sans-serif" font-weight="700">top module (static)</text>
+  <text x="100" y="62" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">interface my_if dut_if()</text>
+
+  <!-- config_db store -->
+  <rect x="290" y="10" width="200" height="80" rx="8" fill="rgba(56,189,248,0.06)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="390" y="35" text-anchor="middle" fill="#38bdf8" font-size="11" font-family="Outfit,sans-serif" font-weight="700">uvm_config_db</text>
+  <text x="390" y="53" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-family="monospace">"uvm_test_top.env.agt.drv" → vif</text>
+  <text x="390" y="69" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-family="monospace">"uvm_test_top.env.agt" → cfg</text>
+
+  <!-- uvm hierarchy -->
+  <rect x="570" y="20" width="185" height="220" rx="8" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="662" y="42" text-anchor="middle" fill="#a78bfa" font-size="11" font-family="Outfit,sans-serif" font-weight="700">UVM class hierarchy</text>
+  <rect x="585" y="55" width="155" height="26" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="662" y="73" text-anchor="middle" fill="#e2e8f0" font-size="10" font-family="monospace">uvm_test</text>
+  <rect x="595" y="95" width="135" height="26" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="662" y="113" text-anchor="middle" fill="#e2e8f0" font-size="10" font-family="monospace">env</text>
+  <rect x="605" y="135" width="115" height="26" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="662" y="153" text-anchor="middle" fill="#e2e8f0" font-size="10" font-family="monospace">agent</text>
+  <rect x="615" y="175" width="95" height="26" rx="5" fill="rgba(56,189,248,.1)" stroke="#38bdf8" stroke-width="1"/>
+  <text x="662" y="193" text-anchor="middle" fill="#38bdf8" font-size="10" font-family="monospace">driver ← get(vif)</text>
+  <rect x="615" y="208" width="95" height="26" rx="5" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1"/>
+  <text x="662" y="226" text-anchor="middle" fill="#4ade80" font-size="10" font-family="monospace">monitor ← get(vif)</text>
+
+  <!-- arrows: top → config_db -->
+  <line x1="190" y1="50" x2="288" y2="50" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="238" y="44" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="Outfit,sans-serif">set()</text>
+
+  <!-- arrows: config_db → driver -->
+  <line x1="490" y1="55" x2="568" y2="185" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr2)" stroke-dasharray="4,3"/>
+  <text x="530" y="105" text-anchor="middle" fill="#a78bfa" font-size="9" font-family="Outfit,sans-serif">get() in</text>
+  <text x="530" y="117" text-anchor="middle" fill="#a78bfa" font-size="9" font-family="Outfit,sans-serif">build_phase</text>
+</svg>
+</div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#what-is-config-db">What is uvm_config_db?</a></li>
+      <li><a href="#set-api">set() API — Four Arguments Explained</a></li>
+      <li><a href="#get-api">get() in build_phase</a></li>
+      <li><a href="#vif-passing">Virtual Interface Passing — Step by Step</a></li>
+      <li><a href="#config-objects">Configuration Objects vs Individual Fields</a></li>
+      <li><a href="#wildcards">Path Wildcards: * and %</a></li>
+      <li><a href="#precedence">Precedence Rules</a></li>
+      <li><a href="#common-errors">Common Errors</a></li>
+      <li><a href="#trace-debug">+UVM_CONFIG_DB_TRACE Debug</a></li>
+      <li><a href="#complete-example">Complete Example — vif + Config Object</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <h2 id="what-is-config-db">1. What is uvm_config_db?</h2>
+  <p><code>uvm_config_db</code> is a parameterised static class that acts as a global key-value store shared across an entire UVM simulation. It replaced the older <code>set_config_int</code> / <code>set_config_object</code> API introduced in UVM 1.1 and is now the standard mechanism for all configuration distribution.</p>
+  <p>The fundamental problem it solves is the <strong>module-to-class boundary</strong>. SystemVerilog interfaces are modules — they exist in static elaboration space. UVM components are dynamic objects created at runtime. There is no language mechanism that lets a module directly hand a virtual interface to a class constructor. <code>uvm_config_db</code> is the handshake point: the module calls <code>set()</code> at time zero, and UVM components call <code>get()</code> later during their <code>build_phase</code>.</p>
+  <p>Beyond virtual interfaces, <code>uvm_config_db</code> distributes integers, strings, enumerated types, and entire configuration objects. The type parameter <code>#(T)</code> determines which database (there is one per type) is searched, keeping different types from colliding.</p>
+
+  <div class="callout info"><strong>Key insight:</strong> There is no single "config database" — there is one database per parameterised type. <code>uvm_config_db#(virtual my_if)</code> and <code>uvm_config_db#(int)</code> are completely separate stores with separate key spaces.</div>
+
+  <h2 id="set-api">2. set() API — Four Arguments Explained</h2>
+  <p>The full signature is:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">static</span> <span class="kw">function</span> <span class="ty">void</span> <span class="fn">set</span>(
+  uvm_component  cntxt,      <span class="cm">// who is setting (null = top module)</span>
+  <span class="ty">string</span>         inst_name,  <span class="cm">// hierarchical path (wildcards OK)</span>
+  <span class="ty">string</span>         field_name, <span class="cm">// key name (case-sensitive)</span>
+  T              value       <span class="cm">// the value to store</span>
+);</pre>
+  </div>
+
+  <table>
+    <tr><th>Argument</th><th>Type</th><th>What to put here</th></tr>
+    <tr><td><code>cntxt</code></td><td><code>uvm_component</code></td><td>Pass <code>null</code> from a top-level module. Pass <code>this</code> from inside a UVM component to set relative paths.</td></tr>
+    <tr><td><code>inst_name</code></td><td><code>string</code></td><td>Full (or relative) hierarchical path to the component that will call <code>get()</code>. When <code>cntxt</code> is <code>null</code>, this is the absolute UVM path starting with <code>uvm_test_top</code>.</td></tr>
+    <tr><td><code>field_name</code></td><td><code>string</code></td><td>The key string. Must match exactly (case-sensitive) the string used in <code>get()</code>. Convention: use the variable name, e.g. <code>"vif"</code>, <code>"cfg"</code>.</td></tr>
+    <tr><td><code>value</code></td><td><code>T</code></td><td>The value. For virtual interfaces, this is the interface handle. For config objects, a class handle.</td></tr>
+  </table>
+
+  <h3>Typical set() calls from a top module</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// top_tb.sv — initial block, time 0</span>
+<span class="kw">module</span> <span class="fn">top_tb</span>;
+  <span class="cm">// 1. Instantiate interface</span>
+  <span class="ty">my_if</span> dut_if(.clk(clk), .rst(rst));
+
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    <span class="cm">// 2. Pass vif to driver — absolute path, exact match</span>
+    uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+      <span class="kw">null</span>,
+      <span class="str">"uvm_test_top.env.agent.driver"</span>,
+      <span class="str">"vif"</span>,
+      dut_if
+    );
+
+    <span class="cm">// 3. Pass vif to monitor (same interface, different path)</span>
+    uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+      <span class="kw">null</span>,
+      <span class="str">"uvm_test_top.env.agent.monitor"</span>,
+      <span class="str">"vif"</span>,
+      dut_if
+    );
+
+    <span class="cm">// 4. Pass an integer config parameter</span>
+    uvm_config_db#(<span class="ty">int</span>)::set(
+      <span class="kw">null</span>,
+      <span class="str">"uvm_test_top.*"</span>,
+      <span class="str">"timeout_ns"</span>,
+      <span class="num">5000</span>
+    );
+
+    run_test();
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <h2 id="get-api">3. get() in build_phase</h2>
+  <p>Components call <code>get()</code> during <code>build_phase</code> — the only UVM phase that runs before simulation time advances. The full signature mirrors <code>set()</code> but returns a <code>bit</code> indicating success:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">static</span> <span class="kw">function</span> <span class="ty">bit</span> <span class="fn">get</span>(
+  uvm_component  cntxt,       <span class="cm">// the requesting component (usually `this`)</span>
+  <span class="ty">string</span>         inst_name,   <span class="cm">// usually "" (use component's own path)</span>
+  <span class="ty">string</span>         field_name,  <span class="cm">// must match set() field_name exactly</span>
+  <span class="kw">ref</span> T          value        <span class="cm">// output — written if found</span>
+);</pre>
+  </div>
+
+  <p><strong>Always check the return value.</strong> If <code>get()</code> returns 0, the value was not found and the variable stays uninitialized (null for handles). A null virtual interface accessed later in <code>run_phase</code> will crash the simulator with a fatal or segfault.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Inside my_driver — build_phase</span>
+<span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  <span class="kw">super</span>.build_phase(phase);
+
+  <span class="cm">// Retrieve virtual interface</span>
+  <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::get(
+        <span class="kw">this</span>,   <span class="cm">// context — this component's path is used</span>
+        <span class="str">""</span>,     <span class="cm">// inst_name — "" means use this component's path</span>
+        <span class="str">"vif"</span>,  <span class="cm">// field name — must match set() exactly</span>
+        vif))   <span class="cm">// output variable</span>
+  <span class="kw">begin</span>
+    `uvm_fatal(<span class="str">"CFG"</span>, <span class="str">"virtual interface vif not found in config_db"</span>)
+  <span class="kw">end</span>
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>Use `uvm_fatal, not `uvm_error:</strong> A missing virtual interface means nothing will work. <code>`uvm_error</code> allows simulation to continue into <code>run_phase</code> where a null-vif dereference causes an unpredictable crash. <code>`uvm_fatal</code> stops cleanly at the source of the problem.</div>
+
+  <h2 id="vif-passing">4. Virtual Interface Passing — Step by Step</h2>
+  <p>This is the most critical config_db use case. Here is the complete flow with every file involved:</p>
+
+  <h3>Step 1 — Declare the interface</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// my_if.sv</span>
+<span class="kw">interface</span> <span class="fn">my_if</span>(
+  <span class="kw">input</span> <span class="ty">logic</span> clk,
+  <span class="kw">input</span> <span class="ty">logic</span> rst
+);
+  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] data;
+  <span class="ty">logic</span>        write;
+  <span class="ty">logic</span>        valid;
+  <span class="ty">logic</span>        ready;
+
+  <span class="cm">// clocking block for driver (active)</span>
+  <span class="kw">clocking</span> <span class="fn">drv_cb</span> @(<span class="kw">posedge</span> clk);
+    <span class="kw">default</span> <span class="kw">input</span> #<span class="num">1ns</span> <span class="kw">output</span> #<span class="num">1ns</span>;
+    <span class="kw">output</span> addr, data, write, valid;
+    <span class="kw">input</span>  ready;
+  <span class="kw">endclocking</span>
+
+  <span class="cm">// clocking block for monitor (passive)</span>
+  <span class="kw">clocking</span> <span class="fn">mon_cb</span> @(<span class="kw">posedge</span> clk);
+    <span class="kw">default</span> <span class="kw">input</span> #<span class="num">1ns</span>;
+    <span class="kw">input</span> addr, data, write, valid, ready;
+  <span class="kw">endclocking</span>
+<span class="kw">endinterface</span></pre>
+  </div>
+
+  <h3>Step 2 — Declare virtual interface variable in driver and monitor</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// my_driver.sv — class member</span>
+<span class="kw">class</span> <span class="fn">my_driver</span> <span class="kw">extends</span> uvm_driver#(<span class="ty">my_trans</span>);
+  <span class="fn">`uvm_component_utils</span>(my_driver)
+
+  <span class="kw">virtual</span> <span class="ty">my_if</span> vif;  <span class="cm">// ← virtual interface handle</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+      `uvm_fatal(<span class="str">"CFG"</span>, <span class="str">"Driver: vif not found in config_db"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      <span class="ty">my_trans</span> tr;
+      seq_item_port.get_next_item(tr);
+      @(vif.drv_cb);                    <span class="cm">// use interface via clocking block</span>
+      vif.drv_cb.addr  &lt;= tr.addr;
+      vif.drv_cb.data  &lt;= tr.data;
+      vif.drv_cb.write &lt;= tr.write;
+      vif.drv_cb.valid &lt;= <span class="num">1</span>;
+      @(posedge vif.drv_cb.ready);
+      vif.drv_cb.valid &lt;= <span class="num">0</span>;
+      seq_item_port.item_done();
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h3>Step 3 — Set from the top module before run_test()</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// top_tb.sv</span>
+<span class="kw">module</span> <span class="fn">top_tb</span>;
+  <span class="ty">logic</span> clk = <span class="num">0</span>;
+  <span class="ty">logic</span> rst = <span class="num">1</span>;
+  <span class="kw">always</span> #<span class="num">5</span> clk = ~clk;
+
+  <span class="ty">my_if</span> dut_if(.clk(clk), .rst(rst));
+  dut u_dut(.clk(clk), .rst(rst), .addr(dut_if.addr),
+            .data(dut_if.data), .write(dut_if.write),
+            .valid(dut_if.valid), .ready(dut_if.ready));
+
+  <span class="kw">import</span> uvm_pkg::*;
+  <span class="fn">`include</span> <span class="str">"uvm_macros.svh"</span>
+
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    rst = <span class="num">1</span>; @(posedge clk); @(posedge clk); rst = <span class="num">0</span>;
+
+    <span class="cm">// MUST happen before run_test() — sets before build phases run</span>
+    uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+      <span class="kw">null</span>, <span class="str">"uvm_test_top.env.agent.driver"</span>,  <span class="str">"vif"</span>, dut_if);
+    uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+      <span class="kw">null</span>, <span class="str">"uvm_test_top.env.agent.monitor"</span>, <span class="str">"vif"</span>, dut_if);
+
+    run_test();
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Wildcard shortcut:</strong> You can replace both set() calls above with a single wildcard: <code>uvm_config_db#(virtual my_if)::set(null, "uvm_test_top.*", "vif", dut_if)</code> — this matches driver and monitor at any depth under env. Use with care when multiple agents have different interfaces.</div>
+
+  <h2 id="config-objects">5. Configuration Objects vs Individual Fields</h2>
+  <p>When a component needs more than a couple of parameters, it is better to bundle them all into a <strong>configuration object</strong> — a class that extends <code>uvm_object</code> — and pass the whole object with one <code>set()</code> call.</p>
+
+  <h3>Define the configuration class</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">agent_cfg</span> <span class="kw">extends</span> uvm_object;
+  <span class="fn">`uvm_object_utils_begin</span>(agent_cfg)
+    <span class="fn">`uvm_field_enum</span>(uvm_active_passive_enum, is_active, UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(bus_width,         UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(enable_coverage,   UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(timeout_ns,        UVM_ALL_ON)
+    <span class="fn">`uvm_field_string</span>(protocol_name,  UVM_ALL_ON)
+  <span class="fn">`uvm_object_utils_end</span>
+
+  uvm_active_passive_enum is_active = UVM_ACTIVE;
+  <span class="ty">int</span>    bus_width       = <span class="num">32</span>;
+  <span class="ty">bit</span>    enable_coverage = <span class="num">1</span>;
+  <span class="ty">int</span>    timeout_ns      = <span class="num">10_000</span>;
+  <span class="ty">string</span> protocol_name   = <span class="str">"AXI4"</span>;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"agent_cfg"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h3>Set and get the config object</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// In the test or env — set before build_phase</span>
+agent_cfg agt_cfg = agent_cfg::type_id::create(<span class="str">"agt_cfg"</span>);
+agt_cfg.bus_width       = <span class="num">64</span>;
+agt_cfg.enable_coverage = <span class="num">0</span>;
+agt_cfg.timeout_ns      = <span class="num">20_000</span>;
+uvm_config_db#(<span class="ty">agent_cfg</span>)::set(
+  <span class="kw">this</span>,
+  <span class="str">"env.agent"</span>,
+  <span class="str">"cfg"</span>,
+  agt_cfg);
+
+<span class="cm">// In the agent — build_phase</span>
+<span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+  <span class="kw">super</span>.build_phase(phase);
+  <span class="kw">if</span> (!uvm_config_db#(<span class="ty">agent_cfg</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"cfg"</span>, cfg))
+    `uvm_fatal(<span class="str">"CFG"</span>, <span class="str">"agent_cfg not found"</span>)
+  <span class="cm">// Use cfg to conditionally build sub-components</span>
+  <span class="kw">if</span> (cfg.is_active == UVM_ACTIVE)
+    driver  = my_driver::type_id::create(<span class="str">"driver"</span>, <span class="kw">this</span>);
+  monitor = my_monitor::type_id::create(<span class="str">"monitor"</span>, <span class="kw">this</span>);
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <p>Config objects are cleaner than individual set() calls because:</p>
+  <ul>
+    <li>One <code>set()</code> + one <code>get()</code> instead of N pairs</li>
+    <li>The config object can be randomised (<code>rand</code> fields + <code>randomize()</code>)</li>
+    <li>UVM field macros give free <code>print()</code>, <code>compare()</code>, <code>copy()</code></li>
+    <li>The object can be passed down to sub-components (driver, monitor) via a class handle rather than more config_db calls</li>
+    <li>Constraints can be added to the config object for directed-random configuration</li>
+  </ul>
+
+  <h2 id="wildcards">6. Path Wildcards: * and %</h2>
+  <p>UVM config_db supports two wildcard characters in the <code>inst_name</code> argument of <code>set()</code>:</p>
+
+  <table>
+    <tr><th>Wildcard</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td><code>*</code></td><td>Matches any sequence of characters including dots (hierarchy levels). Equivalent to <code>.*</code> in the path.</td><td><code>"uvm_test_top.*"</code> matches any component at any depth</td></tr>
+    <tr><td><code>%</code></td><td>Matches any sequence of characters but NOT a dot. Matches exactly one hierarchy level.</td><td><code>"uvm_test_top.env.%"</code> matches only direct children of env</td></tr>
+  </table>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Match driver and monitor at any depth under agent</span>
+uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+  <span class="kw">null</span>, <span class="str">"uvm_test_top.env.agent*"</span>, <span class="str">"vif"</span>, dut_if);
+
+<span class="cm">// Match ALL components at any depth in the test (broadest)</span>
+uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::set(
+  <span class="kw">null</span>, <span class="str">"*"</span>, <span class="str">"vif"</span>, dut_if);
+
+<span class="cm">// Match only direct children of env (% stops at dots)</span>
+uvm_config_db#(<span class="ty">agent_cfg</span>)::set(
+  <span class="kw">null</span>, <span class="str">"uvm_test_top.env.%"</span>, <span class="str">"cfg"</span>, agt_cfg);
+
+<span class="cm">// Match agents in all envs: env0.agent, env1.agent, etc.</span>
+uvm_config_db#(<span class="ty">agent_cfg</span>)::set(
+  <span class="kw">null</span>, <span class="str">"uvm_test_top.*.agent"</span>, <span class="str">"cfg"</span>, agt_cfg);</pre>
+  </div>
+
+  <div class="callout warn"><strong>Wildcard risk:</strong> Using <code>"*"</code> as the inst_name floods every component with the same value. If two different agents have different interfaces, both will see the last-set value for <code>"vif"</code> and one will have the wrong interface. Always use the minimum wildcard needed.</div>
+
+  <h2 id="precedence">7. Precedence Rules</h2>
+  <p>When multiple <code>set()</code> calls match the same <code>get()</code> request, UVM uses the following precedence rules to decide which value wins:</p>
+  <ol>
+    <li><strong>More specific path wins over wildcard:</strong> An exact match beats a wildcard match.</li>
+    <li><strong>Later set() wins over earlier set() at the same specificity:</strong> If two calls with equal specificity (e.g. both use the same wildcard) match the same get(), the one that was called later in simulation time (or later in program order within time 0) wins.</li>
+    <li><strong>Higher component context wins:</strong> A <code>set()</code> from a component higher in the hierarchy (closer to uvm_test_top) takes precedence over a set() from a lower component when both match the same path and field.</li>
+  </ol>
+
+  <table>
+    <tr><th>Scenario</th><th>Which value the get() receives</th></tr>
+    <tr><td>Exact path + wildcard both match</td><td>Exact path wins regardless of call order</td></tr>
+    <tr><td>Two wildcards both match</td><td>The one called later wins</td></tr>
+    <tr><td>Test sets, then env also sets (same field)</td><td>Test's set wins (higher hierarchy, called earlier)</td></tr>
+    <tr><td>Module sets at time 0, component sets in build_phase</td><td>Component's set wins (later in program order)</td></tr>
+  </table>
+
+  <div class="callout info"><strong>Tip:</strong> When in doubt about precedence, run with <code>+UVM_CONFIG_DB_TRACE</code> and look at the order of set() calls in the log. The last matching set() (after specificity is resolved) is what get() returns.</div>
+
+  <h2 id="common-errors">8. Common Errors</h2>
+  <p>Most config_db bugs fall into a small number of categories. The table below lists the error symptom, root cause, and fix:</p>
+
+  <table class="err-table">
+    <tr><th>Symptom</th><th>Root Cause</th><th>Fix</th></tr>
+    <tr><td>Fatal: vif not found in config_db</td><td>inst_name in set() doesn't match component's UVM path</td><td>Run +UVM_CONFIG_DB_TRACE; compare set() path vs component's get_full_name()</td></tr>
+    <tr><td>Null pointer dereference in run_phase</td><td>get() returned 0 but wasn't checked; vif stayed null</td><td>Always if(!get()) `uvm_fatal</td></tr>
+    <tr><td>Wrong field name</td><td>"Vif" vs "vif" — case mismatch</td><td>Standardize: always lowercase field names; grep for mismatches</td></tr>
+    <tr><td>get() returns 0 despite set() being called</td><td>Type mismatch: set#(virtual my_if) but get#(virtual other_if)</td><td>Ensure both sides use identical type parameter</td></tr>
+    <tr><td>Component gets wrong value (another agent's vif)</td><td>Wildcard in set() is too broad</td><td>Narrow the wildcard or use exact paths</td></tr>
+    <tr><td>get() always fails in passive agent</td><td>is_active=UVM_PASSIVE so driver never calls get(); monitor path is wrong</td><td>Check monitor path separately; ensure set() also covers monitor's path</td></tr>
+    <tr><td>Config object is null inside driver</td><td>Agent retrieved cfg but didn't pass the handle to driver before creating it</td><td>Set config_db for driver's path too, or pass cfg via a class member after creation</td></tr>
+  </table>
+
+  <h2 id="trace-debug">9. +UVM_CONFIG_DB_TRACE Debug</h2>
+  <p>Add <code>+UVM_CONFIG_DB_TRACE</code> to your simulator command line to get a log entry for every <code>set()</code> and <code>get()</code> call. This is the fastest way to debug a missing virtual interface.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm"># Simulator command line — works with VCS, Xcelium, ModelSim/Questa</span>
+vcs -sverilog ... +UVM_TESTNAME=my_test +UVM_CONFIG_DB_TRACE
+
+<span class="cm"># Xcelium</span>
+xrun ... +UVM_TESTNAME=my_test +UVM_CONFIG_DB_TRACE</pre>
+  </div>
+
+  <p>The trace output looks like this — each set() and get() is logged with the resolved path:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm"># UVM_CONFIG_DB_TRACE output — typical entries</span>
+UVM_INFO @ 0: reporter [CFGDB/SET] Configuration 'uvm_test_top.env.agent.driver.vif'
+              (type virtual my_if) set by  {null,"uvm_test_top.env.agent.driver","vif"}
+
+UVM_INFO @ 0: reporter [CFGDB/GET] Configuration 'uvm_test_top.env.agent.driver.vif'
+              (type virtual my_if) read by uvm_test_top.env.agent.driver {this,"","vif"}
+              = &lt;my_if handle&gt;
+
+<span class="cm"># If get() fails, you'll see:</span>
+UVM_INFO @ 0: reporter [CFGDB/GET] Configuration 'uvm_test_top.env.agent.monitor.vif'
+              (type virtual my_if) NOT FOUND by uvm_test_top.env.agent.monitor</pre>
+  </div>
+
+  <p>From the trace you can see:</p>
+  <ul>
+    <li>Exactly which path was resolved by each set() call</li>
+    <li>Whether get() found a matching entry or returned 0</li>
+    <li>The order of all set() calls at time 0 (useful for precedence debugging)</li>
+    <li>Type mismatches — set() and get() with different types will not match even if paths agree</li>
+  </ul>
+
+  <div class="callout tip"><strong>Additional debug:</strong> Inside any component you can call <code>uvm_config_db#(T)::dump()</code> to print all entries of that type to stdout. Also call <code>this.get_full_name()</code> in a build_phase to print the component's exact UVM path and compare it against your set() inst_name.</div>
+
+  <h2 id="complete-example">10. Complete Example — vif + Config Object</h2>
+  <p>This is a production-ready minimal testbench showing all config_db patterns: virtual interface passing, configuration object distribution, and proper error checking. Copy all files into your simulator project directory.</p>
+
+  <h3>my_cfg.sv — Configuration object</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// my_cfg.sv</span>
+<span class="kw">class</span> <span class="fn">my_cfg</span> <span class="kw">extends</span> uvm_object;
+  <span class="fn">`uvm_object_utils_begin</span>(my_cfg)
+    <span class="fn">`uvm_field_int</span>(bus_width,       UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(enable_coverage, UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(num_transactions, UVM_ALL_ON)
+    <span class="fn">`uvm_field_enum</span>(uvm_active_passive_enum, is_active, UVM_ALL_ON)
+  <span class="fn">`uvm_object_utils_end</span>
+
+  <span class="ty">int</span>  bus_width        = <span class="num">32</span>;
+  <span class="ty">bit</span>  enable_coverage  = <span class="num">1</span>;
+  <span class="ty">int</span>  num_transactions = <span class="num">100</span>;
+  uvm_active_passive_enum is_active = UVM_ACTIVE;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"my_cfg"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h3>my_driver.sv — get() both vif and cfg</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// my_driver.sv</span>
+<span class="kw">class</span> <span class="fn">my_driver</span> <span class="kw">extends</span> uvm_driver#(<span class="ty">my_trans</span>);
+  <span class="fn">`uvm_component_utils</span>(my_driver)
+
+  <span class="kw">virtual</span> <span class="ty">my_if</span> vif;
+  <span class="ty">my_cfg</span>        cfg;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+
+    <span class="cm">// 1. Retrieve virtual interface</span>
+    <span class="kw">if</span> (!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">my_if</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"vif"</span>, vif))
+      `uvm_fatal(<span class="str">"CFG"</span>,{get_full_name(),<span class="str">": vif not found in config_db"</span>})
+
+    <span class="cm">// 2. Retrieve configuration object</span>
+    <span class="kw">if</span> (!uvm_config_db#(<span class="ty">my_cfg</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"cfg"</span>, cfg))
+      `uvm_fatal(<span class="str">"CFG"</span>,{get_full_name(),<span class="str">": cfg not found in config_db"</span>})
+
+    `uvm_info(<span class="str">"CFG"</span>, $sformatf(<span class="str">"bus_width=%0d coverage=%0b"</span>,
+              cfg.bus_width, cfg.enable_coverage), UVM_MEDIUM)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">my_trans</span> tr;
+    @(negedge vif.rst);             <span class="cm">// wait for reset deassert</span>
+    <span class="kw">repeat</span>(cfg.num_transactions) <span class="kw">begin</span>
+      seq_item_port.get_next_item(tr);
+      <span class="cm">// Drive via clocking block</span>
+      @(vif.drv_cb);
+      vif.drv_cb.addr  &lt;= tr.addr;
+      vif.drv_cb.data  &lt;= tr.data;
+      vif.drv_cb.write &lt;= tr.write;
+      vif.drv_cb.valid &lt;= <span class="num">1</span>;
+      @(posedge vif.drv_cb.ready);
+      vif.drv_cb.valid &lt;= <span class="num">0</span>;
+      seq_item_port.item_done();
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h3>my_agent.sv — distribute cfg to sub-components</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// my_agent.sv</span>
+<span class="kw">class</span> <span class="fn">my_agent</span> <span class="kw">extends</span> uvm_agent;
+  <span class="fn">`uvm_component_utils</span>(my_agent)
+
+  <span class="ty">my_driver</span>  driver;
+  <span class="ty">my_monitor</span> monitor;
+  <span class="ty">my_seqr</span>    seqr;
+  <span class="ty">my_cfg</span>     cfg;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+
+    <span class="cm">// Get config from DB (set by env or test)</span>
+    <span class="kw">if</span> (!uvm_config_db#(<span class="ty">my_cfg</span>)::get(<span class="kw">this</span>, <span class="str">""</span>, <span class="str">"cfg"</span>, cfg))
+      `uvm_fatal(<span class="str">"CFG"</span>, <span class="str">"my_cfg not found"</span>)
+
+    <span class="cm">// Pass cfg object down to driver and monitor via config_db</span>
+    uvm_config_db#(<span class="ty">my_cfg</span>)::set(<span class="kw">this</span>, <span class="str">"driver"</span>,  <span class="str">"cfg"</span>, cfg);
+    uvm_config_db#(<span class="ty">my_cfg</span>)::set(<span class="kw">this</span>, <span class="str">"monitor"</span>, <span class="str">"cfg"</span>, cfg);
+
+    <span class="cm">// Conditionally build driver and sequencer</span>
+    <span class="kw">if</span> (cfg.is_active == UVM_ACTIVE) <span class="kw">begin</span>
+      driver  = my_driver::type_id::create(<span class="str">"driver"</span>,  <span class="kw">this</span>);
+      seqr    = my_seqr::type_id::create(<span class="str">"seqr"</span>,    <span class="kw">this</span>);
+    <span class="kw">end</span>
+    monitor = my_monitor::type_id::create(<span class="str">"monitor"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+    <span class="kw">if</span> (cfg.is_active == UVM_ACTIVE)
+      driver.seq_item_port.connect(seqr.seq_item_export);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h3>base_test.sv — test sets everything before build</h3>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// base_test.sv</span>
+<span class="kw">class</span> <span class="fn">base_test</span> <span class="kw">extends</span> uvm_test;
+  <span class="fn">`uvm_component_utils</span>(base_test)
+
+  <span class="ty">my_env</span> env;
+  <span class="ty">my_cfg</span> cfg;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="cm">// 1. Create cfg BEFORE calling super.build_phase()</span>
+    cfg = my_cfg::type_id::create(<span class="str">"cfg"</span>);
+    cfg.bus_width       = <span class="num">64</span>;
+    cfg.enable_coverage = <span class="num">1</span>;
+    cfg.num_transactions = <span class="num">500</span>;
+
+    <span class="cm">// 2. Push cfg into DB — must happen before env.build_phase()</span>
+    uvm_config_db#(<span class="ty">my_cfg</span>)::set(<span class="kw">this</span>, <span class="str">"env.agent"</span>, <span class="str">"cfg"</span>, cfg);
+
+    <span class="cm">// 3. Now let super.build_phase() trigger env and agent build</span>
+    <span class="kw">super</span>.build_phase(phase);
+
+    env = my_env::type_id::create(<span class="str">"env"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">my_seq</span> seq = my_seq::type_id::create(<span class="str">"seq"</span>);
+    phase.raise_objection(<span class="kw">this</span>);
+    seq.start(env.agent.seqr);
+    phase.drop_objection(<span class="kw">this</span>);
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways</h3>
+    <ul>
+      <li>Always call set() before run_test() (from module) or before super.build_phase() (from a component)</li>
+      <li>Always check get() return value — use `uvm_fatal if it returns 0 for a required resource</li>
+      <li>Use configuration objects for groups of 3+ related parameters</li>
+      <li>Path wildcards (* and %) let one set() call cover multiple components — use narrowest match needed</li>
+      <li>+UVM_CONFIG_DB_TRACE shows every set/get with resolved paths — the go-to debug tool</li>
+      <li>Type parameter must match exactly — #(virtual my_if) and #(virtual other_if) are different databases</li>
+      <li>Use get_full_name() in error messages so you know exactly which component failed</li>
+    </ul>
+  </div>
+
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is uvm_config_db and why is it needed?</summary>
+      <div class="ans">
+        <code>uvm_config_db</code> is UVM's global key-value store that lets top-level testbench modules pass virtual interfaces, integers, strings, and configuration objects down into the UVM component hierarchy without the components needing a direct reference to each other. It solves the problem of bridging the static SystemVerilog module world (where interfaces live) with the dynamic UVM class world. The top module calls <code>uvm_config_db#(virtual my_if)::set()</code> at time zero, and any UVM component can call <code>::get()</code> during <code>build_phase</code> to retrieve it.
+      </div>
+    </details>
+    <details>
+      <summary>What is the difference between set() scope and instance path?</summary>
+      <div class="ans">
+        The <code>set()</code> call takes four arguments: <code>(context, inst_path, field_name, value)</code>. The context is the component doing the set — use <code>null</code> from a module. The <code>inst_path</code> is a hierarchical path relative to that context — it can include wildcards (<code>*</code> for any characters including dots, <code>%</code> for any characters excluding dots). For example, <code>uvm_config_db#(virtual my_if)::set(null, "uvm_test_top.env.agent*", "vif", my_vif)</code> will match any component whose UVM path contains "uvm_test_top.env.agent". The <code>get()</code> call uses the calling component as context, so the path must resolve correctly relative to that component's full hierarchical path.
+      </div>
+    </details>
+    <details>
+      <summary>Why does my driver get a null virtual interface even though I called set()?</summary>
+      <div class="ans">
+        The most common causes are: (1) The <code>inst_path</code> in <code>set()</code> doesn't match the component's actual UVM path — run with <code>+UVM_CONFIG_DB_TRACE</code> to see exactly what paths are being tried. (2) <code>set()</code> is called after <code>build_phase</code> has already run for the component that calls <code>get()</code> — always call <code>set()</code> before <code>run_test()</code>. (3) The field name string in <code>set()</code> and <code>get()</code> don't match exactly (case-sensitive). (4) The type parameter doesn't match — make sure both <code>set()</code> and <code>get()</code> use the same <code>#(type)</code> parameter, including the <code>virtual</code> keyword.
+      </div>
+    </details>
+    <details>
+      <summary>When should I use a configuration object instead of individual set() calls?</summary>
+      <div class="ans">
+        Use a configuration object (a class extending <code>uvm_object</code>) when you have more than two or three parameters to pass to a component or group of components. Bundle all related settings (<code>enable_coverage</code>, <code>is_active</code>, <code>bus_width</code>, <code>timeout_ns</code>, etc.) into one config class, then pass the whole object with a single <code>uvm_config_db#(my_cfg)::set()</code> call. This is cleaner, easier to randomize, and the config object can itself be printed, compared, and copied using UVM field macros, which simplifies debug enormously. The config object can also be held by the agent and passed directly as a class member to its driver and monitor.
+      </div>
+    </details>
+  </div>
+
+  <div style="display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap">
+    <a href="/verification/12-uvm-factory/" style="flex:1;min-width:220px;background:rgba(15,23,42,.7);border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.2rem 1.5rem;display:flex;align-items:center;gap:1rem;color:inherit;text-decoration:none;transition:all .2s" onmouseover="this.style.borderColor='var(--violet)'" onmouseout="this.style.borderColor='rgba(167,139,250,.2)'">
+      <span style="font-size:1.5rem;color:var(--violet)">←</span>
+      <div>
+        <div style="font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.25rem">Day 12</div>
+        <div style="font-size:.95rem;font-weight:700;color:#f1f5f9">UVM Factory</div>
+        <div style="font-size:.78rem;color:var(--dim);margin-top:.2rem">type_id::create, overrides, debug</div>
+      </div>
+    </a>
+    <a href="/verification/14-uvm-phasing/" style="flex:1;min-width:220px;background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.2rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;color:inherit;text-decoration:none;transition:all .2s" onmouseover="this.style.borderColor='var(--violet)';this.style.transform='translateX(3px)'" onmouseout="this.style.borderColor='rgba(167,139,250,.2)';this.style.transform='none'">
+      <div>
+        <div style="font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.25rem">Day 14 — Up Next</div>
+        <div style="font-size:.95rem;font-weight:700;color:#f1f5f9">UVM Phasing</div>
+        <div style="font-size:.78rem;color:var(--dim);margin-top:.2rem">build, connect, run, shutdown, objections</div>
+      </div>
+      <span style="font-size:1.5rem;color:var(--violet);flex-shrink:0">→</span>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>Practical VLSI &amp; Verification tutorials for engineers.</p>
+  <p style="margin-top:.5rem">
+    <a href="/legal/privacy.html" style="color:var(--sky)">Privacy Policy</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/legal/terms.html" style="color:var(--sky)">Terms of Use</a>
+  </p>
+  <p style="margin-top:.5rem">&copy; 2026 EcrioniX. All rights reserved.</p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">&#8679;</button>
+
+<script>
+  // Hamburger
+  document.getElementById('hamburger').addEventListener('click', function(){
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+
+  // Back to top
+  var st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', function(){
+    st.classList.toggle('visible', window.scrollY > 400);
+  });
+  st.addEventListener('click', function(){
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+
+  // Copy buttons
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var code = btn.parentElement.querySelector('pre').innerText;
+      navigator.clipboard.writeText(code).then(function(){
+        btn.textContent = 'Copied!';
+        setTimeout(function(){ btn.textContent = 'Copy'; }, 2000);
+      });
+    });
+  });
+</script>
+</body>
+</html>
