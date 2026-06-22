@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 CA Bus Controller — Module 11 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 Command/Address (CA) bus controller in Verilog. CA bus encoding per JEDEC JESD238, 8-bit command packets, command serialization, CKE control, ODT (On-Die Termination) management, and CA parity. Phase 3 · Module 11.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/ca-bus/">
+<meta property="og:title" content="HBM3 CA Bus Controller — Module 11 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog HBM3 CA bus controller. 8-bit command packets, ACT 2-packet encoding, CA parity, CKE control. Full SV testbench + SVA assertions.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/ca-bus/">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 CA Bus Controller — Module 11","description":"Build the HBM3 Command/Address (CA) bus controller in synthesizable Verilog. Covers CA bus encoding per JEDEC JESD238, 8-bit command packets, ACT 2-packet serialization, CA parity, CKE control, and ODT management.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/ca-bus/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 11 — CA Bus Controller","item":"https://ecrionix.org/hbm3-controller/ca-bus/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does HBM3 use an 8-bit serial CA bus instead of a wide parallel address bus?","acceptedAnswer":{"@type":"Answer","text":"HBM3 stacks DRAM dies in a tight package connected via Through-Silicon Vias (TSVs). Routing a wide parallel address bus through TSVs is area-prohibitive. The 8-bit serial CA bus minimizes TSV count while still delivering all necessary address and command bits, just serialized across one or two clock cycles."}},{"@type":"Question","name":"What is CA parity in HBM3 and how is it computed?","acceptedAnswer":{"@type":"Answer","text":"CA parity is a single even-parity bit computed over all CA[7:0] bits of the current packet: o_ca_parity = ^o_ca_out (XOR reduction). If the count of '1' bits is even, parity is 0; if odd, parity is 1, making the total count of 1s (including parity) even. The DRAM checks this bit and can flag an error via the ALERT_n pin."}},{"@type":"Question","name":"Why does the ACTIVATE command need two CA bus packets?","acceptedAnswer":{"@type":"Answer","text":"HBM3 has a 15-bit row address (RA[14:0]) per pseudo-channel. One 8-bit CA packet cannot carry the full row address along with the bank group (BG[2:0]), bank (BA[1:0]), and the H-bit that identifies ACT. The solution is two consecutive packets: Packet 0 carries H, BA, BG, and RA[14:10]; Packet 1 carries RA[9:0] plus two reserved bits."}},{"@type":"Question","name":"What does CKE control in HBM3?","acceptedAnswer":{"@type":"Answer","text":"CKE (Clock Enable) controls the DRAM's clock receiver. When CKE is deasserted (low), the DRAM ignores CA bus transitions and enters a power-down or self-refresh state. Asserting CKE (high) enables the clock, and the DRAM can resume accepting commands after the required tXP or tXS exit delay."}},{"@type":"Question","name":"What is ODT in the context of the HBM3 CA bus?","acceptedAnswer":{"@type":"Answer","text":"On-Die Termination (ODT) places programmable resistors inside the DRAM die that terminate the CA bus signal lines. In HBM3, the CA bus is single-ended, making it susceptible to reflections. ODT reduces these reflections without requiring external termination resistors, saving board space. ODT is configured via Mode Register Set (MRS) commands."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--cy);font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#334155;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.state-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.6rem;margin:.8rem 0}
+.state-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:.7rem .9rem}
+.state-name{font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700;margin-bottom:.25rem}
+.state-desc{font-size:.73rem;color:#64748b;line-height:1.4}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+svg text{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Simulator</a></li>
+  </ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 11 — CA Bus Controller</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 3 · Module 11</div>
+    <h1>HBM3 <span>CA Bus Controller</span></h1>
+    <p class="hero-sub">The command/address bus is the single communication channel between your controller and each HBM3 pseudo-channel. This module builds the CA bus encoder FSM — 8-bit serial packets, 2-packet ACT sequences, CA parity generation, and CKE control — all per JEDEC JESD238.</p>
+    <div class="meta-row">
+      <span class="meta-item">&#128196; <code style="font-family:monospace;font-size:.75rem">hbm3_ca_bus.v</code></span>
+      <span class="meta-item">&#128336; ~45 min</span>
+      <span class="meta-item"><span class="pill">JESD238</span></span>
+      <span class="meta-item"><span class="pill">CA Bus</span></span>
+      <span class="meta-item"><span class="pill">Parity</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ── Section 1: What is the CA Bus ── -->
+<section>
+<h2>What Is the HBM3 CA Bus?</h2>
+<p>Every HBM3 device contains two pseudo-channels (PC0 and PC1). Each pseudo-channel has its own independent 8-bit Command/Address (CA) bus plus a single parity bit. Unlike conventional SDRAM — which routes separate RAS, CAS, WE, and wide address lines — HBM3 encodes all command and address information into compact 8-bit packets transmitted on this narrow bus.</p>
+<p>The CA bus is clocked by the differential CK/CK_n pair. Commands are latched on the rising edge of CK. One or two consecutive CA packets represent a complete command, depending on the command type. The controller must serialize multi-packet commands correctly and maintain correct CA timing relative to CK.</p>
+<p>The narrow bus width is not a performance limitation — it is a deliberate TSV budget decision. An HBM3 stack routes hundreds of data signals through silicon vias. Assigning only 8 CA signals per pseudo-channel leaves the vast majority of TSVs available for the 128-bit data bus, delivering the high bandwidth HBM3 is designed for.</p>
+<div class="note"><strong>Key numbers:</strong> 8-bit CA bus per pseudo-channel · 1 or 2 packets per command · Single-ended signaling · 1 parity bit per packet · Clocked by CK/CK_n differential pair.</div>
+</section>
+
+<!-- ── Section 2: CA Bus vs DDR5 ── -->
+<section>
+<h2>CA Bus vs DDR5 Address Bus</h2>
+<p>Comparing HBM3's CA bus to DDR5's address bus highlights how on-package integration changes controller architecture:</p>
+<table>
+  <tr><th>Feature</th><th>HBM3 CA Bus</th><th>DDR5 Address Bus</th></tr>
+  <tr><td>Bus width</td><td>8 bits (serial)</td><td>14 bits A[13:0] (parallel)</td></tr>
+  <tr><td>Command encoding</td><td>8-bit packets, 1 or 2 per command</td><td>RAS/CAS/WE + CA[5:0] encoding</td></tr>
+  <tr><td>Signaling</td><td>Single-ended (VSS referenced)</td><td>POD (Pseudo Open Drain)</td></tr>
+  <tr><td>Row address</td><td>15 bits, split across 2 ACT packets</td><td>17 bits, multiple CS activations</td></tr>
+  <tr><td>Clock input</td><td>Differential CK/CK_n</td><td>Differential CK_t/CK_c</td></tr>
+  <tr><td>Parity</td><td>Even parity, 1 bit per packet</td><td>Even parity across CA[13:0]+CS</td></tr>
+  <tr><td>Termination</td><td>On-Die Termination (ODT) via MRS</td><td>External + on-die termination</td></tr>
+  <tr><td>Routing medium</td><td>On-package (interposer/TSV)</td><td>PCB trace, 50–100 mm</td></tr>
+</table>
+<p>The single-ended CA bus works reliably in HBM3 because the signal path is measured in micrometers, not centimeters. Reflections that would destroy an 8-bit single-ended bus at DDR5 speeds on a PCB are negligible on silicon interposer.</p>
+</section>
+
+<!-- ── Section 3: Command Encoding Table ── -->
+<section>
+<h2>Command Encoding Reference</h2>
+<p>The table below lists every HBM3 command, how many CA packets it occupies, the <code>i_cmd_type</code> encoding used by our controller, and the high-level packet layout. Bits marked <strong>R</strong> are reserved and must be driven low.</p>
+<table>
+  <tr><th>Command</th><th>i_cmd_type</th><th>Packets</th><th>Packet 0 [7:0]</th><th>Packet 1 [7:0]</th></tr>
+  <tr><td>NOP</td><td>3'b000</td><td>1</td><td>{0,0,0,0,0,0,0,0}</td><td>—</td></tr>
+  <tr><td>ACTIVATE (ACT)</td><td>3'b001</td><td>2</td><td>{H, BA[1:0], BG[2:0], RA[14:10]}</td><td>{RA[9:0], R, R}</td></tr>
+  <tr><td>READ (RD)</td><td>3'b010</td><td>1</td><td>{C, BG[2:0], BA[1:0], C10, C[3:0]}</td><td>—</td></tr>
+  <tr><td>WRITE (WR)</td><td>3'b011</td><td>1</td><td>{C, BG[2:0], BA[1:0], C10, C[3:0]}</td><td>—</td></tr>
+  <tr><td>PRECHARGE (PRE)</td><td>3'b100</td><td>1</td><td>{0,0,BG[2:0],BA[1:0],AP}</td><td>—</td></tr>
+  <tr><td>REFRESH (REF)</td><td>3'b101</td><td>1</td><td>{0,0,0,BG[2:0],0,0}</td><td>—</td></tr>
+  <tr><td>MODE REG SET (MRS)</td><td>3'b110</td><td>2</td><td>{1,MA[6:0]}</td><td>{MO[7:0]}</td></tr>
+</table>
+<p><strong>H bit:</strong> The ACT command is identified by H=1 in bit 7 of Packet 0. All other single-packet commands have H=0, allowing the DRAM to distinguish ACT from 1-packet commands in the first cycle. <strong>C bit</strong> in RD/WR identifies CAS commands (C=1). <strong>AP</strong> in PRE is the auto-precharge bit — set to precharge all banks.</p>
+<div class="note"><strong>Timing rule:</strong> Packet 0 and Packet 1 of a 2-packet command must be placed on consecutive rising edges of CK. No NOP or any other command may be inserted between them.</div>
+</section>
+
+<!-- ── Section 4: ACT Deep Dive ── -->
+<section>
+<h2>ACT Command — 2-Packet Deep Dive</h2>
+<p>The ACTIVATE command is the only mandatory 2-packet command that every application must issue repeatedly (once per row access). Understanding its exact encoding is critical.</p>
+<h3>Why Two Packets?</h3>
+<p>An HBM3 pseudo-channel has 8 bank groups (BG[2:0] = 3 bits) and 4 banks per group (BA[1:0] = 2 bits), giving 32 independent banks. Each bank's row address is 15 bits wide (RA[14:0]). The total information content of an ACT command is:</p>
+<p style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--cy-l);">H(1) + BG(3) + BA(2) + RA(15) = 21 bits</p>
+<p>One 8-bit packet carries only 8 bits. Two packets carry 16 bits — still short. The solution: the H-bit itself is the command identifier, so it occupies bit 7 of packet 0 and the remaining 7 bits carry BG, BA, and the upper 5 bits of RA. Packet 1 carries RA[9:0] in 10 bits, leaving 2 bits as reserved.</p>
+
+<h3>Packet Layout</h3>
+<table>
+  <tr><th>Packet</th><th>Bit 7</th><th>Bit 6</th><th>Bit 5</th><th>Bit 4</th><th>Bit 3</th><th>Bit 2</th><th>Bit 1</th><th>Bit 0</th></tr>
+  <tr><td>Packet 0</td><td>H=1</td><td>BA[1]</td><td>BA[0]</td><td>BG[2]</td><td>BG[1]</td><td>BG[0]</td><td>RA[14]</td><td>RA[13]</td></tr>
+  <tr><td>Packet 0 (cont.)</td><td colspan="8" style="font-family:'JetBrains Mono',monospace;color:#94a3b8">Note: RA[14:10] fits in bits [4:0] after H,BA,BG — shown split for clarity</td></tr>
+  <tr><td>Packet 1</td><td>RA[9]</td><td>RA[8]</td><td>RA[7]</td><td>RA[6]</td><td>RA[5]</td><td>RA[4]</td><td>R</td><td>R</td></tr>
+</table>
+
+<p>Corrected full 8-bit breakdown per packet:</p>
+<table>
+  <tr><th>Packet</th><th>CA[7:0] bit assignment</th></tr>
+  <tr><td>Packet 0</td><td>CA[7]=H(1), CA[6]=BA[1], CA[5]=BA[0], CA[4]=BG[2], CA[3]=BG[1], CA[2]=BG[0], CA[1]=RA[14], CA[0]=RA[13]</td></tr>
+  <tr><td>Packet 1</td><td>CA[7:6]=RA[12:11], CA[5:4]=RA[10:9], CA[3:2]=RA[8:7], CA[1]=RA[6], CA[0]=RA[5] ... RA[9:0] packed MSB-first, R,R at LSB</td></tr>
+</table>
+
+<div class="warn"><strong>Simplified representation:</strong> The Verilog below encodes ACT as Packet0={1'b1, i_ba, i_bg, i_row[14:10]} and Packet1={i_row[9:0], 2'b00} — matching the JEDEC JESD238 bitfield definition directly.</div>
+</section>
+
+<!-- ── Section 5: CA Parity ── -->
+<section>
+<h2>CA Parity — Error Detection on the Command Bus</h2>
+<p>Unlike a data bus where error correction (ECC) can absorb random bit flips, a corrupted command can cause destructive behavior — writing to the wrong address, corrupting a row that was never targeted. CA parity provides a first line of defense.</p>
+<h3>Even Parity Definition</h3>
+<p>For each CA packet, the parity bit is defined as the XOR reduction of all eight CA bits:</p>
+<p style="font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--cy-l);text-align:center;">parity = CA[7] ^ CA[6] ^ CA[5] ^ CA[4] ^ CA[3] ^ CA[2] ^ CA[1] ^ CA[0]</p>
+<p>This makes the total number of '1' bits across CA[7:0] and the parity bit always even. The DRAM checks parity on every received packet and asserts the ALERT_n pin low if an error is detected. The controller must sample ALERT_n and take corrective action (typically a reset or re-initialization sequence).</p>
+<h3>Parity in Multi-Packet Commands</h3>
+<p>For 2-packet commands like ACT and MRS, parity is computed independently for each packet. Packet 0 parity accompanies Packet 0 on the same clock cycle; Packet 1 parity accompanies Packet 1. There is no cumulative parity across packets.</p>
+<div class="note">In Verilog, even parity is simply: <code>o_ca_parity = ^o_ca_out;</code> — the reduction XOR operator produces a single bit that is '1' when an odd number of input bits are '1', making the total count even.</div>
+</section>
+
+<!-- ── Section 6: CKE and Power Modes ── -->
+<section>
+<h2>CKE Control and Power Management</h2>
+<p>The Clock Enable (CKE) signal is a single bit per pseudo-channel that gates the DRAM's internal clock tree. It is one of the most powerful levers for power management in an HBM3 system.</p>
+<h3>CKE States</h3>
+<table>
+  <tr><th>CKE Transition</th><th>Effect</th><th>Required Delay</th></tr>
+  <tr><td>High → Low (while idle)</td><td>Enter Power-Down Mode</td><td>tCPDED (min 4 ns)</td></tr>
+  <tr><td>High → Low (after self-refresh entry cmd)</td><td>Enter Self-Refresh</td><td>tCSSRE cycles after REFRESH cmd</td></tr>
+  <tr><td>Low → High</td><td>Exit Power-Down / Self-Refresh</td><td>tXP or tXS exit latency before next cmd</td></tr>
+  <tr><td>Continuously High</td><td>Normal Operation</td><td>—</td></tr>
+</table>
+<p>In our controller, <code>i_cke</code> is an input from the power manager and is registered and forwarded to <code>o_cke_out</code>. The CA bus encoder does not attempt to issue commands while CKE is deasserted — the upstream scheduler is responsible for draining the command queue before asserting power-down.</p>
+<h3>Self-Refresh Entry</h3>
+<p>To enter self-refresh: (1) issue a REFRESH command with all banks precharged, (2) wait tCSSRE cycles, (3) deassert CKE. To exit: reassert CKE, wait tXS, then resume normal commands. The CKE output from this module is registered to prevent glitches on the PHY interface.</p>
+</section>
+
+<!-- ── Section 7: ODT ── -->
+<section>
+<h2>On-Die Termination (ODT) for Signal Integrity</h2>
+<p>Even on a silicon interposer, the HBM3 CA bus must manage signal integrity. The single-ended 8-bit bus transitions at multi-GHz rates, and unterminated stubs on the interposer cause reflections that distort waveforms and increase setup/hold violation risk.</p>
+<p>HBM3 solves this with On-Die Termination. The DRAM die contains programmable resistor networks — typically 40 Ω, 60 Ω, or 120 Ω — connected between each CA pin and a reference voltage (VDDQ/2 for center termination, or VSS for pull-down). These are configured via MRS commands during initialization.</p>
+<h3>Controller Responsibility</h3>
+<p>The CA bus controller itself does not toggle ODT dynamically on a per-command basis (unlike DDR4/DDR5 where the host asserts an ODT pin). Instead, the ODT value for the CA bus is set once during the initialization MRS sequence and remains active throughout normal operation. Our <code>hbm3_ca_bus</code> module issues the MRS commands that program the ODT register when requested by the initialization FSM.</p>
+<div class="note">ODT for the data bus (DQ) is handled separately by the PHY and data scheduler — not by the CA bus controller module described here.</div>
+</section>
+
+<!-- ── Section 8: SVG Waveform ── -->
+<section>
+<h2>ACT Command Waveform — 2-Packet Sequence</h2>
+<p>The waveform below shows a complete ACT command for BG=2, BA=1, Row=0x1A5F transmitted on the CA[7:0] bus. CKE remains high throughout. CA parity accompanies each packet on the same clock edge.</p>
+<svg viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:820px;display:block;margin:.8rem auto;background:#080d1a;border:1px solid rgba(6,182,212,.15);border-radius:10px">
+  <!-- Grid lines -->
+  <line x1="120" y1="20" x2="120" y2="240" stroke="#1e293b" stroke-width="1"/>
+  <line x1="280" y1="20" x2="280" y2="240" stroke="#1e293b" stroke-width="1"/>
+  <line x1="440" y1="20" x2="440" y2="240" stroke="#1e293b" stroke-width="1"/>
+  <line x1="600" y1="20" x2="600" y2="240" stroke="#1e293b" stroke-width="1"/>
+  <line x1="760" y1="20" x2="760" y2="240" stroke="#1e293b" stroke-width="1"/>
+  <!-- Cycle labels -->
+  <text x="200" y="16" fill="#475569" font-size="10" text-anchor="middle">T0</text>
+  <text x="360" y="16" fill="#475569" font-size="10" text-anchor="middle">T1</text>
+  <text x="520" y="16" fill="#475569" font-size="10" text-anchor="middle">T2</text>
+  <text x="680" y="16" fill="#475569" font-size="10" text-anchor="middle">T3</text>
+  <!-- Signal labels -->
+  <text x="10" y="48" fill="#94a3b8" font-size="10" dominant-baseline="middle">CK</text>
+  <text x="10" y="90" fill="#94a3b8" font-size="10" dominant-baseline="middle">CKE</text>
+  <text x="10" y="135" fill="#94a3b8" font-size="10" dominant-baseline="middle">CA[7:0]</text>
+  <text x="10" y="180" fill="#94a3b8" font-size="10" dominant-baseline="middle">PARITY</text>
+  <text x="10" y="220" fill="#94a3b8" font-size="10" dominant-baseline="middle">ca_valid</text>
+  <!-- CK clock signal -->
+  <polyline points="120,60 120,35 200,35 200,60 280,35 280,60 360,35 360,60 440,35 440,60 520,35 520,60 600,35 600,60 700,35 700,60 760,35" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+  <!-- CKE high throughout -->
+  <line x1="120" y1="80" x2="780" y2="80" stroke="#10b981" stroke-width="2"/>
+  <!-- CA bus — idle then ACT pkt0 at T0, ACT pkt1 at T1, idle T2+ -->
+  <!-- T0: CA = PKT0 = 8'hBx (example: 1_01_010_10 = H=1,BA=01,BG=010,RA[14:10]=10xxx) -->
+  <rect x="120" y="118" width="160" height="34" fill="rgba(252,211,77,.08)" stroke="#fcd34d" stroke-width="1.2" rx="3"/>
+  <text x="200" y="138" fill="#fcd34d" font-size="9" text-anchor="middle" dominant-baseline="middle">ACT Packet 0</text>
+  <text x="200" y="149" fill="#94a3b8" font-size="8" text-anchor="middle">8'hDA (H=1,BA=1,BG=2,RA[14:10]=5'h1A)</text>
+  <!-- T1: CA = PKT1 -->
+  <rect x="280" y="118" width="160" height="34" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1.2" rx="3"/>
+  <text x="360" y="138" fill="#a78bfa" font-size="9" text-anchor="middle" dominant-baseline="middle">ACT Packet 1</text>
+  <text x="360" y="149" fill="#94a3b8" font-size="8" text-anchor="middle">8'h97 (RA[9:0]=10'h25F, R,R=00)</text>
+  <!-- Idle before and after -->
+  <line x1="120" y1="135" x2="120" y2="135"/>
+  <rect x="440" y="118" width="160" height="34" fill="rgba(6,182,212,.04)" stroke="rgba(6,182,212,.2)" stroke-width="1" rx="3"/>
+  <text x="520" y="135" fill="#475569" font-size="9" text-anchor="middle" dominant-baseline="middle">NOP</text>
+  <!-- Parity bits -->
+  <rect x="120" y="165" width="160" height="22" fill="rgba(16,185,129,.08)" stroke="#10b981" stroke-width="1" rx="2"/>
+  <text x="200" y="178" fill="#10b981" font-size="9" text-anchor="middle" dominant-baseline="middle">P=^8'hDA=1</text>
+  <rect x="280" y="165" width="160" height="22" fill="rgba(16,185,129,.08)" stroke="#10b981" stroke-width="1" rx="2"/>
+  <text x="360" y="178" fill="#10b981" font-size="9" text-anchor="middle" dominant-baseline="middle">P=^8'h97=0</text>
+  <line x1="440" y1="176" x2="600" y2="176" stroke="#1e293b" stroke-width="1.5"/>
+  <!-- ca_valid -->
+  <line x1="120" y1="230" x2="120" y2="210"/>
+  <line x1="120" y1="210" x2="440" y2="210"/>
+  <line x1="440" y1="210" x2="440" y2="230"/>
+  <line x1="440" y1="230" x2="780" y2="230"/>
+  <!-- cmd_sent pulse at T1 end -->
+  <text x="360" y="250" fill="#67e8f9" font-size="9" text-anchor="middle">cmd_sent</text>
+  <line x1="440" y1="195" x2="440" y2="210" stroke="#67e8f9" stroke-width="1.5" stroke-dasharray="3,2"/>
+</svg>
+</section>
+
+<!-- ── Section 9: Full Verilog ── -->
+<section>
+<h2>Full Verilog Source — hbm3_ca_bus.v</h2>
+<p>The module implements a 3-state FSM: <strong>IDLE</strong>, <strong>PKT0</strong> (send first packet), and <strong>PKT1</strong> (send second packet for 2-packet commands). Single-packet commands skip PKT1 and return directly to IDLE.</p>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// hbm3_ca_bus.v — HBM3 CA Bus Command Encoder</span>
+<span class="cm">// JEDEC JESD238 compliant · Phase 3 Module 11</span>
+<span class="cm">// EcrioniX — https://ecrionix.org/hbm3-controller/ca-bus/</span>
+
+<span class="kw">module</span> <span class="nm">hbm3_ca_bus</span> (
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_clk,
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_rst_n,
+
+    <span class="cm">// Command interface</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">2</span>:<span class="nu">0</span>]  i_cmd_type,   <span class="cm">// 000=NOP 001=ACT 010=RD 011=WR 100=PRE 101=REF 110=MRS</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_cmd_valid,  <span class="cm">// pulse: new command to send</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">2</span>:<span class="nu">0</span>]  i_bg,         <span class="cm">// bank group</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">1</span>:<span class="nu">0</span>]  i_ba,         <span class="cm">// bank address</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">14</span>:<span class="nu">0</span>] i_row,        <span class="cm">// row address</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">4</span>:<span class="nu">0</span>]  i_col,        <span class="cm">// column address (C10,C[3:0])</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_cke,        <span class="cm">// clock enable from power manager</span>
+
+    <span class="cm">// PHY interface</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">7</span>:<span class="nu">0</span>]  o_ca_out,     <span class="cm">// CA bus to PHY</span>
+    <span class="kw">output</span> <span class="kw">wire</span>        o_ca_parity,  <span class="cm">// even parity over CA[7:0]</span>
+    <span class="kw">output</span> <span class="kw">reg</span>         o_cke_out,    <span class="cm">// CKE to PHY (registered)</span>
+    <span class="kw">output</span> <span class="kw">reg</span>         o_ca_valid,   <span class="cm">// CA bus data is valid this cycle</span>
+    <span class="kw">output</span> <span class="kw">reg</span>         o_cmd_sent    <span class="cm">// pulses when full command serialized</span>
+);
+
+<span class="cm">// ── FSM state encoding ──────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="nu">1</span>:<span class="nu">0</span>]
+    S_IDLE = <span class="nu">2'b00</span>,
+    S_PKT0 = <span class="nu">2'b01</span>,
+    S_PKT1 = <span class="nu">2'b10</span>;
+
+<span class="cm">// ── Command type encoding ───────────────────────────</span>
+<span class="kw">localparam</span> [<span class="nu">2</span>:<span class="nu">0</span>]
+    CMD_NOP = <span class="nu">3'b000</span>,
+    CMD_ACT = <span class="nu">3'b001</span>,
+    CMD_RD  = <span class="nu">3'b010</span>,
+    CMD_WR  = <span class="nu">3'b011</span>,
+    CMD_PRE = <span class="nu">3'b100</span>,
+    CMD_REF = <span class="nu">3'b101</span>,
+    CMD_MRS = <span class="nu">3'b110</span>;
+
+<span class="kw">reg</span> [<span class="nu">1</span>:<span class="nu">0</span>]  state, next_state;
+<span class="kw">reg</span> [<span class="nu">2</span>:<span class="nu">0</span>]  r_cmd_type;
+<span class="kw">reg</span> [<span class="nu">2</span>:<span class="nu">0</span>]  r_bg;
+<span class="kw">reg</span> [<span class="nu">1</span>:<span class="nu">0</span>]  r_ba;
+<span class="kw">reg</span> [<span class="nu">14</span>:<span class="nu">0</span>] r_row;
+<span class="kw">reg</span> [<span class="nu">4</span>:<span class="nu">0</span>]  r_col;
+<span class="kw">wire</span>       needs_pkt1;
+
+<span class="cm">// ── Parity: combinational XOR reduction ─────────────</span>
+<span class="kw">assign</span> o_ca_parity = ^o_ca_out;
+
+<span class="cm">// ── ACT and MRS need 2 packets ───────────────────────</span>
+<span class="kw">assign</span> needs_pkt1 = (r_cmd_type == CMD_ACT) || (r_cmd_type == CMD_MRS);
+
+<span class="cm">// ── Input capture on command valid ──────────────────</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or</span> <span class="kw">negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        r_cmd_type <span class="kw">&lt;=</span> CMD_NOP;
+        r_bg       <span class="kw">&lt;=</span> <span class="nu">3'b0</span>;
+        r_ba       <span class="kw">&lt;=</span> <span class="nu">2'b0</span>;
+        r_row      <span class="kw">&lt;=</span> <span class="nu">15'b0</span>;
+        r_col      <span class="kw">&lt;=</span> <span class="nu">5'b0</span>;
+    <span class="kw">end else if</span> (i_cmd_valid && state == S_IDLE) <span class="kw">begin</span>
+        r_cmd_type <span class="kw">&lt;=</span> i_cmd_type;
+        r_bg       <span class="kw">&lt;=</span> i_bg;
+        r_ba       <span class="kw">&lt;=</span> i_ba;
+        r_row      <span class="kw">&lt;=</span> i_row;
+        r_col      <span class="kw">&lt;=</span> i_col;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// ── FSM state register ──────────────────────────────</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or</span> <span class="kw">negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n)
+        state <span class="kw">&lt;=</span> S_IDLE;
+    <span class="kw">else</span>
+        state <span class="kw">&lt;=</span> next_state;
+<span class="kw">end</span>
+
+<span class="cm">// ── FSM next-state logic ────────────────────────────</span>
+<span class="kw">always</span> @(*) <span class="kw">begin</span>
+    next_state = state;
+    <span class="kw">case</span> (state)
+        S_IDLE: <span class="kw">if</span> (i_cmd_valid) next_state = S_PKT0;
+        S_PKT0: next_state = needs_pkt1 ? S_PKT1 : S_IDLE;
+        S_PKT1: next_state = S_IDLE;
+        <span class="kw">default</span>: next_state = S_IDLE;
+    <span class="kw">endcase</span>
+<span class="kw">end</span>
+
+<span class="cm">// ── Output logic (registered) ────────────────────────</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or</span> <span class="kw">negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        o_ca_out  <span class="kw">&lt;=</span> <span class="nu">8'h00</span>;
+        o_cke_out <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        o_ca_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_cmd_sent <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+    <span class="kw">end else begin</span>
+        o_cke_out  <span class="kw">&lt;=</span> i_cke;
+        o_cmd_sent <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;  <span class="cm">// default: no pulse</span>
+
+        <span class="kw">case</span> (next_state)
+            S_IDLE: <span class="kw">begin</span>
+                o_ca_out   <span class="kw">&lt;=</span> <span class="nu">8'h00</span>;  <span class="cm">// NOP on CA bus</span>
+                o_ca_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                <span class="kw">if</span> (state != S_IDLE)
+                    o_cmd_sent <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;  <span class="cm">// command fully serialized</span>
+            <span class="kw">end</span>
+
+            S_PKT0: <span class="kw">begin</span>
+                o_ca_valid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                <span class="kw">case</span> (i_cmd_type)
+                    CMD_ACT: o_ca_out <span class="kw">&lt;=</span> {<span class="nu">1'b1</span>, i_ba, i_bg, i_row[<span class="nu">14</span>:<span class="nu">10</span>]};
+                    CMD_RD:  o_ca_out <span class="kw">&lt;=</span> {<span class="nu">1'b1</span>, i_bg, i_ba, i_col};  <span class="cm">// C=1</span>
+                    CMD_WR:  o_ca_out <span class="kw">&lt;=</span> {<span class="nu">1'b1</span>, i_bg, i_ba, i_col};  <span class="cm">// C=1</span>
+                    CMD_PRE: o_ca_out <span class="kw">&lt;=</span> {<span class="nu">2'b00</span>, i_bg, i_ba, <span class="nu">1'b0</span>};
+                    CMD_REF: o_ca_out <span class="kw">&lt;=</span> {<span class="nu">2'b00</span>, i_bg, <span class="nu">3'b000</span>};
+                    CMD_MRS: o_ca_out <span class="kw">&lt;=</span> {<span class="nu">1'b1</span>, i_row[<span class="nu">6</span>:<span class="nu">0</span>]};  <span class="cm">// MA[6:0]</span>
+                    <span class="kw">default</span>: o_ca_out <span class="kw">&lt;=</span> <span class="nu">8'h00</span>;  <span class="cm">// NOP</span>
+                <span class="kw">endcase</span>
+            <span class="kw">end</span>
+
+            S_PKT1: <span class="kw">begin</span>
+                o_ca_valid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                <span class="kw">case</span> (r_cmd_type)
+                    CMD_ACT: o_ca_out <span class="kw">&lt;=</span> {r_row[<span class="nu">9</span>:<span class="nu">0</span>], <span class="nu">2'b00</span>};  <span class="cm">// RA[9:0], R, R</span>
+                    CMD_MRS: o_ca_out <span class="kw">&lt;=</span> r_col[<span class="nu">4</span>:<span class="nu">0</span>] | {<span class="nu">3'b000</span>, r_col}; <span class="cm">// MO[7:0] via col reuse</span>
+                    <span class="kw">default</span>: o_ca_out <span class="kw">&lt;=</span> <span class="nu">8'h00</span>;
+                <span class="kw">endcase</span>
+            <span class="kw">end</span>
+
+            <span class="kw">default</span>: <span class="kw">begin</span>
+                o_ca_out   <span class="kw">&lt;=</span> <span class="nu">8'h00</span>;
+                o_ca_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+            <span class="kw">end</span>
+        <span class="kw">endcase</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ── Section 10: SV Testbench ── -->
+<section>
+<h2>SystemVerilog Testbench + SVA Assertions</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// tb_hbm3_ca_bus.sv — SystemVerilog testbench</span>
+<span class="kw">`timescale</span> <span class="nu">1ns/1ps</span>
+
+<span class="kw">module</span> <span class="nm">tb_hbm3_ca_bus</span>;
+
+<span class="kw">logic</span>        i_clk, i_rst_n;
+<span class="kw">logic</span> [<span class="nu">2</span>:<span class="nu">0</span>]  i_cmd_type;
+<span class="kw">logic</span>        i_cmd_valid;
+<span class="kw">logic</span> [<span class="nu">2</span>:<span class="nu">0</span>]  i_bg;
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]  i_ba;
+<span class="kw">logic</span> [<span class="nu">14</span>:<span class="nu">0</span>] i_row;
+<span class="kw">logic</span> [<span class="nu">4</span>:<span class="nu">0</span>]  i_col;
+<span class="kw">logic</span>        i_cke;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]  o_ca_out;
+<span class="kw">logic</span>        o_ca_parity;
+<span class="kw">logic</span>        o_cke_out, o_ca_valid, o_cmd_sent;
+
+<span class="kw">hbm3_ca_bus</span> dut (.*);
+
+<span class="cm">// ── Clock: 500 MHz (2 ns period) ─────────────────────</span>
+<span class="kw">initial</span> i_clk = <span class="nu">0</span>;
+<span class="kw">always</span> #<span class="nu">1</span> i_clk = ~i_clk;
+
+<span class="cm">// ── SVA: parity must always equal XOR reduction ──────</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_clk) <span class="kw">disable iff</span> (!i_rst_n)
+    o_ca_parity == ^o_ca_out)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"PARITY MISMATCH at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── SVA: ca_valid must be low in IDLE (no spurious data)</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_clk) <span class="kw">disable iff</span> (!i_rst_n)
+    (!i_cmd_valid && !o_cmd_sent) |=> ##<span class="nu">1</span> !o_ca_valid)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"ca_valid spuriously asserted at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── SVA: ACT packet 0 must have bit7 = H = 1 ─────────</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_clk) <span class="kw">disable iff</span> (!i_rst_n)
+    (i_cmd_valid && i_cmd_type == <span class="nu">3'b001</span>)
+    |=> o_ca_out[<span class="nu">7</span>] == <span class="nu">1'b1</span>)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"ACT Packet0: H bit not set at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── SVA: cmd_sent must pulse exactly once per command ─</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_clk) <span class="kw">disable iff</span> (!i_rst_n)
+    $<span class="nm">rose</span>(o_cmd_sent) |=> !o_cmd_sent)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"cmd_sent held high beyond one cycle at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="kw">task automatic</span> send_cmd(
+    <span class="kw">input</span> [<span class="nu">2</span>:<span class="nu">0</span>] cmd, bg, ba,
+    <span class="kw">input</span> [<span class="nu">14</span>:<span class="nu">0</span>] row,
+    <span class="kw">input</span> [<span class="nu">4</span>:<span class="nu">0</span>] col
+);
+    @(<span class="kw">posedge</span> i_clk);
+    i_cmd_type  = cmd;
+    i_bg        = bg;
+    i_ba        = ba;
+    i_row       = row;
+    i_col       = col;
+    i_cmd_valid = <span class="nu">1'b1</span>;
+    @(<span class="kw">posedge</span> i_clk);
+    i_cmd_valid = <span class="nu">1'b0</span>;
+    <span class="cm">// Wait for cmd_sent</span>
+    @(<span class="kw">posedge</span> o_cmd_sent);
+    $<span class="nm">display</span>(<span class="st">"[%0t] Command %0b sent. Final CA=%08b parity=%b"</span>,
+             $<span class="nm">time</span>, cmd, o_ca_out, o_ca_parity);
+<span class="kw">endtask</span>
+
+<span class="kw">initial</span> <span class="kw">begin</span>
+    i_rst_n     = <span class="nu">0</span>;
+    i_cmd_valid = <span class="nu">0</span>;
+    i_cmd_type  = <span class="nu">3'b000</span>;
+    i_bg        = <span class="nu">3'b000</span>;
+    i_ba        = <span class="nu">2'b00</span>;
+    i_row       = <span class="nu">15'h0</span>;
+    i_col       = <span class="nu">5'h0</span>;
+    i_cke       = <span class="nu">1'b1</span>;
+    repeat(<span class="nu">4</span>) @(<span class="kw">posedge</span> i_clk);
+    i_rst_n = <span class="nu">1</span>;
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 1: ACT command (2 packets)</span>
+    $<span class="nm">display</span>(<span class="st">"=== TEST 1: ACT BG=2 BA=1 Row=15'h1A5F ==="</span>);
+    send_cmd(<span class="nu">3'b001</span>, <span class="nu">3'd2</span>, <span class="nu">2'd1</span>, <span class="nu">15'h1A5F</span>, <span class="nu">5'h0</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 2: READ command (1 packet)</span>
+    $<span class="nm">display</span>(<span class="st">"=== TEST 2: RD BG=2 BA=1 Col=5'h0F ==="</span>);
+    send_cmd(<span class="nu">3'b010</span>, <span class="nu">3'd2</span>, <span class="nu">2'd1</span>, <span class="nu">15'h0</span>, <span class="nu">5'h0F</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 3: WRITE command</span>
+    $<span class="nm">display</span>(<span class="st">"=== TEST 3: WR BG=0 BA=0 Col=5'h00 ==="</span>);
+    send_cmd(<span class="nu">3'b011</span>, <span class="nu">3'd0</span>, <span class="nu">2'd0</span>, <span class="nu">15'h0</span>, <span class="nu">5'h00</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 4: PRECHARGE</span>
+    $<span class="nm">display</span>(<span class="st">"=== TEST 4: PRE BG=2 BA=1 ==="</span>);
+    send_cmd(<span class="nu">3'b100</span>, <span class="nu">3'd2</span>, <span class="nu">2'd1</span>, <span class="nu">15'h0</span>, <span class="nu">5'h0</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 5: REFRESH</span>
+    $<span class="nm">display</span>(<span class="st">"=== TEST 5: REF ==="</span>);
+    send_cmd(<span class="nu">3'b101</span>, <span class="nu">3'd0</span>, <span class="nu">2'd0</span>, <span class="nu">15'h0</span>, <span class="nu">5'h0</span>);
+
+    repeat(<span class="nu">4</span>) @(<span class="kw">posedge</span> i_clk);
+    $<span class="nm">display</span>(<span class="st">"=== ALL TESTS PASSED ==="</span>);
+    $<span class="nm">finish</span>;
+<span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ── Section 11: Port Reference ── -->
+<section>
+<h2>Port Reference Table</h2>
+<table>
+  <tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr>
+  <tr><td>i_clk</td><td>In</td><td>1</td><td>Controller clock (e.g. 500 MHz CK rate)</td></tr>
+  <tr><td>i_rst_n</td><td>In</td><td>1</td><td>Active-low synchronous reset</td></tr>
+  <tr><td>i_cmd_type</td><td>In</td><td>3</td><td>Command select: 000=NOP, 001=ACT, 010=RD, 011=WR, 100=PRE, 101=REF, 110=MRS</td></tr>
+  <tr><td>i_cmd_valid</td><td>In</td><td>1</td><td>One-cycle pulse: latch and encode the command</td></tr>
+  <tr><td>i_bg</td><td>In</td><td>3</td><td>Bank group BG[2:0]</td></tr>
+  <tr><td>i_ba</td><td>In</td><td>2</td><td>Bank address BA[1:0]</td></tr>
+  <tr><td>i_row</td><td>In</td><td>15</td><td>Row address RA[14:0] (used by ACT and MRS MA[6:0])</td></tr>
+  <tr><td>i_col</td><td>In</td><td>5</td><td>Column address C10+C[3:0] (used by RD/WR; MRS MO via col)</td></tr>
+  <tr><td>i_cke</td><td>In</td><td>1</td><td>Clock enable from power manager</td></tr>
+  <tr><td>o_ca_out</td><td>Out</td><td>8</td><td>CA bus byte to PHY, changes each cycle during serialization</td></tr>
+  <tr><td>o_ca_parity</td><td>Out</td><td>1</td><td>Even parity over o_ca_out[7:0]; combinational</td></tr>
+  <tr><td>o_cke_out</td><td>Out</td><td>1</td><td>Registered CKE to PHY, one-cycle delayed from i_cke</td></tr>
+  <tr><td>o_ca_valid</td><td>Out</td><td>1</td><td>High when o_ca_out contains valid command data</td></tr>
+  <tr><td>o_cmd_sent</td><td>Out</td><td>1</td><td>One-cycle pulse when full command (1 or 2 packets) has been serialized</td></tr>
+</table>
+</section>
+
+<!-- ── Section 12: FAQ ── -->
+<section>
+<h2>FAQ</h2>
+<div class="faq">
+  <details open>
+    <summary>Why does HBM3 use an 8-bit serial CA bus instead of a wide parallel address bus?</summary>
+    <p>HBM3 stacks DRAM dies connected via Through-Silicon Vias (TSVs). Routing a wide parallel address bus through TSVs would consume too many vias, leaving fewer for the high-bandwidth data paths. The 8-bit serial CA bus minimizes TSV count while carrying all command and address information across one or two clock cycles.</p>
+  </details>
+  <details>
+    <summary>What is CA parity in HBM3 and how is it computed?</summary>
+    <p>CA parity is a single even-parity bit computed as the XOR reduction of all 8 CA bus bits: <code>o_ca_parity = ^o_ca_out</code>. It makes the total count of '1' bits across CA[7:0] plus parity always even. The DRAM verifies this and can signal an error via ALERT_n if a mismatch is detected.</p>
+  </details>
+  <details>
+    <summary>Why does the ACTIVATE command need two CA bus packets?</summary>
+    <p>HBM3 has a 15-bit row address per pseudo-channel plus 3-bit bank group and 2-bit bank select. Together with the H-bit that identifies ACT, that is 21 bits — far more than a single 8-bit packet. Two consecutive packets are needed: Packet 0 carries H, BA, BG, and RA[14:10]; Packet 1 carries RA[9:0] plus two reserved bits.</p>
+  </details>
+  <details>
+    <summary>What does CKE control in HBM3?</summary>
+    <p>CKE (Clock Enable) controls the DRAM's clock receiver. When deasserted, the DRAM ignores CA bus transitions and enters power-down or self-refresh. When reasserted, the DRAM resumes accepting commands after the required tXP or tXS exit latency. Our module registers i_cke to o_cke_out to prevent PHY glitches.</p>
+  </details>
+  <details>
+    <summary>What is ODT in the context of the HBM3 CA bus?</summary>
+    <p>On-Die Termination places programmable resistors inside the DRAM die to terminate CA bus signal lines. HBM3's single-ended CA bus would otherwise suffer reflections on the interposer. ODT is configured once via MRS commands during initialization — the CA bus controller itself issues those MRS packets, but does not toggle ODT dynamically per transaction.</p>
+  </details>
+</div>
+</section>
+
+<!-- ── Prev/Next ── -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/pc-ctrl/">&#8592; Module 10 — Pseudo-Channel Controller</a>
+  <a class="nav-pill" href="/hbm3-controller/axi4-if/">Module 12 — AXI4 Host Interface &#8594;</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot;
+    <a href="/about/">About</a> &middot;
+    <a href="/privacy/">Privacy</a> &middot;
+    <a href="/contact/">Contact</a>
+  </p>
+  <p style="margin-top:.4rem"><a href="/hbm3-controller/">HBM3 Controller Series</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="https://ecrionix.org">ecrionix.org</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

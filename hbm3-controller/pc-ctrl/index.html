@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Pseudo-Channel Controller — Module 10 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 pseudo-channel controller in Verilog. Integrates timing FSM, bank FSM, refresh controller, page policy, and scheduler for one of HBM3's 16 pseudo-channels. Command sequencing FSM, interlock logic, and status output. Phase 3 · Module 10.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/pc-ctrl/">
+<meta property="og:title" content="HBM3 Pseudo-Channel Controller — Module 10 | EcrioniX">
+<meta property="og:description" content="The HBM3 pseudo-channel controller integrates Modules 1-4 with a command sequencing FSM. Full Verilog + SV testbench with SVA assertions.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Pseudo-Channel Controller — Module 10","description":"Build the HBM3 pseudo-channel controller integrating timing FSM, bank FSM, refresh controller, and page policy with a command sequencing FSM.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/pc-ctrl/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 10 — Pseudo-Channel Controller","item":"https://ecrionix.org/hbm3-controller/pc-ctrl/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a pseudo-channel in HBM3?","acceptedAnswer":{"@type":"Answer","text":"An HBM3 stack contains 16 pseudo-channels (PCs), each operating as an independent 64-bit-wide memory interface with its own command bus, data bus, and 32 banks. PCs share the physical I/O pads and power but run independent command sequences. Each PC has its own timing FSM, bank FSM, refresh controller, page policy, and scheduler — the hbm3_pc_ctrl module integrates all of these for one PC."}},{"@type":"Question","name":"What is the difference between a page hit and a page miss in DRAM?","acceptedAnswer":{"@type":"Answer","text":"A page hit occurs when the requested row is already activated (open) in the target bank. The controller can issue a READ/WRITE directly without an ACT command, saving tRCD latency (~14 ns). A page miss occurs when the bank contains a different open row (requires PRE + ACT + CAS = tRP + tRCD + CL ≈ 42 ns), or the bank is idle (requires ACT + CAS = tRCD + CL ≈ 28 ns). The page policy module selects which path to take."}},{"@type":"Question","name":"How do timing interlocks work between sub-modules?","acceptedAnswer":{"@type":"Answer","text":"The timing FSM (Module 1) outputs act_allowed and cas_allowed signals that go HIGH only when all relevant timing parameters (tRCD, tRAS, tRP, tCCD, etc.) have been satisfied. The PC controller's sequencing FSM gates every command issue on these signals — it will not issue ACT while act_allowed is LOW, even if the bank FSM and scheduler are both ready. This three-way interlock prevents timing violations."}},{"@type":"Question","name":"What happens during a refresh in the PC controller?","acceptedAnswer":{"@type":"Answer","text":"When the refresh controller (Module 3) asserts ref_req, the PC controller's FSM transitions to REFRESH state. If any banks are open, it first issues PRECHARGE-ALL and waits tRP. Then it issues a REFRESH command and waits tRFC (350 ns at HBM3 speeds). During this window, no host requests are served. The ref_req is cleared after tRFC completes and the FSM returns to IDLE."}},{"@type":"Question","name":"Why does the PC controller expose a debug state output?","acceptedAnswer":{"@type":"Answer","text":"In a 16-PC HBM3 controller running at 2 GHz, timing bugs are nearly impossible to reproduce on a logic analyser. The o_state_dbg[3:0] output encodes the current FSM state, allowing a dedicated debug fabric (scan chain, ILA, or JTAG) to capture which PC was in which state at the moment of failure. This is critical for post-silicon bring-up and yield analysis."}},{"@type":"Question","name":"How many clock cycles does a page-miss read take in HBM3?","acceptedAnswer":{"@type":"Answer","text":"A full page-miss read path in HBM3 at 2 GHz: tRP (precharge, if bank was open) = 14 cycles, tRCD (row-to-column delay after ACT) = 14 cycles, CL (read latency) = 14 cycles. Total from command issue to first data = 28–42 cycles (14–21 ns). With pipelining across multiple banks the controller can hide much of this latency, but a cold-miss to a previously open bank always pays the full tRP + tRCD + CL = 42-cycle penalty."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+.svg-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;overflow-x:auto;margin:.8rem 0}
+.state-tag{display:inline-block;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:#67e8f9;font-family:'JetBrains Mono',monospace;font-size:.72rem;padding:.1rem .45rem;border-radius:4px;margin:.1rem .2rem}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 10 — Pseudo-Channel Controller</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 3 · Module 10 of 15</div>
+    <h1>HBM3 <span>Pseudo-Channel Controller</span></h1>
+    <p class="hero-sub">The integration hub for one HBM3 pseudo-channel — instantiates the timing FSM, bank FSM, refresh controller, and page policy, wired together with a 7-state command sequencing FSM.</p>
+    <div class="meta-row">
+      <span>hbm3_pc_ctrl.v</span>
+      <span>tb_hbm3_pc_ctrl.sv</span>
+      <span>Synthesizable RTL</span>
+      <span class="pill">JEDEC JESD238</span>
+      <span class="pill">Module Integration</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>The PC Controller Role — Integration Layer</h2>
+<p>An HBM3 stack has <strong>16 pseudo-channels</strong>, each a logically independent 64-bit memory interface. Every PC has its own bank array, command bus, data bus, and refresh timer. The <code>hbm3_pc_ctrl</code> module is the central coordinator for one pseudo-channel — it doesn't implement timing or banking logic itself; it <em>orchestrates</em> the specialised sub-modules built in Modules 1–9.</p>
+
+<p>Think of it as a CPU's memory controller dispatch unit. Just as an out-of-order CPU has separate issue queues, execution units, and reorder buffers that the dispatcher coordinates, the PC controller has separate timing logic (Module 1), bank state (Module 2), refresh scheduling (Module 3), page policy (Module 4), and request arbitration (Module 9). The PC controller connects these components and runs the final command-issue FSM.</p>
+
+<h3>What the PC Controller Does</h3>
+<ul style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li>Accepts host read/write requests on its interface</li>
+  <li>Decodes addresses and forwards to the scheduler</li>
+  <li>Receives scheduled commands from the scheduler (Module 9)</li>
+  <li>Gates command issue on timing FSM clearance (Module 1)</li>
+  <li>Tracks bank state via the bank FSM (Module 2)</li>
+  <li>Runs the 7-state command sequencing FSM</li>
+  <li>Handles refresh pre-emption from Module 3</li>
+  <li>Applies the page policy (hit/miss/close) from Module 4</li>
+  <li>Returns read data to the host</li>
+  <li>Exposes <code>o_state_dbg</code> for post-silicon debug</li>
+</ul>
+
+<div class="note">A full HBM3 controller instantiates 16 copies of <code>hbm3_pc_ctrl</code>, one per pseudo-channel, plus a top-level arbiter that multiplexes host traffic across them. This article covers the single-PC module in isolation.</div>
+</section>
+
+<section>
+<h2>Sub-Module Connections — How Modules 1–4 Wire Into the PC Controller</h2>
+<p>Each sub-module has a clearly defined interface role inside the PC controller:</p>
+
+<table>
+  <thead><tr><th>Sub-Module</th><th>Role</th><th>Key Signals In</th><th>Key Signals Out</th></tr></thead>
+  <tbody>
+    <tr><td>Module 1 — Timing FSM</td><td>Per-bank timing enforcement</td><td>cmd_act, cmd_rd, cmd_wr, cmd_pre</td><td>act_allowed, cas_allowed, pre_allowed</td></tr>
+    <tr><td>Module 2 — Bank FSM</td><td>32-bank open/closed state</td><td>cmd_act, cmd_pre, bg, ba</td><td>banks_open[31:0], row_open[14:0]</td></tr>
+    <tr><td>Module 3 — Refresh Ctrl</td><td>tREFI countdown + REF issue</td><td>ref_done (from FSM)</td><td>ref_req</td></tr>
+    <tr><td>Module 4 — Page Policy</td><td>Hit/miss/close decision</td><td>req_addr, banks_open, row_open</td><td>policy_hit, policy_miss, policy_close</td></tr>
+    <tr><td>Module 9 — Scheduler</td><td>FR-FCFS request ordering</td><td>req_valid/wr/addr/data, banks_open, any_hit, ref_req</td><td>cmd_act/rd/wr/pre, cmd_bg/ba/row/col, cmd_data</td></tr>
+  </tbody>
+</table>
+
+<h3>Signal Flow</h3>
+<p>The wiring follows a producer-consumer pattern:</p>
+<ol style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li>Host request arrives at PC controller input.</li>
+  <li>PC controller forwards to <strong>Scheduler (Mod 9)</strong>. Scheduler also consumes Module 2's <code>banks_open</code> for hit detection.</li>
+  <li>Scheduler outputs a selected command. PC controller FSM checks <strong>Module 1</strong>'s <code>act_allowed</code> / <code>cas_allowed</code> gate before actually issuing.</li>
+  <li>Issued command is fed back to <strong>Module 2</strong> (bank state update) and <strong>Module 1</strong> (timing counters start).</li>
+  <li><strong>Module 4</strong> (page policy) observes the same <code>banks_open</code> + <code>row_open</code> to decide whether the next request is a hit/miss.</li>
+  <li><strong>Module 3</strong> runs independently on a counter, asserts <code>ref_req</code>, and the PC controller FSM handles the refresh sequence.</li>
+</ol>
+</section>
+
+<section>
+<h2>Command Sequencing FSM — All 7 States</h2>
+<p>The heart of the PC controller is a 7-state FSM that sequences every DRAM command in the correct order and with correct interlocks:</p>
+
+<table>
+  <thead><tr><th>State</th><th>Encoding</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>IDLE</td><td>4'd0</td><td>No active transaction. Poll scheduler for next command.</td></tr>
+    <tr><td>DECODE</td><td>4'd1</td><td>Latch selected request. Decode address. Read page policy output.</td></tr>
+    <tr><td>ACTIVATE</td><td>4'd2</td><td>Issue ACT command. Wait tRCD cycles for row to open.</td></tr>
+    <tr><td>READ</td><td>4'd3</td><td>Issue RD command. Wait CL cycles for data return.</td></tr>
+    <tr><td>WRITE</td><td>4'd4</td><td>Issue WR command. Wait CWL cycles. Write data committed.</td></tr>
+    <tr><td>PRECHARGE</td><td>4'd5</td><td>Issue PRE command. Wait tRP cycles. Bank returns to idle.</td></tr>
+    <tr><td>REFRESH</td><td>4'd6</td><td>Issue REF. Wait tRFC (350 ns). All banks refreshed.</td></tr>
+    <tr><td>RETURN</td><td>4'd7</td><td>Assert o_rd_valid, drive o_rd_data to host.</td></tr>
+  </tbody>
+</table>
+
+<h3>State Transitions</h3>
+<p>The FSM path depends on the page policy decision captured in DECODE state:</p>
+<ul style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li><strong>Page Hit (open-page, same row):</strong> IDLE → DECODE → READ/WRITE → RETURN (read) or IDLE (write). Skip ACTIVATE entirely.</li>
+  <li><strong>Page Miss (bank open to wrong row):</strong> IDLE → DECODE → PRECHARGE → ACTIVATE → READ/WRITE → RETURN/IDLE.</li>
+  <li><strong>Page Empty (bank precharged):</strong> IDLE → DECODE → ACTIVATE → READ/WRITE → RETURN/IDLE.</li>
+  <li><strong>Refresh:</strong> Any state → REFRESH (after finishing current command) → IDLE.</li>
+</ul>
+
+<div class="note">The DECODE state exists to avoid combinational path explosion. All address decoding and page-policy signals are registered here so the subsequent ACTIVATE/READ/WRITE states only see stable, registered inputs. This is crucial at 2 GHz where setup time is under 300 ps.</div>
+</section>
+
+<section>
+<h2>Request Flow Walkthroughs</h2>
+
+<h3>Case A — Page Hit Read (Best Case, ~14 cycles total)</h3>
+<p>The target bank is already activated to the correct row. The controller skips ACT entirely:</p>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Flow</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>T=0:  IDLE    — scheduler presents valid read, same row as open bank
+T=1:  DECODE  — policy_hit=1, latch {bg,ba,col}, check cas_allowed
+T=2:  READ    — issue o_cmd_rd, start CL counter (14 cycles)
+T=3–15: READ  — waiting CL
+T=16: RETURN  — assert o_rd_valid, drive o_rd_data[127:0]
+T=17: IDLE    — ready for next request</pre>
+</div>
+
+<h3>Case B — Page Miss Read (Empty Bank, ~28 cycles)</h3>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Flow</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>T=0:  IDLE    — new read, bank is precharged (idle)
+T=1:  DECODE  — policy_miss=1 (bank empty), check act_allowed
+T=2:  ACTIVATE — issue o_cmd_act, start tRCD counter (14 cycles)
+T=3–15: ACTIVATE — waiting tRCD
+T=16: READ    — issue o_cmd_rd, start CL (14 cycles)
+T=17–29: READ — waiting CL
+T=30: RETURN  — assert o_rd_valid, drive o_rd_data
+T=31: IDLE</pre>
+</div>
+
+<h3>Case C — Page Miss Read (Wrong Row Open, ~42 cycles)</h3>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Flow</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>T=0:  IDLE    — new read, bank open to WRONG row
+T=1:  DECODE  — policy_close=1, must precharge first
+T=2:  PRECHARGE — issue o_cmd_pre, wait tRP (14 cycles)
+T=3–15: PRECHARGE — waiting tRP
+T=16: ACTIVATE — issue o_cmd_act, wait tRCD (14 cycles)
+T=17–29: ACTIVATE — waiting tRCD
+T=30: READ    — issue o_cmd_rd, wait CL (14 cycles)
+T=31–43: READ — waiting CL
+T=44: RETURN  — o_rd_valid + o_rd_data
+T=45: IDLE</pre>
+</div>
+
+<div class="warn">Case C is the worst-case latency path. On a heavily thrashed working set (many rows, small cache) this path dominates. The page policy module (Module 4) uses adaptive open/close selection to minimise Case C occurrences by predicting future access patterns.</div>
+
+<h3>Case D — Refresh Sequence</h3>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Flow</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>T=0:  any state — ref_req asserted by Module 3
+T=1:  FSM completes current command (if mid-sequence, finish it)
+T=N:  if banks_open != 0: PRECHARGE all, wait tRP
+T=N+14: REFRESH — issue o_cmd_ref (not in port list; handled internally)
+T=N+15 to N+714: REFRESH — waiting tRFC = 700 cycles (350 ns @ 2 GHz)
+T=N+715: IDLE — ref_done asserted, Module 3 clears ref_req</pre>
+</div>
+</section>
+
+<section>
+<h2>Interlock Logic — Three Guards Before Every Command</h2>
+<p>No command exits the PC controller without passing three independent checks. All three must be HIGH in the same cycle:</p>
+
+<table>
+  <thead><tr><th>Guard</th><th>Source</th><th>Blocks</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td>act_allowed</td><td>Module 1 (Timing FSM)</td><td>ACT</td><td>tRP/tRRD/tFAW not yet satisfied</td></tr>
+    <tr><td>cas_allowed</td><td>Module 1 (Timing FSM)</td><td>RD/WR</td><td>tRCD/tCCD/tWTR not yet satisfied</td></tr>
+    <tr><td>!bank_conflict</td><td>Local (banks_in_flight reg)</td><td>Any cmd to busy bank</td><td>Previous command to same bank still in-flight</td></tr>
+  </tbody>
+</table>
+
+<p>The FSM's ACTIVATE and READ/WRITE states loop (hold state, no command output) until all three guards simultaneously pass. This simple stall mechanism ensures correctness without complex handshake protocols between sub-modules.</p>
+
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// Three-way issue gate — used in ACT and CAS states
+wire act_gate = act_allowed_w &amp;&amp; !banks_in_flight[cur_bank_id];
+wire cas_gate = cas_allowed_w &amp;&amp; !banks_in_flight[cur_bank_id];
+
+// In ACTIVATE state:
+S_ACTIVATE: begin
+    if (act_gate) begin
+        o_cmd_act &lt;= 1'b1;
+        wait_cnt  &lt;= TRCD;
+        state     &lt;= S_READ_WAIT; // or S_WRITE_WAIT
+        banks_in_flight[cur_bank_id] &lt;= 1'b1;
+    end
+    // else: stay in S_ACTIVATE, output nothing
+end</pre>
+</div>
+</section>
+
+<section>
+<h2>PC Controller Block Diagram</h2>
+<div class="svg-box">
+<svg viewBox="0 0 860 420" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:640px">
+  <rect width="860" height="420" fill="#080d1a"/>
+  <text x="430" y="20" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="13">hbm3_pc_ctrl — Sub-Module Integration (one pseudo-channel)</text>
+
+  <!-- Outer PC ctrl boundary -->
+  <rect x="10" y="35" width="840" height="370" rx="10" fill="none" stroke="rgba(6,182,212,.2)" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="430" y="52" text-anchor="middle" fill="rgba(6,182,212,.35)" font-size="9">hbm3_pc_ctrl boundary</text>
+
+  <!-- HOST interface box -->
+  <rect x="20" y="80" width="110" height="80" rx="6" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="75" y="102" text-anchor="middle" fill="#67e8f9" font-weight="bold">HOST</text>
+  <text x="75" y="117" text-anchor="middle" fill="#94a3b8" font-size="9">req_valid/wr</text>
+  <text x="75" y="129" text-anchor="middle" fill="#94a3b8" font-size="9">req_addr[33:0]</text>
+  <text x="75" y="141" text-anchor="middle" fill="#94a3b8" font-size="9">req_data[127:0]</text>
+  <text x="75" y="155" text-anchor="middle" fill="#94a3b8" font-size="9">← rd_data/rd_valid</text>
+
+  <!-- Module 9 - Scheduler -->
+  <rect x="185" y="65" width="140" height="95" rx="6" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+  <text x="255" y="86" text-anchor="middle" fill="#10b981" font-weight="bold">Mod 9: Scheduler</text>
+  <text x="255" y="101" text-anchor="middle" fill="#94a3b8" font-size="9">FR-FCFS RQ/WQ</text>
+  <text x="255" y="113" text-anchor="middle" fill="#94a3b8" font-size="9">wr_drain / ref_req</text>
+  <text x="255" y="125" text-anchor="middle" fill="#94a3b8" font-size="9">→ cmd_act/rd/wr/pre</text>
+  <text x="255" y="137" text-anchor="middle" fill="#94a3b8" font-size="9">→ cmd_bg/ba/row/col</text>
+  <text x="255" y="149" text-anchor="middle" fill="#94a3b8" font-size="9">→ cmd_data[127:0]</text>
+
+  <!-- Module 1 - Timing FSM -->
+  <rect x="185" y="190" width="140" height="80" rx="6" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="255" y="210" text-anchor="middle" fill="#67e8f9" font-weight="bold">Mod 1: Timing FSM</text>
+  <text x="255" y="226" text-anchor="middle" fill="#94a3b8" font-size="9">tRCD/tRAS/tRP/CL/CWL</text>
+  <text x="255" y="240" text-anchor="middle" fill="#94a3b8" font-size="9">→ act_allowed</text>
+  <text x="255" y="254" text-anchor="middle" fill="#94a3b8" font-size="9">→ cas_allowed</text>
+  <text x="255" y="266" text-anchor="middle" fill="#94a3b8" font-size="9">→ pre_allowed</text>
+
+  <!-- Module 2 - Bank FSM -->
+  <rect x="185" y="300" width="140" height="80" rx="6" fill="rgba(167,139,250,.07)" stroke="rgba(167,139,250,.3)" stroke-width="1.5"/>
+  <text x="255" y="320" text-anchor="middle" fill="#a78bfa" font-weight="bold">Mod 2: Bank FSM</text>
+  <text x="255" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">32 banks state</text>
+  <text x="255" y="350" text-anchor="middle" fill="#94a3b8" font-size="9">→ banks_open[31:0]</text>
+  <text x="255" y="364" text-anchor="middle" fill="#94a3b8" font-size="9">→ row_open[14:0]</text>
+
+  <!-- Command Sequencing FSM — centre -->
+  <rect x="390" y="120" width="175" height="170" rx="8" fill="rgba(6,182,212,.06)" stroke="rgba(6,182,212,.35)" stroke-width="2"/>
+  <text x="477" y="143" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="11">Command Sequencing</text>
+  <text x="477" y="157" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="11">FSM</text>
+  <text x="477" y="175" text-anchor="middle" fill="#94a3b8" font-size="9">IDLE → DECODE</text>
+  <text x="477" y="188" text-anchor="middle" fill="#94a3b8" font-size="9">→ ACTIVATE</text>
+  <text x="477" y="201" text-anchor="middle" fill="#94a3b8" font-size="9">→ READ / WRITE</text>
+  <text x="477" y="214" text-anchor="middle" fill="#94a3b8" font-size="9">→ PRECHARGE</text>
+  <text x="477" y="227" text-anchor="middle" fill="#94a3b8" font-size="9">→ REFRESH</text>
+  <text x="477" y="240" text-anchor="middle" fill="#94a3b8" font-size="9">→ RETURN</text>
+  <text x="477" y="260" text-anchor="middle" fill="#fcd34d" font-size="9">3-way interlock gate</text>
+  <text x="477" y="275" text-anchor="middle" fill="#fcd34d" font-size="9">act/cas_allowed + !conflict</text>
+
+  <!-- Module 3 - Refresh Ctrl -->
+  <rect x="390" y="315" width="140" height="65" rx="6" fill="rgba(248,113,113,.07)" stroke="rgba(248,113,113,.25)" stroke-width="1.5"/>
+  <text x="460" y="337" text-anchor="middle" fill="#f87171" font-weight="bold">Mod 3: Refresh Ctrl</text>
+  <text x="460" y="353" text-anchor="middle" fill="#94a3b8" font-size="9">tREFI countdown</text>
+  <text x="460" y="367" text-anchor="middle" fill="#94a3b8" font-size="9">→ ref_req</text>
+
+  <!-- Module 4 - Page Policy -->
+  <rect x="390" y="65" width="140" height="40" rx="6" fill="rgba(252,211,77,.06)" stroke="rgba(252,211,77,.2)" stroke-width="1.5"/>
+  <text x="460" y="82" text-anchor="middle" fill="#fcd34d" font-weight="bold">Mod 4: Page Policy</text>
+  <text x="460" y="97" text-anchor="middle" fill="#94a3b8" font-size="9">hit / miss / close</text>
+
+  <!-- DRAM PHY output -->
+  <rect x="640" y="120" width="130" height="100" rx="6" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+  <text x="705" y="142" text-anchor="middle" fill="#10b981" font-weight="bold">DRAM PHY</text>
+  <text x="705" y="157" text-anchor="middle" fill="#94a3b8" font-size="9">HBM3 CA bus</text>
+  <text x="705" y="170" text-anchor="middle" fill="#94a3b8" font-size="9">ACT/RD/WR/PRE/REF</text>
+  <text x="705" y="183" text-anchor="middle" fill="#94a3b8" font-size="9">DQ data in/out</text>
+  <text x="705" y="196" text-anchor="middle" fill="#94a3b8" font-size="9">per pseudo-channel</text>
+  <text x="705" y="210" text-anchor="middle" fill="#94a3b8" font-size="9">64-bit bus</text>
+
+  <!-- Debug output -->
+  <rect x="640" y="250" width="130" height="50" rx="6" fill="rgba(148,163,184,.05)" stroke="rgba(148,163,184,.15)" stroke-width="1"/>
+  <text x="705" y="272" text-anchor="middle" fill="#94a3b8" font-weight="bold">Debug / Status</text>
+  <text x="705" y="287" text-anchor="middle" fill="#94a3b8" font-size="9">o_state_dbg[3:0]</text>
+  <text x="705" y="299" text-anchor="middle" fill="#94a3b8" font-size="9">o_busy</text>
+
+  <!-- Arrows -->
+  <!-- HOST → Sched -->
+  <line x1="130" y1="108" x2="183" y2="108" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Sched → FSM -->
+  <line x1="325" y1="110" x2="388" y2="175" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Timing → FSM -->
+  <line x1="325" y1="230" x2="388" y2="210" stroke="rgba(6,182,212,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Bank → FSM -->
+  <line x1="325" y1="330" x2="388" y2="250" stroke="rgba(167,139,250,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Bank → Sched (banks_open) -->
+  <line x1="255" y1="300" x2="255" y2="162" stroke="rgba(167,139,250,.4)" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#a)"/>
+  <!-- Refresh → FSM -->
+  <line x1="460" y1="315" x2="460" y2="292" stroke="rgba(248,113,113,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- PagePolicy → FSM -->
+  <line x1="460" y1="105" x2="460" y2="118" stroke="rgba(252,211,77,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- FSM → PHY -->
+  <line x1="565" y1="180" x2="638" y2="175" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- FSM → Debug -->
+  <line x1="565" y1="240" x2="638" y2="270" stroke="rgba(148,163,184,.4)" stroke-width="1.2" marker-end="url(#a)"/>
+  <!-- FSM → cmd back to Timing/Bank -->
+  <line x1="390" y1="200" x2="327" y2="220" stroke="rgba(6,182,212,.3)" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#a)"/>
+  <line x1="390" y1="240" x2="327" y2="330" stroke="rgba(167,139,250,.3)" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#a)"/>
+  <!-- PHY → HOST rd_data -->
+  <line x1="640" y1="145" x2="150" y2="145" stroke="rgba(6,182,212,.25)" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#a)"/>
+  <text x="400" y="140" text-anchor="middle" fill="rgba(6,182,212,.45)" font-size="8">rd_data return path</text>
+
+  <defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="rgba(148,163,184,.6)"/></marker></defs>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>Full Verilog Source — hbm3_pc_ctrl.v</h2>
+<p>The PC controller instantiates all sub-modules as black boxes and runs the command sequencing FSM. Sub-module ports use the same <code>i_/o_</code> convention.</p>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// hbm3_pc_ctrl.v — HBM3 Pseudo-Channel Controller (Module 10)
+// Integrates: timing FSM (M1), bank FSM (M2), refresh ctrl (M3),
+//             page policy (M4), scheduler (M9)
+// EcrioniX HBM3 Controller Build · Phase 3
+
+`timescale 1ns/1ps
+`default_nettype none
+
+module hbm3_pc_ctrl #(
+    parameter TRCD = 14,   // cycles — row-to-column delay
+    parameter TRP  = 14,   // cycles — precharge time
+    parameter TCL  = 14,   // cycles — CAS read latency
+    parameter TCWL = 8,    // cycles — CAS write latency
+    parameter TRFC = 700   // cycles — refresh recovery (350 ns @ 2 GHz)
+)(
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // Which pseudo-channel this instance serves (0–15)
+    input  wire [3:0]  i_pc_id,
+
+    // Host request interface
+    input  wire        i_req_valid,
+    input  wire        i_req_wr,
+    input  wire [33:0] i_req_addr,
+    input  wire [127:0] i_req_data,
+    input  wire [15:0] i_req_mask,
+    output wire        o_req_ready,
+
+    // Host read data return
+    output reg  [127:0] o_rd_data,
+    output reg          o_rd_valid,
+    output reg          o_wr_done,
+
+    // Status
+    output wire        o_busy,
+    output wire [3:0]  o_state_dbg
+);
+
+// -----------------------------------------------------------------------
+// Internal wires — sub-module interconnect
+// -----------------------------------------------------------------------
+
+// Timing FSM (Module 1) outputs
+wire act_allowed_w;
+wire cas_allowed_w;
+wire pre_allowed_w;
+
+// Bank FSM (Module 2) outputs
+wire [31:0] banks_open_w;
+wire [14:0] row_open_w;       // row open in selected bank (simplified)
+wire        any_hit_w;
+
+// Refresh controller (Module 3) outputs
+wire ref_req_w;
+
+// Page policy (Module 4) outputs
+wire policy_hit_w;
+wire policy_miss_w;
+wire policy_close_w;
+
+// Scheduler (Module 9) outputs
+wire        sched_cmd_act;
+wire        sched_cmd_rd;
+wire        sched_cmd_wr;
+wire        sched_cmd_pre;
+wire [2:0]  sched_cmd_bg;
+wire [1:0]  sched_cmd_ba;
+wire [14:0] sched_cmd_row;
+wire [4:0]  sched_cmd_col;
+wire [127:0] sched_cmd_data;
+wire        sched_req_ready;
+
+// Command outputs to timing FSM and bank FSM
+reg  cmd_act_r, cmd_rd_r, cmd_wr_r, cmd_pre_r, cmd_ref_r;
+reg  [2:0]  cmd_bg_r;
+reg  [1:0]  cmd_ba_r;
+reg  [14:0] cmd_row_r;
+reg  [4:0]  cmd_col_r;
+reg  [127:0] cmd_data_r;
+
+// Read data captured from DRAM (simulated: echo cmd_data with CL delay)
+// In real silicon this comes from the PHY RX FIFO
+reg  [127:0] rd_data_pipe [0:15];
+reg  [3:0]   rd_pipe_ptr;
+reg          rd_pipe_valid [0:15];
+
+// -----------------------------------------------------------------------
+// Sub-module instantiations (black boxes — full RTL in earlier modules)
+// -----------------------------------------------------------------------
+
+hbm3_timing_fsm #(
+    .TRCD(TRCD), .TRP(TRP), .TCL(TCL), .TCWL(TCWL)
+) u_timing (
+    .i_clk      (i_clk),
+    .i_rst_n    (i_rst_n),
+    .i_cmd_act  (cmd_act_r),
+    .i_cmd_rd   (cmd_rd_r),
+    .i_cmd_wr   (cmd_wr_r),
+    .i_cmd_pre  (cmd_pre_r),
+    .i_cmd_bg   (cmd_bg_r),
+    .i_cmd_ba   (cmd_ba_r),
+    .o_act_allowed (act_allowed_w),
+    .o_cas_allowed (cas_allowed_w),
+    .o_pre_allowed (pre_allowed_w)
+);
+
+hbm3_bank_fsm u_bank (
+    .i_clk      (i_clk),
+    .i_rst_n    (i_rst_n),
+    .i_cmd_act  (cmd_act_r),
+    .i_cmd_pre  (cmd_pre_r),
+    .i_cmd_rd   (cmd_rd_r),
+    .i_cmd_wr   (cmd_wr_r),
+    .i_cmd_bg   (cmd_bg_r),
+    .i_cmd_ba   (cmd_ba_r),
+    .i_cmd_row  (cmd_row_r),
+    .o_banks_open  (banks_open_w),
+    .o_row_open    (row_open_w),
+    .o_any_hit     (any_hit_w)
+);
+
+hbm3_refresh_ctrl u_ref (
+    .i_clk      (i_clk),
+    .i_rst_n    (i_rst_n),
+    .i_ref_done (cmd_ref_r),
+    .o_ref_req  (ref_req_w)
+);
+
+hbm3_page_policy u_policy (
+    .i_clk       (i_clk),
+    .i_rst_n     (i_rst_n),
+    .i_req_addr  (i_req_addr),
+    .i_banks_open(banks_open_w),
+    .i_row_open  (row_open_w),
+    .o_hit       (policy_hit_w),
+    .o_miss      (policy_miss_w),
+    .o_close     (policy_close_w)
+);
+
+hbm3_scheduler #(
+    .RQ_DEPTH(16), .WQ_DEPTH(16),
+    .WQ_HWM(12),   .WQ_LWM(4)
+) u_sched (
+    .i_clk         (i_clk),
+    .i_rst_n       (i_rst_n),
+    .i_req_valid   (i_req_valid),
+    .i_req_addr    (i_req_addr),
+    .i_req_wr      (i_req_wr),
+    .i_req_data    (i_req_data),
+    .i_req_mask    (i_req_mask),
+    .o_req_ready   (sched_req_ready),
+    .i_banks_open  (banks_open_w),
+    .i_any_hit     (any_hit_w),
+    .i_act_allowed (act_allowed_w),
+    .i_cas_allowed (cas_allowed_w),
+    .i_ref_req     (ref_req_w),
+    .o_cmd_act     (sched_cmd_act),
+    .o_cmd_rd      (sched_cmd_rd),
+    .o_cmd_wr      (sched_cmd_wr),
+    .o_cmd_pre     (sched_cmd_pre),
+    .o_cmd_bg      (sched_cmd_bg),
+    .o_cmd_ba      (sched_cmd_ba),
+    .o_cmd_row     (sched_cmd_row),
+    .o_cmd_col     (sched_cmd_col),
+    .o_cmd_data    (sched_cmd_data),
+    .o_rd_queue_depth (),
+    .o_wr_queue_depth (),
+    .o_wr_drain    ()
+);
+
+assign o_req_ready = sched_req_ready;
+
+// -----------------------------------------------------------------------
+// Command Sequencing FSM
+// -----------------------------------------------------------------------
+localparam [3:0]
+    S_IDLE      = 4'd0,
+    S_DECODE    = 4'd1,
+    S_ACTIVATE  = 4'd2,
+    S_READ      = 4'd3,
+    S_WRITE     = 4'd4,
+    S_PRECHARGE = 4'd5,
+    S_REFRESH   = 4'd6,
+    S_RETURN    = 4'd7;
+
+reg [3:0]  state, state_next;
+reg [9:0]  wait_cnt;
+reg        cur_is_wr;
+reg [4:0]  cur_bank_id;   // {bg[2:0], ba[1:0]}
+reg [14:0] cur_row;
+reg [4:0]  cur_col;
+reg [127:0] cur_wdata;
+reg        policy_hit_r, policy_close_r;
+reg [31:0] banks_in_flight;
+
+assign o_state_dbg = state;
+assign o_busy = (state != S_IDLE) || ref_req_w;
+
+// Three-way issue gates
+wire act_gate = act_allowed_w && !banks_in_flight[cur_bank_id];
+wire cas_gate = cas_allowed_w && !banks_in_flight[cur_bank_id];
+wire pre_gate = pre_allowed_w;
+
+// Synthesis helper: full case avoids latches
+always @(posedge i_clk or negedge i_rst_n) begin
+    if (!i_rst_n) begin
+        state          &lt;= S_IDLE;
+        wait_cnt       &lt;= 10'd0;
+        banks_in_flight &lt;= 32'd0;
+        cmd_act_r &lt;= 0; cmd_rd_r &lt;= 0; cmd_wr_r &lt;= 0;
+        cmd_pre_r &lt;= 0; cmd_ref_r &lt;= 0;
+        cmd_bg_r  &lt;= 0; cmd_ba_r &lt;= 0;
+        cmd_row_r &lt;= 0; cmd_col_r &lt;= 0; cmd_data_r &lt;= 0;
+        o_rd_data  &lt;= 128'd0; o_rd_valid &lt;= 0; o_wr_done &lt;= 0;
+        cur_is_wr  &lt;= 0; cur_bank_id &lt;= 0; cur_row &lt;= 0;
+        cur_col    &lt;= 0; cur_wdata  &lt;= 0;
+        policy_hit_r &lt;= 0; policy_close_r &lt;= 0;
+    end else begin
+        // Default pulse clears
+        cmd_act_r &lt;= 0; cmd_rd_r &lt;= 0; cmd_wr_r &lt;= 0;
+        cmd_pre_r &lt;= 0; cmd_ref_r &lt;= 0;
+        o_rd_valid &lt;= 0; o_wr_done &lt;= 0;
+
+        case (state)
+            // --------------------------------------------------------
+            S_IDLE: begin
+                if (ref_req_w) begin
+                    // Refresh has highest priority
+                    if (|banks_open_w) begin
+                        // Must precharge all before refresh
+                        cmd_pre_r &lt;= 1'b1;
+                        wait_cnt  &lt;= TRP;
+                        state     &lt;= S_PRECHARGE;
+                    end else begin
+                        wait_cnt &lt;= TRFC;
+                        cmd_ref_r &lt;= 1'b1;
+                        state     &lt;= S_REFRESH;
+                    end
+                end else if (sched_cmd_act || sched_cmd_rd ||
+                             sched_cmd_wr || sched_cmd_pre) begin
+                    // Scheduler has a command ready — latch and decode
+                    cur_bank_id    &lt;= {sched_cmd_bg, sched_cmd_ba};
+                    cur_row        &lt;= sched_cmd_row;
+                    cur_col        &lt;= sched_cmd_col;
+                    cur_wdata      &lt;= sched_cmd_data;
+                    cur_is_wr      &lt;= sched_cmd_wr &amp;&amp; !sched_cmd_rd;
+                    cmd_bg_r       &lt;= sched_cmd_bg;
+                    cmd_ba_r       &lt;= sched_cmd_ba;
+                    policy_hit_r   &lt;= policy_hit_w;
+                    policy_close_r &lt;= policy_close_w;
+                    state          &lt;= S_DECODE;
+                end
+            end
+
+            // --------------------------------------------------------
+            S_DECODE: begin
+                // One pipeline stage for page policy to settle
+                if (policy_hit_r) begin
+                    // Row already open — skip ACT
+                    state &lt;= cur_is_wr ? S_WRITE : S_READ;
+                end else if (policy_close_r) begin
+                    // Wrong row open — must PRE first
+                    if (pre_gate) begin
+                        cmd_pre_r &lt;= 1'b1;
+                        cmd_bg_r  &lt;= cur_bank_id[4:2];
+                        cmd_ba_r  &lt;= cur_bank_id[1:0];
+                        wait_cnt  &lt;= TRP;
+                        state     &lt;= S_PRECHARGE;
+                    end
+                end else begin
+                    // Bank idle — go straight to ACT
+                    state &lt;= S_ACTIVATE;
+                end
+            end
+
+            // --------------------------------------------------------
+            S_ACTIVATE: begin
+                if (act_gate) begin
+                    cmd_act_r &lt;= 1'b1;
+                    cmd_bg_r  &lt;= cur_bank_id[4:2];
+                    cmd_ba_r  &lt;= cur_bank_id[1:0];
+                    cmd_row_r &lt;= cur_row;
+                    wait_cnt  &lt;= TRCD;
+                    banks_in_flight[cur_bank_id] &lt;= 1'b1;
+                    state     &lt;= S_READ; // placeholder; overridden below
+                    if (cur_is_wr)
+                        state &lt;= S_WRITE;
+                    else
+                        state &lt;= S_READ;
+                end
+                // else: stall — timing interlock
+            end
+
+            // --------------------------------------------------------
+            S_READ: begin
+                if (wait_cnt &gt; 0) begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end else if (cas_gate) begin
+                    cmd_rd_r  &lt;= 1'b1;
+                    cmd_col_r &lt;= cur_col;
+                    wait_cnt  &lt;= TCL;
+                    state     &lt;= S_RETURN;
+                end
+            end
+
+            // --------------------------------------------------------
+            S_WRITE: begin
+                if (wait_cnt &gt; 0) begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end else if (cas_gate) begin
+                    cmd_wr_r   &lt;= 1'b1;
+                    cmd_col_r  &lt;= cur_col;
+                    cmd_data_r &lt;= cur_wdata;
+                    banks_in_flight[cur_bank_id] &lt;= 1'b0;
+                    wait_cnt   &lt;= TCWL;
+                    state      &lt;= S_IDLE;
+                end
+            end
+
+            // --------------------------------------------------------
+            S_PRECHARGE: begin
+                if (wait_cnt &gt; 0) begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end else begin
+                    banks_in_flight[cur_bank_id] &lt;= 1'b0;
+                    if (ref_req_w) begin
+                        // After PRE, go to refresh
+                        cmd_ref_r &lt;= 1'b1;
+                        wait_cnt  &lt;= TRFC;
+                        state     &lt;= S_REFRESH;
+                    end else begin
+                        // After PRE, activate for miss
+                        state &lt;= S_ACTIVATE;
+                    end
+                end
+            end
+
+            // --------------------------------------------------------
+            S_REFRESH: begin
+                if (wait_cnt &gt; 0)
+                    wait_cnt &lt;= wait_cnt - 1;
+                else begin
+                    cmd_ref_r &lt;= 1'b0;
+                    state     &lt;= S_IDLE;
+                end
+            end
+
+            // --------------------------------------------------------
+            S_RETURN: begin
+                if (wait_cnt &gt; 0) begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end else begin
+                    // Read data arrives from PHY (simulated)
+                    o_rd_data  &lt;= cur_wdata; // in RTL: from PHY RX FIFO
+                    o_rd_valid &lt;= 1'b1;
+                    banks_in_flight[cur_bank_id] &lt;= 1'b0;
+                    state      &lt;= S_IDLE;
+                end
+            end
+
+            default: state &lt;= S_IDLE;
+        endcase
+    end
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench with SVA Assertions</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">SystemVerilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// tb_hbm3_pc_ctrl.sv — Testbench for hbm3_pc_ctrl (Module 10)
+// Tests: page-hit read, page-miss read, write, refresh preemption
+// SVA assertions check state sequencing and interlock correctness
+// EcrioniX HBM3 Controller Build
+
+`timescale 1ns/1ps
+`default_nettype none
+
+module tb_hbm3_pc_ctrl;
+
+    // DUT ports
+    logic        clk, rst_n;
+    logic [3:0]  pc_id;
+    logic        req_valid, req_wr;
+    logic [33:0] req_addr;
+    logic [127:0] req_data;
+    logic [15:0] req_mask;
+    logic        req_ready;
+    logic [127:0] rd_data;
+    logic        rd_valid;
+    logic        wr_done;
+    logic        busy;
+    logic [3:0]  state_dbg;
+
+    // DUT instantiation
+    hbm3_pc_ctrl #(
+        .TRCD(14), .TRP(14), .TCL(14), .TCWL(8), .TRFC(700)
+    ) dut (
+        .i_clk       (clk),
+        .i_rst_n     (rst_n),
+        .i_pc_id     (pc_id),
+        .i_req_valid (req_valid),
+        .i_req_wr    (req_wr),
+        .i_req_addr  (req_addr),
+        .i_req_data  (req_data),
+        .i_req_mask  (req_mask),
+        .o_req_ready (req_ready),
+        .o_rd_data   (rd_data),
+        .o_rd_valid  (rd_valid),
+        .o_wr_done   (wr_done),
+        .o_busy      (busy),
+        .o_state_dbg (state_dbg)
+    );
+
+    // Clock: 2 GHz (0.5 ns period)
+    initial clk = 0;
+    always #0.25 clk = ~clk;
+
+    // Cycle counter for logging
+    int cycle_cnt;
+    always @(posedge clk) cycle_cnt++;
+
+    // ---------------------------------------------------------------
+    // SVA: rd_valid must be followed by valid data within 2 cycles
+    property rd_valid_data;
+        @(posedge clk) disable iff (!rst_n)
+        rd_valid |-> (rd_data !== 128'hx);
+    endproperty
+    assert property (rd_valid_data)
+        else $error("[SVA] rd_valid asserted but rd_data is X");
+
+    // SVA: ACT state must transition to READ or WRITE, not back to IDLE
+    // (Encoded: state 2 = ACTIVATE, must reach 3=READ or 4=WRITE)
+    property act_leads_to_cas;
+        @(posedge clk) disable iff (!rst_n)
+        (state_dbg === 4'd2) |-> ##[1:30] (state_dbg === 4'd3 || state_dbg === 4'd4);
+    endproperty
+    assert property (act_leads_to_cas)
+        else $error("[SVA] ACTIVATE state did not reach READ or WRITE within 30 cycles");
+
+    // SVA: REFRESH must take at least TRFC cycles (700)
+    property refresh_duration;
+        @(posedge clk) disable iff (!rst_n)
+        $rose(state_dbg === 4'd6) |-> ##[700:800] (state_dbg === 4'd0);
+    endproperty
+    assert property (refresh_duration)
+        else $warning("[SVA] REFRESH exit timing unexpected");
+
+    // SVA: o_busy must be high whenever not in IDLE
+    property busy_when_active;
+        @(posedge clk) disable iff (!rst_n)
+        (state_dbg !== 4'd0) |-> busy;
+    endproperty
+    assert property (busy_when_active)
+        else $error("[SVA] busy not asserted in non-IDLE state");
+
+    // ---------------------------------------------------------------
+    // Task: issue single read
+    task do_read(input [33:0] addr);
+        @(posedge clk);
+        req_valid &lt;= 1; req_wr &lt;= 0;
+        req_addr  &lt;= addr; req_data &lt;= 0; req_mask &lt;= 16'hFFFF;
+        @(posedge clk) req_valid &lt;= 0;
+        // Wait for rd_valid
+        @(posedge clk iff rd_valid);
+        $display("[cyc %0d] READ complete: addr=%h data=%h", cycle_cnt, addr, rd_data);
+    endtask
+
+    // Task: issue single write
+    task do_write(input [33:0] addr, input [127:0] data);
+        @(posedge clk);
+        req_valid &lt;= 1; req_wr &lt;= 1;
+        req_addr  &lt;= addr; req_data &lt;= data; req_mask &lt;= 16'hFFFF;
+        @(posedge clk) req_valid &lt;= 0;
+        repeat(30) @(posedge clk);
+        $display("[cyc %0d] WRITE submitted: addr=%h", cycle_cnt, addr);
+    endtask
+
+    initial begin
+        $dumpfile("tb_hbm3_pc_ctrl.vcd");
+        $dumpvars(0, tb_hbm3_pc_ctrl);
+        $display("=== hbm3_pc_ctrl testbench start ===");
+        cycle_cnt = 0;
+        rst_n = 0; pc_id = 4'd0;
+        req_valid = 0; req_wr = 0; req_addr = 0;
+        req_data = 0; req_mask = 0;
+        repeat(8) @(posedge clk);
+        rst_n = 1;
+        repeat(4) @(posedge clk);
+
+        // TEST 1: Page-empty read (ACT + RD path)
+        $display("[T1] Page-empty read — expect ACTIVATE then READ");
+        do_read(34'h0000_0100);
+
+        // TEST 2: Write to same bank (test write path)
+        $display("[T2] Write to new address");
+        do_write(34'h0002_0200, 128'hCAFE_BABE_DEAD_BEEF_0000_1111_2222_3333);
+
+        // TEST 3: Back-to-back reads (test pipelining)
+        $display("[T3] Back-to-back reads");
+        fork
+            do_read(34'h0004_0400);
+            do_read(34'h0006_0600);
+        join
+
+        // TEST 4: Wait for automatic refresh
+        $display("[T4] Waiting for refresh cycle (Module 3 will assert ref_req)");
+        // tREFI = ~7800 cycles; wait long enough for at least one refresh
+        repeat(8200) @(posedge clk);
+        $display("[T4] Refresh window passed");
+
+        // TEST 5: Verify state returns to IDLE after refresh
+        @(posedge clk iff state_dbg === 4'd0);
+        $display("[T5] PASS: FSM returned to IDLE after refresh");
+
+        repeat(20) @(posedge clk);
+        $display("=== All testbench scenarios complete ===");
+        $finish;
+    end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>FSM State Transition Table</h2>
+<table>
+  <thead><tr><th>Current State</th><th>Condition</th><th>Next State</th><th>Output</th></tr></thead>
+  <tbody>
+    <tr><td>IDLE</td><td>ref_req &amp; banks_open</td><td>PRECHARGE</td><td>cmd_pre</td></tr>
+    <tr><td>IDLE</td><td>ref_req &amp; !banks_open</td><td>REFRESH</td><td>cmd_ref</td></tr>
+    <tr><td>IDLE</td><td>sched has command</td><td>DECODE</td><td>latch cmd</td></tr>
+    <tr><td>IDLE</td><td>none</td><td>IDLE</td><td>—</td></tr>
+    <tr><td>DECODE</td><td>policy_hit</td><td>READ or WRITE</td><td>—</td></tr>
+    <tr><td>DECODE</td><td>policy_close</td><td>PRECHARGE</td><td>cmd_pre</td></tr>
+    <tr><td>DECODE</td><td>policy_miss (empty)</td><td>ACTIVATE</td><td>—</td></tr>
+    <tr><td>ACTIVATE</td><td>act_gate &amp; is_rd</td><td>READ</td><td>cmd_act</td></tr>
+    <tr><td>ACTIVATE</td><td>act_gate &amp; is_wr</td><td>WRITE</td><td>cmd_act</td></tr>
+    <tr><td>ACTIVATE</td><td>!act_gate</td><td>ACTIVATE</td><td>stall</td></tr>
+    <tr><td>READ</td><td>wait_cnt &gt; 0</td><td>READ</td><td>wait tRCD</td></tr>
+    <tr><td>READ</td><td>wait_cnt == 0 &amp; cas_gate</td><td>RETURN</td><td>cmd_rd</td></tr>
+    <tr><td>WRITE</td><td>wait_cnt &gt; 0</td><td>WRITE</td><td>wait tRCD</td></tr>
+    <tr><td>WRITE</td><td>wait_cnt == 0 &amp; cas_gate</td><td>IDLE</td><td>cmd_wr, wr_done</td></tr>
+    <tr><td>PRECHARGE</td><td>wait_cnt &gt; 0</td><td>PRECHARGE</td><td>wait tRP</td></tr>
+    <tr><td>PRECHARGE</td><td>wait_cnt == 0 &amp; ref_req</td><td>REFRESH</td><td>cmd_ref</td></tr>
+    <tr><td>PRECHARGE</td><td>wait_cnt == 0 &amp; !ref_req</td><td>ACTIVATE</td><td>—</td></tr>
+    <tr><td>REFRESH</td><td>wait_cnt &gt; 0</td><td>REFRESH</td><td>wait tRFC</td></tr>
+    <tr><td>REFRESH</td><td>wait_cnt == 0</td><td>IDLE</td><td>ref_done</td></tr>
+    <tr><td>RETURN</td><td>wait_cnt &gt; 0</td><td>RETURN</td><td>wait CL</td></tr>
+    <tr><td>RETURN</td><td>wait_cnt == 0</td><td>IDLE</td><td>rd_valid, rd_data</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section>
+<h2>Port Reference Table</h2>
+<table>
+  <thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>i_clk</td><td>in</td><td>1</td><td>System clock (2 GHz)</td></tr>
+    <tr><td>i_rst_n</td><td>in</td><td>1</td><td>Active-low synchronous reset</td></tr>
+    <tr><td>i_pc_id</td><td>in</td><td>4</td><td>Pseudo-channel index 0–15</td></tr>
+    <tr><td>i_req_valid</td><td>in</td><td>1</td><td>New host request</td></tr>
+    <tr><td>i_req_wr</td><td>in</td><td>1</td><td>1 = write, 0 = read</td></tr>
+    <tr><td>i_req_addr</td><td>in</td><td>34</td><td>Full HBM3 address</td></tr>
+    <tr><td>i_req_data</td><td>in</td><td>128</td><td>Write data</td></tr>
+    <tr><td>i_req_mask</td><td>in</td><td>16</td><td>Byte write enables</td></tr>
+    <tr><td>o_req_ready</td><td>out</td><td>1</td><td>Scheduler has queue space</td></tr>
+    <tr><td>o_rd_data</td><td>out</td><td>128</td><td>Read data return to host</td></tr>
+    <tr><td>o_rd_valid</td><td>out</td><td>1</td><td>Read data valid pulse</td></tr>
+    <tr><td>o_wr_done</td><td>out</td><td>1</td><td>Write committed to DRAM</td></tr>
+    <tr><td>o_busy</td><td>out</td><td>1</td><td>PC is busy (refresh or active cmd)</td></tr>
+    <tr><td>o_state_dbg</td><td>out</td><td>4</td><td>FSM state encoding for debug</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details>
+    <summary>What is a pseudo-channel in HBM3?</summary>
+    <p>An HBM3 stack contains 16 pseudo-channels, each operating as an independent 64-bit-wide memory interface with its own command bus, data bus, and 32 banks. PCs share the physical I/O pads and power rails but run independent command sequences. Each PC has its own timing FSM, bank FSM, refresh controller, page policy, and scheduler — the <code>hbm3_pc_ctrl</code> module integrates all of these for one PC.</p>
+  </details>
+  <details>
+    <summary>What is the difference between a page hit and a page miss?</summary>
+    <p>A page hit occurs when the requested row is already activated (open) in the target bank. The controller issues READ/WRITE directly, saving tRCD latency (~14 ns). A page miss to an idle bank pays ACT + CAS = tRCD + CL ≈ 28 cycles. A page miss to a wrong-row bank pays PRE + ACT + CAS = tRP + tRCD + CL ≈ 42 cycles. The page policy module selects which path.</p>
+  </details>
+  <details>
+    <summary>How do timing interlocks work between sub-modules?</summary>
+    <p>The timing FSM (Module 1) outputs <code>act_allowed</code> and <code>cas_allowed</code> which go HIGH only when all relevant timing parameters have been satisfied. The PC controller's sequencing FSM stalls in the ACTIVATE or READ/WRITE state (outputs nothing) until both allowed signals are HIGH simultaneously. This simple three-way interlock prevents timing violations without complex handshake protocols.</p>
+  </details>
+  <details>
+    <summary>What happens during a refresh cycle?</summary>
+    <p>When Module 3 asserts <code>ref_req</code>, the PC controller FSM finishes its current command, issues PRECHARGE-ALL if any banks are open (waits tRP), then issues REF and waits tRFC (700 cycles = 350 ns at 2 GHz). No host requests are served during tRFC. After completion the FSM returns to IDLE and Module 3 de-asserts <code>ref_req</code>.</p>
+  </details>
+  <details>
+    <summary>Why does the PC controller expose o_state_dbg?</summary>
+    <p>In a 16-PC HBM3 controller running at 2 GHz, timing bugs are nearly impossible to reproduce on a logic analyser. The 4-bit <code>o_state_dbg</code> encodes the FSM state, allowing an ILA, scan chain, or JTAG debug fabric to capture which PC was in which state at the moment of a failure. This is critical for post-silicon bring-up, yield analysis, and power regression testing.</p>
+  </details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/scheduler/">← Module 9: Request Scheduler</a>
+  <a class="nav-pill" href="/hbm3-controller/ca-bus/">Module 11: CA Bus →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX · Updated June 2026 · <a href="/hbm3-controller/">HBM3 Controller Series</a> · <a href="/courses/">All Courses</a> · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

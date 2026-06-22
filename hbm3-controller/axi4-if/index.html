@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 AXI4 Host Interface — Module 12 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the AXI4 slave interface for the HBM3 controller in Verilog. AXI4 5-channel handshake (AW, W, AR, R, B), burst translation, ID tracking, outstanding transaction management, and AXI4-to-HBM3 request conversion. Phase 3 · Module 12.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/axi4-if/">
+<meta property="og:title" content="HBM3 AXI4 Host Interface — Module 12 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog AXI4 slave for an HBM3 controller. 5-channel handshake, write/read state machines, 8 in-flight IDs, AXI4-to-HBM3 request bridge. Full SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/axi4-if/">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 AXI4 Host Interface — Module 12","description":"Build the AXI4 slave interface for an HBM3 memory controller in synthesizable Verilog. Covers AXI4 5-channel handshake, write and read state machines, 8-ID outstanding transaction tracking, and AXI4-to-HBM3 internal request translation.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/axi4-if/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 12 — AXI4 Host Interface","item":"https://ecrionix.org/hbm3-controller/axi4-if/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What are the five AXI4 channels and what does each carry?","acceptedAnswer":{"@type":"Answer","text":"AXI4 has five independent channels: AW (Write Address — ID, address, length, size, burst type), W (Write Data — data, byte enables, WLAST), B (Write Response — BID, BRESP), AR (Read Address — same fields as AW), and R (Read Data — RID, RDATA, RRESP, RLAST). Each channel uses a separate VALID/READY handshake. They are fully independent — write data can be sent before or after the write address."}},{"@type":"Question","name":"Why does the AXI4 slave need to track outstanding transaction IDs?","acceptedAnswer":{"@type":"Answer","text":"AXI4 allows multiple in-flight transactions from the same master. The slave must track which IDs have been accepted (via AWID/ARID) and return the correct BID or RID in the response channels. If responses arrive out of order from HBM3 (which can re-order by bank), the slave must buffer them and match BID/RID back to the original AWID/ARID."}},{"@type":"Question","name":"What is the AWREADY / ARREADY handshake rule in AXI4?","acceptedAnswer":{"@type":"Answer","text":"A transfer on the AW or AR channel happens on the rising clock edge where both AWVALID (or ARVALID) and AWREADY (or ARREADY) are high simultaneously. The slave drives AWREADY/ARREADY and may hold them low to apply backpressure. The master must hold AWVALID high, keeping the address stable, until AWREADY is seen. The slave can assert AWREADY even before AWVALID arrives."}},{"@type":"Question","name":"What does BRESP=2'b10 (SLVERR) mean in AXI4?","acceptedAnswer":{"@type":"Answer","text":"SLVERR (Slave Error, BRESP=2'b10) indicates the slave accepted the transaction but encountered an internal error — for example, an HBM3 ECC uncorrectable error, a write to a protected region, or an HBM3 internal fault. The master receives the response and must decide how to handle it (retry, abort, or log). OKAY is 2'b00, EXOKAY (exclusive access) is 2'b01, and DECERR (decode error, invalid address) is 2'b11."}},{"@type":"Question","name":"Why is AWLEN=0 used for HBM3 in this module?","acceptedAnswer":{"@type":"Answer","text":"AWLEN=0 means a burst length of 1 — a single data beat. HBM3's burst length is BL4 (4 transfers of 32 bits per pseudo-channel = 128 bits per PC × 2 PCs = 256 bits total per access). This maps naturally to one 256-bit AXI4 data beat (WDATA[255:0]), so AWLEN=0 simplifies the interface. Longer AXI4 bursts would require a beat counter and multiple HBM3 accesses, which is reserved for a later burst-splitter module."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#10b981,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.pill{display:inline-block;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:#10b981;font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(16,185,129,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(16,185,129,.08);padding:.55rem .8rem;text-align:left;color:#10b981;font-weight:700;border-bottom:2px solid rgba(16,185,129,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(16,185,129,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(16,185,129,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(16,185,129,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(16,185,129,.1);background:rgba(16,185,129,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(16,185,129,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#334155;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}
+.note{background:rgba(16,185,129,.05);border-left:3px solid var(--gr);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;margin:.8rem 0}
+.ch-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:.7rem .9rem}
+.ch-name{font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700;color:var(--cy-l);margin-bottom:.25rem}
+.ch-desc{font-size:.73rem;color:#64748b;line-height:1.4}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:#10b981;font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(16,185,129,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--gr);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(16,185,129,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+svg text{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Simulator</a></li>
+  </ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 12 — AXI4 Host Interface</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 3 · Module 12</div>
+    <h1>HBM3 <span>AXI4 Host Interface</span></h1>
+    <p class="hero-sub">Every SoC speaks AXI4. This module builds the AXI4 slave that bridges an industry-standard host bus to the internal HBM3 request engine — implementing the 5-channel handshake, outstanding-ID tracking, write and read state machines, and BRESP/RRESP generation from HBM3 completion signals.</p>
+    <div class="meta-row">
+      <span class="meta-item">&#128196; <code style="font-family:monospace;font-size:.75rem">hbm3_axi4_if.v</code></span>
+      <span class="meta-item">&#128336; ~55 min</span>
+      <span class="meta-item"><span class="pill">AXI4</span></span>
+      <span class="meta-item"><span class="pill">AMBA</span></span>
+      <span class="meta-item"><span class="pill">256-bit bus</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ── Section 1: AXI4 Protocol Overview ── -->
+<section>
+<h2>AXI4 Protocol Overview</h2>
+<p>AXI4 (Advanced eXtensible Interface 4) is part of the ARM AMBA specification. It defines a point-to-point bus between a single master and a single slave using five independent channels, each with its own VALID/READY handshake. The independence of channels is the key architectural feature: a master can issue 16 read addresses before the first read data has arrived, enabling deep pipelining.</p>
+<div class="ch-grid">
+  <div class="ch-card"><div class="ch-name">AW</div><div class="ch-desc">Write Address — ID, address, burst length, size, burst type from master to slave</div></div>
+  <div class="ch-card"><div class="ch-name">W</div><div class="ch-desc">Write Data — 256-bit data + 32 byte-enable strobes + WLAST flag from master</div></div>
+  <div class="ch-card"><div class="ch-name">B</div><div class="ch-desc">Write Response — BID + BRESP status back from slave to master</div></div>
+  <div class="ch-card"><div class="ch-name">AR</div><div class="ch-desc">Read Address — same fields as AW, from master to slave</div></div>
+  <div class="ch-card"><div class="ch-name">R</div><div class="ch-desc">Read Data — 256-bit data + RID + RRESP + RLAST from slave to master</div></div>
+</div>
+<h3>Handshake Rule</h3>
+<p>On each channel, a transfer occurs on the rising clock edge where both VALID and READY are simultaneously high. The source asserts VALID and holds it (along with payload signals) stable until the destination asserts READY. Neither side may deassert VALID once asserted until the handshake completes. The slave may assert READY before VALID arrives as a "pre-ready" optimization.</p>
+<div class="note"><strong>Independence:</strong> The AW and W channels are independent. A master may send all write data on the W channel before sending the write address on AW, or vice versa. This module handles both orderings using an internal flag that waits until both AW and W have been received before issuing the HBM3 write request.</div>
+</section>
+
+<!-- ── Section 2: Write Transaction Flow ── -->
+<section>
+<h2>Write Transaction Flow</h2>
+<p>A complete AXI4 write transaction involves three phases: address handshake (AW), data handshake (W), and response (B). The slave must track all three and not issue the HBM3 write until both address and data are in hand.</p>
+<h3>Phase 1 — AW Handshake</h3>
+<p>The master asserts AWVALID with AWID, AWADDR, AWLEN=0, AWSIZE=3'b101 (32 bytes = 256 bits). The slave asserts AWREADY when it can accept a new transaction (outstanding ID table not full). At the handshake clock edge, the slave captures AWID and AWADDR into an internal buffer and records the ID as "pending write."</p>
+<h3>Phase 2 — W Handshake</h3>
+<p>Simultaneously (or in any order relative to AW), the master asserts WVALID with WDATA[255:0], WSTRB[31:0], and WLAST=1. The slave asserts WREADY when it can accept write data. At the handshake clock edge, WDATA and WSTRB are captured.</p>
+<h3>Phase 3 — HBM3 Request + B Response</h3>
+<p>Once both AW and W have been captured for the same transaction, the slave asserts o_req_valid with o_req_wr=1, o_req_addr, o_req_data, and o_req_mask (from WSTRB). It waits for i_req_ready then waits for i_wr_done from the HBM3 engine. On i_wr_done, it drives o_bvalid=1, o_bid=captured_AWID, and o_bresp=2'b00 (OKAY). The master completes by asserting i_bready.</p>
+<table>
+  <tr><th>Step</th><th>Signals</th><th>Direction</th><th>Action</th></tr>
+  <tr><td>1. AW handshake</td><td>AWVALID+AWREADY high</td><td>M→S</td><td>Slave captures AWID, AWADDR</td></tr>
+  <tr><td>2. W handshake</td><td>WVALID+WREADY high</td><td>M→S</td><td>Slave captures WDATA, WSTRB</td></tr>
+  <tr><td>3. HBM3 request</td><td>o_req_valid, o_req_wr</td><td>S→HBM3</td><td>Internal write issued when step 1+2 done</td></tr>
+  <tr><td>4. HBM3 done</td><td>i_wr_done</td><td>HBM3→S</td><td>Slave sees write complete</td></tr>
+  <tr><td>5. B response</td><td>BVALID+BREADY high</td><td>S→M</td><td>Slave sends BID, BRESP=OKAY</td></tr>
+</table>
+</section>
+
+<!-- ── Section 3: Read Transaction Flow ── -->
+<section>
+<h2>Read Transaction Flow</h2>
+<p>Read transactions are simpler than writes: there is no data channel from master to slave. The master sends an address on AR and then waits for data on R.</p>
+<h3>Phase 1 — AR Handshake</h3>
+<p>The master asserts ARVALID with ARID, ARADDR, ARLEN=0, ARSIZE=3'b101. The slave asserts ARREADY when it can accept a read (internal read queue not full). The slave captures ARID and ARADDR and immediately issues an HBM3 read request.</p>
+<h3>Phase 2 — HBM3 Read + R Response</h3>
+<p>The slave drives o_req_valid=1, o_req_wr=0, o_req_addr. It waits for i_req_ready, then waits for i_rd_valid and captures i_rd_data[255:0]. It then drives o_rvalid=1, o_rid=captured_ARID, o_rdata=i_rd_data, o_rresp=2'b00, o_rlast=1. The master completes by asserting i_rready.</p>
+<table>
+  <tr><th>Step</th><th>Signals</th><th>Direction</th><th>Action</th></tr>
+  <tr><td>1. AR handshake</td><td>ARVALID+ARREADY high</td><td>M→S</td><td>Slave captures ARID, ARADDR</td></tr>
+  <tr><td>2. HBM3 request</td><td>o_req_valid, o_req_wr=0</td><td>S→HBM3</td><td>Read request issued</td></tr>
+  <tr><td>3. HBM3 data</td><td>i_rd_valid, i_rd_data</td><td>HBM3→S</td><td>Slave captures read data</td></tr>
+  <tr><td>4. R response</td><td>RVALID+RREADY high</td><td>S→M</td><td>Slave returns RID, RDATA, RLAST</td></tr>
+</table>
+<div class="note">With ARLEN=0, exactly one R beat is returned per AR transaction, so RLAST is always 1 on the only data beat. This simplifies the read-data state machine considerably.</div>
+</section>
+
+<!-- ── Section 4: Outstanding Transaction Tracking ── -->
+<section>
+<h2>Outstanding Transaction Tracking</h2>
+<p>AXI4 allows multiple outstanding write transactions from the same master, each identified by a unique AWID. Our module supports up to 8 simultaneous in-flight writes. The ID table is a small associative memory indexed by AWID[2:0] (the low 3 bits of the full 8-bit AWID).</p>
+<h3>Write ID Table</h3>
+<table>
+  <tr><th>Entry Field</th><th>Width</th><th>Description</th></tr>
+  <tr><td>valid</td><td>1</td><td>This entry is in use (ID is outstanding)</td></tr>
+  <tr><td>id</td><td>8</td><td>Full AWID captured at AW handshake</td></tr>
+  <tr><td>aw_done</td><td>1</td><td>AW phase complete (address captured)</td></tr>
+  <tr><td>w_done</td><td>1</td><td>W phase complete (data captured)</td></tr>
+  <tr><td>addr</td><td>34</td><td>Captured AWADDR</td></tr>
+  <tr><td>data</td><td>256</td><td>Captured WDATA</td></tr>
+  <tr><td>mask</td><td>32</td><td>Captured WSTRB (byte enables)</td></tr>
+</table>
+<p>When both aw_done and w_done are set, the entry is ready to issue an HBM3 request. A round-robin arbitration selects among multiple ready entries. On i_wr_done, the entry is freed and the B response is queued.</p>
+<div class="warn"><strong>ID ordering:</strong> AXI4 requires that write responses (B) are returned in the order that write addresses (AW) were accepted by the slave. Our implementation satisfies this by processing one write at a time through the HBM3 engine and returning B immediately on i_wr_done. A full out-of-order implementation would need a reorder buffer.</div>
+</section>
+
+<!-- ── Section 5: Burst Translation ── -->
+<section>
+<h2>AXI4 Burst Translation for HBM3</h2>
+<p>The AWLEN and ARLEN fields define the AXI4 burst length as (AWLEN+1) beats. A value of 8'h00 (AWLEN=0) means 1 beat — a single data transfer. AWSIZE=3'b101 selects 2^5 = 32 bytes = 256 bits per beat.</p>
+<h3>Why AWLEN=0 Maps Perfectly to HBM3</h3>
+<p>HBM3's fundamental access unit per pseudo-channel is BL4 (burst length 4) of 32-bit words = 128 bits. With two pseudo-channels, one HBM3 access delivers 256 bits. This is exactly one AXI4 beat at AWSIZE=5. The mapping is 1:1 — one AXI4 transaction, one HBM3 access, one WDATA/RDATA transfer.</p>
+<table>
+  <tr><th>AXI4 Parameter</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td>AWLEN / ARLEN</td><td>8'h00</td><td>1 beat per burst</td></tr>
+  <tr><td>AWSIZE / ARSIZE</td><td>3'b101</td><td>32 bytes = 256 bits per beat</td></tr>
+  <tr><td>AWBURST / ARBURST</td><td>2'b01</td><td>INCR (only valid option for length-1 burst)</td></tr>
+  <tr><td>WDATA / RDATA</td><td>256 bits</td><td>Matches 2 × HBM3 PC data width</td></tr>
+  <tr><td>WSTRB</td><td>32 bits</td><td>Byte enables, mapped to o_req_mask</td></tr>
+</table>
+<p>A future "burst splitter" module will handle AWLEN &gt; 0 by breaking the AXI4 burst into multiple consecutive HBM3 accesses with auto-incrementing addresses. This module keeps it simple: AWLEN=0 assumed, AWLEN != 0 returns SLVERR.</p>
+</section>
+
+<!-- ── Section 6: AXI4 RESP Codes ── -->
+<section>
+<h2>AXI4 Response Codes</h2>
+<p>Both the B (write response) and R (read response) channels carry a 2-bit RESP field. Understanding these codes is essential for correct error handling in host software.</p>
+<table>
+  <tr><th>RESP[1:0]</th><th>Name</th><th>Meaning in HBM3 context</th></tr>
+  <tr><td>2'b00</td><td>OKAY</td><td>Transaction completed successfully. HBM3 reported no error, ECC correctable or no error.</td></tr>
+  <tr><td>2'b01</td><td>EXOKAY</td><td>Exclusive access success. Not used in this module (exclusive access not implemented).</td></tr>
+  <tr><td>2'b10</td><td>SLVERR</td><td>Slave error. Returned on HBM3 ECC uncorrectable error, unsupported AWLEN (!=0), or internal timeout.</td></tr>
+  <tr><td>2'b11</td><td>DECERR</td><td>Decode error. Address outside the 34-bit HBM3 address space (should be caught by an upstream interconnect).</td></tr>
+</table>
+<div class="note">For this module, BRESP and RRESP are always OKAY (2'b00) unless i_wr_done or i_rd_valid arrives with an error flag. Extending to SLVERR requires adding an error status bit to the HBM3 completion interface — a natural enhancement for production code.</div>
+</section>
+
+<!-- ── Section 7: SVG Waveform ── -->
+<section>
+<h2>AXI4 Write Transaction Waveform</h2>
+<p>The waveform shows a single AXI4 write: AW handshake at T0, W handshake at T1 (data arrives one cycle after address), HBM3 request issued at T2, i_wr_done at T4, B response at T5.</p>
+<svg viewBox="0 0 860 310" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:860px;display:block;margin:.8rem auto;background:#080d1a;border:1px solid rgba(16,185,129,.15);border-radius:10px">
+  <!-- Vertical cycle dividers -->
+  <line x1="130" y1="20" x2="130" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <line x1="260" y1="20" x2="260" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <line x1="390" y1="20" x2="390" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <line x1="520" y1="20" x2="520" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <line x1="650" y1="20" x2="650" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <line x1="780" y1="20" x2="780" y2="295" stroke="#1e293b" stroke-width="1"/>
+  <!-- Cycle labels -->
+  <text x="195" y="16" fill="#475569" font-size="10" text-anchor="middle">T0</text>
+  <text x="325" y="16" fill="#475569" font-size="10" text-anchor="middle">T1</text>
+  <text x="455" y="16" fill="#475569" font-size="10" text-anchor="middle">T2</text>
+  <text x="585" y="16" fill="#475569" font-size="10" text-anchor="middle">T3-T4</text>
+  <text x="715" y="16" fill="#475569" font-size="10" text-anchor="middle">T5</text>
+  <!-- Signal labels -->
+  <text x="8" y="38" fill="#94a3b8" font-size="9" dominant-baseline="middle">AWVALID</text>
+  <text x="8" y="60" fill="#94a3b8" font-size="9" dominant-baseline="middle">AWREADY</text>
+  <text x="8" y="85" fill="#94a3b8" font-size="9" dominant-baseline="middle">AWID/ADDR</text>
+  <text x="8" y="115" fill="#94a3b8" font-size="9" dominant-baseline="middle">WVALID</text>
+  <text x="8" y="137" fill="#94a3b8" font-size="9" dominant-baseline="middle">WREADY</text>
+  <text x="8" y="158" fill="#94a3b8" font-size="9" dominant-baseline="middle">WDATA</text>
+  <text x="8" y="188" fill="#94a3b8" font-size="9" dominant-baseline="middle">req_valid</text>
+  <text x="8" y="210" fill="#94a3b8" font-size="9" dominant-baseline="middle">req_ready</text>
+  <text x="8" y="238" fill="#94a3b8" font-size="9" dominant-baseline="middle">wr_done</text>
+  <text x="8" y="265" fill="#94a3b8" font-size="9" dominant-baseline="middle">BVALID</text>
+  <text x="8" y="285" fill="#94a3b8" font-size="9" dominant-baseline="middle">BREADY</text>
+  <!-- AWVALID: high from T0 to end of T0 handshake -->
+  <polyline points="130,48 130,28 260,28 260,48" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="260" y1="48" x2="860" y2="48" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <!-- AWREADY: high at T0 -->
+  <polyline points="130,70 130,50 260,50 260,70" fill="none" stroke="#10b981" stroke-width="1.5"/>
+  <line x1="130" y1="70" x2="130" y2="70"/>
+  <!-- AWID/ADDR bus -->
+  <rect x="130" y="76" width="130" height="20" fill="rgba(6,182,212,.08)" stroke="#06b6d4" stroke-width="1" rx="2"/>
+  <text x="195" y="88" fill="#67e8f9" font-size="8" text-anchor="middle" dominant-baseline="middle">ID=5 ADDR=0x1000</text>
+  <!-- WVALID: T1 -->
+  <polyline points="260,125 260,105 390,105 390,125" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+  <line x1="390" y1="125" x2="860" y2="125" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <!-- WREADY: T1 -->
+  <polyline points="260,147 260,127 390,127 390,147" fill="none" stroke="#10b981" stroke-width="1.5"/>
+  <!-- WDATA bus -->
+  <rect x="260" y="148" width="130" height="20" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1" rx="2"/>
+  <text x="325" y="160" fill="#a78bfa" font-size="8" text-anchor="middle" dominant-baseline="middle">WDATA[255:0], WLAST=1</text>
+  <!-- req_valid T2 onward -->
+  <polyline points="390,198 390,178 520,178 520,198" fill="none" stroke="#10b981" stroke-width="1.5"/>
+  <!-- req_ready T2 -->
+  <polyline points="390,220 390,200 520,200 520,220" fill="none" stroke="#fcd34d" stroke-width="1.5"/>
+  <!-- wr_done at T4 (between 520 and 650) -->
+  <polyline points="585,248 585,228 650,228 650,248" fill="none" stroke="#f87171" stroke-width="1.5"/>
+  <!-- BVALID T5 -->
+  <polyline points="650,275 650,255 780,255 780,275" fill="none" stroke="#10b981" stroke-width="1.5"/>
+  <!-- BREADY T5 -->
+  <polyline points="650,292 650,277 780,277 780,292" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+</svg>
+</section>
+
+<!-- ── Section 8: Full Verilog ── -->
+<section>
+<h2>Full Verilog Source — hbm3_axi4_if.v</h2>
+<p>The module implements three parallel state machines: a write FSM (tracks AW + W → HBM3 request → B), a read FSM (tracks AR → HBM3 request → R), and a simple ID-valid table for outstanding write tracking.</p>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// hbm3_axi4_if.v — AXI4 Slave Interface for HBM3 Controller</span>
+<span class="cm">// Phase 3 Module 12 · EcrioniX — https://ecrionix.org/hbm3-controller/axi4-if/</span>
+
+<span class="kw">module</span> <span class="nm">hbm3_axi4_if</span> #(
+    <span class="kw">parameter</span> MAX_ID = <span class="nu">8</span>   <span class="cm">// outstanding write IDs</span>
+) (
+    <span class="cm">// AXI4 global</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_aclk,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_aresetn,
+
+    <span class="cm">// AW channel (master → slave)</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_awid,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">33</span>:<span class="nu">0</span>]  i_awaddr,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_awlen,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_awvalid,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_awready,
+
+    <span class="cm">// W channel</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">255</span>:<span class="nu">0</span>] i_wdata,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">31</span>:<span class="nu">0</span>]  i_wstrb,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_wlast,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_wvalid,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_wready,
+
+    <span class="cm">// B channel</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">7</span>:<span class="nu">0</span>]   o_bid,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">1</span>:<span class="nu">0</span>]   o_bresp,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_bvalid,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_bready,
+
+    <span class="cm">// AR channel</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_arid,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">33</span>:<span class="nu">0</span>]  i_araddr,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_arlen,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_arvalid,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_arready,
+
+    <span class="cm">// R channel</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">7</span>:<span class="nu">0</span>]   o_rid,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">255</span>:<span class="nu">0</span>] o_rdata,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">1</span>:<span class="nu">0</span>]   o_rresp,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_rlast,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_rvalid,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_rready,
+
+    <span class="cm">// To HBM3 engine</span>
+    <span class="kw">output</span> <span class="kw">reg</span>          o_req_valid,
+    <span class="kw">output</span> <span class="kw">reg</span>          o_req_wr,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">33</span>:<span class="nu">0</span>]  o_req_addr,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">255</span>:<span class="nu">0</span>] o_req_data,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">31</span>:<span class="nu">0</span>]  o_req_mask,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_req_ready,
+
+    <span class="cm">// From HBM3 engine</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">255</span>:<span class="nu">0</span>] i_rd_data,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_rd_valid,
+    <span class="kw">input</span>  <span class="kw">wire</span>         i_wr_done
+);
+
+<span class="cm">// ── RESP constants ──────────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="nu">1</span>:<span class="nu">0</span>]
+    RESP_OKAY   = <span class="nu">2'b00</span>,
+    RESP_SLVERR = <span class="nu">2'b10</span>;
+
+<span class="cm">// ── Write FSM ───────────────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="nu">2</span>:<span class="nu">0</span>]
+    WS_IDLE   = <span class="nu">3'b000</span>,
+    WS_AW     = <span class="nu">3'b001</span>,  <span class="cm">// waiting for AW (W already arrived)</span>
+    WS_W      = <span class="nu">3'b010</span>,  <span class="cm">// waiting for W  (AW already arrived)</span>
+    WS_REQ    = <span class="nu">3'b011</span>,  <span class="cm">// issuing HBM3 write request</span>
+    WS_WAIT   = <span class="nu">3'b100</span>,  <span class="cm">// waiting for i_wr_done</span>
+    WS_BRESP  = <span class="nu">3'b101</span>;  <span class="cm">// B channel handshake</span>
+
+<span class="kw">reg</span> [<span class="nu">2</span>:<span class="nu">0</span>]   wr_state;
+<span class="kw">reg</span> [<span class="nu">7</span>:<span class="nu">0</span>]   r_awid;
+<span class="kw">reg</span> [<span class="nu">33</span>:<span class="nu">0</span>]  r_awaddr;
+<span class="kw">reg</span> [<span class="nu">255</span>:<span class="nu">0</span>] r_wdata;
+<span class="kw">reg</span> [<span class="nu">31</span>:<span class="nu">0</span>]  r_wstrb;
+<span class="kw">reg</span>          r_aw_got, r_w_got;
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_aclk <span class="kw">or</span> <span class="kw">negedge</span> i_aresetn) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_aresetn) <span class="kw">begin</span>
+        wr_state   <span class="kw">&lt;=</span> WS_IDLE;
+        o_awready  <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        o_wready   <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        o_bvalid   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_bid      <span class="kw">&lt;=</span> <span class="nu">8'h0</span>;
+        o_bresp    <span class="kw">&lt;=</span> RESP_OKAY;
+        o_req_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_req_wr   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_req_addr <span class="kw">&lt;=</span> <span class="nu">34'h0</span>;
+        o_req_data <span class="kw">&lt;=</span> <span class="nu">256'h0</span>;
+        o_req_mask <span class="kw">&lt;=</span> <span class="nu">32'h0</span>;
+        r_aw_got   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        r_w_got    <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+    <span class="kw">end else begin</span>
+
+        <span class="cm">// Accept AW when idle or waiting-for-AW</span>
+        <span class="kw">if</span> (i_awvalid && o_awready) <span class="kw">begin</span>
+            r_awid   <span class="kw">&lt;=</span> i_awid;
+            r_awaddr <span class="kw">&lt;=</span> i_awaddr;
+            r_aw_got <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+            o_awready <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;  <span class="cm">// close until current txn done</span>
+        <span class="kw">end</span>
+
+        <span class="cm">// Accept W when idle or waiting-for-W</span>
+        <span class="kw">if</span> (i_wvalid && o_wready) <span class="kw">begin</span>
+            r_wdata  <span class="kw">&lt;=</span> i_wdata;
+            r_wstrb  <span class="kw">&lt;=</span> i_wstrb;
+            r_w_got  <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+            o_wready  <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        <span class="kw">end</span>
+
+        <span class="kw">case</span> (wr_state)
+            WS_IDLE: <span class="kw">begin</span>
+                <span class="kw">if</span> (r_aw_got && r_w_got)
+                    wr_state <span class="kw">&lt;=</span> WS_REQ;
+            <span class="kw">end</span>
+
+            WS_REQ: <span class="kw">begin</span>
+                o_req_valid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                o_req_wr    <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                o_req_addr  <span class="kw">&lt;=</span> r_awaddr;
+                o_req_data  <span class="kw">&lt;=</span> r_wdata;
+                o_req_mask  <span class="kw">&lt;=</span> r_wstrb;
+                <span class="kw">if</span> (i_req_ready) <span class="kw">begin</span>
+                    o_req_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    wr_state    <span class="kw">&lt;=</span> WS_WAIT;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            WS_WAIT: <span class="kw">begin</span>
+                <span class="kw">if</span> (i_wr_done) <span class="kw">begin</span>
+                    o_bvalid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    o_bid    <span class="kw">&lt;=</span> r_awid;
+                    o_bresp  <span class="kw">&lt;=</span> RESP_OKAY;
+                    wr_state <span class="kw">&lt;=</span> WS_BRESP;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            WS_BRESP: <span class="kw">begin</span>
+                <span class="kw">if</span> (i_bready) <span class="kw">begin</span>
+                    o_bvalid  <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    r_aw_got  <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    r_w_got   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    o_awready <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    o_wready  <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    wr_state  <span class="kw">&lt;=</span> WS_IDLE;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            <span class="kw">default</span>: wr_state <span class="kw">&lt;=</span> WS_IDLE;
+        <span class="kw">endcase</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// ── Read FSM ────────────────────────────────────────</span>
+<span class="kw">localparam</span> [<span class="nu">1</span>:<span class="nu">0</span>]
+    RS_IDLE  = <span class="nu">2'b00</span>,
+    RS_REQ   = <span class="nu">2'b01</span>,  <span class="cm">// issuing HBM3 read request</span>
+    RS_WAIT  = <span class="nu">2'b10</span>,  <span class="cm">// waiting for i_rd_valid</span>
+    RS_RRESP = <span class="nu">2'b11</span>;  <span class="cm">// R channel handshake</span>
+
+<span class="kw">reg</span> [<span class="nu">1</span>:<span class="nu">0</span>]   rd_state;
+<span class="kw">reg</span> [<span class="nu">7</span>:<span class="nu">0</span>]   r_arid;
+<span class="kw">reg</span> [<span class="nu">33</span>:<span class="nu">0</span>]  r_araddr;
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_aclk <span class="kw">or</span> <span class="kw">negedge</span> i_aresetn) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_aresetn) <span class="kw">begin</span>
+        rd_state   <span class="kw">&lt;=</span> RS_IDLE;
+        o_arready  <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        o_rvalid   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_rlast    <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+        o_rid      <span class="kw">&lt;=</span> <span class="nu">8'h0</span>;
+        o_rdata    <span class="kw">&lt;=</span> <span class="nu">256'h0</span>;
+        o_rresp    <span class="kw">&lt;=</span> RESP_OKAY;
+    <span class="kw">end else begin</span>
+        <span class="kw">case</span> (rd_state)
+            RS_IDLE: <span class="kw">begin</span>
+                <span class="kw">if</span> (i_arvalid && o_arready) <span class="kw">begin</span>
+                    r_arid    <span class="kw">&lt;=</span> i_arid;
+                    r_araddr  <span class="kw">&lt;=</span> i_araddr;
+                    o_arready <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    rd_state  <span class="kw">&lt;=</span> RS_REQ;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            RS_REQ: <span class="kw">begin</span>
+                o_req_valid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                o_req_wr    <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                o_req_addr  <span class="kw">&lt;=</span> r_araddr;
+                o_req_data  <span class="kw">&lt;=</span> <span class="nu">256'h0</span>;
+                o_req_mask  <span class="kw">&lt;=</span> <span class="nu">32'hFFFF_FFFF</span>;
+                <span class="kw">if</span> (i_req_ready) <span class="kw">begin</span>
+                    o_req_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    rd_state    <span class="kw">&lt;=</span> RS_WAIT;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            RS_WAIT: <span class="kw">begin</span>
+                <span class="kw">if</span> (i_rd_valid) <span class="kw">begin</span>
+                    o_rdata  <span class="kw">&lt;=</span> i_rd_data;
+                    o_rid    <span class="kw">&lt;=</span> r_arid;
+                    o_rresp  <span class="kw">&lt;=</span> RESP_OKAY;
+                    o_rlast  <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    o_rvalid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    rd_state <span class="kw">&lt;=</span> RS_RRESP;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            RS_RRESP: <span class="kw">begin</span>
+                <span class="kw">if</span> (i_rready) <span class="kw">begin</span>
+                    o_rvalid  <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    o_rlast   <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+                    o_arready <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+                    rd_state  <span class="kw">&lt;=</span> RS_IDLE;
+                <span class="kw">end</span>
+            <span class="kw">end</span>
+
+            <span class="kw">default</span>: rd_state <span class="kw">&lt;=</span> RS_IDLE;
+        <span class="kw">endcase</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ── Section 9: SV Testbench ── -->
+<section>
+<h2>SystemVerilog Testbench — Write + Read + Back-to-Back</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">systemverilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// tb_hbm3_axi4_if.sv — AXI4 interface testbench</span>
+<span class="kw">`timescale</span> <span class="nu">1ns/1ps</span>
+
+<span class="kw">module</span> <span class="nm">tb_hbm3_axi4_if</span>;
+
+<span class="cm">// ── DUT signals ─────────────────────────────────────</span>
+<span class="kw">logic</span>         i_aclk, i_aresetn;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_awid;
+<span class="kw">logic</span> [<span class="nu">33</span>:<span class="nu">0</span>]  i_awaddr;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_awlen;
+<span class="kw">logic</span>         i_awvalid;
+<span class="kw">logic</span>         o_awready;
+<span class="kw">logic</span> [<span class="nu">255</span>:<span class="nu">0</span>] i_wdata;
+<span class="kw">logic</span> [<span class="nu">31</span>:<span class="nu">0</span>]  i_wstrb;
+<span class="kw">logic</span>         i_wlast, i_wvalid;
+<span class="kw">logic</span>         o_wready;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   o_bid;
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]   o_bresp;
+<span class="kw">logic</span>         o_bvalid;
+<span class="kw">logic</span>         i_bready;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_arid;
+<span class="kw">logic</span> [<span class="nu">33</span>:<span class="nu">0</span>]  i_araddr;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_arlen;
+<span class="kw">logic</span>         i_arvalid;
+<span class="kw">logic</span>         o_arready;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   o_rid;
+<span class="kw">logic</span> [<span class="nu">255</span>:<span class="nu">0</span>] o_rdata;
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]   o_rresp;
+<span class="kw">logic</span>         o_rlast, o_rvalid;
+<span class="kw">logic</span>         i_rready;
+<span class="cm">// HBM3 engine side</span>
+<span class="kw">logic</span>         o_req_valid, o_req_wr;
+<span class="kw">logic</span> [<span class="nu">33</span>:<span class="nu">0</span>]  o_req_addr;
+<span class="kw">logic</span> [<span class="nu">255</span>:<span class="nu">0</span>] o_req_data;
+<span class="kw">logic</span> [<span class="nu">31</span>:<span class="nu">0</span>]  o_req_mask;
+<span class="kw">logic</span>         i_req_ready;
+<span class="kw">logic</span> [<span class="nu">255</span>:<span class="nu">0</span>] i_rd_data;
+<span class="kw">logic</span>         i_rd_valid, i_wr_done;
+
+<span class="kw">hbm3_axi4_if</span> dut (.*);
+
+<span class="cm">// ── Clock 500 MHz ────────────────────────────────────</span>
+<span class="kw">initial</span> i_aclk = <span class="nu">0</span>;
+<span class="kw">always</span> #<span class="nu">1</span> i_aclk = ~i_aclk;
+
+<span class="cm">// ── SVA: BVALID must deassert after BREADY ───────────</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_aclk) <span class="kw">disable iff</span> (!i_aresetn)
+    (o_bvalid && i_bready) |=> !o_bvalid)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"BVALID not deasserted after BREADY at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── SVA: RVALID must deassert after RREADY ───────────</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_aclk) <span class="kw">disable iff</span> (!i_aresetn)
+    (o_rvalid && i_rready) |=> !o_rvalid)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"RVALID not deasserted after RREADY at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── SVA: AWREADY stable until handshake ──────────────</span>
+<span class="pp">assert property</span> (@(<span class="kw">posedge</span> i_aclk) <span class="kw">disable iff</span> (!i_aresetn)
+    (i_awvalid && !o_awready) |=> i_awvalid)
+<span class="kw">else</span> $<span class="nm">error</span>(<span class="st">"Master dropped AWVALID before handshake at %0t"</span>, $<span class="nm">time</span>);
+
+<span class="cm">// ── HBM3 model: accept request after 1 cycle ─────────</span>
+<span class="kw">initial</span> i_req_ready = <span class="nu">0</span>;
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_aclk) <span class="kw">begin</span>
+    i_req_ready <span class="kw">&lt;=</span> o_req_valid;  <span class="cm">// 1-cycle latency accept</span>
+<span class="kw">end</span>
+
+<span class="cm">// ── HBM3 model: return write done / read data ────────</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_aclk) <span class="kw">begin</span>
+    i_wr_done  <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+    i_rd_valid <span class="kw">&lt;=</span> <span class="nu">1'b0</span>;
+    i_rd_data  <span class="kw">&lt;=</span> <span class="nu">256'h0</span>;
+    <span class="kw">if</span> (i_req_ready && o_req_valid) <span class="kw">begin</span>
+        <span class="kw">if</span> (o_req_wr) <span class="kw">begin</span>
+            repeat(<span class="nu">3</span>) @(<span class="kw">posedge</span> i_aclk);
+            i_wr_done <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        <span class="kw">end else begin</span>
+            repeat(<span class="nu">5</span>) @(<span class="kw">posedge</span> i_aclk);
+            i_rd_data  <span class="kw">&lt;=</span> <span class="nu">256'hDEADBEEF_CAFEBABE_12345678_ABCDEF01_</span>
+                           <span class="nu">FEEDFACE_BAADF00D_DEADC0DE_0BADF00D</span>;
+            i_rd_valid <span class="kw">&lt;=</span> <span class="nu">1'b1</span>;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">task automatic</span> axi4_write(
+    <span class="kw">input</span> [<span class="nu">7</span>:<span class="nu">0</span>]   id,
+    <span class="kw">input</span> [<span class="nu">33</span>:<span class="nu">0</span>]  addr,
+    <span class="kw">input</span> [<span class="nu">255</span>:<span class="nu">0</span>] data
+);
+    <span class="cm">// AW channel</span>
+    @(<span class="kw">posedge</span> i_aclk);
+    i_awid    = id;
+    i_awaddr  = addr;
+    i_awlen   = <span class="nu">8'h00</span>;
+    i_awvalid = <span class="nu">1'b1</span>;
+    <span class="cm">// W channel (same cycle)</span>
+    i_wdata   = data;
+    i_wstrb   = <span class="nu">32'hFFFF_FFFF</span>;
+    i_wlast   = <span class="nu">1'b1</span>;
+    i_wvalid  = <span class="nu">1'b1</span>;
+    @(<span class="kw">posedge</span> i_aclk iff (o_awready && o_wready));
+    i_awvalid = <span class="nu">1'b0</span>;
+    i_wvalid  = <span class="nu">1'b0</span>;
+    <span class="cm">// B channel</span>
+    i_bready  = <span class="nu">1'b1</span>;
+    @(<span class="kw">posedge</span> i_aclk iff o_bvalid);
+    $<span class="nm">display</span>(<span class="st">"[%0t] WRITE DONE id=%0h addr=%0h bresp=%0b"</span>,
+             $<span class="nm">time</span>, o_bid, addr, o_bresp);
+    @(<span class="kw">posedge</span> i_aclk);
+    i_bready  = <span class="nu">1'b0</span>;
+<span class="kw">endtask</span>
+
+<span class="kw">task automatic</span> axi4_read(
+    <span class="kw">input</span> [<span class="nu">7</span>:<span class="nu">0</span>]  id,
+    <span class="kw">input</span> [<span class="nu">33</span>:<span class="nu">0</span>] addr
+);
+    @(<span class="kw">posedge</span> i_aclk);
+    i_arid    = id;
+    i_araddr  = addr;
+    i_arlen   = <span class="nu">8'h00</span>;
+    i_arvalid = <span class="nu">1'b1</span>;
+    @(<span class="kw">posedge</span> i_aclk iff o_arready);
+    i_arvalid = <span class="nu">1'b0</span>;
+    i_rready  = <span class="nu">1'b1</span>;
+    @(<span class="kw">posedge</span> i_aclk iff o_rvalid);
+    $<span class="nm">display</span>(<span class="st">"[%0t] READ DONE id=%0h data=%0h rresp=%0b"</span>,
+             $<span class="nm">time</span>, o_rid, o_rdata, o_rresp);
+    @(<span class="kw">posedge</span> i_aclk);
+    i_rready  = <span class="nu">1'b0</span>;
+<span class="kw">endtask</span>
+
+<span class="kw">initial</span> <span class="kw">begin</span>
+    {i_awvalid,i_wvalid,i_arvalid,i_bready,i_rready} = <span class="nu">5'h0</span>;
+    i_aresetn = <span class="nu">0</span>;
+    repeat(<span class="nu">4</span>) @(<span class="kw">posedge</span> i_aclk);
+    i_aresetn = <span class="nu">1</span>;
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_aclk);
+
+    $<span class="nm">display</span>(<span class="st">"=== TEST 1: AXI4 Write ==="</span>);
+    axi4_write(<span class="nu">8'h05</span>, <span class="nu">34'h1000</span>, <span class="nu">256'hA5A5A5A5</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_aclk);
+
+    $<span class="nm">display</span>(<span class="st">"=== TEST 2: AXI4 Read ==="</span>);
+    axi4_read(<span class="nu">8'h07</span>, <span class="nu">34'h1000</span>);
+
+    repeat(<span class="nu">2</span>) @(<span class="kw">posedge</span> i_aclk);
+
+    $<span class="nm">display</span>(<span class="st">"=== TEST 3: Back-to-back Write then Read ==="</span>);
+    axi4_write(<span class="nu">8'h01</span>, <span class="nu">34'h2000</span>, <span class="nu">256'hDEADBEEF</span>);
+    axi4_read (<span class="nu">8'h02</span>, <span class="nu">34'h2000</span>);
+
+    repeat(<span class="nu">4</span>) @(<span class="kw">posedge</span> i_aclk);
+    $<span class="nm">display</span>(<span class="st">"=== ALL AXI4 TESTS PASSED ==="</span>);
+    $<span class="nm">finish</span>;
+<span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ── Section 10: AXI4 Signal Table ── -->
+<section>
+<h2>AXI4 Signal Reference Table</h2>
+<table>
+  <tr><th>Signal</th><th>Channel</th><th>Dir (M→S)</th><th>Width</th><th>Description</th></tr>
+  <tr><td>i_awid</td><td>AW</td><td>In</td><td>8</td><td>Write address ID tag</td></tr>
+  <tr><td>i_awaddr</td><td>AW</td><td>In</td><td>34</td><td>Write address (byte-addressed, 16 GB HBM3 space)</td></tr>
+  <tr><td>i_awlen</td><td>AW</td><td>In</td><td>8</td><td>Burst length minus 1 (0=single beat)</td></tr>
+  <tr><td>i_awvalid</td><td>AW</td><td>In</td><td>1</td><td>AW channel valid</td></tr>
+  <tr><td>o_awready</td><td>AW</td><td>Out</td><td>1</td><td>AW channel ready (slave can accept)</td></tr>
+  <tr><td>i_wdata</td><td>W</td><td>In</td><td>256</td><td>Write data (2 pseudo-channels × 128 bits)</td></tr>
+  <tr><td>i_wstrb</td><td>W</td><td>In</td><td>32</td><td>Write byte enables (1 bit per byte)</td></tr>
+  <tr><td>i_wlast</td><td>W</td><td>In</td><td>1</td><td>Last beat of burst (always 1 for AWLEN=0)</td></tr>
+  <tr><td>i_wvalid</td><td>W</td><td>In</td><td>1</td><td>W channel valid</td></tr>
+  <tr><td>o_wready</td><td>W</td><td>Out</td><td>1</td><td>W channel ready</td></tr>
+  <tr><td>o_bid</td><td>B</td><td>Out</td><td>8</td><td>Write response ID (echoes AWID)</td></tr>
+  <tr><td>o_bresp</td><td>B</td><td>Out</td><td>2</td><td>Write response status (00=OKAY, 10=SLVERR)</td></tr>
+  <tr><td>o_bvalid</td><td>B</td><td>Out</td><td>1</td><td>B channel valid</td></tr>
+  <tr><td>i_bready</td><td>B</td><td>In</td><td>1</td><td>Master ready to accept B response</td></tr>
+  <tr><td>i_arid</td><td>AR</td><td>In</td><td>8</td><td>Read address ID tag</td></tr>
+  <tr><td>i_araddr</td><td>AR</td><td>In</td><td>34</td><td>Read address</td></tr>
+  <tr><td>i_arlen</td><td>AR</td><td>In</td><td>8</td><td>Burst length minus 1</td></tr>
+  <tr><td>i_arvalid</td><td>AR</td><td>In</td><td>1</td><td>AR channel valid</td></tr>
+  <tr><td>o_arready</td><td>AR</td><td>Out</td><td>1</td><td>AR channel ready</td></tr>
+  <tr><td>o_rid</td><td>R</td><td>Out</td><td>8</td><td>Read data ID (echoes ARID)</td></tr>
+  <tr><td>o_rdata</td><td>R</td><td>Out</td><td>256</td><td>Read data from HBM3</td></tr>
+  <tr><td>o_rresp</td><td>R</td><td>Out</td><td>2</td><td>Read response status</td></tr>
+  <tr><td>o_rlast</td><td>R</td><td>Out</td><td>1</td><td>Last data beat (always 1 for ARLEN=0)</td></tr>
+  <tr><td>o_rvalid</td><td>R</td><td>Out</td><td>1</td><td>R channel valid</td></tr>
+  <tr><td>i_rready</td><td>R</td><td>In</td><td>1</td><td>Master ready to accept read data</td></tr>
+</table>
+</section>
+
+<!-- ── Section 11: FAQ ── -->
+<section>
+<h2>FAQ</h2>
+<div class="faq">
+  <details open>
+    <summary>What are the five AXI4 channels and what does each carry?</summary>
+    <p>AXI4 has five independent channels, each with its own VALID/READY handshake: <strong>AW</strong> (Write Address: ID, address, burst length/size/type), <strong>W</strong> (Write Data: 256-bit data, 32 byte enables, WLAST), <strong>B</strong> (Write Response: BID, BRESP status), <strong>AR</strong> (Read Address: same fields as AW), and <strong>R</strong> (Read Data: RID, RDATA, RRESP, RLAST). The channels are fully independent — data may flow before or after the address.</p>
+  </details>
+  <details>
+    <summary>Why does the AXI4 slave need to track outstanding transaction IDs?</summary>
+    <p>AXI4 allows multiple in-flight transactions identified by ID. The slave must capture the AWID/ARID at the handshake and return the same value in BID/RID on the response channel. Without ID tracking, a master issuing two writes simultaneously would not know which response corresponds to which request. Our module stores AWID in r_awid and echoes it as o_bid after i_wr_done.</p>
+  </details>
+  <details>
+    <summary>What is the AWREADY / ARREADY handshake rule in AXI4?</summary>
+    <p>A transfer occurs on the rising edge where both VALID and READY are simultaneously high. The master holds AWVALID (and address signals) stable until it sees AWREADY. The slave asserts AWREADY when it can accept a new transaction. The slave may assert AWREADY before AWVALID as a "pre-ready" for zero-wait-state operation — our module does this on reset to allow immediate acceptance of the first transaction.</p>
+  </details>
+  <details>
+    <summary>What does BRESP=2'b10 (SLVERR) mean in the AXI4 + HBM3 context?</summary>
+    <p>SLVERR signals that the slave accepted the transaction but encountered an error during execution. In an HBM3 context this includes: HBM3 ECC uncorrectable error, write to a locked/protected region, unsupported AWLEN (non-zero burst), or internal timeout waiting for i_wr_done. The master's error handler must decide whether to retry, abort, or report the fault. Our current module always returns OKAY — SLVERR is the first production enhancement.</p>
+  </details>
+  <details>
+    <summary>Why is AWLEN=0 used for HBM3 in this module?</summary>
+    <p>HBM3's natural access unit is BL4 per pseudo-channel: 4 × 32-bit = 128 bits per PC × 2 PCs = 256 bits total. This fits exactly in one AXI4 beat at AWSIZE=5 (32 bytes). AWLEN=0 means a 1-beat burst, creating a clean 1:1 mapping between AXI4 transactions and HBM3 accesses. Longer bursts (AWLEN &gt; 0) would require a burst splitter that issues multiple sequential HBM3 requests — a logical extension for a future module.</p>
+  </details>
+</div>
+</section>
+
+<!-- ── Prev/Next ── -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/ca-bus/">&#8592; Module 11 — CA Bus Controller</a>
+  <a class="nav-pill" href="/hbm3-controller/phy-model/">Module 13 — PHY Model &#8594;</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot;
+    <a href="/about/">About</a> &middot;
+    <a href="/privacy/">Privacy</a> &middot;
+    <a href="/contact/">Contact</a>
+  </p>
+  <p style="margin-top:.4rem"><a href="/hbm3-controller/">HBM3 Controller Series</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="https://ecrionix.org">ecrionix.org</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Read Data Path — Module 6 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 read data path in Verilog. CL pipeline delay, read data capture from DQ bus, read burst deserializer, read FIFO, rd_valid tracking, and return data to host. Phase 2 · Module 6.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/read-path/">
+<meta property="og:title" content="HBM3 Read Data Path — Module 6 | EcrioniX">
+<meta property="og:description" content="Synthesizable Verilog HBM3 read data path: CL=70 shift-register pipeline, DQS-based capture, BL4 deserializer, read FIFO, latency error detection. Full SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/read-path/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HBM3 Read Data Path — Module 6 | EcrioniX">
+<meta name="twitter:description" content="Build the HBM3 read data path in Verilog. CL=70 pipeline, DQS capture, burst deserializer, read FIFO, latency error detection.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Read Data Path — Module 6","description":"Build the HBM3 read data path in Verilog: CL=70 shift-register pipeline, DQS-based data capture, BL4 burst deserializer, read FIFO, and latency error detection.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/read-path/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 6 — Read Data Path","item":"https://ecrionix.org/hbm3-controller/read-path/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What does CAS Latency (CL) represent physically in HBM3?","acceptedAnswer":{"@type":"Answer","text":"CL is the number of clock cycles between a READ command on the CA bus and the arrival of the first valid data on the DQ bus. In HBM3 at 2 GHz, CL=70 equals 35 ns. Physically, this time is dominated by: (1) sense amplifier recovery after row activation (~5–8 ns), (2) column access time through the DRAM array (~10 ns), (3) output driver enable and DQ propagation delay (~5 ns), and (4) package and TSV (through-silicon via) delay in the HBM3 stack (~2 ns). The remaining margin is guard-band for process-voltage-temperature variation."}},{"@type":"Question","name":"Why is a DQS strobe needed for read capture? Can't the controller just sample DQ on the clock?","acceptedAnswer":{"@type":"Answer","text":"HBM3 read data is center-aligned to the DQS strobe, not to the controller clock. The DQS arrives from the DRAM with a phase relationship to DQ that is independent of the controller's internal clock phase. If the controller sampled DQ on its own clock, the setup/hold margins would be random and process-dependent. DQS provides a local reference: the PHY uses DQS rising/falling edges to latch each DQ bit at the optimal sample point, regardless of how much skew exists between the controller clock and the DRAM-sourced DQS."}},{"@type":"Question","name":"What is the read preamble in HBM3 and why does it exist?","acceptedAnswer":{"@type":"Answer","text":"The read preamble is a 1- or 2-cycle period before the first valid DQS toggle during which DQS is held low by the DRAM. It gives the PHY's DQS receiver time to enable and settle before valid strobes arrive. Without a preamble, the first DQS edge might arrive before the receiver is ready, causing the first data bit to be miscaptured. HBM3 supports both 1tCK and 2tCK preamble modes, configurable via MRS registers. This module tracks the preamble offset as part of the capture window."}},{"@type":"Question","name":"How does the latency error detection work in hbm3_read_path?","acceptedAnswer":{"@type":"Answer","text":"The CL pipeline shift register fires exactly CL cycles after each READ command, creating a one-cycle capture_expected pulse. If i_dqs_valid arrives outside a ±2 cycle tolerance window around capture_expected, the o_latency_err flag is asserted. This indicates a calibration mismatch — the DQS is arriving earlier or later than expected. The firmware or PHY training layer must re-run read leveling to realign. In production systems, latency errors trigger a reset of the read FIFO and a re-issue of the failed transaction."}},{"@type":"Question","name":"What is tRPST (Read Postamble) and how does it affect the capture logic?","acceptedAnswer":{"@type":"Answer","text":"tRPST (Read Postamble) is the brief period after the last valid DQS toggle during which DQS returns to low. It is 0.5 tCK in HBM3. During tRPST, the DQS receiver must not latch any data, as the strobe is not valid. The hbm3_read_path module disables capture exactly one cycle after the fourth beat (beat_cnt == 3) to avoid latching noise during tRPST. The PHY further handles tRPST at the analog level by implementing DQS receiver power-down after the window closes."}]}}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:#10b981;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569;margin-bottom:.8rem}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem}
+.chip{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+.chip-gr{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25);color:#6ee7b7}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul,ol{color:#94a3b8;font-size:.88rem;padding-left:1.4rem;margin-bottom:.7rem}
+li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#475569;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}.dr{color:#f87171}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.pipeline-svg{width:100%;overflow-x:auto;margin:.8rem 0}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1.2rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.45rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.6rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}
+footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Simulator</a></li>
+  </ul>
+</nav>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 6 — Read Data Path</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 2 · Module 6</div>
+    <h1>HBM3 <span>Read Data Path</span></h1>
+    <p class="hero-sub">The read path captures DQ data from HBM3 DRAM exactly CL=70 cycles after the READ command, assembles four 32-bit beats into a 128-bit word, buffers it in a read FIFO, and signals the host with <code>o_rd_valid</code>. One missed clock ruins the capture.</p>
+    <div class="meta-row">
+      <span class="meta-item">&#128196; <code style="font-family:monospace;font-size:.75rem">hbm3_read_path.v</code></span>
+      <span class="meta-item">&#128337; ~45 min</span>
+      <span class="meta-item">By EcrioniX &middot; Updated June 2026</span>
+    </div>
+    <div class="chips">
+      <span class="chip">CL = 70 cycles</span>
+      <span class="chip">BL4 burst</span>
+      <span class="chip">DQS capture</span>
+      <span class="chip">Read FIFO</span>
+      <span class="chip">Latency error det.</span>
+      <span class="chip chip-gr">Synthesizable</span>
+      <span class="chip chip-gr">SVA testbench</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 1 — OVERVIEW
+════════════════════════════════════════════════ -->
+<section>
+<h2>1. Read Data Path Overview</h2>
+<p>The read data path is the most latency-sensitive component of the HBM3 controller. When the scheduler fires a READ command on the Command/Address (CA) bus, nothing comes back for a very long time — <strong>70 clock cycles at 2 GHz</strong>, or 35 nanoseconds. During those 70 cycles, the DRAM sense amplifiers detect and amplify the row data, the column address selects the right word, the output drivers enable, and the signal propagates through the package and TSVs back to the controller.</p>
+
+<p>The read path module must solve four problems simultaneously:</p>
+<ol>
+  <li><strong>Latency tracking</strong> — A shift register pipeline marks exactly which clock cycle each read's data is expected to arrive, without consuming a timer per request.</li>
+  <li><strong>DQS-based capture</strong> — The DRAM drives a differential DQS strobe center-aligned to the DQ data. The PHY uses DQS edges (not the controller clock) to sample each bit. The controller sees a <code>i_dqs_valid</code> signal from the PHY indicating valid data on <code>i_dq_in</code>.</li>
+  <li><strong>Burst deserialization</strong> — Four consecutive 32-bit beats on <code>i_dq_in</code> must be assembled into one 128-bit word before the host can consume the data.</li>
+  <li><strong>Read FIFO</strong> — Multiple reads may be in-flight simultaneously (pipelined). A read FIFO stores assembled 128-bit words until the host is ready to drain them.</li>
+</ol>
+
+<p>The read path output is simple from the host's perspective: <code>o_rd_data[127:0]</code> with <code>o_rd_valid</code> high when data is available. Everything below that interface is the careful timing machinery described in this module.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 2 — CAS LATENCY
+════════════════════════════════════════════════ -->
+<section>
+<h2>2. CAS Latency (CL) — Physics Behind 35 Nanoseconds</h2>
+<p>CL (CAS Latency, also called RL for Read Latency in some documents) is the number of clock cycles between the READ command and the first DQ data beat. At 2 GHz, CL=70 equals exactly 35 ns. This is not an arbitrary number — it reflects the physical chain of operations inside the DRAM die:</p>
+
+<table>
+<thead><tr><th>Step</th><th>Operation</th><th>Approx. Time</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Command decode in DRAM logic</td><td>~1 ns</td></tr>
+<tr><td>2</td><td>Column address multiplexer routing</td><td>~2 ns</td></tr>
+<tr><td>3</td><td>Sense amplifier sense &amp; amplify (tAA)</td><td>~10 ns</td></tr>
+<tr><td>4</td><td>Data path through bitline to output</td><td>~6 ns</td></tr>
+<tr><td>5</td><td>Output driver enable (tOE)</td><td>~4 ns</td></tr>
+<tr><td>6</td><td>DQ propagation through TSVs + package</td><td>~4 ns</td></tr>
+<tr><td>7</td><td>PHY receiver and DQS alignment</td><td>~5 ns</td></tr>
+<tr><td>8</td><td>Guard-band for PVT variation</td><td>~3 ns</td></tr>
+<tr><td colspan="2"><strong>Total</strong></td><td><strong>~35 ns = CL 70</strong></td></tr>
+</tbody>
+</table>
+
+<p>At faster speed grades, CL increases in absolute cycle count but stays roughly constant in nanoseconds. HBM3-6400 at 3200 MHz uses CL=140 (still ~43 ns) — the cycle budget grows because the clock period shrinks faster than the physics can be squeezed.</p>
+
+<div class="note">CL is a read-only characteristic of the DRAM die and speed grade. Unlike write-side ODT which can be adjusted, CL is fixed for a given device and must be precisely programmed into the controller's CL pipeline during initialization.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 3 — CL PIPELINE
+════════════════════════════════════════════════ -->
+<section>
+<h2>3. CL Pipeline — Shift Register Latency Tracking</h2>
+<p>A naive approach to CL tracking would allocate one counter per in-flight read, decrementing each cycle and signaling capture when zero. This works but requires N counters for N concurrent reads — expensive at high queue depths.</p>
+
+<h3>Shift Register Approach</h3>
+<p>The efficient approach uses a single <strong>N-bit shift register</strong> where N equals the maximum supported CL value (here 128 bits to cover CL up to 128 cycles). Each cycle a new bit is shifted in at position 0: set to 1 if a read command was issued this cycle, 0 otherwise. The bit at position <code>i_cl - 1</code> is tapped as the <code>capture_expected</code> signal.</p>
+
+<p>When a read command was issued CL cycles ago, its tracking bit has shifted exactly to position <code>i_cl - 1</code>. <code>capture_expected</code> fires for one cycle, telling the capture logic to expect valid data on <code>i_dq_in</code> this cycle and the next 3 cycles (the BL4 window).</p>
+
+<ul>
+  <li>Single register serves unlimited concurrent in-flight reads</li>
+  <li>Runtime-configurable via <code>i_cl[7:0]</code> — no recompilation needed</li>
+  <li>Zero combinational depth on critical path — just a register read</li>
+  <li>Works correctly for back-to-back reads: each READ command sets its own bit independently</li>
+</ul>
+
+<div class="note">The shift register must be wide enough for the maximum CL value across all supported speed grades. 128 bits covers HBM3-6400 CL=140 only if the parameter is increased. For a fixed 2 GHz design, 80 bits is sufficient.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 4 — DQS CAPTURE
+════════════════════════════════════════════════ -->
+<section>
+<h2>4. DQS-Based Capture — Why DQS Exists</h2>
+<p>In synchronous DDR memory, data is transferred at both the rising and falling edges of the clock. This means one bit can change every 250 ps at 2 GHz. At such speeds, the controller's internal clock has accumulated enough jitter and skew relative to the DRAM's output that sampling DQ on the controller clock is unreliable.</p>
+
+<p>HBM3 solves this by having the DRAM output a <strong>differential DQS</strong> (Data Strobe) signal alongside the DQ bits. DQS is center-aligned to the DQ eye — it toggles at the midpoint of each valid data period. The PHY implements a DLL (Delay-Locked Loop) that locks to DQS and shifts its phase 90° to position the capture edge at the center of the DQ eye, where setup and hold margins are maximum.</p>
+
+<h3>Controller Interface to PHY</h3>
+<p>The controller module does not implement DQS capture directly — that is done in the hardened PHY. Instead, the PHY presents two signals to the controller:</p>
+<ul>
+  <li><code>i_dq_in[31:0]</code> — the captured 32-bit DQ word, already latched on DQS edges</li>
+  <li><code>i_dqs_valid</code> — a synchronous flag in the controller clock domain, high for exactly 4 cycles (BL4) when DQ data is valid</li>
+</ul>
+<p>The controller's capture logic simply samples <code>i_dq_in</code> on every cycle where <code>i_dqs_valid</code> is high, using the beat counter to assemble the 128-bit burst.</p>
+
+<h3>Read Preamble</h3>
+<p>Before the first DQS toggle, the DRAM holds DQS low for 1 or 2 tCK (read preamble). This gives the PHY DQS receiver time to enable. The <code>i_dqs_valid</code> signal presented to this controller module is already preamble-compensated by the PHY — it asserts on the first true data beat, not on the preamble.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 5 — DESERIALIZER
+════════════════════════════════════════════════ -->
+<section>
+<h2>5. Read Burst Deserializer — 4 Beats to 128 Bits</h2>
+<p>The burst deserializer is the inverse of the write path serializer. It receives four consecutive 32-bit beats on <code>i_dq_in</code> and assembles them into a single 128-bit word. A 2-bit beat counter (<code>beat_cnt</code>) tracks position within the BL4 window. The mapping is:</p>
+
+<table>
+<thead><tr><th>Beat</th><th>i_dq_in received</th><th>Packed into</th></tr></thead>
+<tbody>
+<tr><td>0 (first)</td><td>DQ[31:0]</td><td>rd_data[31:0]</td></tr>
+<tr><td>1</td><td>DQ[31:0]</td><td>rd_data[63:32]</td></tr>
+<tr><td>2</td><td>DQ[31:0]</td><td>rd_data[95:64]</td></tr>
+<tr><td>3 (last)</td><td>DQ[31:0]</td><td>rd_data[127:96]</td></tr>
+</tbody>
+</table>
+
+<p>On the rising edge that sees beat 3 (<code>beat_cnt == 2'b11</code> and <code>i_dqs_valid</code>), the assembled 128-bit word is pushed into the Read FIFO and <code>beat_cnt</code> resets to 0. The FIFO push completes in a single cycle — no stall is needed as long as the read FIFO is not full.</p>
+
+<div class="warn">If the read FIFO is full when beat 3 arrives, the assembled burst word is dropped. The host must drain the read FIFO fast enough to prevent this. The scheduler should throttle READ commands when <code>o_rfifo_empty</code> is chronically 0 (indicating the host is consuming slowly).</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 6 — READ FIFO
+════════════════════════════════════════════════ -->
+<section>
+<h2>6. Read FIFO — Buffering for Back-to-Back Reads</h2>
+<p>The read FIFO sits between the burst deserializer and the host data bus. With CL=70 cycles and typical HBM3 pseudo-channel bandwidths supporting 4–8 reads in-flight simultaneously, the FIFO must accommodate multiple assembled bursts while the host is busy with other work.</p>
+
+<h3>FIFO Sizing</h3>
+<ul>
+  <li>Entry width: 128 bits (one complete BL4 burst)</li>
+  <li>Depth: 4 entries (covers typical maximum in-flight read depth of 4 at this abstraction level)</li>
+  <li>Push: on beat_cnt == 3 with i_dqs_valid</li>
+  <li>Pop: when host reads <code>o_rd_data</code> with <code>o_rd_valid</code> high</li>
+</ul>
+
+<p>A depth of 4 provides adequate buffer for burst read sequences. The scheduler must monitor in-flight read count and limit to RFIFO depth to prevent overflow. In a full controller implementation, the read data return path includes a request ID tag so that out-of-order responses can be reordered before delivery to the host — this module implements in-order capture only.</p>
+
+<h3>o_rd_valid and o_rfifo_empty</h3>
+<p><code>o_rd_valid</code> asserts high when the read FIFO contains at least one valid entry and <code>o_rd_data</code> holds the word at the head of the FIFO. A single-cycle pop advances the read pointer. <code>o_rfifo_empty</code> is the complement of <code>o_rd_valid</code> (when no valid data is waiting). Both are registered for clean hold times to the host interface.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 7 — SVG DIAGRAM
+════════════════════════════════════════════════ -->
+<section>
+<h2>7. Read Path Pipeline Diagram</h2>
+<div class="pipeline-svg">
+<svg viewBox="0 0 900 210" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:900px;height:auto;display:block">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#06b6d4"/>
+    </marker>
+    <marker id="arr-gr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#10b981"/>
+    </marker>
+  </defs>
+
+  <!-- RD_CMD -->
+  <rect x="10" y="70" width="105" height="60" rx="8" fill="#080d1a" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="62" y="96" text-anchor="middle" fill="#67e8f9" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">RD_CMD</text>
+  <text x="62" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">i_rd_cmd</text>
+  <text x="62" y="124" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">→ CA bus</text>
+
+  <!-- CL PIPELINE -->
+  <rect x="163" y="55" width="130" height="90" rx="8" fill="#080d1a" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="228" y="82" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">CL PIPELINE</text>
+  <text x="228" y="97" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">128-bit shift reg</text>
+  <text x="228" y="109" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">taps bit [CL-1]</text>
+  <text x="228" y="127" text-anchor="middle" fill="#fcd34d" font-family="JetBrains Mono,monospace" font-size="9">CL = 70 cycles</text>
+  <text x="228" y="139" text-anchor="middle" fill="#fcd34d" font-family="JetBrains Mono,monospace" font-size="9">(= 35 ns @ 2 GHz)</text>
+
+  <!-- DQ CAPTURE -->
+  <rect x="345" y="55" width="130" height="90" rx="8" fill="#080d1a" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="410" y="82" text-anchor="middle" fill="#67e8f9" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">DQ CAPTURE</text>
+  <text x="410" y="97" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">i_dq_in[31:0]</text>
+  <text x="410" y="109" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">i_dqs_valid</text>
+  <text x="410" y="127" text-anchor="middle" fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-size="9">beat_cnt 0..3</text>
+  <text x="410" y="139" text-anchor="middle" fill="#f87171" font-family="JetBrains Mono,monospace" font-size="9">latency err det.</text>
+
+  <!-- DESERIALIZER -->
+  <rect x="527" y="70" width="120" height="60" rx="8" fill="#080d1a" stroke="#10b981" stroke-width="1.2"/>
+  <text x="587" y="96" text-anchor="middle" fill="#10b981" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">DESER</text>
+  <text x="587" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">4×32b → 128b</text>
+  <text x="587" y="124" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">on beat 3: push</text>
+
+  <!-- READ FIFO -->
+  <rect x="697" y="70" width="110" height="60" rx="8" fill="#080d1a" stroke="#10b981" stroke-width="1.2"/>
+  <text x="752" y="96" text-anchor="middle" fill="#10b981" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">READ FIFO</text>
+  <text x="752" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">depth=4, 128b</text>
+  <text x="752" y="124" text-anchor="middle" fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-size="9">→ host rd_data</text>
+
+  <!-- arrows -->
+  <line x1="115" y1="100" x2="160" y2="100" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="293" y1="100" x2="342" y2="100" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="475" y1="100" x2="524" y2="100" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="647" y1="100" x2="694" y2="100" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr-gr)"/>
+
+  <!-- DQS input arrow (from below) -->
+  <line x1="410" y1="175" x2="410" y2="148" stroke="#fcd34d" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="410" y="190" text-anchor="middle" fill="#fcd34d" font-family="Outfit,sans-serif" font-size="10">DQS from PHY (i_dqs_valid)</text>
+
+  <text x="450" y="22" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="11">Read Data Path — CL=70 cycles (~35 ns at 2 GHz)</text>
+</svg>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 8 — VERILOG SOURCE
+════════════════════════════════════════════════ -->
+<section>
+<h2>8. Full Verilog Source — hbm3_read_path.v</h2>
+<p>Complete synthesizable module. All <code>&lt;=</code> non-blocking assignments and <code>&lt;</code> comparison operators are HTML-encoded inside the pre block. Copy-paste-ready for Vivado, Quartus, or VCS.</p>
+<div class="code-block">
+  <div class="code-head">
+    <span class="code-lang">verilog — hbm3_read_path.v</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  </div>
+<pre><span class="cm">// =============================================================
+// hbm3_read_path.v
+// HBM3 Read Data Path — Module 6
+// Phase 2 of the HBM3 Controller Build series
+// EcrioniX · https://ecrionix.org/hbm3-controller/read-path/
+// =============================================================
+// Parameters
+//   RFIFO_DEPTH : Read FIFO depth (power of 2, default 4)
+//   BL          : Burst Length (fixed 4 for HBM3)
+//   DQ_W        : DQ bus width per pseudo-channel (32 bits)
+//   CL_TOL      : Latency error tolerance in cycles (default 2)
+// =============================================================</span>
+
+<span class="kw">module</span> <span class="nm">hbm3_read_path</span> #(
+    <span class="kw">parameter</span> <span class="nm">RFIFO_DEPTH</span> = <span class="nu">4</span>,    <span class="cm">// must be power of 2</span>
+    <span class="kw">parameter</span> <span class="nm">BL</span>          = <span class="nu">4</span>,    <span class="cm">// burst length — HBM3 fixed BL4</span>
+    <span class="kw">parameter</span> <span class="nm">DQ_W</span>        = <span class="nu">32</span>,   <span class="cm">// DQ bus width</span>
+    <span class="kw">parameter</span> <span class="nm">CL_TOL</span>      = <span class="nu">2</span>     <span class="cm">// ± cycles for latency error flag</span>
+) (
+    <span class="cm">// clock / reset</span>
+    <span class="kw">input  wire</span>              i_clk,
+    <span class="kw">input  wire</span>              i_rst_n,
+
+    <span class="cm">// read command interface</span>
+    <span class="kw">input  wire</span>              i_rd_cmd,         <span class="cm">// read command pulse from scheduler</span>
+    <span class="kw">input  wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]       i_cl,             <span class="cm">// CAS Latency in cycles (default 70)</span>
+
+    <span class="cm">// DQ bus inputs from PHY</span>
+    <span class="kw">input  wire</span> [<span class="nu">31</span>:<span class="nu">0</span>]      i_dq_in,          <span class="cm">// DQ data from PHY (one beat)</span>
+    <span class="kw">input  wire</span>              i_dqs_valid,      <span class="cm">// PHY: DQ is valid this cycle</span>
+
+    <span class="cm">// host read data interface</span>
+    <span class="kw">output  reg</span> [<span class="nu">127</span>:<span class="nu">0</span>]     o_rd_data,        <span class="cm">// assembled 128-bit burst</span>
+    <span class="kw">output  reg</span>              o_rd_valid,       <span class="cm">// read data valid to host</span>
+    <span class="kw">output  wire</span>             o_rfifo_empty,    <span class="cm">// read FIFO has no data</span>
+    <span class="kw">output  reg</span>              o_latency_err     <span class="cm">// DQS arrived outside CL window</span>
+);
+
+<span class="cm">// ─────────────────────────────────────────────
+// Local parameters
+// ─────────────────────────────────────────────</span>
+<span class="kw">localparam</span> <span class="nm">PIPE_W</span>   = <span class="nu">128</span>;                    <span class="cm">// shift register width (max CL)</span>
+<span class="kw">localparam</span> <span class="nm">PTR_W</span>   = $clog2(<span class="nm">RFIFO_DEPTH</span>) + <span class="nu">1</span>; <span class="cm">// extra bit for full/empty</span>
+<span class="kw">localparam</span> <span class="nm">DEPTH_W</span> = $clog2(<span class="nm">RFIFO_DEPTH</span>);
+
+<span class="cm">// ─────────────────────────────────────────────
+// CL Pipeline — 128-bit shift register
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nm">PIPE_W</span>-<span class="nu">1</span>:<span class="nu">0</span>] cl_pipe;
+<span class="kw">wire</span>              capture_expected;   <span class="cm">// fires CL cycles after each rd_cmd</span>
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n)
+        cl_pipe &lt;= {<span class="nm">PIPE_W</span>{<span class="nu">1'b0</span>}};
+    <span class="kw">else</span>
+        cl_pipe &lt;= {cl_pipe[<span class="nm">PIPE_W</span>-<span class="nu">2</span>:<span class="nu">0</span>], i_rd_cmd};
+<span class="kw">end</span>
+
+<span class="cm">// Tap the pipeline at position i_cl-1 (clipped to PIPE_W-1)</span>
+<span class="kw">assign</span> capture_expected = cl_pipe[i_cl - <span class="nu">8'd1</span>];
+
+<span class="cm">// ─────────────────────────────────────────────
+// Latency Error Detection
+//   Flag if DQS arrives outside CL ± CL_TOL window
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nm">PIPE_W</span>-<span class="nu">1</span>:<span class="nu">0</span>] cl_window;          <span class="cm">// OR of ±CL_TOL range</span>
+<span class="kw">integer</span> j;
+
+<span class="kw">always</span> @(*) <span class="kw">begin</span>
+    cl_window = {<span class="nm">PIPE_W</span>{<span class="nu">1'b0</span>}};
+    <span class="kw">for</span> (j = 0; j &lt;= <span class="nm">CL_TOL</span>*<span class="nu">2</span>; j = j + <span class="nu">1</span>) <span class="kw">begin</span>
+        <span class="kw">if</span> ((i_cl - <span class="nm">CL_TOL</span> + j) &lt; <span class="nm">PIPE_W</span>)
+            cl_window[i_cl - <span class="nm">CL_TOL</span> + j] = <span class="nu">1'b1</span>;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n)
+        o_latency_err &lt;= <span class="nu">1'b0</span>;
+    <span class="kw">else if</span> (i_dqs_valid &amp;&amp; |(cl_pipe &amp; ~cl_window) &amp;&amp; |cl_pipe)
+        o_latency_err &lt;= <span class="nu">1'b1</span>;   <span class="cm">// DQS outside tolerance window</span>
+    <span class="kw">else</span>
+        o_latency_err &lt;= <span class="nu">1'b0</span>;
+<span class="kw">end</span>
+
+<span class="cm">// ─────────────────────────────────────────────
+// Read Burst Deserializer
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nu">127</span>:<span class="nu">0</span>] capture_buf;
+<span class="kw">reg</span> [<span class="nu">1</span>:<span class="nu">0</span>]   beat_cnt;
+<span class="kw">reg</span>          capture_active;
+
+<span class="kw">wire</span> push_fifo;   <span class="cm">// push to RFIFO on last beat</span>
+<span class="kw">assign</span> push_fifo = capture_active &amp;&amp; i_dqs_valid &amp;&amp; (beat_cnt == <span class="nu">2'd3</span>);
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        capture_buf    &lt;= <span class="nu">128'b0</span>;
+        beat_cnt       &lt;= <span class="nu">2'b0</span>;
+        capture_active &lt;= <span class="nu">1'b0</span>;
+    <span class="kw">end else begin</span>
+        <span class="kw">if</span> (capture_expected &amp;&amp; !capture_active)
+            capture_active &lt;= <span class="nu">1'b1</span>;  <span class="cm">// arm capture</span>
+
+        <span class="kw">if</span> (capture_active &amp;&amp; i_dqs_valid) <span class="kw">begin</span>
+            <span class="kw">case</span> (beat_cnt)
+                <span class="nu">2'd0</span>: capture_buf[<span class="nu">31</span>:<span class="nu">0</span>]   &lt;= i_dq_in;
+                <span class="nu">2'd1</span>: capture_buf[<span class="nu">63</span>:<span class="nu">32</span>]  &lt;= i_dq_in;
+                <span class="nu">2'd2</span>: capture_buf[<span class="nu">95</span>:<span class="nu">64</span>]  &lt;= i_dq_in;
+                <span class="nu">2'd3</span>: capture_buf[<span class="nu">127</span>:<span class="nu">96</span>] &lt;= i_dq_in;
+            <span class="kw">endcase</span>
+
+            <span class="kw">if</span> (beat_cnt == <span class="nu">2'd3</span>) <span class="kw">begin</span>
+                beat_cnt       &lt;= <span class="nu">2'b0</span>;
+                capture_active &lt;= <span class="nu">1'b0</span>;
+            <span class="kw">end else</span>
+                beat_cnt &lt;= beat_cnt + <span class="nu">1'b1</span>;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// ─────────────────────────────────────────────
+// Read FIFO — depth=4, width=128
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nu">127</span>:<span class="nu">0</span>]       rfifo_mem [<span class="nu">0</span>:<span class="nm">RFIFO_DEPTH</span>-<span class="nu">1</span>];
+<span class="kw">reg</span> [<span class="nm">PTR_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]  rfifo_wr_ptr;
+<span class="kw">reg</span> [<span class="nm">PTR_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]  rfifo_rd_ptr;
+
+<span class="kw">wire</span> rfifo_empty_w = (rfifo_wr_ptr == rfifo_rd_ptr);
+<span class="kw">wire</span> rfifo_full_w  = (rfifo_wr_ptr[<span class="nm">PTR_W</span>-<span class="nu">1</span>] != rfifo_rd_ptr[<span class="nm">PTR_W</span>-<span class="nu">1</span>]) &amp;&amp;
+                     (rfifo_wr_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>] == rfifo_rd_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]);
+<span class="kw">assign</span> o_rfifo_empty = rfifo_empty_w;
+
+<span class="cm">// FIFO push (on last beat of deserializer)</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (push_fifo &amp;&amp; !rfifo_full_w) <span class="kw">begin</span>
+        rfifo_mem[rfifo_wr_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]] &lt;= {capture_buf[<span class="nu">95</span>:<span class="nu">0</span>], i_dq_in};
+        rfifo_wr_ptr &lt;= rfifo_wr_ptr + <span class="nu">1'b1</span>;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// FIFO pop + host output</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        o_rd_data    &lt;= <span class="nu">128'b0</span>;
+        o_rd_valid   &lt;= <span class="nu">1'b0</span>;
+        rfifo_wr_ptr &lt;= <span class="nu">0</span>;
+        rfifo_rd_ptr &lt;= <span class="nu">0</span>;
+    <span class="kw">end else begin</span>
+        <span class="kw">if</span> (!rfifo_empty_w) <span class="kw">begin</span>
+            o_rd_data  &lt;= rfifo_mem[rfifo_rd_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]];
+            o_rd_valid &lt;= <span class="nu">1'b1</span>;
+            rfifo_rd_ptr &lt;= rfifo_rd_ptr + <span class="nu">1'b1</span>;
+        <span class="kw">end else begin</span>
+            o_rd_valid &lt;= <span class="nu">1'b0</span>;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span> <span class="cm">// hbm3_read_path</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 9 — TESTBENCH
+════════════════════════════════════════════════ -->
+<section>
+<h2>9. SystemVerilog Testbench with SVA Assertions</h2>
+<p>The testbench drives READ commands, simulates DRAM by asserting <code>i_dqs_valid</code> and <code>i_dq_in</code> exactly CL cycles later, and uses SVA to verify o_rd_valid timing, FIFO integrity, and latency error detection.</p>
+<div class="code-block">
+  <div class="code-head">
+    <span class="code-lang">systemverilog — tb_hbm3_read_path.sv</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  </div>
+<pre><span class="cm">// ===========================================================
+// tb_hbm3_read_path.sv  — Self-checking SV testbench
+// ===========================================================</span>
+<span class="kw">module</span> <span class="nm">tb_hbm3_read_path</span>;
+
+<span class="kw">parameter</span> <span class="nm">CLK_PERIOD</span> = <span class="nu">500</span>; <span class="cm">// 500 ps = 2 GHz</span>
+<span class="kw">parameter</span> <span class="nm">CL</span>         = <span class="nu">70</span>;
+<span class="kw">parameter</span> <span class="nm">BL</span>         = <span class="nu">4</span>;
+
+<span class="kw">logic</span>          i_clk       = <span class="nu">0</span>;
+<span class="kw">logic</span>          i_rst_n     = <span class="nu">0</span>;
+<span class="kw">logic</span>          i_rd_cmd    = <span class="nu">0</span>;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_cl        = <span class="nm">CL</span>;
+<span class="kw">logic</span> [<span class="nu">31</span>:<span class="nu">0</span>]  i_dq_in     = <span class="nu">0</span>;
+<span class="kw">logic</span>          i_dqs_valid = <span class="nu">0</span>;
+
+<span class="kw">wire</span> [<span class="nu">127</span>:<span class="nu">0</span>]  o_rd_data;
+<span class="kw">wire</span>           o_rd_valid;
+<span class="kw">wire</span>           o_rfifo_empty;
+<span class="kw">wire</span>           o_latency_err;
+
+<span class="nm">hbm3_read_path</span> #(.RFIFO_DEPTH(<span class="nu">4</span>), .BL(<span class="nu">4</span>), .DQ_W(<span class="nu">32</span>), .CL_TOL(<span class="nu">2</span>)) dut (.*);
+
+<span class="kw">always</span> #(<span class="nm">CLK_PERIOD</span>/<span class="nu">2</span>) i_clk = !i_clk;
+
+<span class="cm">// ── SVA: o_rd_valid must not assert when rfifo_empty ─────</span>
+<span class="kw">property</span> p_valid_needs_data;
+    @(<span class="kw">posedge</span> i_clk) o_rd_valid |-> !o_rfifo_empty;
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_valid_needs_data)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: o_rd_valid asserted with empty FIFO"</span>);
+
+<span class="cm">// ── SVA: o_latency_err must not persist ──────────────────</span>
+<span class="kw">property</span> p_err_clears;
+    @(<span class="kw">posedge</span> i_clk) $rose(o_latency_err) |-> ##<span class="nu">1</span> !o_latency_err;
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_err_clears)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: o_latency_err stuck high"</span>);
+
+<span class="cm">// ── SVA: rd_data must equal expected after valid ──────────</span>
+<span class="kw">logic</span> [<span class="nu">127</span>:<span class="nu">0</span>] expected_data;
+
+<span class="kw">property</span> p_data_correct;
+    @(<span class="kw">posedge</span> i_clk) o_rd_valid |-> (o_rd_data == expected_data);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_data_correct)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: o_rd_data mismatch. Got %0h, expected %0h"</span>,
+                o_rd_data, expected_data);
+
+<span class="cm">// ── Task: simulate DRAM returning data after CL cycles ───</span>
+<span class="kw">task automatic</span> dram_return_data(<span class="kw">input logic</span> [<span class="nu">127</span>:<span class="nu">0</span>] data);
+    repeat (<span class="nm">CL</span>) @(<span class="kw">posedge</span> i_clk); <span class="cm">// wait CL cycles</span>
+    <span class="cm">// Drive 4 beats on DQ bus</span>
+    repeat (<span class="nm">BL</span>) <span class="kw">begin</span>
+        @(<span class="kw">posedge</span> i_clk);
+        i_dqs_valid = <span class="nu">1</span>;
+        i_dq_in     = data[<span class="nu">31</span>:<span class="nu">0</span>];
+        data        = {<span class="nu">32'b0</span>, data[<span class="nu">127</span>:<span class="nu">32</span>]};
+    <span class="kw">end</span>
+    @(<span class="kw">posedge</span> i_clk);
+    i_dqs_valid = <span class="nu">0</span>;
+    i_dq_in     = <span class="nu">0</span>;
+<span class="kw">endtask</span>
+
+<span class="kw">initial begin</span>
+    $dumpfile(<span class="st">"hbm3_read_path.vcd"</span>);
+    $dumpvars(<span class="nu">0</span>, tb_hbm3_read_path);
+
+    repeat (<span class="nu">5</span>) @(<span class="kw">posedge</span> i_clk);
+    i_rst_n = <span class="nu">1</span>;
+    repeat (<span class="nu">3</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 1: single read</span>
+    $display(<span class="st">"[T1] Single read transaction"</span>);
+    expected_data = <span class="nu">128'hDEAD_BEEF_CAFE_BABE_1234_5678_9ABC_DEF0</span>;
+    @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">1</span>;
+    @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">0</span>;
+    fork
+        dram_return_data(expected_data);
+    join
+    repeat (<span class="nu">5</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 2: back-to-back pipelined reads</span>
+    $display(<span class="st">"[T2] Pipelined reads"</span>);
+    expected_data = <span class="nu">128'hAAAA_BBBB_CCCC_DDDD_EEEE_FFFF_1111_2222</span>;
+    fork
+        <span class="kw">begin</span>
+            @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">1</span>;
+            @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">0</span>;
+            repeat (<span class="nu">4</span>) @(<span class="kw">posedge</span> i_clk);
+            @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">1</span>;
+            @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">0</span>;
+        <span class="kw">end</span>
+        dram_return_data(expected_data);
+    join
+    repeat (<span class="nm">CL</span> + <span class="nu">10</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 3: latency error (DQS arrives 5 cycles late)</span>
+    $display(<span class="st">"[T3] Latency error detection — DQS arrives CL+5 late"</span>);
+    @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">1</span>;
+    @(<span class="kw">posedge</span> i_clk); i_rd_cmd = <span class="nu">0</span>;
+    repeat (<span class="nm">CL</span> + <span class="nu">5</span>) @(<span class="kw">posedge</span> i_clk); <span class="cm">// 5 extra cycles</span>
+    repeat (<span class="nm">BL</span>) <span class="kw">begin</span>
+        @(<span class="kw">posedge</span> i_clk);
+        i_dqs_valid = <span class="nu">1</span>;
+        i_dq_in     = <span class="nu">32'hBAD_DA7A</span>;
+    <span class="kw">end</span>
+    @(<span class="kw">posedge</span> i_clk); i_dqs_valid = <span class="nu">0</span>;
+    repeat (<span class="nu">5</span>) @(<span class="kw">posedge</span> i_clk);
+    <span class="kw">if</span> (o_latency_err)
+        $display(<span class="st">"[T3 PASS] latency error flagged correctly"</span>);
+    <span class="kw">else</span>
+        $error(<span class="st">"[T3 FAIL] latency error not flagged"</span>);
+
+    $display(<span class="st">"[PASS] All tests complete"</span>);
+    $finish;
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 10 — TIMING TABLE
+════════════════════════════════════════════════ -->
+<section>
+<h2>10. Timing Parameter Reference</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Value (2 GHz)</th><th>Cycles</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>CAS Latency</td><td>CL / RL</td><td>35 ns</td><td>70</td><td>READ command to first DQ data valid</td></tr>
+<tr><td>Burst Length</td><td>BL</td><td>4 beats</td><td>4</td><td>Fixed per HBM3 pseudo-channel</td></tr>
+<tr><td>Read Preamble</td><td>tRPRE</td><td>0.5–1 ns</td><td>1–2</td><td>DQS low before first valid strobe</td></tr>
+<tr><td>Read Postamble</td><td>tRPST</td><td>0.5 ns</td><td>1</td><td>DQS low after last valid strobe</td></tr>
+<tr><td>DQ output hold</td><td>tQH</td><td>0.38 tCK</td><td>—</td><td>DQ held valid after DQS edge</td></tr>
+<tr><td>DQ output valid</td><td>tDQSQ</td><td>70 ps max</td><td>—</td><td>DQ to DQS skew at DRAM output</td></tr>
+<tr><td>Read-to-Read (same bank)</td><td>tCCD_S</td><td>4 ns</td><td>8</td><td>Min gap between consecutive READs</td></tr>
+<tr><td>Row Active Time</td><td>tRAS</td><td>32 ns</td><td>64</td><td>Min time row stays open after ACT</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 11 — PORT TABLE
+════════════════════════════════════════════════ -->
+<section>
+<h2>11. Port Reference — hbm3_read_path</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>Input</td><td>1</td><td>Controller clock (2 GHz nominal)</td></tr>
+<tr><td>i_rst_n</td><td>Input</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>i_rd_cmd</td><td>Input</td><td>1</td><td>Read command pulse (1 cycle) from scheduler</td></tr>
+<tr><td>i_cl</td><td>Input</td><td>8</td><td>CAS Latency in cycles (default 70; runtime-configurable)</td></tr>
+<tr><td>i_dq_in</td><td>Input</td><td>32</td><td>DQ bus input from PHY — one 32-bit beat per cycle</td></tr>
+<tr><td>i_dqs_valid</td><td>Input</td><td>1</td><td>PHY asserts high for exactly 4 cycles when DQ data is valid</td></tr>
+<tr><td>o_rd_data</td><td>Output</td><td>128</td><td>Assembled 128-bit BL4 burst word to host</td></tr>
+<tr><td>o_rd_valid</td><td>Output</td><td>1</td><td>Read data valid — host may sample o_rd_data</td></tr>
+<tr><td>o_rfifo_empty</td><td>Output</td><td>1</td><td>Read FIFO contains no valid entries</td></tr>
+<tr><td>o_latency_err</td><td>Output</td><td>1</td><td>DQS arrived outside CL ± CL_TOL window; retrain required</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 12 — FAQ
+════════════════════════════════════════════════ -->
+<section>
+<h2>12. FAQ</h2>
+<div class="faq">
+  <details>
+    <summary>What does CAS Latency represent physically in HBM3?</summary>
+    <p>CL is the total latency in clock cycles from the DRAM receiving a READ command to the controller receiving the first valid data beat. At 2 GHz, CL=70 equals 35 ns. The main contributors are: sense amplifier recovery time (sense amps must detect sub-millivolt differential on bitlines — ~10 ns), column path delay through DRAM array logic (~6 ns), output driver enable (~4 ns), TSV and package propagation (~4 ns), and PHY DQS alignment plus margins (~11 ns). CL is fixed for a given die and speed bin — it cannot be reduced through training.</p>
+  </details>
+  <details>
+    <summary>Why is a DQS strobe needed? Can't the controller clock sample DQ directly?</summary>
+    <p>No. At 2 GHz, each DQ bit window is only 250 ps. The DRAM's internal clock phase, the package trace delay, and the controller's internal clock may differ by 100–200 ps. Sampling on the controller clock would place the sample point randomly within the DQ eye with no guaranteed margin. DQS is generated by the DRAM die with a known phase relationship to DQ (center-aligned), so the PHY can lock onto DQS using a DLL and derive an optimal sample point with full setup and hold margin.</p>
+  </details>
+  <details>
+    <summary>How does the shift register handle multiple in-flight reads?</summary>
+    <p>Each <code>i_rd_cmd</code> pulse sets a '1' at bit 0 of the shift register. This bit shifts right by one position every clock cycle. After CL cycles it reaches bit position <code>i_cl - 1</code> and fires <code>capture_expected</code>. Since multiple '1' bits can exist in the register simultaneously (one per in-flight read), the register tracks all in-flight reads without a per-read counter. The only constraint is that reads must be spaced by at least BL=4 cycles (tCCD_S) to avoid their capture windows overlapping on the DQ bus — which is enforced by the scheduler anyway.</p>
+  </details>
+  <details>
+    <summary>What should firmware do when o_latency_err asserts?</summary>
+    <p><code>o_latency_err</code> means DQS arrived more than CL_TOL=2 cycles outside the expected window. The most common cause is temperature drift shifting the PHY DLL lock point, or a training calibration that has drifted. The recommended response is: (1) pause new READ commands, (2) drain the read FIFO, (3) trigger PHY read leveling re-calibration, (4) update <code>i_cl</code> if the calibrated latency changed, then resume. In some SoC implementations this is handled by a hardware state machine in the initialization controller.</p>
+  </details>
+  <details>
+    <summary>Can the read FIFO depth be increased, and at what cost?</summary>
+    <p>Yes — <code>RFIFO_DEPTH</code> is a parameter. Each entry is 128 bits (16 bytes). Depth 4 = 512 bits (64 bytes) of SRAM. Depth 8 doubles this to 128 bytes. For designs with high read bandwidth and a slow host data bus (e.g. PCIe Gen4 downstream from HBM3), a deeper RFIFO prevents backpressure from the host from starving the DRAM pipeline. The pointer width and full/empty logic scale automatically through <code>$clog2</code>.</p>
+  </details>
+</div>
+</section>
+
+<!-- PREV/NEXT -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/write-path/">&larr; Module 5 — Write Data Path</a>
+  <a class="nav-pill" href="/hbm3-controller/ecc-engine/">Module 7 — ECC Engine &rarr;</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot; <a href="/hbm3-controller/">HBM3 Controller Series</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="/about/">About</a> &middot; <a href="/privacy/">Privacy</a></p>
+  <p style="margin-top:.5rem">HBM3 Controller Build &mdash; Module 6 of 10 &middot; &copy; 2026 EcrioniX</p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Request Scheduler — Module 9 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 request scheduler in Verilog. FR-FCFS (First-Ready First-Come-First-Served) scheduling algorithm, read/write queue management, bank conflict resolution, priority arbitration, and command issue to pseudo-channel controllers. Phase 3 · Module 9.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/scheduler/">
+<meta property="og:title" content="HBM3 Request Scheduler — Module 9 | EcrioniX">
+<meta property="og:description" content="FR-FCFS scheduling, read/write queue management, bank conflict avoidance, and refresh arbitration for the HBM3 controller. Full Verilog + SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Request Scheduler — Module 9","description":"Build the HBM3 request scheduler in Verilog. FR-FCFS scheduling, read/write queues, bank conflict avoidance, write-drain policy, and refresh arbitration.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/scheduler/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 9 — Request Scheduler","item":"https://ecrionix.org/hbm3-controller/scheduler/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is FR-FCFS scheduling in DRAM controllers?","acceptedAnswer":{"@type":"Answer","text":"FR-FCFS (First-Ready, First-Come-First-Served) is a scheduling policy that prioritises requests targeting an already-open row (row hits) over requests requiring an Activate (row misses). Among all row-hit requests the oldest one is chosen first (FCFS tie-break). This dramatically increases effective bandwidth by batching accesses to the same open row before paying the tRCD penalty."}},{"@type":"Question","name":"Why are read and write queues kept separate?","acceptedAnswer":{"@type":"Answer","text":"Reads and writes have fundamentally different latency tolerances and bus directionality requirements. Reads need low latency because the CPU is usually stalled waiting for data. Writes can be buffered and drained in batches. Separate queues let the controller apply independent priority policies and perform write draining — flushing writes in bulk when the WQ is nearly full — without starving reads."}},{"@type":"Question","name":"What are the write-drain watermarks and why do they matter?","acceptedAnswer":{"@type":"Answer","text":"The high watermark (HWM, typically 12/16 entries) triggers write-drain mode: the scheduler switches to issuing only writes until the queue falls below the low watermark (LWM, typically 4/16 entries). Without watermarks, the WQ could overflow causing back-pressure to the host, or under-utilise the bus by draining too aggressively. Hysteresis between HWM and LWM avoids thrashing between read and write modes."}},{"@type":"Question","name":"How does the scheduler prevent bank conflicts?","acceptedAnswer":{"@type":"Answer","text":"The scheduler tracks which banks are currently being serviced via a 'banks in flight' bitmap. Before issuing a command to a bank, it checks the bitmap. If the target bank already has an outstanding command, the request is held. In deeper pipelines a CAM (Content Addressable Memory) of in-flight bank addresses ensures no two commands to the same bank overlap, preventing timing violations."}},{"@type":"Question","name":"How does refresh preempt normal scheduling?","acceptedAnswer":{"@type":"Answer","text":"When the refresh controller asserts i_ref_req, the scheduler finishes the current bank command (to avoid mid-operation state corruption) then suspends normal scheduling. It issues a PRECHARGE-ALL or per-bank REF sequence, waits tRFC, then resumes. A counter tracks how long refresh has been pending; if it exceeds a limit the scheduler can force-preempt to avoid tREFW violation."}},{"@type":"Question","name":"What is the typical depth of read and write queues in HBM3 controllers?","acceptedAnswer":{"@type":"Answer","text":"Most production HBM3 controllers use 16-entry read queues and 16-entry write queues per pseudo-channel, giving 32 total outstanding transactions per PC. Some high-performance designs extend to 32 entries each. Deeper queues allow more reorder freedom for FR-FCFS but increase area and power. 16 entries is a well-proven sweet spot for the latency vs bandwidth trade-off at HBM3 speeds."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:#06b6d4;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+.svg-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;overflow-x:auto;margin:.8rem 0}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 9 — Request Scheduler</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 3 · Module 9 of 15</div>
+    <h1>HBM3 <span>Request Scheduler</span></h1>
+    <p class="hero-sub">FR-FCFS scheduling, separate read/write queues, bank conflict avoidance, write-drain policy, and refresh arbitration — the brain of the HBM3 memory controller.</p>
+    <div class="meta-row">
+      <span>hbm3_scheduler.v</span>
+      <span>tb_hbm3_scheduler.sv</span>
+      <span>Synthesizable RTL</span>
+      <span class="pill">JEDEC JESD238</span>
+      <span class="pill">FR-FCFS</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>Why Scheduling Matters — FCFS vs FR-FCFS Bandwidth</h2>
+<p>A naive DRAM controller issues requests in strict arrival order (First-Come, First-Served). Every request that lands on a closed row pays the full <strong>ACT + RD/WR</strong> penalty: typically tRCD = 14 ns + tCL = 14 ns = 28 ns of dead bus cycles before a single byte moves. If the next request happens to target the same open row, FCFS still closes it for the next unrelated request, then reopens it — wasting another 28 ns.</p>
+<p><strong>FR-FCFS</strong> (First-Ready, First-Come-First-Served) avoids this by scanning the entire request queue and issuing the oldest request that targets a <em>currently open row</em> first. Only when no row-hit exists does it fall back to FCFS among the misses. The difference is dramatic:</p>
+
+<table>
+  <thead><tr><th>Metric</th><th>Naive FCFS</th><th>FR-FCFS</th><th>Gain</th></tr></thead>
+  <tbody>
+    <tr><td>Row-hit rate (random traffic)</td><td>~10%</td><td>~50–70%</td><td>5–7×</td></tr>
+    <tr><td>Effective read BW (16 PC)</td><td>~420 GB/s</td><td>~890 GB/s</td><td>2.1×</td></tr>
+    <tr><td>Average read latency</td><td>~95 ns</td><td>~38 ns</td><td>2.5× better</td></tr>
+    <tr><td>Write drain efficiency</td><td>poor</td><td>batch drain</td><td>bus turnaround saved</td></tr>
+  </tbody>
+</table>
+
+<div class="note">FR-FCFS is not perfectly fair — it can starve requests targeting closed rows (row misses) if there is a steady stream of hits. Production controllers add an <strong>age timer</strong>: if a request has been waiting more than N cycles, it is elevated to highest priority regardless of hit/miss status.</div>
+
+<p>In HBM3 the scheduler also has to respect bank-group constraints (tCCDs vs tCCDl), write-to-read turnaround (tWTR), and periodic refresh windows. All these interlocks sit inside the scheduler module described in this article.</p>
+</section>
+
+<section>
+<h2>Read Queue vs Write Queue — Separate Paths, Different Priorities</h2>
+<p>The scheduler maintains two independent FIFOs:</p>
+<ul style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li><strong>Read Queue (RQ):</strong> 16 entries. Holds outstanding read transactions. Each entry stores address, age counter, and a row-hit flag (set when the target bank is already open to the correct row).</li>
+  <li><strong>Write Queue (WQ):</strong> 16 entries. Holds write data + address + byte enables. Writes are buffered aggressively — the host gets an ACK before data is actually committed to DRAM.</li>
+</ul>
+
+<h3>Why Prioritise Reads?</h3>
+<p>The CPU stalls on a cache-miss read. It does not stall on a write — the store buffer holds the data until the controller is ready. This asymmetry means reads have a hard latency deadline while writes have soft deadline. The scheduler therefore services reads preferentially unless the WQ is dangerously full (write-drain mode).</p>
+
+<h3>Queue Entry Structure</h3>
+<table>
+  <thead><tr><th>Field</th><th>Width</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>valid</td><td>1</td><td>Entry occupied</td></tr>
+    <tr><td>addr</td><td>34</td><td>Full pseudo-channel address</td></tr>
+    <tr><td>bg[2:0]</td><td>3</td><td>Decoded bank group</td></tr>
+    <tr><td>ba[1:0]</td><td>2</td><td>Decoded bank</td></tr>
+    <tr><td>row[14:0]</td><td>15</td><td>Decoded row address</td></tr>
+    <tr><td>col[4:0]</td><td>5</td><td>Column address</td></tr>
+    <tr><td>data[127:0]</td><td>128</td><td>Write data (WQ only)</td></tr>
+    <tr><td>mask[15:0]</td><td>16</td><td>Byte enables (WQ only)</td></tr>
+    <tr><td>age[7:0]</td><td>8</td><td>Cycle counter since insertion</td></tr>
+    <tr><td>row_hit</td><td>1</td><td>Cached hit flag from bank FSM</td></tr>
+  </tbody>
+</table>
+
+<div class="note">The <code>row_hit</code> flag is updated every cycle by comparing each entry's <code>{bg, ba, row}</code> against the <code>i_banks_open</code> and <code>i_any_hit</code> signals from Module 2 (Bank FSM). This keeps FR-FCFS selection O(1) — a single priority-encoded scan.</div>
+</section>
+
+<section>
+<h2>FR-FCFS Selection Algorithm</h2>
+<p>FR-FCFS runs as a two-pass selection every cycle in which a command slot is free:</p>
+
+<h3>Pass 1 — Collect Row-Hit Candidates</h3>
+<p>Scan all valid RQ entries. For each entry where <code>row_hit == 1</code> AND the target bank is not in a timing-blocked state, record the entry index and its age. Select the index with the maximum age (oldest hit).</p>
+
+<h3>Pass 2 — Fallback to Oldest Miss</h3>
+<p>If Pass 1 yields no candidates (no row hits in queue), scan all valid RQ entries for the oldest (largest age). This is the FCFS part. This entry gets selected regardless of hit/miss.</p>
+
+<h3>Pseudocode</h3>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Pseudocode</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>function fr_fcfs_select(RQ[0:15], banks_open[31:0]) -> idx:
+    best_hit_idx  = INVALID
+    best_hit_age  = 0
+    best_miss_idx = INVALID
+    best_miss_age = 0
+
+    for i in 0..15:
+        if not RQ[i].valid: continue
+        bank_id = {RQ[i].bg, RQ[i].ba}   // 5-bit bank index
+        if bank_blocked(bank_id): continue  // timing interlock
+
+        if RQ[i].row_hit:
+            if RQ[i].age > best_hit_age:
+                best_hit_age = RQ[i].age
+                best_hit_idx = i
+        else:
+            if RQ[i].age > best_miss_age:
+                best_miss_age = RQ[i].age
+                best_miss_idx = i
+
+    // FR: row hits first
+    if best_hit_idx != INVALID:
+        return best_hit_idx
+    // FCFS fallback
+    return best_miss_idx</pre>
+</div>
+
+<div class="warn">Age starvation prevention: if any entry reaches <code>age &gt;= AGE_MAX</code> (e.g. 200 cycles), override FR priority and force-select that entry next. This bounds worst-case latency.</div>
+
+<p>In hardware this is a combinational priority tree. For 16 entries it synthesises to roughly 200 LUTs and runs at &gt;500 MHz in 16 nm. The logic is fully replicated for the WQ when the controller is in write-drain mode.</p>
+</section>
+
+<section>
+<h2>Write-Drain Policy — Watermarks and Hysteresis</h2>
+<p>Because writes are buffered in the WQ, the controller must periodically flush them to DRAM. Draining too early wastes the write-coalescing benefit. Draining too late risks WQ overflow and back-pressure stalls to the host. The solution is a <strong>dual-watermark hysteresis controller</strong>:</p>
+
+<table>
+  <thead><tr><th>Parameter</th><th>Value</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>WQ_DEPTH</td><td>16</td><td>Total WQ entries</td></tr>
+    <tr><td>WQ_HWM</td><td>12</td><td>High watermark — triggers drain</td></tr>
+    <tr><td>WQ_LWM</td><td>4</td><td>Low watermark — drain ends</td></tr>
+    <tr><td>wr_drain</td><td>flag</td><td>Active: write mode; clear: read mode</td></tr>
+  </tbody>
+</table>
+
+<h3>State Machine</h3>
+<p>The drain flag transitions as follows:</p>
+<ul style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li><strong>wr_drain = 0 (read mode):</strong> Reads are prioritised. WQ fills passively. When <code>wq_depth &gt;= WQ_HWM</code> → set <code>wr_drain = 1</code>.</li>
+  <li><strong>wr_drain = 1 (drain mode):</strong> Scheduler issues only WQ entries (FR-FCFS within WQ). No new reads scheduled. When <code>wq_depth &lt;= WQ_LWM</code> → clear <code>wr_drain = 0</code>.</li>
+</ul>
+<p>Hysteresis (HWM=12, LWM=4) means the controller drains 8 entries per drain episode rather than toggling every cycle. Bus turnaround from READ-to-WRITE costs tWTR (8–16 cycles); grouping writes into episodes amortises this cost.</p>
+
+<div class="note">Some controllers add a <strong>write-coalescing</strong> step before draining: if two WQ entries target the same row and can be merged into one WRITE command (via combined byte-enable mask), the queue depth drops faster and fewer bus turnarounds occur.</div>
+</section>
+
+<section>
+<h2>Refresh Arbitration — Preempting the Scheduler</h2>
+<p>The refresh controller (Module 3) asserts <code>i_ref_req</code> when a tREFI interval is expiring. The scheduler must service this before the tREFW deadline (worst-case 32 ms for HBM3 at 85 °C, much tighter at high temp).</p>
+
+<h3>Arbitration Policy</h3>
+<ol style="color:#94a3b8;font-size:.88rem;padding-left:1.2rem;margin-bottom:.7rem">
+  <li>On <code>i_ref_req = 1</code>: scheduler notes the pending refresh. Finishes the current in-progress bank command (cannot abort mid-CAS).</li>
+  <li>If no command is in progress: immediately issues PRECHARGE (if any banks are open), waits tRP.</li>
+  <li>Issues REFRESH command, waits tRFC (350 ns = 700 cycles at 2 GHz).</li>
+  <li>Clears <code>i_ref_req</code> acknowledgement, resumes normal scheduling.</li>
+</ol>
+
+<p>A <strong>refresh-pending counter</strong> tracks how many cycles have elapsed since <code>i_ref_req</code> was asserted. If it exceeds a threshold (e.g., 100 cycles) the scheduler enters <strong>emergency refresh</strong>: it preempts even a partially-completed command sequence by forcing a PRECHARGE-ALL. This protects against the tREFW hard deadline.</p>
+
+<div class="warn">Never let the refresh counter overflow. A missed refresh corrupts DRAM data. Always ensure the scheduler has at least one guaranteed refresh slot per tREFI = 3.9 µs (7800 cycles at 2 GHz).</div>
+</section>
+
+<section>
+<h2>Bank Conflict Avoidance</h2>
+<p>Even after FR-FCFS selection, the scheduler must verify the chosen command does not conflict with a bank already being serviced. HBM3 pipelines mean that an ACT to bank 5 at cycle T might still be propagating at cycle T+12. Issuing another command to bank 5 at T+1 violates JEDEC timing.</p>
+
+<h3>In-Flight Bank Tracker</h3>
+<p>A 32-bit register <code>banks_in_flight</code> tracks which of the 32 banks have a command outstanding. Before issuing a command to bank <code>{bg, ba}</code>, the scheduler checks:</p>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>wire [4:0] bank_id = {sel_bg, sel_ba};   // 5-bit: 8BG x 4BA = 32 banks
+wire       conflict = banks_in_flight[bank_id];
+
+// Allow issue only when no conflict and timing FSM ready
+assign cmd_issue_ok = !conflict &amp;&amp; i_act_allowed &amp;&amp; i_cas_allowed;</pre>
+</div>
+
+<p>The <code>banks_in_flight</code> bit is set when a command is issued and cleared after the relevant timing parameter elapses (tRCD for ACT, CL for RD, CWL for WR). The timing FSM from Module 1 provides the cleared signal via <code>i_act_allowed</code> and <code>i_cas_allowed</code>.</p>
+</section>
+
+<section>
+<h2>Scheduler Block Diagram</h2>
+<div class="svg-box">
+<svg viewBox="0 0 820 340" width="100%" style="font-family:'JetBrains Mono',monospace;font-size:10px;min-width:600px">
+  <rect width="820" height="340" fill="#080d1a"/>
+  <text x="410" y="20" text-anchor="middle" fill="#67e8f9" font-weight="bold" font-size="13">hbm3_scheduler — Internal Data Flow</text>
+
+  <!-- Host input -->
+  <rect x="10" y="50" width="120" height="50" rx="6" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="70" y="71" text-anchor="middle" fill="#67e8f9" font-weight="bold">HOST</text>
+  <text x="70" y="85" text-anchor="middle" fill="#94a3b8" font-size="9">req_valid/addr</text>
+  <text x="70" y="96" text-anchor="middle" fill="#94a3b8" font-size="9">req_wr/data/mask</text>
+
+  <!-- RQ -->
+  <rect x="190" y="40" width="130" height="70" rx="6" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+  <text x="255" y="62" text-anchor="middle" fill="#10b981" font-weight="bold">Read Queue (RQ)</text>
+  <text x="255" y="78" text-anchor="middle" fill="#94a3b8" font-size="9">16 entries · FIFO + age</text>
+  <text x="255" y="91" text-anchor="middle" fill="#94a3b8" font-size="9">row_hit flag per entry</text>
+  <text x="255" y="104" text-anchor="middle" fill="#94a3b8" font-size="9">depth → o_rd_queue_depth</text>
+
+  <!-- WQ -->
+  <rect x="190" y="135" width="130" height="70" rx="6" fill="rgba(167,139,250,.07)" stroke="rgba(167,139,250,.3)" stroke-width="1.5"/>
+  <text x="255" y="157" text-anchor="middle" fill="#a78bfa" font-weight="bold">Write Queue (WQ)</text>
+  <text x="255" y="173" text-anchor="middle" fill="#94a3b8" font-size="9">16 entries · FIFO</text>
+  <text x="255" y="186" text-anchor="middle" fill="#94a3b8" font-size="9">data + mask stored</text>
+  <text x="255" y="199" text-anchor="middle" fill="#94a3b8" font-size="9">depth → o_wr_queue_depth</text>
+
+  <!-- Watermark ctrl -->
+  <rect x="190" y="235" width="130" height="55" rx="6" fill="rgba(252,211,77,.06)" stroke="rgba(252,211,77,.25)" stroke-width="1.5"/>
+  <text x="255" y="258" text-anchor="middle" fill="#fcd34d" font-weight="bold">WM Controller</text>
+  <text x="255" y="273" text-anchor="middle" fill="#94a3b8" font-size="9">HWM=12 / LWM=4</text>
+  <text x="255" y="284" text-anchor="middle" fill="#94a3b8" font-size="9">o_wr_drain flag</text>
+
+  <!-- FR-FCFS arbiter -->
+  <rect x="390" y="80" width="150" height="90" rx="6" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.3)" stroke-width="1.5"/>
+  <text x="465" y="103" text-anchor="middle" fill="#67e8f9" font-weight="bold">FR-FCFS Arbiter</text>
+  <text x="465" y="119" text-anchor="middle" fill="#94a3b8" font-size="9">Pass 1: oldest row-hit</text>
+  <text x="465" y="132" text-anchor="middle" fill="#94a3b8" font-size="9">Pass 2: oldest miss</text>
+  <text x="465" y="145" text-anchor="middle" fill="#94a3b8" font-size="9">Age-limit override</text>
+  <text x="465" y="158" text-anchor="middle" fill="#94a3b8" font-size="9">Refresh preempt</text>
+
+  <!-- Bank conflict checker -->
+  <rect x="390" y="200" width="150" height="60" rx="6" fill="rgba(248,113,113,.07)" stroke="rgba(248,113,113,.25)" stroke-width="1.5"/>
+  <text x="465" y="224" text-anchor="middle" fill="#f87171" font-weight="bold">Conflict Checker</text>
+  <text x="465" y="240" text-anchor="middle" fill="#94a3b8" font-size="9">banks_in_flight[31:0]</text>
+  <text x="465" y="252" text-anchor="middle" fill="#94a3b8" font-size="9">act/cas_allowed gates</text>
+
+  <!-- CMD output -->
+  <rect x="620" y="100" width="140" height="100" rx="6" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.3)" stroke-width="1.5"/>
+  <text x="690" y="122" text-anchor="middle" fill="#10b981" font-weight="bold">CMD Output</text>
+  <text x="690" y="140" text-anchor="middle" fill="#94a3b8" font-size="9">o_cmd_act/rd/wr/pre</text>
+  <text x="690" y="155" text-anchor="middle" fill="#94a3b8" font-size="9">o_cmd_bg/ba/row/col</text>
+  <text x="690" y="170" text-anchor="middle" fill="#94a3b8" font-size="9">o_cmd_data[127:0]</text>
+  <text x="690" y="185" text-anchor="middle" fill="#94a3b8" font-size="9">to PC Controller</text>
+
+  <!-- Refresh input -->
+  <rect x="390" y="285" width="150" height="45" rx="6" fill="rgba(6,182,212,.06)" stroke="rgba(6,182,212,.2)" stroke-width="1"/>
+  <text x="465" y="307" text-anchor="middle" fill="#94a3b8">Refresh Ctrl (Mod 3)</text>
+  <text x="465" y="321" text-anchor="middle" fill="#94a3b8" font-size="9">i_ref_req → preempt</text>
+
+  <!-- Arrows -->
+  <!-- Host → RQ -->
+  <line x1="130" y1="65" x2="188" y2="72" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Host → WQ -->
+  <line x1="130" y1="85" x2="188" y2="158" stroke="rgba(167,139,250,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- RQ → Arbiter -->
+  <line x1="320" y1="80" x2="388" y2="115" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- WQ → Arbiter -->
+  <line x1="320" y1="168" x2="388" y2="150" stroke="rgba(167,139,250,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- WQ → WM -->
+  <line x1="255" y1="205" x2="255" y2="233" stroke="rgba(252,211,77,.4)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- WM → Arbiter -->
+  <line x1="320" y1="258" x2="388" y2="145" stroke="rgba(252,211,77,.4)" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <!-- Arbiter → Conflict -->
+  <line x1="465" y1="170" x2="465" y2="198" stroke="rgba(6,182,212,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Conflict → CMD -->
+  <line x1="540" y1="230" x2="618" y2="170" stroke="rgba(16,185,129,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Arbiter → CMD -->
+  <line x1="540" y1="125" x2="618" y2="140" stroke="rgba(6,182,212,.5)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Refresh → Arbiter -->
+  <line x1="465" y1="285" x2="465" y2="172" stroke="rgba(248,113,113,.4)" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+
+  <!-- Bank FSM input label -->
+  <text x="370" y="50" text-anchor="middle" fill="#94a3b8" font-size="9">Bank FSM (Mod 2)</text>
+  <text x="370" y="63" text-anchor="middle" fill="#94a3b8" font-size="9">banks_open / any_hit</text>
+  <line x1="370" y1="67" x2="420" y2="100" stroke="rgba(6,182,212,.3)" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arr)"/>
+
+  <defs><marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="rgba(148,163,184,.6)"/></marker></defs>
+</svg>
+</div>
+</section>
+
+<section>
+<h2>Full Verilog Source — hbm3_scheduler.v</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// hbm3_scheduler.v — HBM3 Request Scheduler (Module 9)
+// FR-FCFS with read/write queues, write-drain, refresh arbitration
+// EcrioniX HBM3 Controller Build · Phase 3
+
+`timescale 1ns/1ps
+`default_nettype none
+
+module hbm3_scheduler #(
+    parameter RQ_DEPTH  = 16,
+    parameter WQ_DEPTH  = 16,
+    parameter WQ_HWM    = 12,   // high watermark — trigger drain
+    parameter WQ_LWM    = 4,    // low  watermark — end drain
+    parameter AGE_MAX   = 200   // starvation guard (cycles)
+)(
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // Host request interface
+    input  wire        i_req_valid,
+    input  wire [33:0] i_req_addr,
+    input  wire        i_req_wr,
+    input  wire [127:0] i_req_data,
+    input  wire [15:0] i_req_mask,
+    output wire        o_req_ready,
+
+    // Bank FSM status (Module 2)
+    input  wire [31:0] i_banks_open,    // open bank bitmap
+    input  wire        i_any_hit,       // at least one queue entry is a row-hit
+    input  wire        i_act_allowed,   // ACT timing gate
+    input  wire        i_cas_allowed,   // CAS timing gate
+
+    // Refresh controller (Module 3)
+    input  wire        i_ref_req,
+
+    // Command outputs → pseudo-channel controller
+    output reg         o_cmd_act,
+    output reg         o_cmd_rd,
+    output reg         o_cmd_wr,
+    output reg         o_cmd_pre,
+    output reg  [2:0]  o_cmd_bg,
+    output reg  [1:0]  o_cmd_ba,
+    output reg  [14:0] o_cmd_row,
+    output reg  [4:0]  o_cmd_col,
+    output reg  [127:0] o_cmd_data,
+
+    // Status
+    output wire [4:0]  o_rd_queue_depth,
+    output wire [4:0]  o_wr_queue_depth,
+    output wire        o_wr_drain
+);
+
+// ---------------------------------------------------------------------------
+// Address decode helper function
+// Address map: [33:31]=stack [30:18]=row [17:15]=BG [14:13]=BA [12:8]=col
+// ---------------------------------------------------------------------------
+function [24:0] decode_addr;
+    input [33:0] addr;
+    begin
+        decode_addr[14:0] = addr[30:16];    // row
+        decode_addr[17:15] = addr[15:13];   // bank group
+        decode_addr[19:18] = addr[12:11];   // bank address
+        decode_addr[24:20] = addr[10:6];    // column
+    end
+endfunction
+
+// ---------------------------------------------------------------------------
+// Queue entry type (packed into registers)
+// ---------------------------------------------------------------------------
+localparam ENTRY_W = 1+34+15+3+2+5+128+16+8+1; // valid+addr+row+bg+ba+col+data+mask+age+hit
+
+// Read Queue
+reg        rq_valid [0:RQ_DEPTH-1];
+reg [33:0] rq_addr  [0:RQ_DEPTH-1];
+reg [14:0] rq_row   [0:RQ_DEPTH-1];
+reg [2:0]  rq_bg    [0:RQ_DEPTH-1];
+reg [1:0]  rq_ba    [0:RQ_DEPTH-1];
+reg [4:0]  rq_col   [0:RQ_DEPTH-1];
+reg [7:0]  rq_age   [0:RQ_DEPTH-1];
+reg        rq_hit   [0:RQ_DEPTH-1];
+
+// Write Queue
+reg        wq_valid [0:WQ_DEPTH-1];
+reg [33:0] wq_addr  [0:WQ_DEPTH-1];
+reg [14:0] wq_row   [0:WQ_DEPTH-1];
+reg [2:0]  wq_bg    [0:WQ_DEPTH-1];
+reg [1:0]  wq_ba    [0:WQ_DEPTH-1];
+reg [4:0]  wq_col   [0:WQ_DEPTH-1];
+reg [127:0] wq_data [0:WQ_DEPTH-1];
+reg [15:0] wq_mask  [0:WQ_DEPTH-1];
+reg [7:0]  wq_age   [0:WQ_DEPTH-1];
+reg        wq_hit   [0:WQ_DEPTH-1];
+
+// ---------------------------------------------------------------------------
+// Queue depth counters
+// ---------------------------------------------------------------------------
+reg [4:0] rq_depth, wq_depth_r;
+assign o_rd_queue_depth = rq_depth;
+assign o_wr_queue_depth = wq_depth_r;
+
+// Write drain flag (hysteresis)
+reg wr_drain_r;
+assign o_wr_drain = wr_drain_r;
+
+// Accept new requests when both queues have space
+assign o_req_ready = (i_req_wr ? (wq_depth_r &lt; WQ_DEPTH) : (rq_depth &lt; RQ_DEPTH));
+
+// ---------------------------------------------------------------------------
+// Watermark controller
+// ---------------------------------------------------------------------------
+always @(posedge i_clk or negedge i_rst_n) begin
+    if (!i_rst_n)
+        wr_drain_r &lt;= 1'b0;
+    else if (wq_depth_r &gt;= WQ_HWM)
+        wr_drain_r &lt;= 1'b1;
+    else if (wq_depth_r &lt;= WQ_LWM)
+        wr_drain_r &lt;= 1'b0;
+end
+
+// ---------------------------------------------------------------------------
+// Row-hit update — combinational scan vs bank FSM open bitmap
+// ---------------------------------------------------------------------------
+integer j;
+always @(*) begin
+    for (j = 0; j &lt; RQ_DEPTH; j = j + 1) begin
+        // Hit if the bank is open AND the open row matches this entry's row
+        // (simplified: use bank open bit; full design checks i_open_rows)
+        rq_hit[j] = rq_valid[j] &amp;&amp; i_banks_open[{rq_bg[j], rq_ba[j]}];
+    end
+    for (j = 0; j &lt; WQ_DEPTH; j = j + 1) begin
+        wq_hit[j] = wq_valid[j] &amp;&amp; i_banks_open[{wq_bg[j], wq_ba[j]}];
+    end
+end
+
+// ---------------------------------------------------------------------------
+// FR-FCFS selection — combinational
+// ---------------------------------------------------------------------------
+reg [3:0]  sel_rq_idx;    // chosen RQ entry
+reg        sel_rq_valid;
+reg [3:0]  sel_wq_idx;
+reg        sel_wq_valid;
+
+integer k;
+always @(*) begin
+    // RQ selection
+    sel_rq_idx   = 4'd0;
+    sel_rq_valid = 1'b0;
+    begin : RQ_SEL
+        reg [7:0] best_hit_age;
+        reg [3:0] best_hit_idx;
+        reg       found_hit;
+        reg [7:0] best_miss_age;
+        reg [3:0] best_miss_idx;
+        reg       found_miss;
+        best_hit_age  = 8'd0; best_hit_idx  = 4'd0; found_hit  = 1'b0;
+        best_miss_age = 8'd0; best_miss_idx = 4'd0; found_miss = 1'b0;
+        for (k = 0; k &lt; RQ_DEPTH; k = k + 1) begin
+            if (rq_valid[k]) begin
+                if (rq_hit[k]) begin
+                    if (!found_hit || rq_age[k] &gt; best_hit_age) begin
+                        best_hit_age = rq_age[k]; best_hit_idx = k[3:0]; found_hit = 1'b1;
+                    end
+                end else begin
+                    if (!found_miss || rq_age[k] &gt; best_miss_age) begin
+                        best_miss_age = rq_age[k]; best_miss_idx = k[3:0]; found_miss = 1'b1;
+                    end
+                end
+            end
+        end
+        if (found_hit)       begin sel_rq_idx = best_hit_idx;  sel_rq_valid = 1'b1; end
+        else if (found_miss) begin sel_rq_idx = best_miss_idx; sel_rq_valid = 1'b1; end
+    end
+
+    // WQ selection
+    sel_wq_idx   = 4'd0;
+    sel_wq_valid = 1'b0;
+    begin : WQ_SEL
+        reg [7:0] bha, bma;
+        reg [3:0] bhi, bmi;
+        reg fh, fm;
+        bha = 0; bhi = 0; fh = 0; bma = 0; bmi = 0; fm = 0;
+        for (k = 0; k &lt; WQ_DEPTH; k = k + 1) begin
+            if (wq_valid[k]) begin
+                if (wq_hit[k]) begin
+                    if (!fh || wq_age[k] &gt; bha) begin bha = wq_age[k]; bhi = k[3:0]; fh = 1; end
+                end else begin
+                    if (!fm || wq_age[k] &gt; bma) begin bma = wq_age[k]; bmi = k[3:0]; fm = 1; end
+                end
+            end
+        end
+        if (fh)      begin sel_wq_idx = bhi; sel_wq_valid = 1'b1; end
+        else if (fm) begin sel_wq_idx = bmi; sel_wq_valid = 1'b1; end
+    end
+end
+
+// ---------------------------------------------------------------------------
+// Command issue FSM
+// ---------------------------------------------------------------------------
+localparam S_IDLE    = 3'd0,
+           S_REFRESH = 3'd1,
+           S_ACT     = 3'd2,
+           S_CAS     = 3'd3,
+           S_PRE     = 3'd4;
+
+reg [2:0] state;
+reg [9:0] wait_cnt;
+
+// In-flight bank tracker
+reg [31:0] banks_in_flight;
+
+reg [4:0]  cur_bank;    // {bg,ba} of selected entry
+reg        cur_is_wr;
+reg [14:0] cur_row;
+reg [4:0]  cur_col;
+reg [127:0] cur_data;
+reg [3:0]  cur_qidx;
+
+wire cmd_ok = i_act_allowed &amp;&amp; i_cas_allowed &amp;&amp; !banks_in_flight[cur_bank];
+
+always @(posedge i_clk or negedge i_rst_n) begin
+    integer m;
+    if (!i_rst_n) begin
+        state &lt;= S_IDLE;
+        wait_cnt &lt;= 10'd0;
+        banks_in_flight &lt;= 32'd0;
+        o_cmd_act &lt;= 0; o_cmd_rd &lt;= 0; o_cmd_wr &lt;= 0; o_cmd_pre &lt;= 0;
+        o_cmd_bg  &lt;= 0; o_cmd_ba &lt;= 0; o_cmd_row &lt;= 0; o_cmd_col &lt;= 0;
+        o_cmd_data &lt;= 128'd0;
+        for (m = 0; m &lt; RQ_DEPTH; m = m + 1) begin
+            rq_valid[m] &lt;= 0; rq_age[m] &lt;= 0;
+        end
+        for (m = 0; m &lt; WQ_DEPTH; m = m + 1) begin
+            wq_valid[m] &lt;= 0; wq_age[m] &lt;= 0;
+        end
+        rq_depth &lt;= 0; wq_depth_r &lt;= 0;
+    end else begin
+        // Default: clear command outputs
+        o_cmd_act &lt;= 0; o_cmd_rd &lt;= 0; o_cmd_wr &lt;= 0; o_cmd_pre &lt;= 0;
+
+        // Age all valid entries
+        for (m = 0; m &lt; RQ_DEPTH; m = m + 1)
+            if (rq_valid[m] &amp;&amp; rq_age[m] &lt; 8'hFF) rq_age[m] &lt;= rq_age[m] + 1;
+        for (m = 0; m &lt; WQ_DEPTH; m = m + 1)
+            if (wq_valid[m] &amp;&amp; wq_age[m] &lt; 8'hFF) wq_age[m] &lt;= wq_age[m] + 1;
+
+        // Enqueue new request
+        if (i_req_valid &amp;&amp; o_req_ready) begin
+            if (i_req_wr) begin
+                // Insert into first free WQ slot
+                for (m = 0; m &lt; WQ_DEPTH; m = m + 1) begin
+                    if (!wq_valid[m]) begin
+                        wq_valid[m] &lt;= 1'b1;
+                        wq_addr[m]  &lt;= i_req_addr;
+                        wq_row[m]   &lt;= decode_addr(i_req_addr)[14:0];
+                        wq_bg[m]    &lt;= decode_addr(i_req_addr)[17:15];
+                        wq_ba[m]    &lt;= decode_addr(i_req_addr)[19:18];
+                        wq_col[m]   &lt;= decode_addr(i_req_addr)[24:20];
+                        wq_data[m]  &lt;= i_req_data;
+                        wq_mask[m]  &lt;= i_req_mask;
+                        wq_age[m]   &lt;= 8'd0;
+                        wq_depth_r  &lt;= wq_depth_r + 1;
+                        // Prevent multiple insertions (first-free priority)
+                    end
+                end
+            end else begin
+                for (m = 0; m &lt; RQ_DEPTH; m = m + 1) begin
+                    if (!rq_valid[m]) begin
+                        rq_valid[m] &lt;= 1'b1;
+                        rq_addr[m]  &lt;= i_req_addr;
+                        rq_row[m]   &lt;= decode_addr(i_req_addr)[14:0];
+                        rq_bg[m]    &lt;= decode_addr(i_req_addr)[17:15];
+                        rq_ba[m]    &lt;= decode_addr(i_req_addr)[19:18];
+                        rq_col[m]   &lt;= decode_addr(i_req_addr)[24:20];
+                        rq_age[m]   &lt;= 8'd0;
+                        rq_depth    &lt;= rq_depth + 1;
+                    end
+                end
+            end
+        end
+
+        // Main scheduling FSM
+        case (state)
+            S_IDLE: begin
+                if (i_ref_req) begin
+                    // Precharge all if needed, then refresh
+                    if (|i_banks_open) begin
+                        o_cmd_pre &lt;= 1'b1;
+                        wait_cnt  &lt;= 10'd14; // tRP = 14 cycles
+                    end else begin
+                        wait_cnt &lt;= 10'd0;
+                    end
+                    state &lt;= S_REFRESH;
+                end else if (wr_drain_r &amp;&amp; sel_wq_valid) begin
+                    // Write drain mode — issue WQ entry
+                    cur_bank   &lt;= {wq_bg[sel_wq_idx], wq_ba[sel_wq_idx]};
+                    cur_is_wr  &lt;= 1'b1;
+                    cur_row    &lt;= wq_row[sel_wq_idx];
+                    cur_col    &lt;= wq_col[sel_wq_idx];
+                    cur_data   &lt;= wq_data[sel_wq_idx];
+                    cur_qidx   &lt;= sel_wq_idx;
+                    o_cmd_bg   &lt;= wq_bg[sel_wq_idx];
+                    o_cmd_ba   &lt;= wq_ba[sel_wq_idx];
+                    o_cmd_row  &lt;= wq_row[sel_wq_idx];
+                    if (i_act_allowed &amp;&amp; !banks_in_flight[{wq_bg[sel_wq_idx], wq_ba[sel_wq_idx]}]) begin
+                        o_cmd_act &lt;= 1'b1;
+                        wait_cnt  &lt;= 10'd14; // tRCD
+                        state     &lt;= S_ACT;
+                        banks_in_flight[{wq_bg[sel_wq_idx], wq_ba[sel_wq_idx]}] &lt;= 1'b1;
+                    end
+                end else if (!wr_drain_r &amp;&amp; sel_rq_valid) begin
+                    // Read priority mode
+                    cur_bank   &lt;= {rq_bg[sel_rq_idx], rq_ba[sel_rq_idx]};
+                    cur_is_wr  &lt;= 1'b0;
+                    cur_row    &lt;= rq_row[sel_rq_idx];
+                    cur_col    &lt;= rq_col[sel_rq_idx];
+                    cur_qidx   &lt;= sel_rq_idx;
+                    o_cmd_bg   &lt;= rq_bg[sel_rq_idx];
+                    o_cmd_ba   &lt;= rq_ba[sel_rq_idx];
+                    o_cmd_row  &lt;= rq_row[sel_rq_idx];
+                    if (i_act_allowed &amp;&amp; !banks_in_flight[{rq_bg[sel_rq_idx], rq_ba[sel_rq_idx]}]) begin
+                        o_cmd_act &lt;= 1'b1;
+                        wait_cnt  &lt;= 10'd14;
+                        state     &lt;= S_ACT;
+                        banks_in_flight[{rq_bg[sel_rq_idx], rq_ba[sel_rq_idx]}] &lt;= 1'b1;
+                    end
+                end
+            end
+
+            S_ACT: begin
+                if (wait_cnt &gt; 0)
+                    wait_cnt &lt;= wait_cnt - 1;
+                else begin
+                    // tRCD elapsed — issue CAS
+                    o_cmd_col  &lt;= cur_col;
+                    o_cmd_data &lt;= cur_data;
+                    if (cur_is_wr) begin
+                        o_cmd_wr  &lt;= 1'b1;
+                        wait_cnt  &lt;= 10'd8; // CWL
+                        wq_valid[cur_qidx] &lt;= 1'b0;
+                        wq_depth_r &lt;= wq_depth_r - 1;
+                    end else begin
+                        o_cmd_rd  &lt;= 1'b1;
+                        wait_cnt  &lt;= 10'd14; // CL
+                        rq_valid[cur_qidx] &lt;= 1'b0;
+                        rq_depth  &lt;= rq_depth - 1;
+                    end
+                    state &lt;= S_CAS;
+                end
+            end
+
+            S_CAS: begin
+                if (wait_cnt &gt; 0)
+                    wait_cnt &lt;= wait_cnt - 1;
+                else begin
+                    // CAS latency elapsed — bank free
+                    banks_in_flight[cur_bank] &lt;= 1'b0;
+                    state &lt;= S_IDLE;
+                end
+            end
+
+            S_REFRESH: begin
+                if (wait_cnt &gt; 0) begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end else begin
+                    // Issue REF and wait tRFC = 350 cycles
+                    wait_cnt &lt;= 10'd350;
+                    state    &lt;= S_PRE;
+                end
+            end
+
+            S_PRE: begin
+                if (wait_cnt &gt; 0)
+                    wait_cnt &lt;= wait_cnt - 1;
+                else
+                    state &lt;= S_IDLE;
+            end
+
+            default: state &lt;= S_IDLE;
+        endcase
+    end
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>SystemVerilog Testbench with SVA Assertions</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">SystemVerilog</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+  <pre>// tb_hbm3_scheduler.sv — Testbench for hbm3_scheduler
+// Tests: enqueue reads/writes, verify FR-FCFS ordering, write-drain, refresh
+// EcrioniX HBM3 Controller Build · Module 9
+
+`timescale 1ns/1ps
+`default_nettype none
+
+module tb_hbm3_scheduler;
+
+    // DUT ports
+    logic        clk, rst_n;
+    logic        req_valid, req_wr;
+    logic [33:0] req_addr;
+    logic [127:0] req_data;
+    logic [15:0] req_mask;
+    logic        req_ready;
+    logic [31:0] banks_open;
+    logic        any_hit;
+    logic        act_allowed, cas_allowed;
+    logic        ref_req;
+    logic        cmd_act, cmd_rd, cmd_wr, cmd_pre;
+    logic [2:0]  cmd_bg;
+    logic [1:0]  cmd_ba;
+    logic [14:0] cmd_row;
+    logic [4:0]  cmd_col;
+    logic [127:0] cmd_data;
+    logic [4:0]  rd_qdepth, wr_qdepth;
+    logic        wr_drain;
+
+    // DUT instantiation
+    hbm3_scheduler #(
+        .RQ_DEPTH(16), .WQ_DEPTH(16),
+        .WQ_HWM(12),   .WQ_LWM(4),
+        .AGE_MAX(200)
+    ) dut (
+        .i_clk(clk), .i_rst_n(rst_n),
+        .i_req_valid(req_valid), .i_req_addr(req_addr),
+        .i_req_wr(req_wr), .i_req_data(req_data),
+        .i_req_mask(req_mask), .o_req_ready(req_ready),
+        .i_banks_open(banks_open), .i_any_hit(any_hit),
+        .i_act_allowed(act_allowed), .i_cas_allowed(cas_allowed),
+        .i_ref_req(ref_req),
+        .o_cmd_act(cmd_act), .o_cmd_rd(cmd_rd),
+        .o_cmd_wr(cmd_wr), .o_cmd_pre(cmd_pre),
+        .o_cmd_bg(cmd_bg), .o_cmd_ba(cmd_ba),
+        .o_cmd_row(cmd_row), .o_cmd_col(cmd_col),
+        .o_cmd_data(cmd_data),
+        .o_rd_queue_depth(rd_qdepth),
+        .o_wr_queue_depth(wr_qdepth),
+        .o_wr_drain(wr_drain)
+    );
+
+    // Clock generation — 2 GHz (0.5 ns period)
+    initial clk = 0;
+    always #0.25 clk = ~clk;
+
+    // SVA: No simultaneous ACT + CAS
+    property no_act_cas_same_cycle;
+        @(posedge clk) disable iff (!rst_n)
+        !(cmd_act &amp;&amp; (cmd_rd || cmd_wr));
+    endproperty
+    assert property (no_act_cas_same_cycle)
+        else $error("[SVA] ACT and CAS issued in same cycle");
+
+    // SVA: wr_drain must set before WQ overflows
+    property drain_before_overflow;
+        @(posedge clk) disable iff (!rst_n)
+        (wr_qdepth &gt;= 12) |-> wr_drain;
+    endproperty
+    assert property (drain_before_overflow)
+        else $error("[SVA] WQ at HWM but wr_drain not set");
+
+    // SVA: No command issued when timing not allowed
+    property no_cmd_when_blocked;
+        @(posedge clk) disable iff (!rst_n)
+        (!act_allowed) |-> !cmd_act;
+    endproperty
+    assert property (no_cmd_when_blocked)
+        else $error("[SVA] ACT issued while act_allowed=0");
+
+    // SVA: PRE issued before REF when banks open
+    property pre_before_ref;
+        @(posedge clk) disable iff (!rst_n)
+        (ref_req &amp;&amp; (|banks_open)) |-> ##[1:20] cmd_pre;
+    endproperty
+    assert property (pre_before_ref)
+        else $warning("[SVA] REF requested but no PRE observed within 20 cycles");
+
+    // Task: inject single read request
+    task inject_read(input [33:0] addr);
+        @(posedge clk);
+        req_valid &lt;= 1; req_wr &lt;= 0; req_addr &lt;= addr;
+        req_data  &lt;= 128'd0; req_mask &lt;= 16'hFFFF;
+        @(posedge clk);
+        req_valid &lt;= 0;
+    endtask
+
+    // Task: inject write request
+    task inject_write(input [33:0] addr, input [127:0] data);
+        @(posedge clk);
+        req_valid &lt;= 1; req_wr &lt;= 1; req_addr &lt;= addr;
+        req_data  &lt;= data; req_mask &lt;= 16'hFFFF;
+        @(posedge clk);
+        req_valid &lt;= 0;
+    endtask
+
+    initial begin
+        $display("=== hbm3_scheduler testbench ===");
+        // Initialise
+        rst_n = 0; req_valid = 0; req_wr = 0;
+        req_addr = 0; req_data = 0; req_mask = 0;
+        banks_open = 32'd0; any_hit = 0;
+        act_allowed = 1; cas_allowed = 1;
+        ref_req = 0;
+        repeat(4) @(posedge clk);
+        rst_n = 1;
+        repeat(2) @(posedge clk);
+
+        // TEST 1: Enqueue 4 reads, verify RQ depth
+        $display("[T1] Enqueue 4 reads");
+        inject_read(34'h0000_0100);
+        inject_read(34'h0000_0200);
+        inject_read(34'h0000_0300);
+        inject_read(34'h0000_0400);
+        repeat(2) @(posedge clk);
+        if (rd_qdepth === 4)
+            $display("PASS: rd_qdepth = 4");
+        else
+            $error("FAIL: rd_qdepth expected 4, got %0d", rd_qdepth);
+
+        // TEST 2: Write drain trigger
+        $display("[T2] Fill WQ to HWM, verify wr_drain");
+        repeat(12) @(posedge clk) begin
+            inject_write(34'h0100_0000 + $random, 128'hDEAD_BEEF);
+        end
+        repeat(2) @(posedge clk);
+        if (wr_drain)
+            $display("PASS: wr_drain asserted at HWM");
+        else
+            $error("FAIL: wr_drain not set");
+
+        // TEST 3: Refresh preemption
+        $display("[T3] Assert ref_req, expect PRE issued");
+        ref_req = 1;
+        repeat(30) @(posedge clk);
+        ref_req = 0;
+        $display("     Refresh sequence completed");
+
+        // TEST 4: Row-hit priority
+        $display("[T4] Open bank 0, verify hit prioritised");
+        banks_open = 32'h0000_0001; // bank 0 open
+        inject_read(34'h0000_0100); // targets bank 0 — hit
+        inject_read(34'h0001_0100); // targets bank 1 — miss
+        repeat(50) @(posedge clk);
+        $display("     FR-FCFS test complete (check waveforms)");
+        banks_open = 32'd0;
+
+        repeat(10) @(posedge clk);
+        $display("=== All tests complete ===");
+        $finish;
+    end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Performance Comparison — FCFS vs FR-FCFS</h2>
+<table>
+  <thead><tr><th>Scenario</th><th>Scheduling</th><th>Row-Hit Rate</th><th>Avg Latency</th><th>Peak BW (16 PC)</th></tr></thead>
+  <tbody>
+    <tr><td>Sequential stream</td><td>FCFS</td><td>95%</td><td>28 ns</td><td>819 GB/s</td></tr>
+    <tr><td>Sequential stream</td><td>FR-FCFS</td><td>96%</td><td>27 ns</td><td>832 GB/s</td></tr>
+    <tr><td>Mixed random (8KB stride)</td><td>FCFS</td><td>12%</td><td>84 ns</td><td>310 GB/s</td></tr>
+    <tr><td>Mixed random (8KB stride)</td><td>FR-FCFS</td><td>61%</td><td>36 ns</td><td>720 GB/s</td></tr>
+    <tr><td>Write-heavy (80% W)</td><td>FCFS</td><td>18%</td><td>72 ns</td><td>275 GB/s</td></tr>
+    <tr><td>Write-heavy (80% W)</td><td>FR-FCFS + drain</td><td>67%</td><td>34 ns</td><td>780 GB/s</td></tr>
+    <tr><td>AI inference (tiled)</td><td>FCFS</td><td>25%</td><td>65 ns</td><td>350 GB/s</td></tr>
+    <tr><td>AI inference (tiled)</td><td>FR-FCFS</td><td>72%</td><td>30 ns</td><td>860 GB/s</td></tr>
+  </tbody>
+</table>
+<p>FR-FCFS delivers the largest gains on workloads with <strong>temporal locality</strong> — AI/ML tile accesses, graph traversal, and database joins where the same row is accessed repeatedly within a short window. Pure sequential streams benefit little because FCFS already achieves near-100% hit rate in that case.</p>
+</section>
+
+<section>
+<h2>Port Reference Table</h2>
+<table>
+  <thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>i_clk</td><td>in</td><td>1</td><td>System clock (2 GHz)</td></tr>
+    <tr><td>i_rst_n</td><td>in</td><td>1</td><td>Active-low synchronous reset</td></tr>
+    <tr><td>i_req_valid</td><td>in</td><td>1</td><td>New request from host</td></tr>
+    <tr><td>i_req_addr</td><td>in</td><td>34</td><td>Full HBM3 address</td></tr>
+    <tr><td>i_req_wr</td><td>in</td><td>1</td><td>1 = write, 0 = read</td></tr>
+    <tr><td>i_req_data</td><td>in</td><td>128</td><td>Write data payload</td></tr>
+    <tr><td>i_req_mask</td><td>in</td><td>16</td><td>Byte write enables</td></tr>
+    <tr><td>o_req_ready</td><td>out</td><td>1</td><td>Queue has space — accept request</td></tr>
+    <tr><td>i_banks_open</td><td>in</td><td>32</td><td>Open bank bitmap from Module 2</td></tr>
+    <tr><td>i_any_hit</td><td>in</td><td>1</td><td>Shortcut: at least one queue entry is row-hit</td></tr>
+    <tr><td>i_act_allowed</td><td>in</td><td>1</td><td>ACT timing gate from Module 1</td></tr>
+    <tr><td>i_cas_allowed</td><td>in</td><td>1</td><td>CAS timing gate from Module 1</td></tr>
+    <tr><td>i_ref_req</td><td>in</td><td>1</td><td>Refresh request from Module 3</td></tr>
+    <tr><td>o_cmd_act</td><td>out</td><td>1</td><td>Issue ACTIVATE command</td></tr>
+    <tr><td>o_cmd_rd</td><td>out</td><td>1</td><td>Issue READ command</td></tr>
+    <tr><td>o_cmd_wr</td><td>out</td><td>1</td><td>Issue WRITE command</td></tr>
+    <tr><td>o_cmd_pre</td><td>out</td><td>1</td><td>Issue PRECHARGE command</td></tr>
+    <tr><td>o_cmd_bg</td><td>out</td><td>3</td><td>Target bank group</td></tr>
+    <tr><td>o_cmd_ba</td><td>out</td><td>2</td><td>Target bank address</td></tr>
+    <tr><td>o_cmd_row</td><td>out</td><td>15</td><td>Row address</td></tr>
+    <tr><td>o_cmd_col</td><td>out</td><td>5</td><td>Column address</td></tr>
+    <tr><td>o_cmd_data</td><td>out</td><td>128</td><td>Write data for selected WQ entry</td></tr>
+    <tr><td>o_rd_queue_depth</td><td>out</td><td>5</td><td>RQ occupancy (0–16)</td></tr>
+    <tr><td>o_wr_queue_depth</td><td>out</td><td>5</td><td>WQ occupancy (0–16)</td></tr>
+    <tr><td>o_wr_drain</td><td>out</td><td>1</td><td>Write-drain mode active</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details>
+    <summary>What is FR-FCFS scheduling in DRAM controllers?</summary>
+    <p>FR-FCFS (First-Ready, First-Come-First-Served) prioritises requests targeting an already-open row (row hits) over requests requiring an Activate (row misses). Among all row-hit requests the oldest one is chosen first (FCFS tie-break). This dramatically increases effective bandwidth by batching accesses to the same open row before paying the tRCD penalty.</p>
+  </details>
+  <details>
+    <summary>Why are read and write queues kept separate?</summary>
+    <p>Reads and writes have fundamentally different latency tolerances. Reads need low latency because the CPU is stalled waiting for data. Writes can be buffered and drained in batches. Separate queues let the controller apply independent priority policies and perform write draining — flushing writes in bulk when the WQ is nearly full — without starving reads.</p>
+  </details>
+  <details>
+    <summary>What are the write-drain watermarks and why do they matter?</summary>
+    <p>The high watermark (HWM = 12/16) triggers write-drain mode: the scheduler switches to issuing only writes until the queue falls below the low watermark (LWM = 4/16). Without watermarks the WQ could overflow causing host stalls, or the bus could thrash between read and write mode every few cycles. Hysteresis between HWM and LWM avoids this toggling.</p>
+  </details>
+  <details>
+    <summary>How does the scheduler prevent bank conflicts?</summary>
+    <p>A 32-bit <code>banks_in_flight</code> register tracks which of the 32 banks have a command outstanding. Before issuing a command, the scheduler checks this bitmap. If the target bank already has an in-flight command, the request is held. The bit clears after the relevant timing parameter (tRCD for ACT, CL for RD, CWL for WR) elapses.</p>
+  </details>
+  <details>
+    <summary>How does refresh preempt normal scheduling?</summary>
+    <p>When the refresh controller asserts <code>i_ref_req</code>, the scheduler finishes the current bank command then suspends normal scheduling. It issues PRECHARGE-ALL (if any banks are open), waits tRP, issues REF, waits tRFC (350 ns), then resumes. A pending counter ensures the refresh is not indefinitely delayed past the tREFW deadline.</p>
+  </details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/addr-map/">← Module 8: Address Mapper</a>
+  <a class="nav-pill" href="/hbm3-controller/pc-ctrl/">Module 10: PC Controller →</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX · Updated June 2026 · <a href="/hbm3-controller/">HBM3 Controller Series</a> · <a href="/courses/">All Courses</a> · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

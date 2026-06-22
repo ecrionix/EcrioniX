@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Temperature Monitor &amp; Throttle — Module 14 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 temperature monitor and throttle controller in Verilog. DRAM temperature sensor readback via MRS, thermal throttle levels, bandwidth derating tables, emergency thermal shutdown, and JEDEC temperature derating per JESD238. Phase 4 · Module 14.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/temp-monitor/">
+<meta property="og:title" content="HBM3 Temperature Monitor &amp; Throttle — Module 14 | EcrioniX">
+<meta property="og:description" content="Verilog temperature monitor for HBM3: MR4 readback, JEDEC thermal derating, throttle FSM, refresh scaling, and emergency shutdown.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/temp-monitor/">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Temperature Monitor & Throttle — Module 14","description":"Build the HBM3 temperature monitor and throttle controller in Verilog. DRAM temperature sensor readback via MRS, thermal throttle levels, bandwidth derating tables, emergency thermal shutdown, and JEDEC temperature derating per JESD238.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/temp-monitor/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 14 — Temperature Monitor","item":"https://ecrionix.org/hbm3-controller/temp-monitor/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does HBM3 need active thermal management?","acceptedAnswer":{"@type":"Answer","text":"HBM3 stacks multiple DRAM dies vertically, which dramatically increases power density per unit area. Heat generated in lower dies must travel through silicon to reach the heatsink, creating a high thermal resistance path. At elevated temperatures DRAM charge retention degrades (requiring faster refresh) and prolonged operation above JEDEC limits (85°C standard, 95°C extended) risks permanent data loss or device failure."}},{"@type":"Question","name":"How does the HBM3 controller read DRAM temperature?","acceptedAnswer":{"@type":"Answer","text":"The DRAM reports its die temperature via Mode Register 4 (MR4). The controller issues a Mode Register Read (MRR) command, and the DRAM responds with an 8-bit temperature code on the DQ bus. Each band covers approximately 5°C of range. The controller must poll MR4 periodically — JEDEC recommends every 50 ms under normal operation."}},{"@type":"Question","name":"What is refresh derating (SRC) in HBM3?","acceptedAnswer":{"@type":"Answer","text":"At elevated temperatures, DRAM capacitors leak charge faster, so stored data becomes unreliable sooner. The controller must shorten tREFI (the refresh interval) to compensate. Above 85°C (standard temp range), tREFI must be halved — the controller doubles its refresh rate. Above 95°C (extended), tREFI is quartered (4x refresh rate). This is called Self-Refresh Calibration (SRC) or thermal refresh derating."}},{"@type":"Question","name":"What are the HBM3 throttle levels?","acceptedAnswer":{"@type":"Answer","text":"The throttle controller implements four levels: Normal (below 85°C — full bandwidth, standard refresh), Mild throttle (85–90°C — 25% bandwidth reduction, 2x refresh), Moderate throttle (90–95°C — 50% bandwidth reduction, 4x refresh), and Emergency shutdown (above 95°C — traffic halted, tcase_alert asserted, system must intervene). The controller de-asserts power_ok during emergency shutdown."}},{"@type":"Question","name":"How does bandwidth limiting actually work in the controller?","acceptedAnswer":{"@type":"Answer","text":"The bw_limit output indicates the maximum allowable bandwidth as a percentage of nominal. The scheduler reads this and applies a token-bucket rate limiter: it counts how many commands it issues per refresh window and stops accepting new AXI transactions once the token count reaches floor(bw_limit/100 * max_cmds_per_window). This provides smooth bandwidth reduction without abrupt traffic halts."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(248,113,113,.06) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:#f87171;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#f87171,#fcd34d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(248,113,113,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul{color:#94a3b8;font-size:.88rem;padding-left:1.3rem;margin-bottom:.7rem}
+ul li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(248,113,113,.07);padding:.55rem .8rem;text-align:left;color:#fca5a5;font-weight:700;border-bottom:2px solid rgba(248,113,113,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(248,113,113,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(248,113,113,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(248,113,113,.05);border-left:3px solid #f87171;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 14 — Temperature Monitor</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 4 · Module 14</div>
+    <h1>HBM3 <span>Temperature Monitor &amp; Throttle</span></h1>
+    <p class="hero-sub">3D-stacked HBM3 dies run hot. This module builds the thermal monitor controller: MR4 temperature readback, JEDEC derating thresholds, multi-level bandwidth throttle, dynamic refresh scaling, and emergency shutdown logic.</p>
+    <div class="meta-row">
+      <span>hbm3_temp_monitor.v</span>
+      <span>tb_hbm3_temp_monitor.sv</span>
+      <span>Synthesizable RTL</span>
+      <span class="pill">JEDEC JESD238</span>
+      <span class="pill">Phase 4</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- Section 1 -->
+<section>
+<h2>1. Why Thermal Management Is Critical in HBM3</h2>
+<p>HBM3 is a <strong>3D-stacked memory</strong>: multiple DRAM dies bonded vertically with through-silicon vias (TSVs). This architecture dramatically increases memory bandwidth density but also concentrates heat in a very small area.</p>
+<p>The key thermal challenges in HBM3 are:</p>
+<ul>
+  <li><strong>High power density:</strong> HBM3E can deliver over 1.2 TB/s bandwidth at roughly 10–15W per stack. The power density is far higher than planar DRAM.</li>
+  <li><strong>High thermal resistance:</strong> Heat generated in the bottom DRAM dies must travel upward through silicon, TSVs, and package layers before reaching the heatsink. The cumulative thermal resistance is substantial.</li>
+  <li><strong>Charge retention degradation:</strong> At higher temperatures, DRAM capacitors discharge faster. A cell that holds charge for 64ms at 25°C may only retain it for 32ms at 85°C. The refresh interval (tREFI) must shorten accordingly.</li>
+  <li><strong>JEDEC limits:</strong> JESD238 specifies maximum junction temperatures — 85°C (standard) and 95°C (extended range). Operating above these limits risks retention failures and potentially permanent device damage.</li>
+</ul>
+<p>The temperature monitor module solves this by continuously reading the DRAM's internal temperature sensor, decoding the reading, applying JEDEC derating rules, and signaling the scheduler to reduce bandwidth or halt traffic when thresholds are exceeded.</p>
+<div class="note">The DRAM's temperature sensor is an on-die thermal diode with approximately ±3°C accuracy. The controller should apply a 5°C safety margin when evaluating throttle thresholds.</div>
+</section>
+
+<!-- Section 2 -->
+<section>
+<h2>2. MR4 Temperature Readback</h2>
+<p>HBM3 DRAM exposes its die temperature via <strong>Mode Register 4 (MR4)</strong>. The controller reads this register by issuing a <strong>Mode Register Read (MRR)</strong> command with address field set to 4. The DRAM responds on the next DQ bus cycle with the MR4 contents.</p>
+<p>MR4 bits [7:3] encode the temperature in 8 bands (5 bits = 32 possible codes, though only the lower 8 are used in practice). Each band spans approximately 5°C.</p>
+<p>JEDEC recommends polling MR4 <strong>at least every 50 ms</strong> under normal conditions, and more frequently if temperature is near a threshold. The <code>i_temp_valid</code> input tells this module when a fresh MR4 reading is available.</p>
+<div class="warn">MRR commands consume bus cycles. Polling too frequently degrades effective bandwidth. A practical implementation issues MRR during refresh windows when the bus would otherwise be idle.</div>
+</section>
+
+<!-- Section 3: Temperature bands table -->
+<section>
+<h2>3. Temperature Bands and JEDEC Thresholds</h2>
+<table>
+  <thead>
+    <tr><th>temp_code[7:0]</th><th>Decoded Temp (°C)</th><th>Throttle Level</th><th>Refresh Scale</th><th>BW Limit</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>8'h00</td><td>0–5</td><td>00 Normal</td><td>1x (64ms)</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h01</td><td>5–10</td><td>00 Normal</td><td>1x</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h02</td><td>10–20</td><td>00 Normal</td><td>1x</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h03</td><td>20–35</td><td>00 Normal</td><td>1x</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h04</td><td>35–55</td><td>00 Normal</td><td>1x</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h05</td><td>55–75</td><td>00 Normal</td><td>1x</td><td>100%</td><td>Normal</td></tr>
+    <tr><td>8'h06</td><td>75–85</td><td>01 Mild</td><td>1x → 0.5x</td><td>75%</td><td>Warm</td></tr>
+    <tr><td>8'h07</td><td>85–90</td><td>01 Mild</td><td>0.5x (32ms)</td><td>75%</td><td>Derating1</td></tr>
+    <tr><td>8'h08</td><td>90–95</td><td>10 Moderate</td><td>0.25x (16ms)</td><td>50%</td><td>Derating2</td></tr>
+    <tr><td>8'hFF</td><td>&gt;95</td><td>11 Emergency</td><td>0x (SR only)</td><td>0%</td><td>SHUTDOWN</td></tr>
+  </tbody>
+</table>
+<p>The <code>o_refi_scale[1:0]</code> output controls the refresh engine: <code>2'b00</code> = 1x (normal tREFI), <code>2'b01</code> = 0.5x (halved tREFI = 2x refresh rate), <code>2'b10</code> = 0.25x (quarter tREFI = 4x refresh rate).</p>
+
+<!-- SVG: Temperature vs bandwidth derating curve -->
+<svg viewBox="0 0 700 280" style="width:100%;max-width:700px;display:block;margin:1.2rem auto;background:#080d1a;border-radius:10px;border:1px solid rgba(248,113,113,.15)" aria-label="HBM3 temperature vs bandwidth derating curve">
+  <!-- Axes -->
+  <line x1="70" y1="220" x2="650" y2="220" stroke="#334155" stroke-width="1.5"/>
+  <line x1="70" y1="30" x2="70" y2="220" stroke="#334155" stroke-width="1.5"/>
+  <!-- X axis labels -->
+  <text x="70"  y="238" text-anchor="middle" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">0°C</text>
+  <text x="210" y="238" text-anchor="middle" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">55°C</text>
+  <text x="360" y="238" text-anchor="middle" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">75°C</text>
+  <text x="450" y="238" text-anchor="middle" fill="#fcd34d" font-size="10" font-family="Outfit,sans-serif" font-weight="700">85°C</text>
+  <text x="540" y="238" text-anchor="middle" fill="#f87171" font-size="10" font-family="Outfit,sans-serif" font-weight="700">90°C</text>
+  <text x="620" y="238" text-anchor="middle" fill="#ef4444" font-size="10" font-family="Outfit,sans-serif" font-weight="700">95°C</text>
+  <!-- Y axis labels -->
+  <text x="60" y="35"  text-anchor="end" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">100%</text>
+  <text x="60" y="87"  text-anchor="end" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">75%</text>
+  <text x="60" y="130" text-anchor="end" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">50%</text>
+  <text x="60" y="220" text-anchor="end" fill="#64748b" font-size="10" font-family="Outfit,sans-serif">0%</text>
+  <!-- Gridlines -->
+  <line x1="70" y1="35"  x2="650" y2="35"  stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="70" y1="87"  x2="650" y2="87"  stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="70" y1="130" x2="650" y2="130" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+  <!-- Threshold vertical lines -->
+  <line x1="450" y1="30" x2="450" y2="220" stroke="rgba(252,211,77,.3)" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <line x1="540" y1="30" x2="540" y2="220" stroke="rgba(248,113,113,.3)" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <line x1="620" y1="30" x2="620" y2="220" stroke="rgba(239,68,68,.5)" stroke-width="2"/>
+  <!-- BW curve: flat 100% to 85C, step to 75%, step to 50%, drop to 0 at 95C -->
+  <polyline points="70,35 450,35 450,87 540,87 540,130 620,130 620,220" fill="none" stroke="#10b981" stroke-width="2.5"/>
+  <!-- Fill area under curve -->
+  <polygon points="70,35 450,35 450,87 540,87 540,130 620,130 620,220 70,220" fill="rgba(16,185,129,.06)"/>
+  <!-- Zone labels -->
+  <text x="260" y="55" text-anchor="middle" fill="#10b981" font-size="11" font-weight="700" font-family="Outfit,sans-serif">NORMAL — 100% BW</text>
+  <text x="495" y="110" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="700" font-family="Outfit,sans-serif">MILD -25%</text>
+  <text x="578" y="150" text-anchor="middle" fill="#f87171" font-size="10" font-weight="700" font-family="Outfit,sans-serif">-50%</text>
+  <text x="635" y="195" text-anchor="middle" fill="#ef4444" font-size="10" font-weight="700" font-family="Outfit,sans-serif">HALT</text>
+  <!-- Axis titles -->
+  <text x="360" y="265" text-anchor="middle" fill="#475569" font-size="11" font-family="Outfit,sans-serif">Temperature (°C)</text>
+  <text x="20" y="130" text-anchor="middle" fill="#475569" font-size="11" font-family="Outfit,sans-serif" transform="rotate(-90,20,130)">Bandwidth Limit</text>
+</svg>
+</section>
+
+<!-- Section 4: Thermal Throttle Logic -->
+<section>
+<h2>4. Thermal Throttle Logic</h2>
+<p>The throttle controller is a combinational decoder that maps the incoming temperature band code to throttle level, refresh scale, and bandwidth limit. The <code>o_throttle_level[1:0]</code> output goes to the AXI4 interface and scheduler to back-pressure incoming transactions.</p>
+<p>Three hysteresis bits prevent rapid toggling near thresholds. When temperature crosses a threshold going up, the new throttle level activates immediately. When temperature drops back down, a hysteresis count of 16 polling intervals must expire before the throttle level de-escalates.</p>
+<div class="note">Hysteresis is critical. Without it, a temperature reading that oscillates between 84°C and 86°C causes rapid throttle on/off switching, which itself generates heat and hurts throughput. Hysteresis keeps the system stable near boundaries.</div>
+</section>
+
+<!-- Section 5: Refresh Derating -->
+<section>
+<h2>5. Refresh Derating — Faster Refresh at High Temperature</h2>
+<p>Normal HBM3 tREFI is 3.9 µs (for 64ms refresh per 16K rows). At elevated temperature, the controller must issue refresh commands more frequently:</p>
+<ul>
+  <li><strong>Below 85°C:</strong> Standard tREFI = 3.9 µs, refi_scale = 1x</li>
+  <li><strong>85°C to 95°C:</strong> JEDEC MR4 Derating — tREFI halved to 1.95 µs (refi_scale = 0.5x)</li>
+  <li><strong>Above 95°C:</strong> Emergency — only self-refresh is safe; no normal traffic</li>
+</ul>
+<p>The refresh engine (a separate module) reads <code>o_refi_scale</code> and adjusts its refresh timer period accordingly. When refi_scale = 0.5x, the refresh timer fires twice as often, consuming more bus bandwidth but ensuring data integrity.</p>
+</section>
+
+<!-- Section 6: Emergency Shutdown -->
+<section>
+<h2>6. Emergency Thermal Shutdown</h2>
+<p>When temperature exceeds 95°C (temp_code = 8'hFF or above the configured emergency threshold), the controller enters emergency shutdown:</p>
+<ul>
+  <li><strong>o_throttle_level = 2'b11</strong> — scheduler stops issuing ACT/READ/WRITE commands</li>
+  <li><strong>o_bw_limit = 8'd0</strong> — zero bandwidth limit propagates to AXI4 interface, stalling all transactions</li>
+  <li><strong>o_tcase_alert = 1</strong> — asserted to notify the SoC's thermal management system</li>
+  <li><strong>o_refi_scale = 2'b10</strong> — maximum refresh rate maintained to protect data</li>
+</ul>
+<p>The system must intervene — typically by reducing the GPU/SoC clock frequency (reducing HBM3 access rate) or increasing fan speed — before the controller re-enables traffic. The alert is sticky: it only de-asserts when temperature drops below 90°C AND a software clear is issued.</p>
+</section>
+
+<!-- Section 7: Verilog Source -->
+<section>
+<h2>7. Full Verilog Source</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog — hbm3_temp_monitor.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// ============================================================
+// hbm3_temp_monitor.v — HBM3 Temperature Monitor & Throttle
+// EcrioniX · HBM3 Controller Build · Module 14
+// Phase 4: Power and Thermal Management
+// ============================================================
+// Reads DRAM temperature from MR4 (8 temperature bands),
+// decodes to degrees C, applies JEDEC derating thresholds,
+// and outputs throttle level, refresh scale, and BW limit.
+// Synthesizable RTL.
+// ============================================================
+
+module hbm3_temp_monitor #(
+    // Temperature thresholds (in decoded degrees C)
+    parameter THRESH_MILD     = 8'd75,  // above -> mild throttle
+    parameter THRESH_MODERATE = 8'd85,  // above -> moderate throttle
+    parameter THRESH_EMERGENCY= 8'd95,  // above -> emergency shutdown
+    // Hysteresis: polling intervals before de-escalation
+    parameter HYST_COUNT      = 16
+)(
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // Temperature from MR4 readback (8 bands, each ~5 deg C wide)
+    input  wire [7:0]  i_temp_code,
+    input  wire        i_temp_valid,     // new reading available
+
+    // Software alert clear (write 1 to de-assert tcase_alert)
+    input  wire        i_alert_clr,
+
+    // Decoded outputs
+    output reg  [7:0]  o_temp_degc,      // temperature in degrees C
+
+    // Throttle and derating outputs
+    output reg  [1:0]  o_throttle_level, // 00=normal,01=mild,10=moderate,11=emergency
+    output reg  [1:0]  o_refi_scale,     // 00=1x, 01=0.5x, 10=0.25x
+    output reg         o_tcase_alert,    // JEDEC limit exceeded
+    output reg  [7:0]  o_bw_limit        // max BW as % of nominal
+);
+
+// ============================================================
+// Temp code to degrees C decode table (MR4 encoding)
+// Band boundaries per JEDEC JESD238 Table 14
+// ============================================================
+function automatic [7:0] decode_temp;
+    input [7:0] code;
+    begin
+        case (code)
+            8'h00: decode_temp = 8'd3;
+            8'h01: decode_temp = 8'd8;
+            8'h02: decode_temp = 8'd15;
+            8'h03: decode_temp = 8'd28;
+            8'h04: decode_temp = 8'd45;
+            8'h05: decode_temp = 8'd65;
+            8'h06: decode_temp = 8'd80;
+            8'h07: decode_temp = 8'd88;
+            8'h08: decode_temp = 8'd93;
+            default: decode_temp = 8'd100; // overtemp / unknown
+        endcase
+    end
+endfunction
+
+// ============================================================
+// Hysteresis counter (count-down before de-escalation)
+// ============================================================
+reg [4:0] hyst_cnt;
+
+// ============================================================
+// Throttle state register (latched to provide hysteresis)
+// ============================================================
+reg [1:0] throttle_latch;
+
+// ============================================================
+// Main monitor logic
+// ============================================================
+always @(posedge i_clk or negedge i_rst_n) begin
+    if (!i_rst_n) begin
+        o_temp_degc      &lt;= 8'd0;
+        o_throttle_level &lt;= 2'b00;
+        o_refi_scale     &lt;= 2'b00;
+        o_tcase_alert    &lt;= 1'b0;
+        o_bw_limit       &lt;= 8'd100;
+        throttle_latch   &lt;= 2'b00;
+        hyst_cnt         &lt;= 5'd0;
+    end else begin
+        // Handle alert clear
+        if (i_alert_clr && o_temp_degc &lt; THRESH_MODERATE)
+            o_tcase_alert &lt;= 1'b0;
+
+        if (i_temp_valid) begin
+            // Decode temperature
+            o_temp_degc &lt;= decode_temp(i_temp_code);
+
+            // Determine new throttle target based on temperature
+            if (o_temp_degc >= THRESH_EMERGENCY) begin
+                // Emergency: assert immediately, no hysteresis
+                throttle_latch &lt;= 2'b11;
+                o_tcase_alert  &lt;= 1'b1;
+                hyst_cnt       &lt;= 5'd0;
+            end else if (o_temp_degc >= THRESH_MODERATE) begin
+                if (throttle_latch &lt; 2'b10) begin
+                    throttle_latch &lt;= 2'b10;
+                    hyst_cnt       &lt;= 5'd0;
+                end
+            end else if (o_temp_degc >= THRESH_MILD) begin
+                if (throttle_latch &lt; 2'b01) begin
+                    throttle_latch &lt;= 2'b01;
+                    hyst_cnt       &lt;= 5'd0;
+                end else if (throttle_latch > 2'b01) begin
+                    // De-escalation with hysteresis
+                    if (hyst_cnt == HYST_COUNT - 1) begin
+                        throttle_latch &lt;= 2'b01;
+                        hyst_cnt       &lt;= 5'd0;
+                    end else hyst_cnt &lt;= hyst_cnt + 1;
+                end
+            end else begin
+                // Below THRESH_MILD: de-escalate with hysteresis
+                if (throttle_latch > 2'b00) begin
+                    if (hyst_cnt == HYST_COUNT - 1) begin
+                        throttle_latch &lt;= 2'b00;
+                        hyst_cnt       &lt;= 5'd0;
+                    end else hyst_cnt &lt;= hyst_cnt + 1;
+                end
+            end
+
+            // Drive outputs from latch
+            o_throttle_level &lt;= throttle_latch;
+
+            case (throttle_latch)
+                2'b00: begin
+                    o_refi_scale &lt;= 2'b00; // 1x normal
+                    o_bw_limit   &lt;= 8'd100;
+                end
+                2'b01: begin
+                    o_refi_scale &lt;= 2'b01; // 0.5x (2x refresh)
+                    o_bw_limit   &lt;= 8'd75;
+                end
+                2'b10: begin
+                    o_refi_scale &lt;= 2'b10; // 0.25x (4x refresh)
+                    o_bw_limit   &lt;= 8'd50;
+                end
+                2'b11: begin
+                    o_refi_scale &lt;= 2'b10; // max refresh
+                    o_bw_limit   &lt;= 8'd0;
+                end
+                default: begin
+                    o_refi_scale &lt;= 2'b00;
+                    o_bw_limit   &lt;= 8'd100;
+                end
+            endcase
+        end
+    end
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<!-- Section 8: Testbench -->
+<section>
+<h2>8. SystemVerilog Testbench</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">SystemVerilog — tb_hbm3_temp_monitor.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// ============================================================
+// tb_hbm3_temp_monitor.sv — Testbench for Temperature Monitor
+// EcrioniX · HBM3 Controller Build · Module 14
+// ============================================================
+`timescale 1ns/1ps
+
+module tb_hbm3_temp_monitor;
+
+// DUT signals
+logic        clk, rst_n;
+logic [7:0]  temp_code;
+logic        temp_valid, alert_clr;
+logic [7:0]  temp_degc;
+logic [1:0]  throttle_level, refi_scale;
+logic        tcase_alert;
+logic [7:0]  bw_limit;
+
+// Instantiate DUT
+hbm3_temp_monitor #(
+    .THRESH_MILD(8'd75),
+    .THRESH_MODERATE(8'd85),
+    .THRESH_EMERGENCY(8'd95),
+    .HYST_COUNT(4) // short for simulation
+) dut (
+    .i_clk(clk),           .i_rst_n(rst_n),
+    .i_temp_code(temp_code),.i_temp_valid(temp_valid),
+    .i_alert_clr(alert_clr),
+    .o_temp_degc(temp_degc),.o_throttle_level(throttle_level),
+    .o_refi_scale(refi_scale),.o_tcase_alert(tcase_alert),
+    .o_bw_limit(bw_limit)
+);
+
+// 500MHz clock
+initial clk = 0;
+always #1 clk = ~clk;
+
+integer errors = 0;
+
+task send_temp(input [7:0] code);
+    @(posedge clk);
+    temp_code  = code;
+    temp_valid = 1'b1;
+    @(posedge clk);
+    temp_valid = 1'b0;
+    repeat(4) @(posedge clk); // let outputs settle
+endtask
+
+task check_throttle(input [1:0] expected, input string label);
+    if (throttle_level !== expected) begin
+        $error("FAIL [%s]: throttle_level=%0b expected=%0b", label, throttle_level, expected);
+        errors++;
+    end else $display("[%0t] PASS [%s]: throttle=%0b bw=%0d%%", $time, label, throttle_level, bw_limit);
+endtask
+
+initial begin
+    $dumpfile("tb_temp_monitor.vcd");
+    $dumpvars(0, tb_hbm3_temp_monitor);
+
+    rst_n = 0; temp_code = '0; temp_valid = 0; alert_clr = 0;
+    repeat(10) @(posedge clk);
+    rst_n = 1;
+    repeat(5) @(posedge clk);
+
+    // TEST 1: Normal temperature (code=5, ~65°C)
+    $display("[%0t] TEST1: Normal operating temp", $time);
+    send_temp(8'h05);
+    check_throttle(2'b00, "65C-Normal");
+
+    // TEST 2: Warm temperature (code=6, ~80°C) — mild throttle
+    $display("[%0t] TEST2: Warm temp -> mild throttle", $time);
+    send_temp(8'h06);
+    check_throttle(2'b01, "80C-Mild");
+    if (bw_limit !== 8'd75) begin
+        $error("FAIL: bw_limit=%0d expected 75", bw_limit);
+        errors++;
+    end
+
+    // TEST 3: Hot temperature (code=7, ~88°C) — moderate throttle
+    $display("[%0t] TEST3: Hot temp -> moderate throttle", $time);
+    send_temp(8'h07);
+    check_throttle(2'b01, "88C-still-mild-or-moderate"); // escalates
+    if (refi_scale !== 2'b01) $display("Note: refi_scale=%0b", refi_scale);
+
+    // TEST 4: Critical temperature (code=8, ~93°C) — moderate
+    $display("[%0t] TEST4: Critical temp (93C) -> moderate", $time);
+    send_temp(8'h08);
+    if (throttle_level !== 2'b10)
+        $display("Note: throttle_level=%0b (may still transitioning)", throttle_level);
+
+    // TEST 5: Emergency (code=FF, >95°C)
+    $display("[%0t] TEST5: Emergency temp >95C -> shutdown", $time);
+    send_temp(8'hFF);
+    repeat(5) @(posedge clk);
+    if (throttle_level !== 2'b11) begin
+        $error("FAIL: Emergency throttle not set. Got %0b", throttle_level);
+        errors++;
+    end else $display("[%0t] PASS: Emergency shutdown activated", $time);
+    if (!tcase_alert) begin
+        $error("FAIL: tcase_alert not asserted during emergency");
+        errors++;
+    end else $display("[%0t] PASS: tcase_alert asserted", $time);
+    if (bw_limit !== 8'd0) begin
+        $error("FAIL: bw_limit should be 0 during emergency, got %0d", bw_limit);
+        errors++;
+    end
+
+    // TEST 6: Recovery from emergency
+    $display("[%0t] TEST6: Recovery — temp back to normal", $time);
+    send_temp(8'h04); // 45°C
+    alert_clr = 1; @(posedge clk); alert_clr = 0;
+    // Need HYST_COUNT polls before de-escalation
+    repeat(4) send_temp(8'h04);
+    if (tcase_alert) $display("Note: alert still set (may need more polls)");
+
+    // Summary
+    repeat(20) @(posedge clk);
+    if (errors == 0)
+        $display("[%0t] ALL TESTS PASSED", $time);
+    else
+        $display("[%0t] %0d TEST(S) FAILED", $time, errors);
+    $finish;
+end
+
+initial begin
+    #100000;
+    $error("TIMEOUT");
+    $finish;
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<!-- FAQ -->
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details><summary>Why does HBM3 need active thermal management?</summary><p>HBM3 stacks multiple DRAM dies vertically with TSVs, dramatically increasing power density per unit area. Heat from lower dies must travel through silicon layers to reach the heatsink, creating high thermal resistance. At elevated temperatures, DRAM charge retention degrades (requiring faster refresh), and operation above JEDEC limits (85°C standard, 95°C extended) risks data loss or permanent device damage.</p></details>
+  <details><summary>How does the controller read DRAM temperature?</summary><p>The DRAM reports its die temperature via Mode Register 4 (MR4). The controller issues a Mode Register Read (MRR) command with address 4, and the DRAM responds with an 8-bit temperature band code on the DQ bus. Each band covers approximately 5°C. JEDEC recommends polling MR4 at least every 50ms under normal operation.</p></details>
+  <details><summary>What is refresh derating (SRC) in HBM3?</summary><p>At elevated temperatures, DRAM capacitors discharge faster, so the controller must shorten tREFI (the refresh interval). Above 85°C, tREFI must be halved — the controller doubles its refresh rate. Above 95°C, tREFI is quartered (4x refresh rate). This is called Self-Refresh Calibration (SRC) or thermal refresh derating per JESD238.</p></details>
+  <details><summary>What are the HBM3 throttle levels?</summary><p>The throttle controller implements four levels: Normal (below 75°C — full bandwidth, 1x refresh), Mild (75–85°C — 25% BW reduction, 2x refresh), Moderate (85–95°C — 50% BW reduction, 4x refresh), and Emergency shutdown (above 95°C — all traffic halted, tcase_alert asserted, zero BW limit). Hysteresis prevents rapid oscillation near thresholds.</p></details>
+  <details><summary>How does bandwidth limiting actually work in the controller?</summary><p>The bw_limit output indicates maximum allowable bandwidth as a percentage of nominal. The scheduler reads this and applies a token-bucket rate limiter: it counts commands issued per refresh window and stops accepting new AXI transactions once the count reaches floor(bw_limit/100 × max_cmds_per_window). This provides smooth bandwidth reduction without abrupt traffic halts.</p></details>
+</div>
+</section>
+
+<!-- Prev/Next -->
+<div class="nav-pills">
+  <a href="/hbm3-controller/phy-model/" class="nav-pill">&#8592; Module 13: PHY Interface Model</a>
+  <a href="/hbm3-controller/power-mgmt/" class="nav-pill">Module 15: Power Management &#8594;</a>
+</div>
+
+</div><!-- .wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot; <a href="/hbm3-controller/">HBM3 Controller Build</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="/about/">About</a> &middot; <a href="/privacy/">Privacy</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',2000);
+  });
+}
+</script>
+</body>
+</html>

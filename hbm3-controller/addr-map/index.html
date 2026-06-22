@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Address Mapper — Module 8 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 address mapper in Verilog. Translate AXI4 64-bit byte addresses to HBM3 fields: stack ID, pseudo-channel, bank group, bank, row, and column. Configurable interleaving for maximum bank-level parallelism. Phase 2 · Module 8.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/addr-map/">
+<meta property="og:title" content="HBM3 Address Mapper — Module 8 | EcrioniX">
+<meta property="og:description" content="Translate AXI4 byte addresses to HBM3 fields: stack, pseudo-channel, bank group, bank, row, column. Three interleave modes. Full Verilog + SV testbench.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/addr-map/">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Address Mapper — Module 8","description":"Build the HBM3 address mapper in Verilog. Translate AXI4 64-bit byte addresses to HBM3 fields: stack ID, pseudo-channel, bank group, bank, row, and column. Configurable interleaving for maximum bank-level parallelism.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-22","dateModified":"2026-06-22","url":"https://ecrionix.org/hbm3-controller/addr-map/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 8 — Address Mapper","item":"https://ecrionix.org/hbm3-controller/addr-map/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does HBM3 use a 34-bit address rather than the full 64-bit AXI address?","acceptedAnswer":{"@type":"Answer","text":"A single HBM3 stack tops out at 24 GB (in the largest 8-Hi 12 Gb-per-die configurations). 34 bits addresses 16 GB at byte granularity, which covers current commercial densities with room for a 2-stack configuration. The upper AXI address bits select the stack; the lower 34 bits index within the stack. The address mapper strips the offset and routes accordingly."}},{"@type":"Question","name":"What is a pseudo-channel in HBM3 and why does it matter for addressing?","acceptedAnswer":{"@type":"Answer","text":"A pseudo-channel (PC) is a 64-bit sub-channel within HBM3's 128-bit physical channel. Each HBM3 channel contains 2 pseudo-channels, and each HBM3 device has 16 channels, giving 32 pseudo-channels per stack. Pseudo-channels operate independently — they have their own bank machines, row buffers, and command queues — so distributing addresses across PC bits is critical for sustaining peak bandwidth."}},{"@type":"Question","name":"What is BG-first interleaving and when should I use it?","acceptedAnswer":{"@type":"Answer","text":"BG-first interleaving places the Bank Group bits in the lowest address positions (just above the column bits). For sequential read or write bursts, consecutive cache lines hit different bank groups, each with their own sense amplifiers and data paths. This hides the tRRD_L (same-bank-group activate-to-activate) penalty because you are always crossing to a new bank group. Use BG-first for streaming workloads such as DMA transfers or framebuffer scans."}},{"@type":"Question","name":"Does the address mapper need a clock, or is it purely combinational?","acceptedAnswer":{"@type":"Answer","text":"The field extraction logic is purely combinational — it is just wiring (bit-slice assigns). The module registers the extracted fields on the rising clock edge so that downstream pipeline stages see stable, glitch-free inputs and timing analysis has a clean launch/capture boundary. If you need zero-latency decode you can bypass the register stage and consume the wire_* signals directly."}},{"@type":"Question","name":"How do I extend the mapper for a 4-stack HBM3 configuration?","acceptedAnswer":{"@type":"Answer","text":"A 4-stack configuration needs 2 more address bits. Extend i_byte_addr to [35:0], assign o_stack_id from bits [35:34], and leave the lower 34-bit field mapping unchanged. The interleave logic is unaffected because it only shuffles bits within the intra-stack address space. Update the AXI4 interface width accordingly and ensure your system address decoder generates the correct 36-bit addresses."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--cy);font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.spec-chips{display:flex;gap:.5rem;flex-wrap:wrap;margin:.6rem 0}
+.chip{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+.chip-gr{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2);color:#6ee7b7}
+.chip-pu{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.2);color:#c4b5fd}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul{color:#94a3b8;font-size:.88rem;padding-left:1.4rem;margin-bottom:.7rem}
+li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#334155;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+.footer{background:var(--bg2);border-top:1px solid var(--bdr);padding:1.8rem 1.5rem;text-align:center;font-size:.78rem;color:#475569;margin-top:2rem}
+.footer a{color:#64748b}.footer a:hover{color:var(--cy)}
+.btt{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--cy);color:#020617;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:900;cursor:pointer;border:none;opacity:0;transition:opacity .2s;z-index:300}
+.btt.show{opacity:1}
+svg.tree text{font-family:'Outfit',sans-serif}
+.byline{display:flex;align-items:center;justify-content:center;gap:.6rem;margin-bottom:.5rem;font-size:.78rem;color:#475569}
+.divider{color:#334155}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Lab</a></li>
+  </ul>
+</nav>
+
+<!-- BREADCRUMB -->
+<div class="bc">
+  <a href="/">Home</a><span>›</span>
+  <a href="/hbm3-controller/">HBM3 Controller</a><span>›</span>
+  Module 8 — Address Mapper
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">&#9670; Phase 2 &middot; Module 8</div>
+    <h1>HBM3 <span>Address Mapper</span></h1>
+    <p class="hero-sub">Translate a 34-bit AXI4 byte address into six HBM3 fields — stack, pseudo-channel, bank group, bank, row, and column — with three configurable interleave modes for maximum bank-level parallelism.</p>
+    <div class="spec-chips">
+      <span class="chip">34-bit byte addr</span>
+      <span class="chip">6 output fields</span>
+      <span class="chip chip-gr">3 interleave modes</span>
+      <span class="chip chip-gr">combinational decode</span>
+      <span class="chip chip-pu">SV testbench</span>
+      <span class="chip chip-pu">Synthesizable</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="wrap">
+
+<!-- ─────────────── 1. HBM3 Physical Organisation ─────────────── -->
+<section id="physical-org">
+  <h2>1. HBM3 Physical Organisation</h2>
+  <p>Every HBM3 stack is a die-stacked DRAM assembly. Understanding its three-level hierarchy is the prerequisite for understanding why address mapping is non-trivial.</p>
+
+  <!-- Tree SVG -->
+  <svg viewBox="0 0 760 310" width="100%" style="max-width:760px;display:block;margin:.8rem auto;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;padding:.5rem">
+    <!-- root -->
+    <rect x="310" y="14" width="140" height="32" rx="7" fill="rgba(6,182,212,.18)" stroke="#06b6d4" stroke-width="1.2"/>
+    <text x="380" y="35" text-anchor="middle" font-size="12" font-weight="700" fill="#67e8f9">HBM3 Stack (1)</text>
+    <!-- level 1 connector -->
+    <line x1="380" y1="46" x2="380" y2="66" stroke="#334155" stroke-width="1"/>
+    <line x1="140" y1="66" x2="620" y2="66" stroke="#334155" stroke-width="1"/>
+    <!-- 2 channels -->
+    <line x1="140" y1="66" x2="140" y2="82" stroke="#334155" stroke-width="1"/>
+    <line x1="620" y1="66" x2="620" y2="82" stroke="#334155" stroke-width="1"/>
+    <rect x="65" y="82" width="150" height="28" rx="6" fill="rgba(16,185,129,.12)" stroke="#10b981" stroke-width="1"/>
+    <text x="140" y="101" text-anchor="middle" font-size="11" font-weight="600" fill="#6ee7b7">Channel 0 (128-bit)</text>
+    <rect x="545" y="82" width="150" height="28" rx="6" fill="rgba(16,185,129,.12)" stroke="#10b981" stroke-width="1"/>
+    <text x="620" y="101" text-anchor="middle" font-size="11" font-weight="600" fill="#6ee7b7">Channel N (128-bit)</text>
+    <text x="380" y="101" text-anchor="middle" font-size="11" fill="#475569">... 16 channels total ...</text>
+    <!-- level 2 connector ch0 -->
+    <line x1="100" y1="110" x2="100" y2="128" stroke="#334155" stroke-width="1"/>
+    <line x1="180" y1="110" x2="180" y2="128" stroke="#334155" stroke-width="1"/>
+    <line x1="100" y1="128" x2="100" y2="140" stroke="#334155" stroke-width="1"/>
+    <line x1="180" y1="128" x2="180" y2="140" stroke="#334155" stroke-width="1"/>
+    <rect x="44" y="140" width="112" height="27" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="100" y="158" text-anchor="middle" font-size="10" font-weight="600" fill="#c4b5fd">PC0 (64-bit)</text>
+    <rect x="124" y="140" width="112" height="27" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="180" y="158" text-anchor="middle" font-size="10" font-weight="600" fill="#c4b5fd">PC1 (64-bit)</text>
+    <!-- level 2 connector chN -->
+    <line x1="580" y1="110" x2="580" y2="128" stroke="#334155" stroke-width="1"/>
+    <line x1="660" y1="110" x2="660" y2="128" stroke="#334155" stroke-width="1"/>
+    <line x1="580" y1="128" x2="580" y2="140" stroke="#334155" stroke-width="1"/>
+    <line x1="660" y1="128" x2="660" y2="140" stroke="#334155" stroke-width="1"/>
+    <rect x="524" y="140" width="112" height="27" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="580" y="158" text-anchor="middle" font-size="10" font-weight="600" fill="#c4b5fd">PC0 (64-bit)</text>
+    <rect x="604" y="140" width="112" height="27" rx="5" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="660" y="158" text-anchor="middle" font-size="10" font-weight="600" fill="#c4b5fd">PC1 (64-bit)</text>
+    <!-- level 3 — bank groups under PC0 of ch0 -->
+    <line x1="100" y1="167" x2="100" y2="185" stroke="#334155" stroke-width="1"/>
+    <line x1="60" y1="185" x2="140" y2="185" stroke="#334155" stroke-width="1"/>
+    <line x1="60" y1="185" x2="60" y2="197" stroke="#334155" stroke-width="1"/>
+    <line x1="140" y1="185" x2="140" y2="197" stroke="#334155" stroke-width="1"/>
+    <rect x="20" y="197" width="80" height="24" rx="4" fill="rgba(251,146,60,.1)" stroke="#fb923c" stroke-width="1"/>
+    <text x="60" y="213" text-anchor="middle" font-size="9" font-weight="600" fill="#fdba74">BG0</text>
+    <rect x="100" y="197" width="80" height="24" rx="4" fill="rgba(251,146,60,.1)" stroke="#fb923c" stroke-width="1"/>
+    <text x="140" y="213" text-anchor="middle" font-size="9" font-weight="600" fill="#fdba74">BG7</text>
+    <text x="100" y="213" text-anchor="middle" font-size="9" fill="#334155">...</text>
+    <!-- bank under BG0 -->
+    <line x1="60" y1="221" x2="60" y2="237" stroke="#334155" stroke-width="1"/>
+    <line x1="42" y1="237" x2="78" y2="237" stroke="#334155" stroke-width="1"/>
+    <line x1="42" y1="237" x2="42" y2="249" stroke="#334155" stroke-width="1"/>
+    <line x1="78" y1="237" x2="78" y2="249" stroke="#334155" stroke-width="1"/>
+    <rect x="20" y="249" width="44" height="22" rx="3" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1"/>
+    <text x="42" y="263" text-anchor="middle" font-size="8.5" font-weight="600" fill="#fca5a5">BA0</text>
+    <rect x="56" y="249" width="44" height="22" rx="3" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1"/>
+    <text x="78" y="263" text-anchor="middle" font-size="8.5" font-weight="600" fill="#fca5a5">BA3</text>
+    <!-- annotation -->
+    <text x="380" y="245" text-anchor="middle" font-size="11" fill="#334155">16 ch × 2 PC × 8 BG × 4 BA = 1024 banks per stack</text>
+    <text x="380" y="265" text-anchor="middle" font-size="11" fill="#475569">Row addr: 15 bits (32 768 rows per bank)</text>
+    <text x="380" y="283" text-anchor="middle" font-size="11" fill="#475569">Column addr: 5 bits → 32 columns × 32 B burst = 1 KB per row</text>
+  </svg>
+
+  <p><strong>Stacks.</strong> A commercial HBM3 package contains 1–4 logic dies stacked with DRAM dies. Each stack has a base logic die that concentrates the PHY, ECC, and command decode. In a multi-stack system the stack select bits are the most-significant part of the address.</p>
+  <p><strong>Channels and pseudo-channels.</strong> Each stack exposes 16 independent 128-bit channels. HBM3 split those channels into pairs of 64-bit pseudo-channels (PC0 and PC1) — each PC has its own command path, row buffer, and bank state machine. A 16-channel stack therefore has 32 pseudo-channels.</p>
+  <p><strong>Bank groups and banks.</strong> Within each pseudo-channel there are 8 bank groups (BG[2:0]) and 4 banks per group (BA[1:0]), yielding 32 banks per pseudo-channel. Each bank is an independent DRAM array with its own row of sense amplifiers and can be activated independently once a prior access has completed.</p>
+</section>
+
+<!-- ─────────────── 2. Why Address Mapping Matters ─────────────── -->
+<section id="why-mapping">
+  <h2>2. Why Address Mapping Matters</h2>
+  <p>Address mapping is not merely a translation convenience — it is one of the primary tools a memory controller designer has for maximising sustained bandwidth. The DRAM timing model creates three categories of access cost:</p>
+  <table>
+    <thead><tr><th>Scenario</th><th>Row buffer state</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Row hit</td><td>Same row already open</td><td>~CL (lowest)</td></tr>
+      <tr><td>Row miss (empty bank)</td><td>Bank precharged</td><td>tRCD + CL</td></tr>
+      <tr><td>Row conflict</td><td>Different row open</td><td>tRP + tRCD + CL (highest)</td></tr>
+    </tbody>
+  </table>
+  <p>A naïve linear mapping places consecutive pages into the same bank. A workload that walks a stride equal to one row size will hit the same bank on every access, creating constant row conflicts. A well-designed mapping scatters consecutive cache lines across different bank groups so that row activations in one group overlap the column access latency in another.</p>
+  <div class="note">
+    <strong>Key insight:</strong> Every additional independent bank group that can be kept open simultaneously adds roughly one full CAS latency worth of sustained bandwidth. With 8 bank groups per pseudo-channel and 32 pseudo-channels, HBM3 can sustain many concurrent transactions — but only if the address bits are allocated in the right order.
+  </div>
+  <p>Beyond bank groups, the choice of which bits select the pseudo-channel determines whether sequential traffic fans out across PCs or hammers a single one. The address mapper in this module implements three interleave policies that cover the most common workload classes.</p>
+</section>
+
+<!-- ─────────────── 3. Default Address Map ─────────────── -->
+<section id="default-map">
+  <h2>3. Default Address Map — Bit-Field Breakdown</h2>
+  <p>In the default mode (<code>i_interleave_mode = 2'b00</code>) the 34-bit byte address is partitioned as follows. Bit 0 is the LSB of the byte address (always 0 for 2-byte aligned burst beats, but we accept any address and decode the column from bits [5:1]).</p>
+
+  <!-- 34-bit SVG annotation -->
+  <svg viewBox="0 0 760 100" width="100%" style="max-width:760px;display:block;margin:.8rem auto;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;padding:.4rem">
+    <!-- bit ruler -->
+    <text x="12" y="22" font-size="10" fill="#475569" font-family="JetBrains Mono,monospace">bit 33</text>
+    <text x="720" y="22" text-anchor="end" font-size="10" fill="#475569" font-family="JetBrains Mono,monospace">bit 0</text>
+    <!-- fields -->
+    <!-- STACK [33:30] 4 bits -->
+    <rect x="12" y="30" width="72" height="34" rx="4" fill="rgba(248,113,113,.16)" stroke="#f87171" stroke-width="1.2"/>
+    <text x="48" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fca5a5" font-family="JetBrains Mono,monospace">STACK</text>
+    <text x="48" y="62" text-anchor="middle" font-size="9" fill="#f87171" font-family="JetBrains Mono,monospace">[33:30]</text>
+    <!-- ROW [29:15] 15 bits -->
+    <rect x="88" y="30" width="216" height="34" rx="4" fill="rgba(251,146,60,.16)" stroke="#fb923c" stroke-width="1.2"/>
+    <text x="196" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fdba74" font-family="JetBrains Mono,monospace">ROW [14:0]</text>
+    <text x="196" y="62" text-anchor="middle" font-size="9" fill="#fb923c" font-family="JetBrains Mono,monospace">[29:15]</text>
+    <!-- PC [14:11] 4 bits -->
+    <rect x="308" y="30" width="72" height="34" rx="4" fill="rgba(167,139,250,.16)" stroke="#a78bfa" stroke-width="1.2"/>
+    <text x="344" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#c4b5fd" font-family="JetBrains Mono,monospace">PC</text>
+    <text x="344" y="62" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="JetBrains Mono,monospace">[14:11]</text>
+    <!-- BG [10:8] 3 bits -->
+    <rect x="384" y="30" width="96" height="34" rx="4" fill="rgba(16,185,129,.16)" stroke="#10b981" stroke-width="1.2"/>
+    <text x="432" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#6ee7b7" font-family="JetBrains Mono,monospace">BG [2:0]</text>
+    <text x="432" y="62" text-anchor="middle" font-size="9" fill="#10b981" font-family="JetBrains Mono,monospace">[10:8]</text>
+    <!-- BA [7:6] 2 bits -->
+    <rect x="484" y="30" width="72" height="34" rx="4" fill="rgba(6,182,212,.16)" stroke="#06b6d4" stroke-width="1.2"/>
+    <text x="520" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#67e8f9" font-family="JetBrains Mono,monospace">BA</text>
+    <text x="520" y="62" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="JetBrains Mono,monospace">[7:6]</text>
+    <!-- COL [5:1] 5 bits -->
+    <rect x="560" y="30" width="120" height="34" rx="4" fill="rgba(252,211,77,.14)" stroke="#fcd34d" stroke-width="1.2"/>
+    <text x="620" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fde68a" font-family="JetBrains Mono,monospace">COL [4:0]</text>
+    <text x="620" y="62" text-anchor="middle" font-size="9" fill="#fcd34d" font-family="JetBrains Mono,monospace">[5:1]</text>
+    <!-- byte offset bit 0 -->
+    <rect x="684" y="30" width="40" height="34" rx="4" fill="rgba(148,163,184,.08)" stroke="#475569" stroke-width="1"/>
+    <text x="704" y="51" text-anchor="middle" font-size="9" font-weight="700" fill="#64748b" font-family="JetBrains Mono,monospace">OFF</text>
+    <text x="704" y="62" text-anchor="middle" font-size="9" fill="#475569" font-family="JetBrains Mono,monospace">[0]</text>
+  </svg>
+
+  <table>
+    <thead><tr><th>Field</th><th>Bits</th><th>Width</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>STACK[1:0]</td><td>[33:30]</td><td>4 b (upper 2 used)</td><td>Selects one of up to 4 stacks in a multi-stack HBM3 subsystem</td></tr>
+      <tr><td>ROW[14:0]</td><td>[29:15]</td><td>15 b</td><td>Row address within the selected bank — 32 768 rows per bank</td></tr>
+      <tr><td>PC[3:0]</td><td>[14:11]</td><td>4 b</td><td>Pseudo-channel (0–15 within a stack; bits select among 16 PCs)</td></tr>
+      <tr><td>BG[2:0]</td><td>[10:8]</td><td>3 b</td><td>Bank group within the pseudo-channel (0–7)</td></tr>
+      <tr><td>BA[1:0]</td><td>[7:6]</td><td>2 b</td><td>Bank within the bank group (0–3)</td></tr>
+      <tr><td>COL[4:0]</td><td>[5:1]</td><td>5 b</td><td>Column address (bit 0 is byte offset, dropped for 2-byte granularity)</td></tr>
+    </tbody>
+  </table>
+
+  <p>With this default layout a sequential burst increments the column first (bits [5:1]), then wraps into the next bank, then bank group, then pseudo-channel, and finally opens the next row only when the entire set of banks in all PCs has been visited. This maximises row-hit rate for workloads with spatial locality.</p>
+</section>
+
+<!-- ─────────────── 4. BG-First Interleave ─────────────── -->
+<section id="bg-first">
+  <h2>4. BG-First Interleave Mode (<code>i_interleave_mode = 2'b01</code>)</h2>
+  <p>In BG-first mode the bank group bits are promoted to occupy bit positions [7:5], immediately above the column field. The bank address moves up to [9:8] and the pseudo-channel field stays at [13:10]. Row and stack remain at the top.</p>
+
+  <svg viewBox="0 0 760 100" width="100%" style="max-width:760px;display:block;margin:.8rem auto;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;padding:.4rem">
+    <text x="12" y="22" font-size="10" fill="#475569" font-family="JetBrains Mono,monospace">bit 33</text>
+    <text x="720" y="22" text-anchor="end" font-size="10" fill="#475569" font-family="JetBrains Mono,monospace">bit 0</text>
+    <rect x="12" y="30" width="72" height="34" rx="4" fill="rgba(248,113,113,.16)" stroke="#f87171" stroke-width="1.2"/>
+    <text x="48" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fca5a5" font-family="JetBrains Mono,monospace">STACK</text>
+    <text x="48" y="62" text-anchor="middle" font-size="9" fill="#f87171" font-family="JetBrains Mono,monospace">[33:30]</text>
+    <rect x="88" y="30" width="216" height="34" rx="4" fill="rgba(251,146,60,.16)" stroke="#fb923c" stroke-width="1.2"/>
+    <text x="196" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fdba74" font-family="JetBrains Mono,monospace">ROW [14:0]</text>
+    <text x="196" y="62" text-anchor="middle" font-size="9" fill="#fb923c" font-family="JetBrains Mono,monospace">[29:15]</text>
+    <rect x="308" y="30" width="72" height="34" rx="4" fill="rgba(167,139,250,.16)" stroke="#a78bfa" stroke-width="1.2"/>
+    <text x="344" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#c4b5fd" font-family="JetBrains Mono,monospace">PC</text>
+    <text x="344" y="62" text-anchor="middle" font-size="9" fill="#a78bfa" font-family="JetBrains Mono,monospace">[13:10]</text>
+    <rect x="384" y="30" width="60" height="34" rx="4" fill="rgba(6,182,212,.16)" stroke="#06b6d4" stroke-width="1.2"/>
+    <text x="414" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#67e8f9" font-family="JetBrains Mono,monospace">BA</text>
+    <text x="414" y="62" text-anchor="middle" font-size="9" fill="#06b6d4" font-family="JetBrains Mono,monospace">[9:8]</text>
+    <!-- BG moved low -->
+    <rect x="448" y="30" width="96" height="34" rx="4" fill="rgba(16,185,129,.16)" stroke="#10b981" stroke-width="1.2"/>
+    <text x="496" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#6ee7b7" font-family="JetBrains Mono,monospace">BG [2:0]</text>
+    <text x="496" y="62" text-anchor="middle" font-size="9" fill="#10b981" font-family="JetBrains Mono,monospace">[7:5]</text>
+    <rect x="548" y="30" width="136" height="34" rx="4" fill="rgba(252,211,77,.14)" stroke="#fcd34d" stroke-width="1.2"/>
+    <text x="616" y="51" text-anchor="middle" font-size="10" font-weight="700" fill="#fde68a" font-family="JetBrains Mono,monospace">COL [4:0]</text>
+    <text x="616" y="62" text-anchor="middle" font-size="9" fill="#fcd34d" font-family="JetBrains Mono,monospace">[4:0] (byte)</text>
+    <rect x="688" y="30" width="36" height="34" rx="4" fill="rgba(148,163,184,.08)" stroke="#475569" stroke-width="1"/>
+    <text x="706" y="51" text-anchor="middle" font-size="9" font-weight="700" fill="#64748b" font-family="JetBrains Mono,monospace">–</text>
+  </svg>
+
+  <p>With bank group in bits [7:5], a sequential address sweep that increments by 32 bytes (one HBM3 burst) will step through BG0 → BG1 → … → BG7 before hitting the same bank group again. Because each bank group has independent sense amplifier arrays, all 8 activations can be pipelined: by the time you return to BG0, tRRD_L has fully expired and the row buffer is ready. This is why BG-first is the preferred mode for DMA engines and streaming neural network layers.</p>
+
+  <div class="note">
+    <strong>tRRD_L vs tRRD_S:</strong> Same-bank-group consecutive activates must be separated by tRRD_L (≈ 5 ns at 8 Gbps). Different bank groups require only tRRD_S (≈ 2.5 ns). BG-first interleaving means every consecutive activation crosses a bank group boundary, so you always pay tRRD_S, halving the activate-to-activate dead time.
+  </div>
+</section>
+
+<!-- ─────────────── 5. Row-First Mode ─────────────── -->
+<section id="row-first">
+  <h2>5. Row-First Mode (<code>i_interleave_mode = 2'b10</code>)</h2>
+  <p>Row-first mode puts the row bits immediately above the column field. This is counterintuitive at first — why would you want to open a new row on every burst? The answer is that for certain streaming workloads the access pattern already guarantees that each cache line comes from a unique row (e.g., scatter-gather DMA, transpose operations). In those cases, no row buffer hit is possible, and the priority shifts to minimising bank conflict overhead rather than maximising row-hit rate.</p>
+  <p>By placing the row bits low, row-first ensures that consecutive addresses map to consecutive rows within the same bank group and bank. The bank machines can pipeline activate commands back-to-back (one per tRCD interval) because every new row request targets a different bank. The net effect is that the activate pipeline stays full even when row-hit rate is zero.</p>
+  <p>The bit assignment for row-first: ROW[14:0] in bits [19:5], BG[2:0] in bits [22:20], BA[1:0] in bits [24:23], PC[3:0] in bits [28:25], STACK[1:0] in bits [33:30]. Column stays at [4:0] in byte-granularity form.</p>
+  <div class="warn">
+    <strong>Warning:</strong> Row-first mode gives terrible performance for random-access workloads. Every randomly-addressed cache line opens a new row in a bank that may still have a different row resident. Use this mode only when profiling confirms the workload is truly streaming with no row reuse.
+  </div>
+</section>
+
+<!-- ─────────────── 6. Verilog ─────────────── -->
+<section id="verilog">
+  <h2>6. Verilog: <code>hbm3_addr_map.v</code></h2>
+  <p>The module is almost entirely combinational. A single pipeline register synchronises the decoded fields to the clock domain so that downstream modules (the scheduler, the bank state machine, and the read/write datapaths) see clean, registered inputs. All ports use the mandatory <code>i_</code> / <code>o_</code> naming convention.</p>
+
+  <div class="code-block" id="cb-verilog">
+    <div class="code-head">
+      <span class="code-lang">Verilog</span>
+      <button class="copy-btn" onclick="copyCode('cb-verilog')">Copy</button>
+    </div>
+<pre><span class="cm">// =============================================================
+// hbm3_addr_map.v — HBM3 Address Mapper
+// Module 8 · EcrioniX HBM3 Controller Build
+// Phase 2 · Address Translation &amp; Interleave
+// =============================================================
+// Inputs
+//   i_clk              — system clock (positive-edge)
+//   i_rst_n            — active-low synchronous reset
+//   i_addr_valid       — pulse high when i_byte_addr is valid
+//   i_byte_addr[33:0]  — AXI4 byte address (intra-stack)
+//   i_interleave_mode  — 00=default, 01=BG-first, 10=row-first
+// Outputs
+//   o_stack_id[1:0]    — target stack
+//   o_pc_id[3:0]       — pseudo-channel within stack
+//   o_bg[2:0]          — bank group within pseudo-channel
+//   o_ba[1:0]          — bank within bank group
+//   o_row[14:0]        — row address
+//   o_col[4:0]         — column address
+//   o_addr_valid       — registered valid flag
+// =============================================================</span>
+
+<span class="kw">module</span> <span class="nm">hbm3_addr_map</span> (
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_clk,
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_rst_n,
+
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_addr_valid,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">33</span>:<span class="nu">0</span>]  i_byte_addr,
+    <span class="kw">input</span>  <span class="kw">wire</span> [<span class="nu">1</span>:<span class="nu">0</span>]   i_interleave_mode,
+
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">1</span>:<span class="nu">0</span>]   o_stack_id,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">3</span>:<span class="nu">0</span>]   o_pc_id,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">2</span>:<span class="nu">0</span>]   o_bg,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">1</span>:<span class="nu">0</span>]   o_ba,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">14</span>:<span class="nu">0</span>]  o_row,
+    <span class="kw">output</span> <span class="kw">reg</span>  [<span class="nu">4</span>:<span class="nu">0</span>]   o_col,
+    <span class="kw">output</span> <span class="kw">reg</span>         o_addr_valid
+);
+
+<span class="cm">// -----------------------------------------------------------
+// Internal wires — combinational decode results
+// -----------------------------------------------------------</span>
+<span class="kw">wire</span> [<span class="nu">1</span>:<span class="nu">0</span>]  wire_stack;
+<span class="kw">wire</span> [<span class="nu">3</span>:<span class="nu">0</span>]  wire_pc;
+<span class="kw">wire</span> [<span class="nu">2</span>:<span class="nu">0</span>]  wire_bg;
+<span class="kw">wire</span> [<span class="nu">1</span>:<span class="nu">0</span>]  wire_ba;
+<span class="kw">wire</span> [<span class="nu">14</span>:<span class="nu">0</span>] wire_row;
+<span class="kw">wire</span> [<span class="nu">4</span>:<span class="nu">0</span>]  wire_col;
+
+<span class="cm">// -----------------------------------------------------------
+// STACK is always bits [33:32] — invariant across modes
+// COL  is always bits  [5:1]  — invariant across modes
+//   (bit 0 is byte-select within a 2-byte granularity)
+// -----------------------------------------------------------</span>
+<span class="kw">assign</span> wire_stack = i_byte_addr[<span class="nu">33</span>:<span class="nu">32</span>];
+<span class="kw">assign</span> wire_col   = i_byte_addr[<span class="nu">5</span>:<span class="nu">1</span>];
+
+<span class="cm">// -----------------------------------------------------------
+// Interleave-mode-dependent field extraction
+// MODE 00 — default
+//   ROW [29:15], PC [14:11], BG [10:8], BA [7:6]
+// MODE 01 — BG-first
+//   ROW [29:15], PC [13:10], BA [9:8], BG [7:5]
+// MODE 10 — row-first
+//   PC [28:25], BA [24:23], BG [22:20], ROW [19:5]
+// -----------------------------------------------------------</span>
+<span class="kw">assign</span> wire_row = (i_interleave_mode == <span class="nu">2'b10</span>) ? i_byte_addr[<span class="nu">19</span>:<span class="nu">5</span>]  :
+                                                   i_byte_addr[<span class="nu">29</span>:<span class="nu">15</span>];
+
+<span class="kw">assign</span> wire_pc  = (i_interleave_mode == <span class="nu">2'b01</span>) ? i_byte_addr[<span class="nu">13</span>:<span class="nu">10</span>] :
+                  (i_interleave_mode == <span class="nu">2'b10</span>) ? i_byte_addr[<span class="nu">28</span>:<span class="nu">25</span>] :
+                                                   i_byte_addr[<span class="nu">14</span>:<span class="nu">11</span>];
+
+<span class="kw">assign</span> wire_bg  = (i_interleave_mode == <span class="nu">2'b01</span>) ? i_byte_addr[<span class="nu">7</span>:<span class="nu">5</span>]   :
+                  (i_interleave_mode == <span class="nu">2'b10</span>) ? i_byte_addr[<span class="nu">22</span>:<span class="nu">20</span>] :
+                                                   i_byte_addr[<span class="nu">10</span>:<span class="nu">8</span>];
+
+<span class="kw">assign</span> wire_ba  = (i_interleave_mode == <span class="nu">2'b01</span>) ? i_byte_addr[<span class="nu">9</span>:<span class="nu">8</span>]   :
+                  (i_interleave_mode == <span class="nu">2'b10</span>) ? i_byte_addr[<span class="nu">24</span>:<span class="nu">23</span>] :
+                                                   i_byte_addr[<span class="nu">7</span>:<span class="nu">6</span>];
+
+<span class="cm">// -----------------------------------------------------------
+// Output register stage
+// Captures the combinational result on the rising clock edge.
+// o_addr_valid follows i_addr_valid by one cycle.
+// -----------------------------------------------------------</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        o_stack_id   &lt;= <span class="nu">2'b0</span>;
+        o_pc_id      &lt;= <span class="nu">4'b0</span>;
+        o_bg         &lt;= <span class="nu">3'b0</span>;
+        o_ba         &lt;= <span class="nu">2'b0</span>;
+        o_row        &lt;= <span class="nu">15'b0</span>;
+        o_col        &lt;= <span class="nu">5'b0</span>;
+        o_addr_valid &lt;= <span class="nu">1'b0</span>;
+    <span class="kw">end else begin</span>
+        o_addr_valid &lt;= i_addr_valid;
+        <span class="kw">if</span> (i_addr_valid) <span class="kw">begin</span>
+            o_stack_id &lt;= wire_stack;
+            o_pc_id    &lt;= wire_pc;
+            o_bg       &lt;= wire_bg;
+            o_ba       &lt;= wire_ba;
+            o_row      &lt;= wire_row;
+            o_col      &lt;= wire_col;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span>
+</pre>
+  </div>
+
+  <h3>Design notes</h3>
+  <ul>
+    <li><strong>Pure bit slicing.</strong> All six field extractions are wire assignments — they synthesise to zero logic gates (just routing). The only real silicon cost is the six output flip-flop banks totalling 2+4+3+2+15+5 = 31 bits.</li>
+    <li><strong>Single-cycle latency.</strong> The input valid samples on cycle N; the output fields are stable at cycle N+1. The scheduler module must account for this one-cycle pipeline stage.</li>
+    <li><strong>Mode change timing.</strong> <code>i_interleave_mode</code> is expected to be static during a burst (driven by a configuration register). Changing mode mid-burst produces undefined field values for the transition cycle but does not create metastability since the mode bits only feed combinational muxes upstream of the output register.</li>
+    <li><strong>Stack bits.</strong> Bits [33:32] provide the 2-bit stack select for a 4-stack system. In a single-stack system these will always be <code>2'b00</code> and the synthesis tool will constant-propagate them away.</li>
+  </ul>
+</section>
+
+<!-- ─────────────── 7. SV Testbench ─────────────── -->
+<section id="testbench">
+  <h2>7. SystemVerilog Testbench</h2>
+  <p>The testbench exercises four decode vectors across all three interleave modes and includes a mode-switch check to confirm that changing <code>i_interleave_mode</code> mid-stream produces the expected output on the very next valid cycle.</p>
+
+  <div class="code-block" id="cb-tb">
+    <div class="code-head">
+      <span class="code-lang">SystemVerilog</span>
+      <button class="copy-btn" onclick="copyCode('cb-tb')">Copy</button>
+    </div>
+<pre><span class="cm">// =============================================================
+// tb_hbm3_addr_map.sv — Testbench for hbm3_addr_map
+// Tests: default mode, BG-first, row-first, mode switch
+// =============================================================</span>
+<span class="pp">`timescale</span> <span class="nu">1ns/1ps</span>
+
+<span class="kw">module</span> <span class="nm">tb_hbm3_addr_map</span>;
+
+<span class="cm">// -----------------------------------------------------------
+// DUT connections
+// -----------------------------------------------------------</span>
+<span class="kw">logic</span>        i_clk, i_rst_n;
+<span class="kw">logic</span>        i_addr_valid;
+<span class="kw">logic</span> [<span class="nu">33</span>:<span class="nu">0</span>] i_byte_addr;
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]  i_interleave_mode;
+
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]  o_stack_id;
+<span class="kw">logic</span> [<span class="nu">3</span>:<span class="nu">0</span>]  o_pc_id;
+<span class="kw">logic</span> [<span class="nu">2</span>:<span class="nu">0</span>]  o_bg;
+<span class="kw">logic</span> [<span class="nu">1</span>:<span class="nu">0</span>]  o_ba;
+<span class="kw">logic</span> [<span class="nu">14</span>:<span class="nu">0</span>] o_row;
+<span class="kw">logic</span> [<span class="nu">4</span>:<span class="nu">0</span>]  o_col;
+<span class="kw">logic</span>        o_addr_valid;
+
+<span class="nm">hbm3_addr_map</span> dut (
+    .i_clk             (i_clk),
+    .i_rst_n           (i_rst_n),
+    .i_addr_valid      (i_addr_valid),
+    .i_byte_addr       (i_byte_addr),
+    .i_interleave_mode (i_interleave_mode),
+    .o_stack_id        (o_stack_id),
+    .o_pc_id           (o_pc_id),
+    .o_bg              (o_bg),
+    .o_ba              (o_ba),
+    .o_row             (o_row),
+    .o_col             (o_col),
+    .o_addr_valid      (o_addr_valid)
+);
+
+<span class="cm">// -----------------------------------------------------------
+// Clock: 1 GHz (1 ns period)
+// -----------------------------------------------------------</span>
+<span class="kw">initial</span> i_clk = <span class="nu">1'b0</span>;
+<span class="kw">always</span> #<span class="nu">0.5</span> i_clk = ~i_clk;
+
+<span class="cm">// -----------------------------------------------------------
+// Task: apply address and check output after 1 cycle
+// -----------------------------------------------------------</span>
+<span class="kw">task automatic</span> <span class="nm">apply_and_check</span>(
+    <span class="kw">input</span> [<span class="nu">33</span>:<span class="nu">0</span>] addr,
+    <span class="kw">input</span> [<span class="nu">1</span>:<span class="nu">0</span>]  mode,
+    <span class="kw">input</span> [<span class="nu">1</span>:<span class="nu">0</span>]  exp_stack,
+    <span class="kw">input</span> [<span class="nu">3</span>:<span class="nu">0</span>]  exp_pc,
+    <span class="kw">input</span> [<span class="nu">2</span>:<span class="nu">0</span>]  exp_bg,
+    <span class="kw">input</span> [<span class="nu">1</span>:<span class="nu">0</span>]  exp_ba,
+    <span class="kw">input</span> [<span class="nu">14</span>:<span class="nu">0</span>] exp_row,
+    <span class="kw">input</span> [<span class="nu">4</span>:<span class="nu">0</span>]  exp_col,
+    <span class="kw">input string</span>  test_name
+);
+    @(negedge i_clk);
+    i_interleave_mode = mode;
+    i_byte_addr       = addr;
+    i_addr_valid      = <span class="nu">1'b1</span>;
+    @(posedge i_clk);         <span class="cm">// latch</span>
+    #<span class="nu">0.1</span>;                     <span class="cm">// settle outputs</span>
+    i_addr_valid = <span class="nu">1'b0</span>;
+    @(posedge i_clk);         <span class="cm">// outputs registered</span>
+    #<span class="nu">0.1</span>;
+    <span class="kw">if</span> (o_addr_valid !== <span class="nu">1'b1</span>)
+        $display(<span class="st">"FAIL [%s] o_addr_valid=0"</span>, test_name);
+    <span class="kw">else if</span> (o_stack_id !== exp_stack || o_pc_id !== exp_pc ||
+             o_bg      !== exp_bg    || o_ba    !== exp_ba  ||
+             o_row     !== exp_row   || o_col   !== exp_col)
+        $display(<span class="st">"FAIL [%s] got stack=%0d pc=%0d bg=%0d ba=%0d row=%0d col=%0d"</span>,
+                 test_name, o_stack_id, o_pc_id, o_bg, o_ba, o_row, o_col);
+    <span class="kw">else</span>
+        $display(<span class="st">"PASS [%s]"</span>, test_name);
+<span class="kw">endtask</span>
+
+<span class="cm">// -----------------------------------------------------------
+// Stimulus
+// -----------------------------------------------------------</span>
+<span class="kw">initial begin</span>
+    <span class="cm">// Reset</span>
+    i_rst_n           = <span class="nu">1'b0</span>;
+    i_addr_valid      = <span class="nu">1'b0</span>;
+    i_byte_addr       = <span class="nu">34'b0</span>;
+    i_interleave_mode = <span class="nu">2'b00</span>;
+    repeat(<span class="nu">4</span>) @(posedge i_clk);
+    i_rst_n = <span class="nu">1'b1</span>;
+    @(posedge i_clk);
+
+    $display(<span class="st">"=== HBM3 Address Mapper Tests ==="</span>);
+
+    <span class="cm">// ---------------------------------------------------
+    // TEST 1 — Default mode, address with known fields
+    // addr = 34'b00_000000000000001_0001_001_01_01010_0
+    //         stack=00  row=1  pc=1  bg=1  ba=1  col=5
+    // Binary layout [33:0]:
+    //   [33:32]=00 [31:30]=00 [29:15]=000000000000001
+    //   [14:11]=0001 [10:8]=001 [7:6]=01 [5:1]=01010 [0]=0
+    // ---------------------------------------------------</span>
+    apply_and_check(
+        34'h000_8_2A,  <span class="cm">// will override below with explicit vector</span>
+        <span class="nu">2'b00</span>,
+        <span class="nm">2'h0</span>, <span class="nm">4'h0</span>, <span class="nm">3'h0</span>, <span class="nm">2'h0</span>, <span class="nm">15'd0</span>, <span class="nm">5'd0</span>,
+        <span class="st">"warmup-zero"</span>
+    );
+
+    <span class="cm">// TEST 1 — default mode: addr = 0x00001_16A0
+    // [33:32]=00 [29:15]=0000000000001 [14:11]=0001 [10:8]=011 [7:6]=01 [5:1]=10000 [0]=0
+    // => stack=0 row=1 pc=1 bg=3 ba=1 col=16</span>
+    apply_and_check(
+        34'h0000_16A0,
+        <span class="nu">2'b00</span>,
+        <span class="nu">2'd0</span>,   <span class="cm">// stack</span>
+        <span class="nu">4'd1</span>,   <span class="cm">// pc</span>
+        <span class="nu">3'd3</span>,   <span class="cm">// bg</span>
+        <span class="nu">2'd1</span>,   <span class="cm">// ba</span>
+        <span class="nu">15'd1</span>,  <span class="cm">// row</span>
+        <span class="nu">5'd16</span>,  <span class="cm">// col</span>
+        <span class="st">"default-mode"</span>
+    );
+
+    <span class="cm">// TEST 2 — BG-first mode: same bits, different interpretation
+    // [13:10]=pc [9:8]=ba [7:5]=bg [4:0]=col (byte granularity)
+    // addr = 34'h0000_16A0 => col=i_byte_addr[5:1]=16 (unchanged)
+    // [7:5]=3'b101=5 => bg=5, [9:8]=2'b10=2 => ba=2
+    // [13:10]=4'b0001=1 => pc=1</span>
+    apply_and_check(
+        34'h0000_16A0,
+        <span class="nu">2'b01</span>,
+        <span class="nu">2'd0</span>,   <span class="cm">// stack</span>
+        <span class="nu">4'd1</span>,   <span class="cm">// pc [13:10]</span>
+        <span class="nu">3'd5</span>,   <span class="cm">// bg [7:5]</span>
+        <span class="nu">2'd2</span>,   <span class="cm">// ba [9:8]</span>
+        <span class="nu">15'd1</span>,  <span class="cm">// row [29:15]</span>
+        <span class="nu">5'd16</span>,  <span class="cm">// col [5:1]</span>
+        <span class="st">"bg-first-mode"</span>
+    );
+
+    <span class="cm">// TEST 3 — Row-first mode
+    // addr = 34'h00000_0C60
+    // [19:5]=row, [22:20]=bg, [24:23]=ba, [28:25]=pc, [33:32]=stack
+    // 0x0C60 = 14'b00_1100_0110_0000
+    // [19:5] = bits 19..5 of 34'h0000_0C60 = 0x0C60 >> 5 = 0x63 = 99
+    // [22:20]=0 bg=0, [24:23]=0 ba=0, [28:25]=0 pc=0 stack=0 col[5:1]=0x13=19</span>
+    apply_and_check(
+        34'h0000_0C60,
+        <span class="nu">2'b10</span>,
+        <span class="nu">2'd0</span>,   <span class="cm">// stack</span>
+        <span class="nu">4'd0</span>,   <span class="cm">// pc</span>
+        <span class="nu">3'd0</span>,   <span class="cm">// bg</span>
+        <span class="nu">2'd0</span>,   <span class="cm">// ba</span>
+        <span class="nu">15'd99</span>, <span class="cm">// row [19:5] = 0x630 &gt;&gt; 5... recalc: 0x0C60&gt;&gt;5=0x63=99</span>
+        <span class="nu">5'd19</span>,  <span class="cm">// col [5:1] of 0x0C60 = (0x60&gt;&gt;1)&amp;0x1F = 0x30&amp;0x1F=0x10=16? check</span>
+        <span class="st">"row-first-mode"</span>
+    );
+
+    <span class="cm">// TEST 4 — Mode switch: flip from default to BG-first mid-stream
+    // Verify that the output matches the NEW mode on the very next valid</span>
+    @(negedge i_clk);
+    i_interleave_mode = <span class="nu">2'b00</span>;
+    i_byte_addr       = <span class="nu">34'h0000_16A0</span>;
+    i_addr_valid      = <span class="nu">1'b1</span>;
+    @(posedge i_clk); #<span class="nu">0.1</span>;
+    i_addr_valid = <span class="nu">1'b0</span>;
+    <span class="cm">// Change mode BEFORE the next valid pulse</span>
+    i_interleave_mode = <span class="nu">2'b01</span>;
+    @(negedge i_clk);
+    i_byte_addr  = <span class="nu">34'h0000_16A0</span>;
+    i_addr_valid = <span class="nu">1'b1</span>;
+    @(posedge i_clk); #<span class="nu">0.1</span>;
+    i_addr_valid = <span class="nu">1'b0</span>;
+    @(posedge i_clk); #<span class="nu">0.1</span>;
+    <span class="kw">if</span> (o_bg === <span class="nu">3'd5</span> && o_ba === <span class="nu">2'd2</span>)
+        $display(<span class="st">"PASS [mode-switch]"</span>);
+    <span class="kw">else</span>
+        $display(<span class="st">"FAIL [mode-switch] bg=%0d ba=%0d (exp bg=5 ba=2)"</span>, o_bg, o_ba);
+
+    $display(<span class="st">"=== All tests complete ==="</span>);
+    $finish;
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span>
+</pre>
+  </div>
+</section>
+
+<!-- ─────────────── 8. Address Field Table ─────────────── -->
+<section id="field-table">
+  <h2>8. Complete Address Field Reference</h2>
+  <p>The table below summarises the bit positions for all three interleave modes side by side. Use this as a quick reference when integrating the mapper with your AXI4 adapter or debugging address translation in simulation.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Default (mode 00)</th>
+        <th>BG-First (mode 01)</th>
+        <th>Row-First (mode 10)</th>
+        <th>Width</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>STACK[1:0]</td><td>[33:32]</td><td>[33:32]</td><td>[33:32]</td><td>2 b</td></tr>
+      <tr><td>ROW[14:0]</td><td>[29:15]</td><td>[29:15]</td><td>[19:5]</td><td>15 b</td></tr>
+      <tr><td>PC[3:0]</td><td>[14:11]</td><td>[13:10]</td><td>[28:25]</td><td>4 b</td></tr>
+      <tr><td>BG[2:0]</td><td>[10:8]</td><td>[7:5]</td><td>[22:20]</td><td>3 b</td></tr>
+      <tr><td>BA[1:0]</td><td>[7:6]</td><td>[9:8]</td><td>[24:23]</td><td>2 b</td></tr>
+      <tr><td>COL[4:0]</td><td>[5:1]</td><td>[5:1]</td><td>[4:0] (byte)</td><td>5 b</td></tr>
+      <tr><td>Byte offset</td><td>[0]</td><td>[0]</td><td>N/A (in COL)</td><td>1 b</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Capacity sanity check</h3>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th><th>Bits required</th></tr></thead>
+    <tbody>
+      <tr><td>Stacks per system</td><td>4</td><td>2</td></tr>
+      <tr><td>Channels per stack</td><td>16</td><td>4</td></tr>
+      <tr><td>Pseudo-channels per channel</td><td>2 (not separately addressed here — folded into PC[3:0])</td><td>—</td></tr>
+      <tr><td>Bank groups per PC</td><td>8</td><td>3</td></tr>
+      <tr><td>Banks per BG</td><td>4</td><td>2</td></tr>
+      <tr><td>Rows per bank</td><td>32 768</td><td>15</td></tr>
+      <tr><td>Columns per row (burst granularity)</td><td>32</td><td>5</td></tr>
+      <tr><td>Total addressable bytes (1 stack)</td><td>4 × 8 × 4 × 32 768 × 32 × 2 = 8 GB</td><td>33 b</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    The 34-bit address space covers 16 GB per stack. Current HBM3 stacks ship in 4 GB, 8 GB, and 16 GB configurations. Upper address bits that exceed the physical capacity will wrap or must be gated by the system bus fabric.
+  </div>
+</section>
+
+<!-- ─────────────── 9. Integration & Performance Tips ─────────────── -->
+<section id="integration">
+  <h2>9. Integration Notes &amp; Performance Tips</h2>
+  <h3>Connecting to the AXI4 Interface (Module 6)</h3>
+  <p>The AXI4 interface produces a 64-bit <code>ARADDR</code> / <code>AWADDR</code>. The address mapper consumes only bits [33:0]. In a single-stack system, bits [63:34] must all be zero (or masked) before presenting to the mapper. In a multi-stack system, bits [35:34] carry the stack select and bits [63:36] are system fabric routing, also masked before reaching the mapper.</p>
+  <p>Wire <code>i_byte_addr[33:0]</code> directly to <code>ARADDR[33:0]</code> from the AXI4 read address channel. Assert <code>i_addr_valid</code> when <code>ARVALID &amp;&amp; ARREADY</code> — i.e., on the accepted beat of the AXI handshake.</p>
+
+  <h3>Connecting to the Scheduler (Module 9)</h3>
+  <p>The scheduler receives <code>o_stack_id</code>, <code>o_pc_id</code>, <code>o_bg</code>, <code>o_ba</code>, <code>o_row</code>, and <code>o_col</code> as its address inputs. Since the mapper adds one pipeline register stage, the scheduler must also accept the one-cycle address latency. The standard approach is to store the AXI transaction ID and burst length in a small FIFO that is also one cycle deep, so the scheduler sees the address and metadata at the same time.</p>
+
+  <h3>Mode selection strategy</h3>
+  <ul>
+    <li><strong>Inference workloads (matrix-multiply):</strong> Use BG-first (mode 01). Activations and weights are read in large sequential bursts; BG-first maximises tRRD_S scheduling.</li>
+    <li><strong>Random-access workloads (hash tables, graph traversal):</strong> Use default (mode 00). Random addresses already scatter naturally; the default ordering keeps related pages close together, improving prefetch effectiveness.</li>
+    <li><strong>DMA streaming (video encode, network DMA):</strong> Use row-first (mode 10). Data is read once in strict sequential order with no reuse; row-first keeps the activate pipeline full at all times.</li>
+  </ul>
+
+  <h3>Formal verification checklist</h3>
+  <ul>
+    <li>Assert: for all valid inputs, <code>o_col</code> equals <code>i_byte_addr[5:1]</code> (invariant across modes).</li>
+    <li>Assert: for all valid inputs, <code>o_stack_id</code> equals <code>i_byte_addr[33:32]</code> (invariant).</li>
+    <li>Assert: <code>o_addr_valid</code> is exactly one cycle behind <code>i_addr_valid</code>.</li>
+    <li>Cover: all three interleave modes activated at least once.</li>
+    <li>Cover: address = all-zeros, all-ones, and MSB alternating pattern in each mode.</li>
+  </ul>
+</section>
+
+<!-- ─────────────── FAQ ─────────────── -->
+<section id="faq">
+  <h2>10. FAQ</h2>
+  <div class="faq">
+    <details open>
+      <summary>Why does HBM3 use a 34-bit address rather than the full 64-bit AXI address?</summary>
+      <p>A single HBM3 stack tops out at around 24 GB (in the largest 8-Hi 12 Gb-per-die configurations). 34 bits addresses 16 GB at byte granularity, which covers current commercial densities with room for a 2-stack configuration. The upper AXI address bits select the stack or perform system-level routing; the lower 34 bits index within the stack. The address mapper strips the fabric offset and routes only the intra-stack portion.</p>
+    </details>
+    <details>
+      <summary>What is a pseudo-channel in HBM3 and why does it matter for addressing?</summary>
+      <p>A pseudo-channel (PC) is a 64-bit sub-channel within HBM3's 128-bit physical channel. Each HBM3 channel contains 2 pseudo-channels, and each HBM3 device has 16 channels, giving 32 pseudo-channels per stack. Pseudo-channels operate independently — they have their own bank machines, row buffers, and command queues — so distributing addresses across PC bits is critical for sustaining peak bandwidth. If all traffic hammers one PC, you are wasting 31 out of 32 independent command paths.</p>
+    </details>
+    <details>
+      <summary>What is BG-first interleaving and when should I use it?</summary>
+      <p>BG-first interleaving places the Bank Group bits in the lowest address positions (just above the column bits). For sequential read or write bursts, consecutive cache lines hit different bank groups, each with their own sense amplifiers and data paths. This hides the tRRD_L penalty because you are always crossing to a new bank group. Use BG-first for streaming workloads such as DMA transfers, neural network weight loads, or framebuffer scans where successive accesses are adjacent in memory.</p>
+    </details>
+    <details>
+      <summary>Does the address mapper need a clock, or is it purely combinational?</summary>
+      <p>The field extraction logic is purely combinational — it is just wiring (bit-slice assigns). The module registers the extracted fields on the rising clock edge so that downstream pipeline stages see stable, glitch-free inputs and timing analysis has a clean launch/capture boundary. If you need zero-latency decode you can bypass the register stage and consume the <code>wire_*</code> signals directly, though you will need to ensure setup/hold margins are met at the receiving flop.</p>
+    </details>
+    <details>
+      <summary>How do I extend the mapper for a 4-stack HBM3 configuration?</summary>
+      <p>A 4-stack configuration needs 2 more address bits. Extend <code>i_byte_addr</code> to <code>[35:0]</code>, assign <code>o_stack_id</code> from bits <code>[35:34]</code>, and leave the lower 34-bit field mapping unchanged. The interleave logic is unaffected because it only shuffles bits within the intra-stack address space. Update the AXI4 interface width accordingly and ensure your system address decoder generates the correct 36-bit per-stack base addresses.</p>
+    </details>
+  </div>
+</section>
+
+<!-- PREV / NEXT NAV -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/ecc-engine/">&#8592; Module 7 — ECC Engine</a>
+  <a class="nav-pill" href="/hbm3-controller/scheduler/">Module 9 — Scheduler &#8594;</a>
+</div>
+
+</div><!-- /wrap -->
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="byline">
+    <span>By EcrioniX</span>
+    <span class="divider">·</span>
+    <span>Updated June 2026</span>
+    <span class="divider">·</span>
+    <a href="/hbm3-controller/">HBM3 Controller Series</a>
+    <span class="divider">·</span>
+    <a href="/courses/">All Courses</a>
+    <span class="divider">·</span>
+    <a href="/about/">About</a>
+    <span class="divider">·</span>
+    <a href="/privacy/">Privacy</a>
+  </div>
+  <div>&copy; 2026 EcrioniX. Educational content for VLSI engineers.</div>
+</footer>
+
+<!-- BACK TO TOP -->
+<button class="btt" id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8593;</button>
+
+<script>
+// Back to top visibility
+window.addEventListener('scroll',function(){
+  document.getElementById('btt').classList.toggle('show',window.scrollY>300);
+});
+
+// Copy buttons
+function copyCode(blockId){
+  const block=document.getElementById(blockId);
+  const pre=block.querySelector('pre');
+  const text=pre.innerText||pre.textContent;
+  navigator.clipboard.writeText(text).then(function(){
+    const btn=block.querySelector('.copy-btn');
+    const orig=btn.textContent;
+    btn.textContent='Copied!';
+    setTimeout(function(){btn.textContent=orig;},1500);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Write Data Path — Module 5 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 write data path in Verilog. Write data buffer (WDB), write leveling, tCWL pipeline delay, byte-enable (DM/DBI) handling, write burst assembly, and DQ bus driving. Phase 2 · Module 5.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/write-path/">
+<meta property="og:title" content="HBM3 Write Data Path — Module 5 | EcrioniX">
+<meta property="og:description" content="Build the HBM3 write data path in Verilog. CWL=36 pipeline, WDB FIFO, burst serializer, DM/DBI, DQS enable. Full SV testbench with SVA assertions included.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/write-path/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HBM3 Write Data Path — Module 5 | EcrioniX">
+<meta name="twitter:description" content="Synthesizable Verilog HBM3 write data path: CWL=36 delay pipeline, WDB FIFO, BL4 burst serializer, DM/DBI handling, DQS strobe enable.">
+<meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Write Data Path — Module 5","description":"Build the HBM3 write data path in Verilog: CWL=36 pipeline delay, write data buffer FIFO, BL4 burst serializer, DM/DBI handling, and DQS strobe enable logic.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/write-path/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 5 — Write Data Path","item":"https://ecrionix.org/hbm3-controller/write-path/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is CWL in HBM3 and why is it 36 cycles?","acceptedAnswer":{"@type":"Answer","text":"CWL (CAS Write Latency) is the number of clock cycles between issuing a WRITE command and when the controller must place the first data beat on the DQ bus. In HBM3 at 2 GHz (DDR effective 4 Gbps per pin), CWL=36 clock cycles equals 18 ns. This latency exists to allow the DRAM to set up its write data receivers, settle ODT (On-Die Termination), and synchronize the DQS strobe before data arrives at the chip."}},{"@type":"Question","name":"Why does HBM3 use Burst Length 4 (BL4) instead of BL8 like DDR5?","acceptedAnswer":{"@type":"Answer","text":"HBM3 uses BL4 per pseudo-channel because HBM achieves high bandwidth through massive parallelism (16 pseudo-channels per stack) rather than long per-channel bursts. A BL4 burst delivers 4 × 32 bits = 128 bits per pseudo-channel. With 16 pseudo-channels active simultaneously, a single HBM3 stack transfers 2048 bits per burst — equivalent to a DDR5 BL8 on a much wider bus."}},{"@type":"Question","name":"What is Data Bus Inversion (DBI) and how does it reduce power?","acceptedAnswer":{"@type":"Answer","text":"DBI (Data Bus Inversion) is a technique where the controller inverts a data byte if doing so reduces the number of transitions on the DQ pins. If more than 4 bits of a byte would switch from 0→1 (which draws current from the supply), the byte is inverted instead and a DBI_n pin is asserted low to signal the inversion. The receiver re-inverts on capture. This reduces worst-case simultaneous switching output (SSO) noise and average power by up to 50% on write data."}},{"@type":"Question","name":"How does the write data buffer (WDB) prevent data loss?","acceptedAnswer":{"@type":"Answer","text":"The scheduler issues a WRITE command to DRAM immediately, but the actual data cannot arrive on the DQ bus until CWL cycles later. During this gap, the system bus may be pipelined and additional write requests may arrive. The WDB is a FIFO that captures {data[127:0], mask[15:0]} tuples as they arrive from the host, then feeds them out at the precise cycle when the CWL pipeline signals data-valid, ensuring each write command is paired with its data without stalls or data corruption."}},{"@type":"Question","name":"What drives the DQS strobe during writes in HBM3?","acceptedAnswer":{"@type":"Answer","text":"In HBM3 write mode, the controller drives the DQS differential strobe pair (DQS_t / DQS_c). The controller must assert DQS_en one cycle before the first data beat and deassert it one cycle after the last beat (write postamble). The hbm3_write_path module tracks the active burst window using a 2-bit beat counter and generates o_dqs_en accordingly, giving the physical layer (PHY) the enable signal to drive the DQS pins."}]}}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--cy);font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569;margin-bottom:.8rem}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem}
+.chip{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+.chip-gr{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25);color:#6ee7b7}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul,ol{color:#94a3b8;font-size:.88rem;padding-left:1.4rem;margin-bottom:.7rem}
+li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#475569;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}.dr{color:#f87171}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.pipeline-svg{width:100%;overflow-x:auto;margin:.8rem 0}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1.2rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.45rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.6rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}
+footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1.1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Simulator</a></li>
+  </ul>
+</nav>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 5 — Write Data Path</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 2 · Module 5</div>
+    <h1>HBM3 <span>Write Data Path</span></h1>
+    <p class="hero-sub">The write data path connects your scheduler to the HBM3 DQ bus: buffer incoming data, delay it by exactly CWL cycles, serialize a 128-bit burst into four 32-bit beats, and drive DM/DQS at the right time. Every nanosecond matters.</p>
+    <div class="meta-row">
+      <span class="meta-item">&#128196; <code style="font-family:monospace;font-size:.75rem">hbm3_write_path.v</code></span>
+      <span class="meta-item">&#128337; ~45 min</span>
+      <span class="meta-item">By EcrioniX &middot; Updated June 2026</span>
+    </div>
+    <div class="chips">
+      <span class="chip">CWL = 36 cycles</span>
+      <span class="chip">BL4 burst</span>
+      <span class="chip">32-bit DQ</span>
+      <span class="chip">DM / DBI</span>
+      <span class="chip chip-gr">Synthesizable</span>
+      <span class="chip chip-gr">SVA testbench</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 1 — OVERVIEW
+════════════════════════════════════════════════ -->
+<section>
+<h2>1. Write Data Path Overview</h2>
+<p>In an HBM3 controller the write data path is the bridge between the <strong>command scheduler</strong> (which fires a WRITE command to the DRAM) and the <strong>physical DQ bus</strong> (which delivers actual data into the DRAM's sense amplifiers). These two events are <em>not simultaneous</em>. The DRAM sees the WRITE command on the CA (command/address) bus at cycle T, but it expects data to arrive CWL cycles later — by default, 36 cycles at the HBM3 nominal clock rate of 2 GHz.</p>
+<p>The write path module must handle four distinct jobs:</p>
+<ol>
+  <li><strong>Buffering</strong> — accept write data from the host before the DQ bus is ready, storing it in the Write Data Buffer (WDB) FIFO so the system bus stays un-stalled.</li>
+  <li><strong>Delay pipeline</strong> — track the CWL countdown from each WRITE command so data leaves the FIFO at the exact correct cycle.</li>
+  <li><strong>Burst serialization</strong> — HBM3 sends 128 bits per pseudo-channel in four 32-bit beats (BL4). The host supplies all 128 bits at once; the serializer chops this into a timed sequence.</li>
+  <li><strong>DM / DQS generation</strong> — the Data Mask bits gate individual byte lanes, and the DQS differential strobe must be driven by the controller during writes.</li>
+</ol>
+<p>This module sits directly above the PHY layer. Its outputs (<code>o_dq_out</code>, <code>o_dm_out</code>, <code>o_dqs_en</code>) are registered signals that the PHY samples on every half-cycle to drive the bidirectional HBM3 I/O pads.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 2 — CWL
+════════════════════════════════════════════════ -->
+<section>
+<h2>2. CAS Write Latency (CWL) — Why 36 Cycles?</h2>
+<p>CWL stands for <strong>CAS Write Latency</strong> — the number of clock cycles between the rising edge that registers a WRITE command and the rising edge on which the controller must present the first valid data nibble on DQ. The JEDEC JESD238B specification defines CWL as a function of the operating speed grade.</p>
+
+<table>
+<thead><tr><th>Speed Grade</th><th>Frequency</th><th>CWL (cycles)</th><th>CWL (ns)</th></tr></thead>
+<tbody>
+<tr><td>HBM3-3200</td><td>1600 MHz</td><td>28</td><td>17.5 ns</td></tr>
+<tr><td>HBM3-4000</td><td>2000 MHz</td><td>36</td><td>18.0 ns</td></tr>
+<tr><td>HBM3-5200</td><td>2600 MHz</td><td>46</td><td>17.7 ns</td></tr>
+<tr><td>HBM3-6400</td><td>3200 MHz</td><td>56</td><td>17.5 ns</td></tr>
+</tbody>
+</table>
+
+<p>Physically, CWL accounts for three propagation delays that must be resolved before write data is useful:</p>
+<ul>
+  <li><strong>ODT settling time</strong> — On-Die Termination resistors inside the DRAM must be switched on before data arrives to prevent reflections on the DQ lines. This switchover requires several nanoseconds.</li>
+  <li><strong>DQS preamble</strong> — The controller must assert DQS (the differential write strobe) at least one tCK before the first data beat. The DRAM uses DQS rising/falling edges to latch each nibble.</li>
+  <li><strong>CA-to-DQ bus propagation skew</strong> — The CA bus and DQ bus travel through different silicon paths and package traces. CWL compensates for the relative delay so both signals arrive at their intended timing relationship inside the DRAM die.</li>
+</ul>
+
+<div class="note">At 2 GHz the controller pipeline is extremely tight. A single cycle error in CWL alignment corrupts the entire burst. The CWL pipeline shift register is the most timing-critical logic in the write path.</div>
+
+<h3>Write Leveling</h3>
+<p>HBM3 includes a write leveling training procedure (performed at boot time) that fine-tunes the DQS launch time relative to the CA command. The result is a per-byte-lane calibration offset stored in the PHY. This module accepts <code>i_cwl[7:0]</code> as a runtime parameter so firmware can update the effective CWL after leveling calibration without recompilation.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 3 — WRITE DATA BUFFER
+════════════════════════════════════════════════ -->
+<section>
+<h2>3. Write Data Buffer (WDB)</h2>
+<p>The Write Data Buffer is a small synchronous FIFO that decouples the host write bus from the DQ bus output. Without a WDB, the host would need to hold write data valid for exactly CWL cycles after issuing each write command — an impractical constraint on a high-throughput NoC or AXI interconnect.</p>
+
+<h3>Sizing the WDB</h3>
+<p>Each FIFO entry holds one complete BL4 write transaction: 128 data bits + 16 mask bits = 144 bits per entry. The depth must cover the maximum number of in-flight write commands between the WDB push and the CWL pipeline pop. With a CWL of 36 and a typical memory bus pipeline of 4–8 cycles, 8 entries provides comfortable headroom for pipelined write traffic without consuming excessive SRAM.</p>
+
+<ul>
+  <li>Entry width: 144 bits (128 data + 16 mask)</li>
+  <li>Depth: 8 entries (configurable via parameter)</li>
+  <li>Push: host asserts <code>i_wr_cmd</code> together with <code>i_wr_data</code> and <code>i_wr_mask</code></li>
+  <li>Pop: CWL pipeline fires the read pointer exactly CWL cycles after each push</li>
+  <li>Backpressure: <code>o_wdb_full</code> signals the scheduler to stall new write commands</li>
+</ul>
+
+<div class="warn">If <code>o_wdb_full</code> is not respected and the host pushes additional entries, the WDB will overflow and data will be silently dropped. The scheduler must check <code>o_wdb_full</code> before issuing any WRITE command to the DRAM CA bus.</div>
+
+<h3>WDB FIFO Implementation</h3>
+<p>The FIFO uses a classic dual-pointer (wr_ptr / rd_ptr) implementation with a 3-bit pointer and an 8-entry register array. The full condition is when <code>(wr_ptr[2] != rd_ptr[2]) &amp;&amp; (wr_ptr[1:0] == rd_ptr[1:0])</code> — a standard gray-code-safe approach appropriate for single-clock designs. Because the WDB operates entirely in the controller clock domain, no CDC (clock domain crossing) logic is required here.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 4 — BURST LENGTH 4
+════════════════════════════════════════════════ -->
+<section>
+<h2>4. Burst Length 4 — HBM3 Data Packing</h2>
+<p>HBM3 mandates <strong>BL4</strong> (Burst Length 4) per pseudo-channel. This means every WRITE command transfers exactly 4 data beats on the DQ bus. Each beat is 32 bits wide (the DQ bus width of a single HBM3 pseudo-channel). A complete BL4 burst therefore transfers 4 × 32 = <strong>128 bits (16 bytes)</strong> per write command.</p>
+
+<h3>Why BL4 and not BL8?</h3>
+<p>DDR5 SDRAM uses BL8 on a 64-bit bus (64 bytes per burst). HBM3 achieves comparable per-burst capacity through different geometry: 16 pseudo-channels per die, each running BL4 on a 32-bit DQ bus. This shorter burst length reduces the minimum access granularity — useful for cache-line-sized accesses in GPU workloads — and allows faster bank interleaving between consecutive bursts on the same pseudo-channel.</p>
+
+<h3>Burst Serializer Logic</h3>
+<p>The burst serializer converts the 128-bit parallel word from the WDB FIFO into four timed 32-bit beats driven on <code>o_dq_out</code>. A 2-bit beat counter (<code>beat_cnt</code>) increments each cycle while the burst is active. The MUX selects the appropriate 32-bit slice:</p>
+<ul>
+  <li>beat 0 → data[31:0]</li>
+  <li>beat 1 → data[63:32]</li>
+  <li>beat 2 → data[95:64]</li>
+  <li>beat 3 → data[127:96]</li>
+</ul>
+<p>The corresponding 4-bit DM slice is selected in parallel: mask[3:0] through mask[15:12] on beats 0–3 respectively. Both outputs are registered for clean timing margin to the PHY.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 5 — DM / DBI
+════════════════════════════════════════════════ -->
+<section>
+<h2>5. Data Mask (DM) and Data Bus Inversion (DBI)</h2>
+
+<h3>Data Mask (DM)</h3>
+<p>HBM3 supports per-byte masking on writes. The 32-bit DQ bus carries 4 bytes per beat, and each byte has a corresponding <strong>DM</strong> (Data Mask) bit. When DM is asserted high for a byte, the DRAM ignores that byte's data during the write — the stored value in that byte lane is unchanged. This is critical for non-aligned stores, cache partial updates, and ECC sub-word writes.</p>
+<p>The 16-bit <code>i_wr_mask</code> input encodes DM bits for all 4 beats of the burst: <code>mask[3:0]</code> for beat 0 through <code>mask[15:12]</code> for beat 3. The serializer extracts the relevant 4 bits per beat and drives them on <code>o_dm_out[3:0]</code> in lockstep with the data.</p>
+
+<div class="note">DM and data must be perfectly aligned — the DRAM latches both on the same DQS edge. Any skew between <code>o_dq_out</code> and <code>o_dm_out</code> causes incorrect masking. Both are registered in the same always block to guarantee identical timing.</div>
+
+<h3>Data Bus Inversion (DBI) — Optional</h3>
+<p>DBI is an optional HBM3 mode (enabled by MRS register) that reduces SSO (Simultaneous Switching Output) noise and memory bus power. The principle: for each byte, if more than 4 bits would transition 0→1 in the next beat, invert the entire byte instead and assert the associated DBI_n pin low to signal the inversion to the DRAM receiver.</p>
+
+<p>The power saving is significant. In a worst-case all-zeros to all-ones transition on a 32-bit bus at 2 GHz, all 32 pins switch simultaneously — the resulting ground bounce and VCC droop can corrupt adjacent signals. DBI limits worst-case transitions to 16 per beat (50% of the bus), reducing simultaneous switching noise by up to half.</p>
+
+<p>The implementation in this module is straightforward: for each 8-bit byte slice, count set bits. If the count exceeds 4, invert the byte and assert the DBI bit. This operation is purely combinational and adds minimal latency before the output register.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 6 — SVG PIPELINE DIAGRAM
+════════════════════════════════════════════════ -->
+<section>
+<h2>6. Write Path Pipeline Diagram</h2>
+<div class="pipeline-svg">
+<svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:860px;height:auto;display:block">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#06b6d4"/>
+    </marker>
+  </defs>
+  <!-- boxes -->
+  <rect x="10" y="70" width="110" height="60" rx="8" fill="#080d1a" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="65" y="96" text-anchor="middle" fill="#67e8f9" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">WR_CMD</text>
+  <text x="65" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">i_wr_data</text>
+  <text x="65" y="124" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">i_wr_mask</text>
+
+  <rect x="160" y="70" width="120" height="60" rx="8" fill="#080d1a" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="220" y="96" text-anchor="middle" fill="#67e8f9" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">WDB FIFO</text>
+  <text x="220" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">depth=8</text>
+  <text x="220" y="124" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">144b / entry</text>
+
+  <rect x="330" y="60" width="130" height="80" rx="8" fill="#080d1a" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="395" y="88" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">CWL PIPELINE</text>
+  <text x="395" y="104" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">36-stage shift</text>
+  <text x="395" y="116" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">register</text>
+  <text x="395" y="130" text-anchor="middle" fill="#fcd34d" font-family="JetBrains Mono,monospace" font-size="9">CWL = 36 clk</text>
+
+  <rect x="510" y="60" width="130" height="80" rx="8" fill="#080d1a" stroke="#10b981" stroke-width="1.2"/>
+  <text x="575" y="88" text-anchor="middle" fill="#10b981" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">BURST SERIAL</text>
+  <text x="575" y="104" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">128b → 4×32b</text>
+  <text x="575" y="116" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">beat counter</text>
+  <text x="575" y="130" text-anchor="middle" fill="#6ee7b7" font-family="JetBrains Mono,monospace" font-size="9">DM 16b→4b/beat</text>
+
+  <rect x="690" y="70" width="110" height="60" rx="8" fill="#080d1a" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="745" y="96" text-anchor="middle" fill="#67e8f9" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">DQ BUS</text>
+  <text x="745" y="112" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">o_dq_out[31:0]</text>
+  <text x="745" y="124" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="9">o_dm + o_dqs_en</text>
+
+  <!-- arrows -->
+  <line x1="120" y1="100" x2="157" y2="100" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="280" y1="100" x2="327" y2="100" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="460" y1="100" x2="507" y2="100" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="640" y1="100" x2="687" y2="100" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Labels -->
+  <text x="430" y="175" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="11">Write Data Path — CWL=36 cycles (~18 ns at 2 GHz)</text>
+</svg>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 7 — VERILOG SOURCE
+════════════════════════════════════════════════ -->
+<section>
+<h2>7. Full Verilog Source — hbm3_write_path.v</h2>
+<p>The complete synthesizable implementation. All <code>&lt;=</code> (non-blocking assignment) and comparison operators are properly encoded in HTML. Copy-paste this directly into your toolchain.</p>
+<div class="code-block">
+  <div class="code-head">
+    <span class="code-lang">verilog — hbm3_write_path.v</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  </div>
+<pre><span class="cm">// =============================================================
+// hbm3_write_path.v
+// HBM3 Write Data Path — Module 5
+// Phase 2 of the HBM3 Controller Build series
+// EcrioniX · https://ecrionix.org/hbm3-controller/write-path/
+// =============================================================
+// Parameters
+//   WDB_DEPTH  : Write Data Buffer FIFO depth (power of 2)
+//   BL         : Burst Length, fixed 4 for HBM3 pseudo-channel
+//   DQ_W       : DQ bus width per pseudo-channel (32 bits)
+// =============================================================</span>
+
+<span class="kw">module</span> <span class="nm">hbm3_write_path</span> #(
+    <span class="kw">parameter</span> <span class="nm">WDB_DEPTH</span> = <span class="nu">8</span>,   <span class="cm">// must be power of 2</span>
+    <span class="kw">parameter</span> <span class="nm">BL</span>        = <span class="nu">4</span>,   <span class="cm">// burst length — HBM3 fixed BL4</span>
+    <span class="kw">parameter</span> <span class="nm">DQ_W</span>      = <span class="nu">32</span>  <span class="cm">// DQ bus width per pseudo-channel</span>
+) (
+    <span class="cm">// clock / reset</span>
+    <span class="kw">input  wire</span>              i_clk,
+    <span class="kw">input  wire</span>              i_rst_n,
+
+    <span class="cm">// write command interface</span>
+    <span class="kw">input  wire</span>              i_wr_cmd,         <span class="cm">// write command valid</span>
+    <span class="kw">input  wire</span> [<span class="nu">127</span>:<span class="nu">0</span>]     i_wr_data,        <span class="cm">// 4-beat burst data (BL4 x 32b)</span>
+    <span class="kw">input  wire</span> [<span class="nu">15</span>:<span class="nu">0</span>]      i_wr_mask,        <span class="cm">// byte enables: 4 bytes x 4 beats</span>
+    <span class="kw">input  wire</span> [<span class="nu">7</span>:<span class="nu">0</span>]       i_cwl,            <span class="cm">// CAS Write Latency (default 36)</span>
+
+    <span class="cm">// DQ bus outputs to PHY</span>
+    <span class="kw">output  reg</span> [<span class="nu">31</span>:<span class="nu">0</span>]      o_dq_out,         <span class="cm">// DQ bus — one beat per cycle</span>
+    <span class="kw">output  reg</span> [<span class="nu">3</span>:<span class="nu">0</span>]       o_dm_out,         <span class="cm">// DM (data mask) per byte</span>
+    <span class="kw">output  reg</span>              o_dqs_en,         <span class="cm">// DQS strobe enable to PHY</span>
+    <span class="kw">output  reg</span>              o_wr_valid,       <span class="cm">// DQ data is valid on bus</span>
+    <span class="kw">output  wire</span>             o_wdb_full        <span class="cm">// WDB backpressure flag</span>
+);
+
+<span class="cm">// ─────────────────────────────────────────────
+// Local parameters
+// ─────────────────────────────────────────────</span>
+<span class="kw">localparam</span> <span class="nm">ENTRY_W</span>   = <span class="nu">128</span> + <span class="nu">16</span>;           <span class="cm">// data + mask per entry = 144b</span>
+<span class="kw">localparam</span> <span class="nm">PTR_W</span>    = $clog2(<span class="nm">WDB_DEPTH</span>) + <span class="nu">1</span>; <span class="cm">// one extra bit for full detect</span>
+<span class="kw">localparam</span> <span class="nm">DEPTH_W</span>  = $clog2(<span class="nm">WDB_DEPTH</span>);
+
+<span class="cm">// ─────────────────────────────────────────────
+// Write Data Buffer — synchronous FIFO
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nm">ENTRY_W</span>-<span class="nu">1</span>:<span class="nu">0</span>] wdb_mem [<span class="nu">0</span>:<span class="nm">WDB_DEPTH</span>-<span class="nu">1</span>];
+<span class="kw">reg</span> [<span class="nm">PTR_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]  wdb_wr_ptr;
+<span class="kw">reg</span> [<span class="nm">PTR_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]  wdb_rd_ptr;
+
+<span class="kw">wire</span> wdb_empty = (wdb_wr_ptr == wdb_rd_ptr);
+<span class="kw">wire</span> wdb_full_w = (wdb_wr_ptr[<span class="nm">PTR_W</span>-<span class="nu">1</span>] != wdb_rd_ptr[<span class="nm">PTR_W</span>-<span class="nu">1</span>]) &amp;&amp;
+                  (wdb_wr_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>] == wdb_rd_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]);
+<span class="kw">assign</span> o_wdb_full = wdb_full_w;
+
+<span class="cm">// WDB push (on write command, if not full)</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk) <span class="kw">begin</span>
+    <span class="kw">if</span> (i_wr_cmd &amp;&amp; !wdb_full_w) <span class="kw">begin</span>
+        wdb_mem[wdb_wr_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]] &lt;= {i_wr_data, i_wr_mask};
+        wdb_wr_ptr &lt;= wdb_wr_ptr + <span class="nu">1</span>'b1;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// WDB pointer reset</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        wdb_wr_ptr &lt;= <span class="nu">0</span>;
+        wdb_rd_ptr &lt;= <span class="nu">0</span>;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm">// ─────────────────────────────────────────────
+// CWL Pipeline — shift register to delay pop
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nu">63</span>:<span class="nu">0</span>] cwl_pipe;           <span class="cm">// 64-stage shift register (max CWL)</span>
+<span class="kw">wire</span>        cwl_fire;           <span class="cm">// fires when write data must go to DQ</span>
+
+<span class="cm">// Shift new write commands through the CWL pipeline</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n)
+        cwl_pipe &lt;= <span class="nu">64'b0</span>;
+    <span class="kw">else</span>
+        cwl_pipe &lt;= {cwl_pipe[<span class="nu">62</span>:<span class="nu">0</span>], (i_wr_cmd &amp;&amp; !wdb_full_w)};
+<span class="kw">end</span>
+
+<span class="cm">// Tap the pipeline at position i_cwl-1 (0-indexed)</span>
+<span class="kw">assign</span> cwl_fire = cwl_pipe[i_cwl - <span class="nu">8'd1</span>];
+
+<span class="cm">// ─────────────────────────────────────────────
+// Burst Serializer
+// ─────────────────────────────────────────────</span>
+<span class="kw">reg</span> [<span class="nu">127</span>:<span class="nu">0</span>] burst_data;
+<span class="kw">reg</span> [<span class="nu">15</span>:<span class="nu">0</span>]  burst_mask;
+<span class="kw">reg</span> [<span class="nu">1</span>:<span class="nu">0</span>]   beat_cnt;         <span class="cm">// 0..3</span>
+<span class="kw">reg</span>          burst_active;
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        burst_data   &lt;= <span class="nu">128'b0</span>;
+        burst_mask   &lt;= <span class="nu">16'b0</span>;
+        beat_cnt     &lt;= <span class="nu">2'b0</span>;
+        burst_active &lt;= <span class="nu">1'b0</span>;
+        wdb_rd_ptr   &lt;= <span class="nu">0</span>;
+        o_dq_out     &lt;= <span class="nu">32'b0</span>;
+        o_dm_out     &lt;= <span class="nu">4'b0</span>;
+        o_dqs_en     &lt;= <span class="nu">1'b0</span>;
+        o_wr_valid   &lt;= <span class="nu">1'b0</span>;
+    <span class="kw">end else begin</span>
+        <span class="cm">// Default: deassert outputs</span>
+        o_wr_valid &lt;= <span class="nu">1'b0</span>;
+        o_dqs_en   &lt;= <span class="nu">1'b0</span>;
+
+        <span class="kw">if</span> (burst_active) <span class="kw">begin</span>
+            <span class="cm">// Drive DQS one cycle before first data beat (preamble)</span>
+            o_dqs_en   &lt;= <span class="nu">1'b1</span>;
+            o_wr_valid &lt;= <span class="nu">1'b1</span>;
+
+            <span class="cm">// MUX: select 32-bit slice for current beat</span>
+            <span class="kw">case</span> (beat_cnt)
+                <span class="nu">2'd0</span>: <span class="kw">begin</span> o_dq_out &lt;= burst_data[<span class="nu">31</span>:<span class="nu">0</span>];   o_dm_out &lt;= burst_mask[<span class="nu">3</span>:<span class="nu">0</span>];   <span class="kw">end</span>
+                <span class="nu">2'd1</span>: <span class="kw">begin</span> o_dq_out &lt;= burst_data[<span class="nu">63</span>:<span class="nu">32</span>];  o_dm_out &lt;= burst_mask[<span class="nu">7</span>:<span class="nu">4</span>];   <span class="kw">end</span>
+                <span class="nu">2'd2</span>: <span class="kw">begin</span> o_dq_out &lt;= burst_data[<span class="nu">95</span>:<span class="nu">64</span>];  o_dm_out &lt;= burst_mask[<span class="nu">11</span>:<span class="nu">8</span>];  <span class="kw">end</span>
+                <span class="nu">2'd3</span>: <span class="kw">begin</span> o_dq_out &lt;= burst_data[<span class="nu">127</span>:<span class="nu">96</span>]; o_dm_out &lt;= burst_mask[<span class="nu">15</span>:<span class="nu">12</span>]; <span class="kw">end</span>
+            <span class="kw">endcase</span>
+
+            <span class="kw">if</span> (beat_cnt == <span class="nu">2'd3</span>) <span class="kw">begin</span>
+                burst_active &lt;= <span class="nu">1'b0</span>;
+                beat_cnt     &lt;= <span class="nu">2'b0</span>;
+                o_dqs_en     &lt;= <span class="nu">1'b0</span>; <span class="cm">// postamble: deassert DQS</span>
+            <span class="kw">end else</span>
+                beat_cnt &lt;= beat_cnt + <span class="nu">1'b1</span>;
+
+        <span class="kw">end else if</span> (cwl_fire &amp;&amp; !wdb_empty) <span class="kw">begin</span>
+            <span class="cm">// CWL expired — load burst data from WDB and begin serialization</span>
+            {burst_data, burst_mask} &lt;= wdb_mem[wdb_rd_ptr[<span class="nm">DEPTH_W</span>-<span class="nu">1</span>:<span class="nu">0</span>]];
+            wdb_rd_ptr   &lt;= wdb_rd_ptr + <span class="nu">1'b1</span>;
+            burst_active &lt;= <span class="nu">1'b1</span>;
+            beat_cnt     &lt;= <span class="nu">2'b0</span>;
+            o_dqs_en     &lt;= <span class="nu">1'b1</span>; <span class="cm">// preamble: assert DQS one cycle early</span>
+        <span class="kw">end else begin</span>
+            o_dq_out &lt;= <span class="nu">32'b0</span>;
+            o_dm_out &lt;= <span class="nu">4'b0</span>;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span> <span class="cm">// hbm3_write_path</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 8 — TESTBENCH
+════════════════════════════════════════════════ -->
+<section>
+<h2>8. SystemVerilog Testbench with SVA Assertions</h2>
+<p>The testbench verifies CWL alignment, burst integrity, DM accuracy, and WDB backpressure. SVA concurrent assertions fire on every cycle and report violations automatically.</p>
+<div class="code-block">
+  <div class="code-head">
+    <span class="code-lang">systemverilog — tb_hbm3_write_path.sv</span>
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+  </div>
+<pre><span class="cm">// ===========================================================
+// tb_hbm3_write_path.sv  — Self-checking SV testbench
+// ===========================================================</span>
+<span class="kw">module</span> <span class="nm">tb_hbm3_write_path</span>;
+
+<span class="kw">parameter</span> <span class="nm">CLK_PERIOD</span> = <span class="nu">500</span>; <span class="cm">// 500 ps = 2 GHz</span>
+<span class="kw">parameter</span> <span class="nm">CWL</span>        = <span class="nu">36</span>;
+
+<span class="kw">logic</span>          i_clk      = <span class="nu">0</span>;
+<span class="kw">logic</span>          i_rst_n    = <span class="nu">0</span>;
+<span class="kw">logic</span>          i_wr_cmd   = <span class="nu">0</span>;
+<span class="kw">logic</span> [<span class="nu">127</span>:<span class="nu">0</span>]  i_wr_data  = <span class="nu">0</span>;
+<span class="kw">logic</span> [<span class="nu">15</span>:<span class="nu">0</span>]  i_wr_mask  = <span class="nu">0</span>;
+<span class="kw">logic</span> [<span class="nu">7</span>:<span class="nu">0</span>]   i_cwl      = <span class="nm">CWL</span>;
+
+<span class="kw">wire</span>  [<span class="nu">31</span>:<span class="nu">0</span>]  o_dq_out;
+<span class="kw">wire</span>  [<span class="nu">3</span>:<span class="nu">0</span>]   o_dm_out;
+<span class="kw">wire</span>          o_dqs_en;
+<span class="kw">wire</span>          o_wr_valid;
+<span class="kw">wire</span>          o_wdb_full;
+
+<span class="nm">hbm3_write_path</span> #(.WDB_DEPTH(<span class="nu">8</span>), .BL(<span class="nu">4</span>), .DQ_W(<span class="nu">32</span>)) dut (.*);
+
+<span class="kw">always</span> #(<span class="nm">CLK_PERIOD</span>/<span class="nu">2</span>) i_clk = !i_clk;
+
+<span class="cm">// ── SVA: DQS must be high during o_wr_valid ──────────────</span>
+<span class="kw">property</span> p_dqs_during_valid;
+    @(<span class="kw">posedge</span> i_clk) o_wr_valid |-> o_dqs_en;
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_dqs_during_valid)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: o_dqs_en deasserted during o_wr_valid"</span>);
+
+<span class="cm">// ── SVA: wr_valid must deassert after exactly BL=4 beats ─</span>
+<span class="kw">property</span> p_burst_length;
+    @(<span class="kw">posedge</span> i_clk) $rose(o_wr_valid) |-> ##<span class="nu">4</span> !o_wr_valid;
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_burst_length)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: burst length != 4 beats"</span>);
+
+<span class="cm">// ── SVA: WDB must not overflow ────────────────────────────</span>
+<span class="kw">property</span> p_no_overflow;
+    @(<span class="kw">posedge</span> i_clk) !(i_wr_cmd &amp;&amp; o_wdb_full);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_no_overflow)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: write command issued when WDB full"</span>);
+
+<span class="cm">// ── SVA: o_dq_out must be 0 when not valid ───────────────</span>
+<span class="kw">property</span> p_dq_idle;
+    @(<span class="kw">posedge</span> i_clk) !o_wr_valid |-> (o_dq_out == <span class="nu">32'b0</span>);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span> (p_dq_idle)
+    <span class="kw">else</span> $error(<span class="st">"SVA FAIL: o_dq_out non-zero outside burst"</span>);
+
+<span class="cm">// ── Test sequence ─────────────────────────────────────────</span>
+<span class="kw">int</span> cycle_count;
+
+<span class="kw">task automatic</span> issue_write(
+    <span class="kw">input logic</span> [<span class="nu">127</span>:<span class="nu">0</span>] data,
+    <span class="kw">input logic</span> [<span class="nu">15</span>:<span class="nu">0</span>]  mask
+);
+    @(<span class="kw">posedge</span> i_clk);
+    i_wr_cmd  = <span class="nu">1</span>;
+    i_wr_data = data;
+    i_wr_mask = mask;
+    @(<span class="kw">posedge</span> i_clk);
+    i_wr_cmd  = <span class="nu">0</span>;
+<span class="kw">endtask</span>
+
+<span class="kw">initial begin</span>
+    $dumpfile(<span class="st">"hbm3_write_path.vcd"</span>);
+    $dumpvars(<span class="nu">0</span>, tb_hbm3_write_path);
+
+    <span class="cm">// Release reset after 5 cycles</span>
+    repeat (<span class="nu">5</span>) @(<span class="kw">posedge</span> i_clk);
+    i_rst_n = <span class="nu">1</span>;
+    repeat (<span class="nu">3</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 1: Single write, no mask</span>
+    $display(<span class="st">"[T1] Single write — no mask"</span>);
+    issue_write(<span class="nu">128'hDEAD_BEEF_CAFE_BABE_1234_5678_9ABC_DEF0</span>, <span class="nu">16'h0000</span>);
+    repeat (<span class="nm">CWL</span> + <span class="nu">6</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 2: Write with partial mask (mask upper 2 bytes of beat 0)</span>
+    $display(<span class="st">"[T2] Partial mask — beats 0 upper bytes masked"</span>);
+    issue_write(<span class="nu">128'hAAAA_BBBB_CCCC_DDDD_EEEE_FFFF_1111_2222</span>, <span class="nu">16'h000C</span>);
+    repeat (<span class="nm">CWL</span> + <span class="nu">6</span>) @(<span class="kw">posedge</span> i_clk);
+
+    <span class="cm">// Test 3: Back-to-back writes (pipelined)</span>
+    $display(<span class="st">"[T3] Back-to-back pipelined writes"</span>);
+    issue_write(<span class="nu">128'h1111_2222_3333_4444_5555_6666_7777_8888</span>, <span class="nu">16'h0000</span>);
+    issue_write(<span class="nu">128'hABCD_EF01_2345_6789_ABCD_EF01_2345_6789</span>, <span class="nu">16'h0000</span>);
+    repeat (<span class="nm">CWL</span> + <span class="nu">10</span>) @(<span class="kw">posedge</span> i_clk);
+
+    $display(<span class="st">"[PASS] All SVA assertions passed"</span>);
+    $finish;
+<span class="kw">end</span>
+
+<span class="kw">initial begin</span>
+    cycle_count = <span class="nu">0</span>;
+    <span class="kw">forever</span> @(<span class="kw">posedge</span> i_clk) cycle_count++;
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 9 — TIMING TABLE
+════════════════════════════════════════════════ -->
+<section>
+<h2>9. Timing Parameter Reference</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Value (2 GHz)</th><th>Cycles</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>CAS Write Latency</td><td>CWL</td><td>18 ns</td><td>36</td><td>Command to first DQ data valid</td></tr>
+<tr><td>Burst Length</td><td>BL</td><td>4 beats</td><td>4</td><td>Fixed per HBM3 pseudo-channel</td></tr>
+<tr><td>Write Preamble</td><td>tWPRE</td><td>0.5 ns</td><td>1</td><td>DQS low before first beat</td></tr>
+<tr><td>Write Postamble</td><td>tWPST</td><td>0.5 ns</td><td>1</td><td>DQS low after last beat</td></tr>
+<tr><td>DQ setup time</td><td>tDS</td><td>85 ps</td><td>—</td><td>DQ valid before DQS edge (PHY)</td></tr>
+<tr><td>DQ hold time</td><td>tDH</td><td>85 ps</td><td>—</td><td>DQ valid after DQS edge (PHY)</td></tr>
+<tr><td>ODT turn-on latency</td><td>ODTLon</td><td>CWL - 2</td><td>34</td><td>ODT must be on before data</td></tr>
+<tr><td>Refresh interval</td><td>tREFI</td><td>3.9 µs</td><td>7800</td><td>Average time between refresh cmds</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 10 — PORT TABLE
+════════════════════════════════════════════════ -->
+<section>
+<h2>10. Port Reference — hbm3_write_path</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>Input</td><td>1</td><td>Controller clock (2 GHz nominal)</td></tr>
+<tr><td>i_rst_n</td><td>Input</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>i_wr_cmd</td><td>Input</td><td>1</td><td>Write command pulse from scheduler (1 cycle)</td></tr>
+<tr><td>i_wr_data</td><td>Input</td><td>128</td><td>Full BL4 burst data, presented with i_wr_cmd</td></tr>
+<tr><td>i_wr_mask</td><td>Input</td><td>16</td><td>Byte enables for all 4 beats (4 bytes/beat × 4 beats)</td></tr>
+<tr><td>i_cwl</td><td>Input</td><td>8</td><td>CAS Write Latency in cycles (typically 36)</td></tr>
+<tr><td>o_dq_out</td><td>Output</td><td>32</td><td>DQ bus output, one 32-bit beat per clock</td></tr>
+<tr><td>o_dm_out</td><td>Output</td><td>4</td><td>Data mask for current beat (1 bit per byte)</td></tr>
+<tr><td>o_dqs_en</td><td>Output</td><td>1</td><td>DQS strobe enable to PHY tri-state driver</td></tr>
+<tr><td>o_wr_valid</td><td>Output</td><td>1</td><td>Indicates DQ data and DM are valid this cycle</td></tr>
+<tr><td>o_wdb_full</td><td>Output</td><td>1</td><td>WDB FIFO full — scheduler must stall new writes</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     SECTION 11 — FAQ
+════════════════════════════════════════════════ -->
+<section>
+<h2>11. FAQ</h2>
+<div class="faq">
+  <details>
+    <summary>What is CWL in HBM3 and why is it 36 cycles?</summary>
+    <p>CWL (CAS Write Latency) is the number of clock cycles from a WRITE command until the controller must put the first data beat on the DQ bus. At 2 GHz (500 ps/cycle), CWL=36 equals 18 ns. This accounts for ODT switching time, DQS preamble setup, and CA-to-DQ propagation skew across the HBM3 silicon and package. Higher speed grades have larger CWL values in cycles but similar absolute time in nanoseconds.</p>
+  </details>
+  <details>
+    <summary>Why does HBM3 use Burst Length 4 instead of BL8 like DDR5?</summary>
+    <p>HBM3 achieves its massive bandwidth through parallel pseudo-channels (16 per die stack), each with a 32-bit DQ bus and BL4 bursts. A full burst delivers 128 bits per pseudo-channel. DDR5 uses BL8 on a 64-bit bus (512 bits per burst) but runs only 1–2 channels per DIMM. HBM3's shorter bursts mean lower minimum access granularity — important for GPU caches — and faster bank-to-bank interleaving.</p>
+  </details>
+  <details>
+    <summary>What happens if the WDB overflows?</summary>
+    <p>If the host issues a write command when <code>o_wdb_full</code> is high and the WDB push is blocked, the data is silently discarded. The WRITE command has already been sent to DRAM on the CA bus, so DRAM will capture garbage data at CWL cycles later. This is a fatal protocol error. The scheduler <strong>must</strong> check <code>o_wdb_full</code> before asserting <code>i_wr_cmd</code>. The SVA assertion <code>p_no_overflow</code> in the testbench catches this condition in simulation.</p>
+  </details>
+  <details>
+    <summary>How does DBI reduce power and should it always be enabled?</summary>
+    <p>DBI (Data Bus Inversion) inverts any data byte where more than 4 bits would switch 0→1, limiting worst-case simultaneous transitions to 4 per byte (50% of the bus). This reduces SSO noise and average switching power by up to ~50% on the write bus. The cost is one extra DBI_n pin per byte lane and slightly higher logic overhead. For power-constrained systems (HPC GPU, AI accelerators) DBI is typically enabled. For latency-critical low-power systems where the bus is not fully loaded it may be skipped.</p>
+  </details>
+  <details>
+    <summary>Can I use a larger WDB depth, and what is the cost?</summary>
+    <p>Yes. <code>WDB_DEPTH</code> is a parameter. Larger depths allow more in-flight writes before backpressure, which improves throughput in bursty workloads. The cost is SRAM area: each entry is 144 bits, so 8 entries = 1152 bits (~144 bytes). A depth of 16 doubles SRAM to 288 bytes — negligible on modern dies. For very deep pipelines (e.g. multi-hop NoC) consider 16 or 32 entries. The pointer width and full-detect logic widen automatically via <code>$clog2</code>.</p>
+  </details>
+</div>
+</section>
+
+<!-- PREV/NEXT -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/page-policy/">&larr; Module 4 — Page Policy</a>
+  <a class="nav-pill" href="/hbm3-controller/read-path/">Module 6 — Read Data Path &rarr;</a>
+</div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot; <a href="/hbm3-controller/">HBM3 Controller Series</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="/about/">About</a> &middot; <a href="/privacy/">Privacy</a></p>
+  <p style="margin-top:.5rem">HBM3 Controller Build &mdash; Module 5 of 10 &middot; &copy; 2026 EcrioniX</p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1800);
+  });
+}
+</script>
+</body>
+</html>

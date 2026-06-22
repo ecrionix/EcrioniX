@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 Power Management — Module 15 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 power management controller in Verilog. Self-Refresh (SR) entry/exit, power-down modes, CKE control FSM, idle detection, power state machine, and wake-up latency management per JEDEC JESD238. Phase 4 · Module 15.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/power-mgmt/">
+<meta property="og:title" content="HBM3 Power Management — Module 15 | EcrioniX">
+<meta property="og:description" content="HBM3 power management in Verilog: self-refresh FSM, CKE control, power-down modes, idle detection, wake-up latency. JEDEC JESD238 compliant.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/power-mgmt/">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 Power Management — Module 15","description":"Build the HBM3 power management controller in Verilog. Self-Refresh (SR) entry/exit, power-down modes, CKE control FSM, idle detection, power state machine, and wake-up latency management per JEDEC JESD238.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/power-mgmt/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 15 — Power Management","item":"https://ecrionix.org/hbm3-controller/power-mgmt/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the difference between Active Power-Down and Self-Refresh in HBM3?","acceptedAnswer":{"@type":"Answer","text":"Active Power-Down (APD) keeps banks open and retains row state but disables the clock to save dynamic power. Exit latency is short (tXP = 10 cycles) because no re-training is needed. Self-Refresh (SR) forces all banks precharged, disables the external clock (CKE=0), and makes the DRAM run its own internal refresh. SR saves far more power but has a much longer exit latency (tXS = 512 cycles) due to the time needed to re-synchronize the DLL and re-enable the PHY."}},{"@type":"Question","name":"Why does self-refresh exit take so long (tXS = 512 cycles)?","acceptedAnswer":{"@type":"Answer","text":"During self-refresh the DRAM's internal oscillator replaces the external CK. When the controller re-asserts CKE to exit SR, the DRAM must: (1) wait for the external clock to stabilize, (2) re-lock the internal DLL to the external clock, (3) allow the PHY to complete ZQ short calibration. Steps 1 and 2 dominate — DLL lock typically requires 200–500 clock cycles after a stable clock edge, hence the 512-cycle minimum tXS."}},{"@type":"Question","name":"What is CKE and how does it control power modes?","acceptedAnswer":{"@type":"Answer","text":"CKE (Clock Enable) is a single control signal driven by the memory controller to the DRAM. CKE=1 means the DRAM is active and the clock is enabled. CKE=0 causes the DRAM to enter a power-saving mode — the exact mode (APD, PPD, or SR) depends on the bank state when CKE goes low. If any bank is active (row open), the DRAM enters APD. If all banks are precharged, the DRAM enters PPD or SR depending on prior mode register settings."}},{"@type":"Question","name":"How does the controller detect when to enter power-down?","acceptedAnswer":{"@type":"Answer","text":"The controller counts consecutive cycles with no pending AXI transactions (the i_traffic_idle signal). When the idle count exceeds i_idle_cycles (a programmable threshold), the controller initiates the power-down sequence. The threshold is typically 16–256 cycles for PPD and 4096–65535 cycles for SR, reflecting the trade-off between the power savings from entering the mode and the latency cost of exiting it."}},{"@type":"Question","name":"How does wake-up latency affect system performance?","acceptedAnswer":{"@type":"Answer","text":"Wake-up latency is the cycles the AXI interface must wait after a wakeup_req before the first transaction completes. For APD, tXP=10 cycles is negligible. For PPD, latency is moderate (tXPDLL=24 cycles). For SR, tXS=512 cycles means that at 2GHz, every SR entry/exit costs 256ns of dead time. The controller exposes o_wakeup_latency so the AXI wrapper can insert precise wait states rather than using a fixed timeout, ensuring the system remains correct without over-waiting."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(167,139,250,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);color:#a78bfa;font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#a78bfa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(167,139,250,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul{color:#94a3b8;font-size:.88rem;padding-left:1.3rem;margin-bottom:.7rem}
+ul li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(167,139,250,.07);padding:.55rem .8rem;text-align:left;color:#c4b5fd;font-weight:700;border-bottom:2px solid rgba(167,139,250,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(167,139,250,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(167,139,250,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(167,139,250,.05);border-left:3px solid #a78bfa;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links"><li><a href="/hbm3-controller/">HBM3 Hub</a></li><li><a href="/courses/">All Courses</a></li><li><a href="/lab/">Simulator</a></li></ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 15 — Power Management</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 4 · Module 15</div>
+    <h1>HBM3 <span>Power Management</span></h1>
+    <p class="hero-sub">Idle HBM3 still draws power. This module builds the power management FSM: CKE control, Active Power-Down, Precharge Power-Down, Self-Refresh entry and exit, idle detection, and wake-up latency tracking per JEDEC JESD238.</p>
+    <div class="meta-row">
+      <span>hbm3_power_mgmt.v</span>
+      <span>tb_hbm3_power_mgmt.sv</span>
+      <span>Synthesizable RTL</span>
+      <span class="pill">JEDEC JESD238</span>
+      <span class="pill">Phase 4</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- Section 1 -->
+<section>
+<h2>1. HBM3 Power Consumption — Active vs Idle vs Self-Refresh</h2>
+<p>HBM3 consumes significant power even when no data is being transferred. Understanding the breakdown of power modes is essential for designing an effective power management controller.</p>
+<p>Typical power figures for a single HBM3 stack (varies by vendor and operating frequency):</p>
+<table>
+  <thead><tr><th>Power Mode</th><th>Typical Power</th><th>CKE</th><th>Banks</th><th>Exit Latency</th></tr></thead>
+  <tbody>
+    <tr><td>NORMAL (max BW)</td><td>10–15 W</td><td>High</td><td>Active</td><td>0 cycles</td></tr>
+    <tr><td>Active Power-Down</td><td>3–5 W</td><td>Low</td><td>Active</td><td>tXP = 10 cycles</td></tr>
+    <tr><td>Precharge Power-Down</td><td>2–4 W</td><td>Low</td><td>Precharged</td><td>tXPDLL = 24 cycles</td></tr>
+    <tr><td>Self-Refresh</td><td>0.5–1.5 W</td><td>Low</td><td>Precharged</td><td>tXS = 512 cycles</td></tr>
+    <tr><td>Deep Power-Down</td><td>~0.05 W</td><td>Low</td><td>Precharged</td><td>Full re-init required</td></tr>
+  </tbody>
+</table>
+<p>The power management controller's job is to move the DRAM into the deepest power mode that can be exited within the latency budget imposed by the workload.</p>
+<div class="note">For GPU workloads, self-refresh is typically only viable during long compute kernels (100+ µs idle) where the 512-cycle exit latency is negligible. For CPU memory, PPD is the practical sweet spot — 2–4W savings with only 24-cycle wake-up penalty.</div>
+</section>
+
+<!-- Section 2 -->
+<section>
+<h2>2. Power Mode Hierarchy</h2>
+<p>HBM3 power modes form a hierarchy from shallowest (fastest exit) to deepest (most savings, slowest exit). The controller must track the current bank state to determine which modes are available.</p>
+<ul>
+  <li><strong>Normal:</strong> CKE=1, banks can be open or closed, full command bandwidth. No power savings.</li>
+  <li><strong>Active Power-Down (APD):</strong> CKE=0 while at least one bank has an open row. The DRAM retains the active row in sense amplifiers but stops accepting commands. Dynamic power (clock tree, I/O buffers) is gated. Exit via CKE=1 after tXP=10 cycles.</li>
+  <li><strong>Precharge Power-Down (PPD):</strong> CKE=0 with all banks precharged. Similar to APD but deeper — the DLL may enter a low-power mode (tXPDLL=24 cycles to re-lock on exit). More power savings than APD.</li>
+  <li><strong>Self-Refresh (SR):</strong> CKE=0 after all banks precharged. DRAM uses its internal oscillator to run autonomous refresh. The external clock can be stopped. Saves 80–90% vs active power. Exit requires DLL re-lock and ZQCS (tXS=512 cycles).</li>
+  <li><strong>Deep Power-Down (DPD):</strong> Maximum savings — all state lost, requires full re-initialization. Used only for system sleep states.</li>
+</ul>
+<div class="warn">The controller must ensure ALL banks are precharged (i_all_banks_idle=1) before issuing a PRECHARGE ALL command and entering PPD or SR. Entering SR with open banks is a JEDEC protocol violation and causes data loss.</div>
+</section>
+
+<!-- Section 3 -->
+<section>
+<h2>3. Self-Refresh Deep Dive</h2>
+<p>Self-Refresh is the most complex power mode to implement correctly because it involves a handover of refresh responsibility from the controller to the DRAM, and vice versa on exit.</p>
+<h3>SR Entry Sequence</h3>
+<p>1. Controller issues PRECHARGE ALL (ensure all banks closed) → waits tRP.<br>
+2. Controller issues SELF-REFRESH ENTRY command (SRE) — a specific command encoding on the CA bus.<br>
+3. DRAM deasserts ACK — CKE goes low on the same cycle as SRE.<br>
+4. DRAM takes over refresh internally via its ring oscillator.<br>
+5. Controller may stop the external CK after tCKESR cycles (minimum CKE=0 before stopping clock).</p>
+<h3>SR Exit Sequence</h3>
+<p>1. Controller restarts external clock (if stopped) and waits tCKSRX cycles for stability.<br>
+2. Controller raises CKE=1 (Self-Refresh Exit — SRX).<br>
+3. DRAM detects CKE rising edge, begins DLL re-lock.<br>
+4. Controller must wait tXS cycles before issuing any non-NOP command.<br>
+5. Optionally issue ZQCS (ZQ Short Calibration) during tXS window to recalibrate impedance.<br>
+6. Controller asserts o_power_ok, signals o_wakeup_latency count-down complete.</p>
+</section>
+
+<!-- Section 4 -->
+<section>
+<h2>4. CKE FSM — Power State Machine</h2>
+<p>The power management controller implements a 7-state FSM that manages all CKE transitions and enforces minimum timing constraints between states.</p>
+
+<!-- SVG: Power state diagram -->
+<svg viewBox="0 0 820 380" style="width:100%;max-width:820px;display:block;margin:1.2rem auto;background:#080d1a;border-radius:10px;border:1px solid rgba(167,139,250,.15)" aria-label="HBM3 power state machine diagram">
+  <!-- State circles -->
+  <!-- NORMAL -->
+  <circle cx="120" cy="100" r="44" fill="rgba(16,185,129,.08)" stroke="#10b981" stroke-width="2"/>
+  <text x="120" y="95" text-anchor="middle" fill="#10b981" font-size="10" font-weight="700" font-family="Outfit,sans-serif">NORMAL</text>
+  <text x="120" y="110" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CKE=1</text>
+  <!-- IDLE_WAIT -->
+  <circle cx="310" cy="100" r="44" fill="rgba(6,182,212,.06)" stroke="#06b6d4" stroke-width="2"/>
+  <text x="310" y="95" text-anchor="middle" fill="#67e8f9" font-size="10" font-weight="700" font-family="Outfit,sans-serif">IDLE_WAIT</text>
+  <text x="310" y="110" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">counting idle</text>
+  <!-- PRECHARGING -->
+  <circle cx="490" cy="100" r="44" fill="rgba(252,211,77,.05)" stroke="#fcd34d" stroke-width="2"/>
+  <text x="490" y="95" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="700" font-family="Outfit,sans-serif">PRCHG</text>
+  <text x="490" y="110" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">bank close</text>
+  <!-- APD -->
+  <circle cx="310" cy="250" r="44" fill="rgba(167,139,250,.06)" stroke="#a78bfa" stroke-width="2"/>
+  <text x="310" y="245" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="700" font-family="Outfit,sans-serif">APD</text>
+  <text x="310" y="260" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CKE=0 (active)</text>
+  <!-- PPD -->
+  <circle cx="490" cy="250" r="44" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="2"/>
+  <text x="490" y="245" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="700" font-family="Outfit,sans-serif">PPD</text>
+  <text x="490" y="260" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CKE=0 (prchg)</text>
+  <!-- SR_ENTRY -->
+  <circle cx="650" cy="100" r="38" fill="rgba(248,113,113,.05)" stroke="#f87171" stroke-width="1.5"/>
+  <text x="650" y="95" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700" font-family="Outfit,sans-serif">SR_ENTRY</text>
+  <text x="650" y="110" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">SRE cmd</text>
+  <!-- SELF_REFRESH -->
+  <circle cx="650" cy="250" r="44" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="2"/>
+  <text x="650" y="245" text-anchor="middle" fill="#fca5a5" font-size="10" font-weight="700" font-family="Outfit,sans-serif">SELF_REFRESH</text>
+  <text x="650" y="260" text-anchor="middle" fill="#64748b" font-size="9" font-family="Outfit,sans-serif">CKE=0, int. ref</text>
+  <!-- SR_EXIT -->
+  <circle cx="780" cy="175" r="38" fill="rgba(248,113,113,.05)" stroke="#f87171" stroke-width="1.5"/>
+  <text x="780" y="170" text-anchor="middle" fill="#fca5a5" font-size="9" font-weight="700" font-family="Outfit,sans-serif">SR_EXIT</text>
+  <text x="780" y="185" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">tXS wait</text>
+
+  <!-- Arrows -->
+  <!-- NORMAL -> IDLE_WAIT -->
+  <line x1="164" y1="100" x2="265" y2="100" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="215" y="92" text-anchor="middle" fill="#475569" font-size="8" font-family="Outfit,sans-serif">traffic idle</text>
+  <!-- IDLE_WAIT -> NORMAL (wakeup) -->
+  <path d="M 270,115 Q 215,145 164,115" fill="none" stroke="#10b981" stroke-width="1.2" marker-end="url(#a2)" stroke-dasharray="4,3"/>
+  <text x="215" y="148" text-anchor="middle" fill="#10b981" font-size="8" font-family="Outfit,sans-serif">wakeup_req</text>
+  <!-- IDLE_WAIT -> PRECHARGING -->
+  <line x1="354" y1="100" x2="445" y2="100" stroke="#fcd34d" stroke-width="1.5" marker-end="url(#a3)"/>
+  <text x="400" y="92" text-anchor="middle" fill="#475569" font-size="8" font-family="Outfit,sans-serif">idle_cnt expired</text>
+  <!-- IDLE_WAIT -> APD (banks open) -->
+  <line x1="310" y1="144" x2="310" y2="205" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a4)"/>
+  <text x="268" y="178" text-anchor="middle" fill="#a78bfa" font-size="8" font-family="Outfit,sans-serif">banks open</text>
+  <!-- PRECHARGING -> PPD -->
+  <line x1="490" y1="144" x2="490" y2="205" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a4)"/>
+  <text x="530" y="178" text-anchor="middle" fill="#a78bfa" font-size="8" font-family="Outfit,sans-serif">tRP done</text>
+  <!-- PRECHARGING -> SR_ENTRY -->
+  <line x1="534" y1="100" x2="611" y2="100" stroke="#f87171" stroke-width="1.5" marker-end="url(#a5)"/>
+  <text x="572" y="92" text-anchor="middle" fill="#f87171" font-size="8" font-family="Outfit,sans-serif">sr_req</text>
+  <!-- SR_ENTRY -> SELF_REFRESH -->
+  <line x1="650" y1="138" x2="650" y2="205" stroke="#f87171" stroke-width="1.5" marker-end="url(#a5)"/>
+  <!-- SELF_REFRESH -> SR_EXIT -->
+  <line x1="694" y1="230" x2="756" y2="195" stroke="#f87171" stroke-width="1.5" marker-end="url(#a5)"/>
+  <text x="735" y="218" text-anchor="middle" fill="#f87171" font-size="8" font-family="Outfit,sans-serif">wakeup</text>
+  <!-- SR_EXIT -> NORMAL -->
+  <path d="M 760,145 Q 500,30 165,88" fill="none" stroke="#10b981" stroke-width="1.5" marker-end="url(#a2)"/>
+  <text x="460" y="30" text-anchor="middle" fill="#10b981" font-size="8" font-family="Outfit,sans-serif">tXS done → power_ok</text>
+  <!-- APD -> NORMAL -->
+  <path d="M 275,225 Q 155,200 140,145" fill="none" stroke="#10b981" stroke-width="1.2" marker-end="url(#a2)" stroke-dasharray="4,3"/>
+  <text x="180" y="210" text-anchor="middle" fill="#10b981" font-size="8" font-family="Outfit,sans-serif">wakeup tXP</text>
+  <!-- PPD -> NORMAL -->
+  <path d="M 455,225 Q 380,310 155,145" fill="none" stroke="#10b981" stroke-width="1.2" marker-end="url(#a2)" stroke-dasharray="4,3"/>
+
+  <!-- CKE waveform strip at bottom -->
+  <rect x="20" y="318" width="780" height="50" rx="5" fill="rgba(6,182,212,.03)" stroke="rgba(6,182,212,.1)" stroke-width="1"/>
+  <text x="30" y="336" fill="#475569" font-size="9" font-family="Outfit,sans-serif">CKE</text>
+  <polyline points="60,348 120,348 120,338 460,338 460,348 550,348 550,338 680,338 680,348 780,348" fill="none" stroke="#06b6d4" stroke-width="2"/>
+  <text x="90"  y="362" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">Normal</text>
+  <text x="290" y="356" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">CKE=0 (power-down)</text>
+  <text x="505" y="362" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">Normal</text>
+  <text x="615" y="356" text-anchor="middle" fill="#64748b" font-size="8" font-family="Outfit,sans-serif">SR</text>
+  <text x="730" y="362" text-anchor="middle" fill="#10b981" font-size="8" font-family="Outfit,sans-serif">Awake</text>
+
+  <defs>
+    <marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#06b6d4"/></marker>
+    <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#10b981"/></marker>
+    <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fcd34d"/></marker>
+    <marker id="a4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#a78bfa"/></marker>
+    <marker id="a5" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#f87171"/></marker>
+  </defs>
+</svg>
+</section>
+
+<!-- Section 5: Idle Detection -->
+<section>
+<h2>5. Idle Detection</h2>
+<p>The power manager monitors the AXI4 interface for periods of no activity. Two conditions define "idle":</p>
+<ul>
+  <li><strong>i_traffic_idle:</strong> No pending read or write transactions in the AXI4 interface. This is driven by the AXI4 bridge when its transaction queues are empty.</li>
+  <li><strong>i_all_banks_idle:</strong> All 32 banks are precharged (driven by the bank FSM). This is required before entering PPD or SR.</li>
+</ul>
+<p>The controller counts idle cycles using a 16-bit counter. The threshold <code>i_idle_cycles[15:0]</code> is software-programmable, allowing the OS to tune power aggressiveness. Recommended values:</p>
+<ul>
+  <li>16–64 cycles → enter APD/PPD (low-latency power mode for interactive workloads)</li>
+  <li>4096–16384 cycles → enter SR (compute kernel idle periods, 2–8 µs at 2GHz)</li>
+  <li>65535 cycles → SR disabled effectively (maximum latency tolerance workload)</li>
+</ul>
+</section>
+
+<!-- Section 6: Wake-up Latency -->
+<section>
+<h2>6. Wake-up Latency Management</h2>
+<p>The <code>o_wakeup_latency[9:0]</code> output is a down-counter that tells the AXI4 wrapper exactly how many cycles remain until the first command can be issued after a wakeup request. This allows the AXI bridge to insert precisely the right number of wait states rather than using a conservative fixed timeout.</p>
+<p>When wakeup_req asserts, the power manager loads the appropriate latency based on the current power mode:</p>
+<ul>
+  <li>APD: load tXP = 10</li>
+  <li>PPD: load tXPDLL = 24</li>
+  <li>SR: load tXS = 512</li>
+  <li>NORMAL/IDLE_WAIT: load 0 (immediate)</li>
+</ul>
+<p>The counter decrements every clock cycle. When it reaches zero, <code>o_power_ok</code> asserts and the AXI wrapper may resume transactions. The scheduler must not issue any DRAM commands while power_ok is deasserted.</p>
+</section>
+
+<!-- Section 7: Verilog Source -->
+<section>
+<h2>7. Full Verilog Source — Power State FSM</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">Verilog — hbm3_power_mgmt.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// ============================================================
+// hbm3_power_mgmt.v — HBM3 Power Management Controller
+// EcrioniX · HBM3 Controller Build · Module 15
+// Phase 4: Power and Thermal Management
+// ============================================================
+// Power state FSM with CKE control, idle detection, and
+// wakeup latency tracking. Synthesizable RTL.
+// States: NORMAL, IDLE_WAIT, PRECHARGING, APD, PPD,
+//         SR_ENTRY, SELF_REFRESH, SR_EXIT
+// ============================================================
+
+module hbm3_power_mgmt #(
+    parameter TXP     = 10,  // Active Power-Down exit latency (cycles)
+    parameter TXPDLL  = 24,  // PPD exit latency (DLL re-lock)
+    parameter TXS     = 512, // Self-Refresh exit latency (cycles)
+    parameter TRP     = 10,  // Precharge time (cycles)
+    parameter TCKESR  = 4    // Min CKE low before stopping CK
+)(
+    input  wire        i_clk,
+    input  wire        i_rst_n,
+
+    // Traffic status (from AXI4 bridge and bank FSM)
+    input  wire        i_traffic_idle,    // no pending AXI transactions
+    input  wire        i_all_banks_idle,  // all 32 banks precharged
+
+    // Power mode control
+    input  wire [15:0] i_idle_cycles,     // idle cycle threshold before power-down
+    input  wire        i_sr_req,          // software-requested self-refresh
+    input  wire        i_wakeup_req,      // host needs memory access
+
+    // Outputs: CKE and power state
+    output reg         o_cke,             // CKE to PHY (1=active, 0=power mode)
+    output reg  [2:0]  o_pwr_state,       // encoded power state
+    output reg  [9:0]  o_wakeup_latency,  // cycles until ready after wakeup
+    output reg         o_power_ok,        // safe to issue DRAM commands
+    output reg         o_precharge_all    // trigger bank FSM to close all banks
+);
+
+// ============================================================
+// State encoding
+// ============================================================
+localparam S_NORMAL       = 3'd0;
+localparam S_IDLE_WAIT    = 3'd1;
+localparam S_PRECHARGING  = 3'd2;
+localparam S_APD          = 3'd3;
+localparam S_PPD          = 3'd4;
+localparam S_SR_ENTRY     = 3'd5;
+localparam S_SELF_REFRESH = 3'd6;
+localparam S_SR_EXIT      = 3'd7;
+
+reg [2:0]  state;
+reg [15:0] idle_cnt;    // counts idle cycles
+reg [9:0]  wait_cnt;    // counts timing constraint cycles
+reg        in_sr;       // latches when self-refresh is active
+
+// ============================================================
+// Power State FSM
+// ============================================================
+always @(posedge i_clk or negedge i_rst_n) begin
+    if (!i_rst_n) begin
+        state            &lt;= S_NORMAL;
+        o_cke            &lt;= 1'b1;
+        o_pwr_state      &lt;= 3'd0;
+        o_wakeup_latency &lt;= '0;
+        o_power_ok       &lt;= 1'b1;
+        o_precharge_all  &lt;= 1'b0;
+        idle_cnt         &lt;= '0;
+        wait_cnt         &lt;= '0;
+        in_sr            &lt;= 1'b0;
+    end else begin
+        o_precharge_all &lt;= 1'b0; // default de-assert
+
+        case (state)
+            // --------------------------------------------------
+            S_NORMAL: begin
+                o_cke       &lt;= 1'b1;
+                o_power_ok  &lt;= 1'b1;
+                o_pwr_state &lt;= S_NORMAL;
+                idle_cnt    &lt;= '0;
+                in_sr       &lt;= 1'b0;
+
+                if (i_traffic_idle)
+                    state &lt;= S_IDLE_WAIT;
+            end
+
+            // --------------------------------------------------
+            S_IDLE_WAIT: begin
+                o_cke       &lt;= 1'b1;
+                o_power_ok  &lt;= 1'b1;
+                o_pwr_state &lt;= S_IDLE_WAIT;
+
+                if (!i_traffic_idle || i_wakeup_req) begin
+                    // Traffic resumed — back to normal
+                    idle_cnt &lt;= '0;
+                    state    &lt;= S_NORMAL;
+                end else if (i_sr_req) begin
+                    // Explicit SR request
+                    state           &lt;= S_PRECHARGING;
+                    o_precharge_all &lt;= 1'b1;
+                    wait_cnt        &lt;= TRP[9:0];
+                end else if (idle_cnt &gt;= i_idle_cycles) begin
+                    // Idle threshold reached — enter power-down
+                    idle_cnt &lt;= '0;
+                    if (!i_all_banks_idle) begin
+                        // Banks open -> APD
+                        o_cke  &lt;= 1'b0;
+                        state  &lt;= S_APD;
+                    end else begin
+                        // Banks closed -> PPD
+                        o_cke  &lt;= 1'b0;
+                        state  &lt;= S_PPD;
+                    end
+                end else begin
+                    idle_cnt &lt;= idle_cnt + 1;
+                end
+            end
+
+            // --------------------------------------------------
+            S_PRECHARGING: begin
+                o_cke       &lt;= 1'b1;
+                o_power_ok  &lt;= 1'b0; // stall commands during precharge
+                o_pwr_state &lt;= S_PRECHARGING;
+
+                if (wait_cnt == 10'd0) begin
+                    // Precharge complete
+                    if (i_sr_req) begin
+                        state &lt;= S_SR_ENTRY;
+                    end else begin
+                        o_cke &lt;= 1'b0;
+                        state &lt;= S_PPD;
+                    end
+                end else begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end
+            end
+
+            // --------------------------------------------------
+            S_APD: begin
+                o_cke       &lt;= 1'b0;
+                o_power_ok  &lt;= 1'b0;
+                o_pwr_state &lt;= S_APD;
+
+                if (i_wakeup_req) begin
+                    o_cke            &lt;= 1'b1;
+                    wait_cnt         &lt;= TXP[9:0];
+                    o_wakeup_latency &lt;= TXP[9:0];
+                    state            &lt;= S_NORMAL; // simplified: APD exit direct
+                end
+            end
+
+            // --------------------------------------------------
+            S_PPD: begin
+                o_cke       &lt;= 1'b0;
+                o_power_ok  &lt;= 1'b0;
+                o_pwr_state &lt;= S_PPD;
+
+                if (i_sr_req) begin
+                    // Deepen to SR
+                    state &lt;= S_SR_ENTRY;
+                end else if (i_wakeup_req) begin
+                    o_cke            &lt;= 1'b1;
+                    wait_cnt         &lt;= TXPDLL[9:0];
+                    o_wakeup_latency &lt;= TXPDLL[9:0];
+                    state            &lt;= S_SR_EXIT; // reuse exit counter
+                    in_sr            &lt;= 1'b0;      // not SR, just PPD exit
+                end
+            end
+
+            // --------------------------------------------------
+            S_SR_ENTRY: begin
+                o_cke       &lt;= 1'b0;
+                o_power_ok  &lt;= 1'b0;
+                o_pwr_state &lt;= S_SR_ENTRY;
+                in_sr       &lt;= 1'b1;
+                // Wait minimum TCKESR before we consider SR active
+                if (wait_cnt == 10'd0) begin
+                    state    &lt;= S_SELF_REFRESH;
+                    wait_cnt &lt;= TCKESR[9:0];
+                end else begin
+                    wait_cnt &lt;= wait_cnt - 1;
+                end
+            end
+
+            // --------------------------------------------------
+            S_SELF_REFRESH: begin
+                o_cke       &lt;= 1'b0;
+                o_power_ok  &lt;= 1'b0;
+                o_pwr_state &lt;= S_SELF_REFRESH;
+
+                if (i_wakeup_req) begin
+                    // Assert CKE to exit self-refresh
+                    o_cke            &lt;= 1'b1;
+                    wait_cnt         &lt;= TXS[9:0];
+                    o_wakeup_latency &lt;= TXS[9:0];
+                    state            &lt;= S_SR_EXIT;
+                end
+            end
+
+            // --------------------------------------------------
+            S_SR_EXIT: begin
+                o_cke       &lt;= 1'b1;
+                o_power_ok  &lt;= 1'b0;
+                o_pwr_state &lt;= S_SR_EXIT;
+
+                if (o_wakeup_latency != 10'd0) begin
+                    o_wakeup_latency &lt;= o_wakeup_latency - 1;
+                    wait_cnt         &lt;= wait_cnt - 1;
+                end else begin
+                    // Latency expired — memory is ready
+                    o_power_ok &lt;= 1'b1;
+                    in_sr      &lt;= 1'b0;
+                    state      &lt;= S_NORMAL;
+                end
+            end
+
+            default: state &lt;= S_NORMAL;
+        endcase
+    end
+end
+
+endmodule</pre>
+</div>
+</section>
+
+<!-- Section 8: Testbench -->
+<section>
+<h2>8. SystemVerilog Testbench</h2>
+<div class="code-block">
+  <div class="code-head"><span class="code-lang">SystemVerilog — tb_hbm3_power_mgmt.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// ============================================================
+// tb_hbm3_power_mgmt.sv — Testbench for Power Management FSM
+// EcrioniX · HBM3 Controller Build · Module 15
+// ============================================================
+`timescale 1ns/1ps
+
+module tb_hbm3_power_mgmt;
+
+logic        clk, rst_n;
+logic        traffic_idle, all_banks_idle;
+logic [15:0] idle_cycles;
+logic        sr_req, wakeup_req;
+logic        cke;
+logic [2:0]  pwr_state;
+logic [9:0]  wakeup_latency;
+logic        power_ok, precharge_all;
+
+// Short timings for simulation
+hbm3_power_mgmt #(
+    .TXP(10), .TXPDLL(24), .TXS(64), .TRP(5), .TCKESR(3)
+) dut (
+    .i_clk(clk), .i_rst_n(rst_n),
+    .i_traffic_idle(traffic_idle), .i_all_banks_idle(all_banks_idle),
+    .i_idle_cycles(idle_cycles), .i_sr_req(sr_req), .i_wakeup_req(wakeup_req),
+    .o_cke(cke), .o_pwr_state(pwr_state),
+    .o_wakeup_latency(wakeup_latency), .o_power_ok(power_ok),
+    .o_precharge_all(precharge_all)
+);
+
+initial clk = 0;
+always #1 clk = ~clk;
+
+integer errors = 0;
+
+task wait_cyc(input integer n); repeat(n) @(posedge clk); endtask
+
+initial begin
+    $dumpfile("tb_power_mgmt.vcd");
+    $dumpvars(0, tb_hbm3_power_mgmt);
+
+    // Reset
+    rst_n = 0; traffic_idle = 0; all_banks_idle = 0;
+    idle_cycles = 16'd8; sr_req = 0; wakeup_req = 0;
+    wait_cyc(10);
+    rst_n = 1;
+    wait_cyc(5);
+
+    // TEST 1: Normal operation — no idle
+    $display("[%0t] TEST1: Normal — traffic active", $time);
+    traffic_idle = 0;
+    wait_cyc(20);
+    if (pwr_state !== 3'd0) begin
+        $error("FAIL: Expected NORMAL state, got %0d", pwr_state);
+        errors++;
+    end else $display("[%0t] PASS: Stayed in NORMAL", $time);
+    if (!cke) begin $error("FAIL: CKE should be 1 in NORMAL"); errors++; end
+
+    // TEST 2: Idle detection -> PPD (all banks closed)
+    $display("[%0t] TEST2: Idle -> PPD", $time);
+    traffic_idle = 1; all_banks_idle = 1;
+    wait_cyc(12); // idle_cycles=8 + margin
+    if (pwr_state !== 3'd4) begin
+        $error("FAIL: Expected PPD(4), got %0d", pwr_state);
+        errors++;
+    end else $display("[%0t] PASS: Entered PPD", $time);
+    if (cke) begin $error("FAIL: CKE should be 0 in PPD"); errors++; end
+
+    // TEST 3: Wakeup from PPD
+    $display("[%0t] TEST3: Wakeup from PPD", $time);
+    wakeup_req = 1;
+    @(posedge clk); wakeup_req = 0;
+    wait_cyc(30); // wait > TXPDLL=24
+    if (pwr_state !== 3'd0) begin
+        $error("FAIL: Expected NORMAL after PPD exit, got %0d", pwr_state);
+        errors++;
+    end else $display("[%0t] PASS: Returned to NORMAL from PPD", $time);
+    if (!power_ok) begin $error("FAIL: power_ok should be 1 in NORMAL"); errors++; end
+
+    // TEST 4: Self-Refresh entry and exit
+    $display("[%0t] TEST4: Self-Refresh enter/exit", $time);
+    all_banks_idle = 1; traffic_idle = 1;
+    sr_req = 1;
+    @(posedge clk); sr_req = 0;
+    wait_cyc(20); // wait for SR_ENTRY + TCKESR
+    if (pwr_state !== 3'd6) begin
+        $error("FAIL: Expected SELF_REFRESH(6), got %0d", pwr_state);
+        errors++;
+    end else $display("[%0t] PASS: In SELF_REFRESH", $time);
+
+    // Wakeup from SR
+    wakeup_req = 1;
+    @(posedge clk); wakeup_req = 0;
+    wait_cyc(70); // TXS=64 + margin
+    if (pwr_state !== 3'd0) begin
+        $error("FAIL: Expected NORMAL after SR exit, got %0d", pwr_state);
+        errors++;
+    end else $display("[%0t] PASS: NORMAL after SR exit", $time);
+    if (!power_ok) begin $error("FAIL: power_ok should be 1"); errors++; end
+
+    // Summary
+    wait_cyc(20);
+    if (errors == 0)
+        $display("[%0t] ALL TESTS PASSED", $time);
+    else
+        $display("[%0t] %0d TEST(S) FAILED", $time, errors);
+    $finish;
+end
+
+initial begin #200000; $error("TIMEOUT"); $finish; end
+
+endmodule</pre>
+</div>
+</section>
+
+<!-- Power Mode Table -->
+<section>
+<h2>9. Power Mode Comparison Table</h2>
+<table>
+  <thead>
+    <tr><th>State</th><th>o_pwr_state</th><th>CKE</th><th>Banks</th><th>Power (typ)</th><th>Exit Latency</th><th>Use Case</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>NORMAL</td><td>3'b000</td><td>1</td><td>Open/Closed</td><td>10–15 W</td><td>0 cycles</td><td>Active traffic</td></tr>
+    <tr><td>IDLE_WAIT</td><td>3'b001</td><td>1</td><td>Any</td><td>10–15 W</td><td>0 cycles</td><td>Brief idle detection</td></tr>
+    <tr><td>PRECHARGING</td><td>3'b010</td><td>1</td><td>Closing</td><td>8–12 W</td><td>tRP only</td><td>Transition to PPD/SR</td></tr>
+    <tr><td>APD</td><td>3'b011</td><td>0</td><td>Open</td><td>3–5 W</td><td>tXP = 10</td><td>Short idle, open rows</td></tr>
+    <tr><td>PPD</td><td>3'b100</td><td>0</td><td>Precharged</td><td>2–4 W</td><td>tXPDLL = 24</td><td>Short idle, closed banks</td></tr>
+    <tr><td>SR_ENTRY</td><td>3'b101</td><td>0</td><td>Precharged</td><td>1–2 W</td><td>—</td><td>Transitioning to SR</td></tr>
+    <tr><td>SELF_REFRESH</td><td>3'b110</td><td>0</td><td>Precharged</td><td>0.5–1.5 W</td><td>tXS = 512</td><td>Long compute idle</td></tr>
+    <tr><td>SR_EXIT</td><td>3'b111</td><td>1</td><td>Precharged</td><td>2–5 W</td><td>Counting tXS</td><td>DLL re-lock in progress</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- FAQ -->
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details><summary>What is the difference between Active Power-Down and Self-Refresh in HBM3?</summary><p>Active Power-Down (APD) keeps banks open and retains row state but disables the clock to save dynamic power. Exit latency is short (tXP = 10 cycles) because no re-training is needed. Self-Refresh (SR) forces all banks precharged, disables the external clock (CKE=0), and makes the DRAM run its own internal refresh. SR saves far more power but has a much longer exit latency (tXS = 512 cycles) due to DLL re-lock.</p></details>
+  <details><summary>Why does self-refresh exit take so long (tXS = 512 cycles)?</summary><p>During self-refresh the DRAM's internal oscillator replaces the external CK. When CKE is re-asserted, the DRAM must: (1) wait for external clock to stabilize, (2) re-lock the internal DLL to the external clock. Steps 1 and 2 dominate — DLL lock typically requires 200–500 cycles after a stable clock edge. Hence the 512-cycle minimum tXS in JEDEC JESD238.</p></details>
+  <details><summary>What is CKE and how does it control power modes?</summary><p>CKE (Clock Enable) is driven by the memory controller to the DRAM. CKE=1 means the DRAM is active and the clock is enabled. CKE=0 causes the DRAM to enter a power-saving mode — the exact mode (APD, PPD, or SR) depends on bank state when CKE goes low. Active banks yield APD; precharged banks yield PPD or SR depending on prior MR settings.</p></details>
+  <details><summary>How does the controller detect when to enter power-down?</summary><p>The controller counts consecutive cycles with no pending AXI transactions (i_traffic_idle). When the idle count exceeds i_idle_cycles (programmable), it initiates the power-down sequence. The threshold is typically 16–256 cycles for PPD and 4096–65535 cycles for SR, reflecting the trade-off between power savings and the latency cost of exiting the mode.</p></details>
+  <details><summary>How does wake-up latency affect system performance?</summary><p>Wake-up latency is the cycles the AXI interface must wait after wakeup_req before the first transaction completes. APD tXP=10 cycles is negligible. PPD tXPDLL=24 cycles is small. SR tXS=512 cycles means every SR entry/exit costs 256ns dead time at 2GHz. The o_wakeup_latency counter lets the AXI wrapper insert precise wait states rather than a conservative fixed timeout.</p></details>
+</div>
+</section>
+
+<!-- Prev/Next -->
+<div class="nav-pills">
+  <a href="/hbm3-controller/temp-monitor/" class="nav-pill">&#8592; Module 14: Temp Monitor</a>
+  <a href="/hbm3-controller/dram-model/" class="nav-pill">Module 16: DRAM Model &#8594;</a>
+</div>
+
+</div><!-- .wrap -->
+
+<footer>
+  <p>By EcrioniX &middot; Updated June 2026 &middot; <a href="/hbm3-controller/">HBM3 Controller Build</a> &middot; <a href="/courses/">All Courses</a> &middot; <a href="/about/">About</a> &middot; <a href="/privacy/">Privacy</a></p>
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',2000);
+  });
+}
+</script>
+</body>
+</html>

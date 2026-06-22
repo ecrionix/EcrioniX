@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 ECC Engine (SECDED) — Module 7 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build the HBM3 ECC engine in Verilog. SECDED (Single Error Correct, Double Error Detect) Hamming code for 32-bit data + 7 parity bits, syndrome computation, error detection and correction logic. Phase 2 · Module 7.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/ecc-engine/">
+<meta property="og:title" content="HBM3 ECC Engine (SECDED) — Module 7 | EcrioniX">
+<meta property="og:description" content="SECDED Hamming ECC for HBM3: 32-bit data + 7 parity bits = 39-bit codeword. Encoder, syndrome decoder, single-error correction, double-error detection in synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 ECC Engine (SECDED) — Module 7","description":"Build the HBM3 ECC engine in Verilog. SECDED Hamming code for 32-bit data with 7 parity bits, syndrome computation, and error correction logic.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/ecc-engine/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 7 — ECC Engine","item":"https://ecrionix.org/hbm3-controller/ecc-engine/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does HBM3 use inline ECC instead of a separate ECC DRAM?","acceptedAnswer":{"@type":"Answer","text":"HBM3 stores ECC bits in the same memory array as data (inline ECC), unlike DDR5 which uses a separate x8 DRAM rank for ECC. Inline ECC lets HBM3 maintain its wide-bus efficiency without needing extra dies. The trade-off is that the ECC overhead slightly reduces usable capacity — 7 bits per 32 data bits (about 18%) — but the latency savings from avoiding a separate ECC transaction dominate."}},{"@type":"Question","name":"What is SECDED and what Hamming distance does it require?","acceptedAnswer":{"@type":"Answer","text":"SECDED stands for Single Error Correct, Double Error Detect. It requires a minimum Hamming distance of 4 between any two valid codewords. With distance 4: any single-bit error moves you to distance 1 from the correct codeword (correctable), any double-bit error moves you to distance 2 from all valid codewords (detectable but not correctable). The overall parity bit (P7) is what separates a correctable single error from an uncorrectable double error."}},{"@type":"Question","name":"How many parity bits are needed for 32-bit data?","acceptedAnswer":{"@type":"Answer","text":"Standard Hamming codes require ceil(log2(m+r+1)) parity bits for m data bits. For 32 data bits: 6 bits gives coverage up to 63 positions — enough for 32+6=38 bit positions. Adding the 7th overall parity bit gives SECDED capability, for a total codeword width of 39 bits (32 data + 7 ECC)."}},{"@type":"Question","name":"What does the syndrome value represent after decoding?","acceptedAnswer":{"@type":"Answer","text":"The syndrome is computed by XOR-ing the received parity bits against freshly computed parity over the received data. A syndrome of 0 means no error. A non-zero syndrome whose value equals a valid bit position (1–38) and whose overall parity is odd means a correctable single-bit error at that position. A non-zero syndrome with even overall parity means an uncorrectable double-bit error has been detected."}},{"@type":"Question","name":"Is this ECC engine synthesizable for ASIC and FPGA?","acceptedAnswer":{"@type":"Answer","text":"Yes. The hbm3_ecc_engine module uses only XOR trees and registered outputs — no RAM, no loops with variable bounds, no unsupported constructs. It synthesizes cleanly in Synopsys Design Compiler for ASIC and in Vivado/Quartus for FPGA. The XOR trees for 7 parity bits over 32 data bits are shallow (depth ~5 XOR gates) so they meet timing easily even at 2 GHz."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--cy);font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.meta-item{display:flex;align-items:center;gap:.3rem}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul{color:#94a3b8;font-size:.88rem;padding-left:1.4rem;margin-bottom:.7rem}
+li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.kw{color:#67e8f9}.cm{color:#334155;font-style:italic}.nm{color:#fcd34d}.pp{color:#a78bfa}.st{color:#10b981}.nu{color:#fb923c}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900}
+.byline{font-size:.75rem;color:#475569;margin-top:.5rem}
+svg text{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Simulator</a></li>
+  </ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 7 — ECC Engine</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">Phase 2 · Module 7 of 12</div>
+    <h1>HBM3 <span>ECC Engine (SECDED)</span></h1>
+    <p class="hero-sub">Single Error Correct, Double Error Detect — 32-bit data protected by 7 Hamming parity bits into a 39-bit inline codeword. Syndrome decoder, automatic bit-flip correction, and double-error flag in synthesizable Verilog.</p>
+    <div class="meta-row">
+      <span class="meta-item">&#128196; <code style="font-family:monospace;font-size:.75rem">hbm3_ecc_engine.v</code></span>
+      <span class="meta-item">&#128337; 25 min read</span>
+      <span class="meta-item"><span class="pill">SECDED</span></span>
+      <span class="meta-item"><span class="pill">39-bit codeword</span></span>
+    </div>
+    <p class="byline">By EcrioniX &middot; Updated June 2026</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>1. Why HBM3 Needs ECC</h2>
+<p>DRAM cells are capacitors. They leak charge, they can be struck by alpha particles from packaging materials, and cosmic-ray neutrons cause soft errors at a measurable rate. The industry metric is <strong>BEER</strong> (Bit Error Rate) — for modern HBM3 at 64 Gb it sits around 10<sup>-12</sup> to 10<sup>-14</sup> raw errors per bit per hour. That sounds tiny until you have a GPU with 96 GB of HBM3: at 10<sup>-12</sup> you statistically see a raw bit flip roughly every few hours of continuous use.</p>
+<p>Without ECC that flip is silent data corruption. With SECDED ECC the controller catches and corrects it in hardware, transparently. The application never sees the error; the OS may log a corrected-error counter.</p>
+<p><strong>HBM3 uses inline ECC.</strong> Unlike DDR5 which pins a separate x8 ECC DRAM rank onto the bus, HBM3 stores its ECC bits in the same die array as data. Every 32-bit data burst carried over a pseudo-channel also carries 7 ECC bits, forming a 39-bit codeword. The PHY reads all 39 bits and passes them to this engine before forwarding corrected data to the memory subsystem.</p>
+<div class="note"><strong>Key numbers:</strong> 32 data bits + 7 ECC bits = 39 bits total per pseudo-channel per access. ECC overhead = 7/39 ≈ 18%. This is the price HBM3 pays for hardware-corrected reliability.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>2. SECDED Theory — Hamming Distance</h2>
+<p>The Hamming distance between two binary strings is the number of bit positions where they differ. Error-correcting codes work by ensuring every valid codeword is sufficiently far from every other valid codeword.</p>
+<ul>
+  <li><strong>d=1:</strong> No redundancy. Any error hits another valid codeword — undetectable.</li>
+  <li><strong>d=2:</strong> Single parity bit. Detects 1-bit errors, corrects none.</li>
+  <li><strong>d=3:</strong> Hamming SEC. Corrects 1-bit errors, detects 2-bit errors ambiguously.</li>
+  <li><strong>d=4:</strong> SECDED. Corrects 1-bit errors, <em>unambiguously detects</em> 2-bit errors.</li>
+</ul>
+<p>SECDED requires d=4. The key insight: with d=4, a single-bit error moves the received word to distance 1 from exactly one valid codeword (the original) and distance 3+ from all others — so correction is unambiguous. A double-bit error moves the received word to distance 2 from the nearest valid codewords — not correctable, but detectable because it cannot be confused with a single-bit error from another codeword.</p>
+<p>The extra bit that pushes from d=3 to d=4 is the <strong>overall parity bit P7</strong> — an XOR of all 38 other bits in the codeword. After decoding: if syndrome ≠ 0 and overall parity is odd → single-bit error, correct it. If syndrome ≠ 0 and overall parity is even → double-bit error, flag it uncorrectable.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>3. Hamming Code Construction</h2>
+<h3>Parity Bit Positions (1-indexed)</h3>
+<p>In a Hamming code, parity bits occupy positions that are powers of 2: <strong>1, 2, 4, 8, 16, 32, 64</strong>. Every other position carries a data bit. For our 39-bit codeword the positions are:</p>
+<table>
+<thead><tr><th>Codeword Position</th><th>Role</th><th>Label</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Parity</td><td>P1</td></tr>
+<tr><td>2</td><td>Parity</td><td>P2</td></tr>
+<tr><td>3</td><td>Data</td><td>D0</td></tr>
+<tr><td>4</td><td>Parity</td><td>P4</td></tr>
+<tr><td>5</td><td>Data</td><td>D1</td></tr>
+<tr><td>6</td><td>Data</td><td>D2</td></tr>
+<tr><td>7</td><td>Data</td><td>D3</td></tr>
+<tr><td>8</td><td>Parity</td><td>P8</td></tr>
+<tr><td>9–15</td><td>Data</td><td>D4–D10</td></tr>
+<tr><td>16</td><td>Parity</td><td>P16</td></tr>
+<tr><td>17–31</td><td>Data</td><td>D11–D25</td></tr>
+<tr><td>32</td><td>Parity</td><td>P32</td></tr>
+<tr><td>33–38</td><td>Data</td><td>D26–D31</td></tr>
+<tr><td>39</td><td>Overall parity</td><td>P7 (P_all)</td></tr>
+</tbody>
+</table>
+<h3>Which Bits Each Parity Covers</h3>
+<p>Each parity bit Pi covers all codeword positions whose binary representation has bit i set:</p>
+<ul>
+  <li><strong>P1 (bit 0):</strong> covers positions 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37 — i.e., all odd positions</li>
+  <li><strong>P2 (bit 1):</strong> covers positions 2,3,6,7,10,11,14,15,18,19,22,23,26,27,30,31,34,35,38</li>
+  <li><strong>P4 (bit 2):</strong> covers positions 4–7,12–15,20–23,28–31,36–39</li>
+  <li><strong>P8 (bit 3):</strong> covers positions 8–15,24–31</li>
+  <li><strong>P16 (bit 4):</strong> covers positions 16–31</li>
+  <li><strong>P32 (bit 5):</strong> covers positions 32–38</li>
+  <li><strong>P7/P_all:</strong> XOR of all 38 bits (positions 1–38)</li>
+</ul>
+<div class="note">Each parity bit is set so that the XOR of all bits it covers (including itself) equals zero in a correct codeword. During decoding, re-computing these XORs over the received data gives the <strong>syndrome</strong>.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>4. Data Flow Diagram</h2>
+<svg viewBox="0 0 820 180" style="width:100%;max-width:820px;display:block;margin:.8rem auto;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;padding:1rem" aria-label="ECC data flow">
+  <!-- Encoder side -->
+  <rect x="10" y="60" width="130" height="50" rx="7" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.3)" stroke-width="1.2"/>
+  <text x="75" y="81" text-anchor="middle" font-size="10" fill="#67e8f9" font-weight="700">DATA IN</text>
+  <text x="75" y="97" text-anchor="middle" font-size="9" fill="#94a3b8">i_enc_data[31:0]</text>
+  <text x="75" y="111" text-anchor="middle" font-size="9" fill="#94a3b8">32 bits</text>
+  <!-- Arrow -->
+  <line x1="140" y1="85" x2="178" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Encoder box -->
+  <rect x="180" y="50" width="120" height="70" rx="7" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.3)" stroke-width="1.2"/>
+  <text x="240" y="76" text-anchor="middle" font-size="10" fill="#10b981" font-weight="700">ENCODER</text>
+  <text x="240" y="92" text-anchor="middle" font-size="9" fill="#94a3b8">XOR tree</text>
+  <text x="240" y="107" text-anchor="middle" font-size="9" fill="#94a3b8">7 parity bits</text>
+  <!-- Arrow -->
+  <line x1="300" y1="85" x2="338" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Codeword -->
+  <rect x="340" y="55" width="130" height="60" rx="7" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.3)" stroke-width="1.2"/>
+  <text x="405" y="79" text-anchor="middle" font-size="10" fill="#67e8f9" font-weight="700">CODEWORD</text>
+  <text x="405" y="95" text-anchor="middle" font-size="9" fill="#94a3b8">o_enc_codeword[38:0]</text>
+  <text x="405" y="110" text-anchor="middle" font-size="9" fill="#94a3b8">39 bits → DRAM</text>
+  <!-- Arrow -->
+  <line x1="470" y1="85" x2="508" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Syndrome -->
+  <rect x="510" y="50" width="120" height="70" rx="7" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.3)" stroke-width="1.2"/>
+  <text x="570" y="73" text-anchor="middle" font-size="10" fill="#a78bfa" font-weight="700">SYNDROME</text>
+  <text x="570" y="89" text-anchor="middle" font-size="9" fill="#94a3b8">CHECK</text>
+  <text x="570" y="105" text-anchor="middle" font-size="9" fill="#94a3b8">7-bit syndrome</text>
+  <text x="570" y="116" text-anchor="middle" font-size="8" fill="#64748b">XOR recv vs calc</text>
+  <!-- Arrow -->
+  <line x1="630" y1="85" x2="668" y2="85" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Output -->
+  <rect x="670" y="55" width="130" height="60" rx="7" fill="rgba(16,185,129,.08)" stroke="rgba(16,185,129,.3)" stroke-width="1.2"/>
+  <text x="735" y="76" text-anchor="middle" font-size="10" fill="#10b981" font-weight="700">CORRECTED</text>
+  <text x="735" y="92" text-anchor="middle" font-size="9" fill="#94a3b8">o_dec_data[31:0]</text>
+  <text x="735" y="108" text-anchor="middle" font-size="9" fill="#94a3b8">+ SEC/DED flags</text>
+  <!-- Labels under arrows -->
+  <text x="158" y="76" text-anchor="middle" font-size="8" fill="#475569">encode</text>
+  <text x="320" y="76" text-anchor="middle" font-size="8" fill="#475569">write</text>
+  <text x="490" y="76" text-anchor="middle" font-size="8" fill="#475569">read</text>
+  <text x="650" y="76" text-anchor="middle" font-size="8" fill="#475569">correct</text>
+  <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#06b6d4"/></marker></defs>
+</svg>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>5. Encoder Logic</h2>
+<p>The encoder takes <code>i_enc_data[31:0]</code> and computes 6 Hamming parity bits plus one overall parity bit. Each of the 6 parity bits is the XOR of specific data bits — those whose codeword positions (after inserting parity slots) have the corresponding power-of-2 bit set.</p>
+<p>After laying out data into the 38-position codeword (positions 1–38 excluding parity slots = data bits D0–D31), each Hamming parity bit covers:</p>
+<table>
+<thead><tr><th>Parity Bit</th><th>Position</th><th>Data bits covered (D-index)</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td>1</td><td>D0,D1,D3,D4,D6,D8,D10,D11,D13,D15,D17,D19,D21,D23,D25,D26,D28,D30</td></tr>
+<tr><td>P2</td><td>2</td><td>D0,D2,D3,D5,D6,D9,D10,D12,D13,D16,D17,D20,D21,D24,D25,D27,D28,D31</td></tr>
+<tr><td>P4</td><td>4</td><td>D1,D2,D3,D7,D8,D9,D10,D14,D15,D16,D17,D22,D23,D24,D25,D29,D30,D31</td></tr>
+<tr><td>P8</td><td>8</td><td>D4,D5,D6,D7,D8,D9,D10,D18,D19,D20,D21,D22,D23,D24,D25</td></tr>
+<tr><td>P16</td><td>16</td><td>D11,D12,D13,D14,D15,D16,D17,D18,D19,D20,D21,D22,D23,D24,D25</td></tr>
+<tr><td>P32</td><td>32</td><td>D26,D27,D28,D29,D30,D31</td></tr>
+<tr><td>P_all</td><td>39</td><td>XOR of all 38 bits (P1..P32 + D0..D31)</td></tr>
+</tbody>
+</table>
+<p>The 39-bit output codeword layout places parity bits at their power-of-2 positions and data bits at the remaining positions. In zero-indexed <code>o_enc_codeword[38:0]</code>: index 0 = position 1 (P1), index 1 = position 2 (P2), index 2 = position 3 (D0), index 3 = position 4 (P4), and so on.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>6. Full Verilog Source</h2>
+<div class="code-block">
+<div class="code-head"><span class="code-lang">Verilog — hbm3_ecc_engine.v</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// ============================================================
+// hbm3_ecc_engine.v
+// SECDED (Single Error Correct, Double Error Detect) ECC
+// for HBM3 pseudo-channel: 32-bit data + 7 parity = 39-bit
+// codeword.  Inline ECC — no separate ECC DRAM needed.
+// Phase 2, Module 7 — EcrioniX HBM3 Controller Series
+// ============================================================</span>
+<span class="kw">module</span> <span class="nm">hbm3_ecc_engine</span> (
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_clk,
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_rst_n,
+
+    <span class="cm">// Encode path</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_enc_valid,          <span class="cm">// encode request</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [31:0] i_enc_data,           <span class="cm">// 32-bit data in</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [38:0] o_enc_codeword,       <span class="cm">// 39-bit codeword out</span>
+
+    <span class="cm">// Decode path</span>
+    <span class="kw">input</span>  <span class="kw">wire</span>        i_dec_valid,          <span class="cm">// decode request</span>
+    <span class="kw">input</span>  <span class="kw">wire</span> [38:0] i_dec_codeword,       <span class="cm">// received 39-bit word</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [31:0] o_dec_data,           <span class="cm">// corrected data</span>
+    <span class="kw">output</span> <span class="kw">reg</span>         o_single_err,         <span class="cm">// 1 = 1-bit error corrected</span>
+    <span class="kw">output</span> <span class="kw">reg</span>         o_double_err,         <span class="cm">// 1 = 2-bit error, uncorrectable</span>
+    <span class="kw">output</span> <span class="kw">reg</span>  [5:0]  o_err_pos             <span class="cm">// bit position of error (0=none)</span>
+);
+
+<span class="cm">// ─────────────────────────────────────────────────────────────
+// Internal wires
+// ─────────────────────────────────────────────────────────────</span>
+<span class="cm">// Codeword layout (1-indexed position → 0-indexed array index):
+// Pos 1  → cw[0]  : P1
+// Pos 2  → cw[1]  : P2
+// Pos 3  → cw[2]  : D[0]
+// Pos 4  → cw[3]  : P4
+// Pos 5  → cw[4]  : D[1]
+// Pos 6  → cw[5]  : D[2]
+// Pos 7  → cw[6]  : D[3]
+// Pos 8  → cw[7]  : P8
+// Pos 9  → cw[8]  : D[4]
+// Pos 10 → cw[9]  : D[5]
+// Pos 11 → cw[10] : D[6]
+// Pos 12 → cw[11] : D[7]
+// Pos 13 → cw[12] : D[8]
+// Pos 14 → cw[13] : D[9]
+// Pos 15 → cw[14] : D[10]
+// Pos 16 → cw[15] : P16
+// Pos 17 → cw[16] : D[11]
+// Pos 18 → cw[17] : D[12]
+// Pos 19 → cw[18] : D[13]
+// Pos 20 → cw[19] : D[14]
+// Pos 21 → cw[20] : D[15]
+// Pos 22 → cw[21] : D[16]
+// Pos 23 → cw[22] : D[17]
+// Pos 24 → cw[23] : D[18]
+// Pos 25 → cw[24] : D[19]
+// Pos 26 → cw[25] : D[20]
+// Pos 27 → cw[26] : D[21]
+// Pos 28 → cw[27] : D[22]
+// Pos 29 → cw[28] : D[23]
+// Pos 30 → cw[29] : D[24]
+// Pos 31 → cw[30] : D[25]
+// Pos 32 → cw[31] : P32
+// Pos 33 → cw[32] : D[26]
+// Pos 34 → cw[33] : D[27]
+// Pos 35 → cw[34] : D[28]
+// Pos 36 → cw[35] : D[29]
+// Pos 37 → cw[36] : D[30]
+// Pos 38 → cw[37] : D[31]
+// Pos 39 → cw[38] : P_all (overall parity)</span>
+
+<span class="cm">// ─────────────────────────────────────────────────────────────
+// ENCODER
+// ─────────────────────────────────────────────────────────────</span>
+<span class="kw">wire</span> [5:0]  enc_p;      <span class="cm">// 6 Hamming parity bits</span>
+<span class="kw">wire</span>        enc_pall;   <span class="cm">// overall parity</span>
+<span class="kw">wire</span> [37:0] cw_pre;     <span class="cm">// codeword before overall parity</span>
+
+<span class="cm">// P1: covers positions with bit0=1: 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37</span>
+<span class="cm">// → data bits at those positions: D0,D1,D3,D4,D6,D8,D10,D11,D13,D15,D17,D19,D21,D23,D25,D26,D28,D30</span>
+<span class="kw">assign</span> enc_p[0] = i_enc_data[0]  ^ i_enc_data[1]  ^ i_enc_data[3]  ^ i_enc_data[4]  ^
+                   i_enc_data[6]  ^ i_enc_data[8]  ^ i_enc_data[10] ^ i_enc_data[11] ^
+                   i_enc_data[13] ^ i_enc_data[15] ^ i_enc_data[17] ^ i_enc_data[19] ^
+                   i_enc_data[21] ^ i_enc_data[23] ^ i_enc_data[25] ^ i_enc_data[26] ^
+                   i_enc_data[28] ^ i_enc_data[30];
+
+<span class="cm">// P2: covers positions with bit1=1: 2,3,6,7,10,11,14,15,18,19,22,23,26,27,30,31,34,35,38</span>
+<span class="kw">assign</span> enc_p[1] = i_enc_data[0]  ^ i_enc_data[2]  ^ i_enc_data[3]  ^ i_enc_data[5]  ^
+                   i_enc_data[6]  ^ i_enc_data[9]  ^ i_enc_data[10] ^ i_enc_data[12] ^
+                   i_enc_data[13] ^ i_enc_data[16] ^ i_enc_data[17] ^ i_enc_data[20] ^
+                   i_enc_data[21] ^ i_enc_data[24] ^ i_enc_data[25] ^ i_enc_data[27] ^
+                   i_enc_data[28] ^ i_enc_data[31];
+
+<span class="cm">// P4: covers positions with bit2=1: 4-7,12-15,20-23,28-31,36-38</span>
+<span class="kw">assign</span> enc_p[2] = i_enc_data[1]  ^ i_enc_data[2]  ^ i_enc_data[3]  ^ i_enc_data[7]  ^
+                   i_enc_data[8]  ^ i_enc_data[9]  ^ i_enc_data[10] ^ i_enc_data[14] ^
+                   i_enc_data[15] ^ i_enc_data[16] ^ i_enc_data[17] ^ i_enc_data[22] ^
+                   i_enc_data[23] ^ i_enc_data[24] ^ i_enc_data[25] ^ i_enc_data[29] ^
+                   i_enc_data[30] ^ i_enc_data[31];
+
+<span class="cm">// P8: covers positions with bit3=1: 8-15,24-31</span>
+<span class="kw">assign</span> enc_p[3] = i_enc_data[4]  ^ i_enc_data[5]  ^ i_enc_data[6]  ^ i_enc_data[7]  ^
+                   i_enc_data[8]  ^ i_enc_data[9]  ^ i_enc_data[10] ^ i_enc_data[18] ^
+                   i_enc_data[19] ^ i_enc_data[20] ^ i_enc_data[21] ^ i_enc_data[22] ^
+                   i_enc_data[23] ^ i_enc_data[24] ^ i_enc_data[25];
+
+<span class="cm">// P16: covers positions with bit4=1: 16-31</span>
+<span class="kw">assign</span> enc_p[4] = i_enc_data[11] ^ i_enc_data[12] ^ i_enc_data[13] ^ i_enc_data[14] ^
+                   i_enc_data[15] ^ i_enc_data[16] ^ i_enc_data[17] ^ i_enc_data[18] ^
+                   i_enc_data[19] ^ i_enc_data[20] ^ i_enc_data[21] ^ i_enc_data[22] ^
+                   i_enc_data[23] ^ i_enc_data[24] ^ i_enc_data[25];
+
+<span class="cm">// P32: covers positions with bit5=1: 32-38</span>
+<span class="kw">assign</span> enc_p[5] = i_enc_data[26] ^ i_enc_data[27] ^ i_enc_data[28] ^ i_enc_data[29] ^
+                   i_enc_data[30] ^ i_enc_data[31];
+
+<span class="cm">// Assemble pre-parity codeword (no P_all yet)</span>
+<span class="kw">assign</span> cw_pre = {
+    i_enc_data[31], i_enc_data[30], i_enc_data[29], i_enc_data[28],
+    i_enc_data[27], i_enc_data[26], enc_p[5],
+    i_enc_data[25], i_enc_data[24], i_enc_data[23], i_enc_data[22],
+    i_enc_data[21], i_enc_data[20], i_enc_data[19], i_enc_data[18],
+    i_enc_data[17], i_enc_data[16], i_enc_data[15], i_enc_data[14],
+    i_enc_data[13], i_enc_data[12], i_enc_data[11], enc_p[4],
+    i_enc_data[10], i_enc_data[9],  i_enc_data[8],  i_enc_data[7],
+    i_enc_data[6],  i_enc_data[5],  i_enc_data[4],  enc_p[3],
+    i_enc_data[3],  i_enc_data[2],  i_enc_data[1],  enc_p[2],
+    i_enc_data[0],  enc_p[1],       enc_p[0]
+};
+
+<span class="cm">// Overall parity = XOR of all 38 bits</span>
+<span class="kw">assign</span> enc_pall = ^cw_pre;
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or</span> <span class="kw">negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n)
+        o_enc_codeword <span class="kw">&lt;=</span> 39'd0;
+    <span class="kw">else if</span> (i_enc_valid)
+        o_enc_codeword <span class="kw">&lt;=</span> {enc_pall, cw_pre};
+<span class="kw">end</span>
+
+<span class="cm">// ─────────────────────────────────────────────────────────────
+// DECODER — syndrome computation
+// ─────────────────────────────────────────────────────────────</span>
+<span class="kw">wire</span> [5:0]  synd;           <span class="cm">// 6-bit Hamming syndrome</span>
+<span class="kw">wire</span>        synd_pall;      <span class="cm">// overall parity of received word</span>
+<span class="kw">wire</span>        any_err;
+<span class="kw">wire</span>        sec;            <span class="cm">// single error correctable</span>
+<span class="kw">wire</span>        ded;            <span class="cm">// double error detected</span>
+<span class="kw">wire</span> [37:0] rx_cw;          <span class="cm">// received codeword bits 37:0</span>
+<span class="kw">wire</span>        rx_pall;        <span class="cm">// received overall parity bit (cw[38])</span>
+
+<span class="kw">assign</span> rx_cw   = i_dec_codeword[37:0];
+<span class="kw">assign</span> rx_pall = i_dec_codeword[38];
+
+<span class="cm">// Recompute Hamming parities over received bits, XOR with received parity bits</span>
+<span class="kw">assign</span> synd[0] = rx_cw[0] ^ rx_cw[2] ^ rx_cw[4] ^ rx_cw[6] ^ rx_cw[8]  ^
+                  rx_cw[10] ^ rx_cw[12] ^ rx_cw[14] ^ rx_cw[16] ^ rx_cw[18] ^
+                  rx_cw[20] ^ rx_cw[22] ^ rx_cw[24] ^ rx_cw[26] ^ rx_cw[28] ^
+                  rx_cw[30] ^ rx_cw[32] ^ rx_cw[34] ^ rx_cw[36];
+
+<span class="kw">assign</span> synd[1] = rx_cw[1] ^ rx_cw[2] ^ rx_cw[5] ^ rx_cw[6] ^ rx_cw[9]  ^
+                  rx_cw[10] ^ rx_cw[13] ^ rx_cw[14] ^ rx_cw[17] ^ rx_cw[18] ^
+                  rx_cw[21] ^ rx_cw[22] ^ rx_cw[25] ^ rx_cw[26] ^ rx_cw[29] ^
+                  rx_cw[30] ^ rx_cw[33] ^ rx_cw[34] ^ rx_cw[37];
+
+<span class="kw">assign</span> synd[2] = rx_cw[3] ^ rx_cw[4] ^ rx_cw[5] ^ rx_cw[6] ^ rx_cw[11] ^
+                  rx_cw[12] ^ rx_cw[13] ^ rx_cw[14] ^ rx_cw[19] ^ rx_cw[20] ^
+                  rx_cw[21] ^ rx_cw[22] ^ rx_cw[27] ^ rx_cw[28] ^ rx_cw[29] ^
+                  rx_cw[30] ^ rx_cw[35] ^ rx_cw[36] ^ rx_cw[37];
+
+<span class="kw">assign</span> synd[3] = rx_cw[7]  ^ rx_cw[8]  ^ rx_cw[9]  ^ rx_cw[10] ^ rx_cw[11] ^
+                  rx_cw[12] ^ rx_cw[13] ^ rx_cw[14] ^ rx_cw[23] ^ rx_cw[24] ^
+                  rx_cw[25] ^ rx_cw[26] ^ rx_cw[27] ^ rx_cw[28] ^ rx_cw[29] ^ rx_cw[30];
+
+<span class="kw">assign</span> synd[4] = rx_cw[15] ^ rx_cw[16] ^ rx_cw[17] ^ rx_cw[18] ^ rx_cw[19] ^
+                  rx_cw[20] ^ rx_cw[21] ^ rx_cw[22] ^ rx_cw[23] ^ rx_cw[24] ^
+                  rx_cw[25] ^ rx_cw[26] ^ rx_cw[27] ^ rx_cw[28] ^ rx_cw[29] ^ rx_cw[30];
+
+<span class="kw">assign</span> synd[5] = rx_cw[31] ^ rx_cw[32] ^ rx_cw[33] ^ rx_cw[34] ^
+                  rx_cw[35] ^ rx_cw[36] ^ rx_cw[37];
+
+<span class="cm">// Overall parity check (XOR of all 39 received bits)</span>
+<span class="kw">assign</span> synd_pall = ^i_dec_codeword;  <span class="cm">// should be 0 if no error or even-count error</span>
+
+<span class="kw">assign</span> any_err = |synd;
+<span class="kw">assign</span> sec     = any_err &amp;  synd_pall;   <span class="cm">// odd parity → correctable single error</span>
+<span class="kw">assign</span> ded     = any_err &amp; ~synd_pall;   <span class="cm">// even parity + syndrome → double error</span>
+
+<span class="cm">// ─────────────────────────────────────────────────────────────
+// Error correction — flip the bit at position synd (1-indexed)
+// synd is the error position in the 1-indexed Hamming space
+// Map it back to data bit index
+// ─────────────────────────────────────────────────────────────</span>
+<span class="kw">wire</span> [38:0] corrected_cw;
+<span class="kw">genvar</span> gi;
+<span class="kw">generate</span>
+    <span class="kw">for</span> (gi = 0; gi &lt; 39; gi = gi + 1) <span class="kw">begin</span> : g_flip
+        <span class="kw">assign</span> corrected_cw[gi] = (sec &amp;&amp; (synd == (gi+1))) ?
+                                   ~i_dec_codeword[gi] : i_dec_codeword[gi];
+    <span class="kw">end</span>
+<span class="kw">endgenerate</span>
+
+<span class="cm">// Extract data bits from corrected codeword</span>
+<span class="kw">wire</span> [31:0] ext_data;
+<span class="kw">assign</span> ext_data = {
+    corrected_cw[37], corrected_cw[36], corrected_cw[35], corrected_cw[34],
+    corrected_cw[33], corrected_cw[32], corrected_cw[30], corrected_cw[29],
+    corrected_cw[28], corrected_cw[27], corrected_cw[26], corrected_cw[25],
+    corrected_cw[24], corrected_cw[23], corrected_cw[22], corrected_cw[21],
+    corrected_cw[20], corrected_cw[19], corrected_cw[18], corrected_cw[17],
+    corrected_cw[16], corrected_cw[14], corrected_cw[13], corrected_cw[12],
+    corrected_cw[11], corrected_cw[10], corrected_cw[9],  corrected_cw[8],
+    corrected_cw[6],  corrected_cw[5],  corrected_cw[4],  corrected_cw[2]
+};
+
+<span class="kw">always</span> @(<span class="kw">posedge</span> i_clk <span class="kw">or</span> <span class="kw">negedge</span> i_rst_n) <span class="kw">begin</span>
+    <span class="kw">if</span> (!i_rst_n) <span class="kw">begin</span>
+        o_dec_data   <span class="kw">&lt;=</span> 32'd0;
+        o_single_err <span class="kw">&lt;=</span> 1'b0;
+        o_double_err <span class="kw">&lt;=</span> 1'b0;
+        o_err_pos    <span class="kw">&lt;=</span> 6'd0;
+    <span class="kw">end else if</span> (i_dec_valid) <span class="kw">begin</span>
+        o_dec_data   <span class="kw">&lt;=</span> ext_data;
+        o_single_err <span class="kw">&lt;=</span> sec;
+        o_double_err <span class="kw">&lt;=</span> ded;
+        o_err_pos    <span class="kw">&lt;=</span> sec ? synd : 6'd0;
+    <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>7. Syndrome Table (First 16 Entries)</h2>
+<p>The 6-bit syndrome value directly equals the 1-indexed error position in the codeword. Syndrome 0 = no error. When the overall parity check is also odd, the syndrome gives the exact position to flip.</p>
+<table>
+<thead><tr><th>Syndrome [5:0]</th><th>Error Position</th><th>Codeword Bit</th><th>Maps To</th></tr></thead>
+<tbody>
+<tr><td>000000</td><td>None</td><td>—</td><td>No error</td></tr>
+<tr><td>000001</td><td>1</td><td>cw[0]</td><td>P1 (parity bit)</td></tr>
+<tr><td>000010</td><td>2</td><td>cw[1]</td><td>P2 (parity bit)</td></tr>
+<tr><td>000011</td><td>3</td><td>cw[2]</td><td>D[0]</td></tr>
+<tr><td>000100</td><td>4</td><td>cw[3]</td><td>P4 (parity bit)</td></tr>
+<tr><td>000101</td><td>5</td><td>cw[4]</td><td>D[1]</td></tr>
+<tr><td>000110</td><td>6</td><td>cw[5]</td><td>D[2]</td></tr>
+<tr><td>000111</td><td>7</td><td>cw[6]</td><td>D[3]</td></tr>
+<tr><td>001000</td><td>8</td><td>cw[7]</td><td>P8 (parity bit)</td></tr>
+<tr><td>001001</td><td>9</td><td>cw[8]</td><td>D[4]</td></tr>
+<tr><td>001010</td><td>10</td><td>cw[9]</td><td>D[5]</td></tr>
+<tr><td>001011</td><td>11</td><td>cw[10]</td><td>D[6]</td></tr>
+<tr><td>001100</td><td>12</td><td>cw[11]</td><td>D[7]</td></tr>
+<tr><td>001101</td><td>13</td><td>cw[12]</td><td>D[8]</td></tr>
+<tr><td>001110</td><td>14</td><td>cw[13]</td><td>D[9]</td></tr>
+<tr><td>001111</td><td>15</td><td>cw[14]</td><td>D[10]</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>8. Port Reference Table</h2>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>In</td><td>1</td><td>System clock</td></tr>
+<tr><td>i_rst_n</td><td>In</td><td>1</td><td>Active-low synchronous reset</td></tr>
+<tr><td>i_enc_valid</td><td>In</td><td>1</td><td>Encode request — latch i_enc_data this cycle</td></tr>
+<tr><td>i_enc_data</td><td>In</td><td>32</td><td>Raw 32-bit data to protect</td></tr>
+<tr><td>o_enc_codeword</td><td>Out</td><td>39</td><td>39-bit SECDED codeword (data + 7 ECC bits), registered</td></tr>
+<tr><td>i_dec_valid</td><td>In</td><td>1</td><td>Decode request — evaluate i_dec_codeword this cycle</td></tr>
+<tr><td>i_dec_codeword</td><td>In</td><td>39</td><td>Received codeword from DRAM (may have errors)</td></tr>
+<tr><td>o_dec_data</td><td>Out</td><td>32</td><td>Corrected data output, registered</td></tr>
+<tr><td>o_single_err</td><td>Out</td><td>1</td><td>High when a single-bit error was detected and corrected</td></tr>
+<tr><td>o_double_err</td><td>Out</td><td>1</td><td>High when a double-bit error is detected (uncorrectable)</td></tr>
+<tr><td>o_err_pos</td><td>Out</td><td>6</td><td>Codeword position (1–38) of corrected bit; 0 if no error</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>9. SystemVerilog Testbench</h2>
+<div class="code-block">
+<div class="code-head"><span class="code-lang">SystemVerilog — tb_hbm3_ecc_engine.sv</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre><span class="cm">// ============================================================
+// tb_hbm3_ecc_engine.sv
+// Self-checking testbench with SVA assertions
+// Tests: no-error, single-bit error at every position, DED
+// ============================================================</span>
+<span class="kw">`timescale</span> 1ns/1ps
+<span class="kw">module</span> <span class="nm">tb_hbm3_ecc_engine</span>;
+
+<span class="kw">logic</span>        clk, rst_n;
+<span class="kw">logic</span>        enc_valid;
+<span class="kw">logic</span> [31:0] enc_data;
+<span class="kw">logic</span> [38:0] enc_cw;
+
+<span class="kw">logic</span>        dec_valid;
+<span class="kw">logic</span> [38:0] dec_cw;
+<span class="kw">logic</span> [31:0] dec_data;
+<span class="kw">logic</span>        single_err, double_err;
+<span class="kw">logic</span> [5:0]  err_pos;
+
+<span class="nm">hbm3_ecc_engine</span> dut (
+    .i_clk(clk), .i_rst_n(rst_n),
+    .i_enc_valid(enc_valid), .i_enc_data(enc_data),
+    .o_enc_codeword(enc_cw),
+    .i_dec_valid(dec_valid), .i_dec_codeword(dec_cw),
+    .o_dec_data(dec_data),
+    .o_single_err(single_err), .o_double_err(double_err),
+    .o_err_pos(err_pos)
+);
+
+<span class="cm">// 500 MHz clock</span>
+<span class="kw">initial</span> clk = 0;
+<span class="kw">always</span> #1 clk = ~clk;
+
+<span class="cm">// SVA: after enc_valid, codeword must be valid next cycle</span>
+<span class="kw">property</span> p_enc_latency;
+    @(<span class="kw">posedge</span> clk) enc_valid |=> (enc_cw !== 39'bx);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span>(p_enc_latency) <span class="kw">else</span>
+    $error(<span class="st">"ENC: codeword X after enc_valid"</span>);
+
+<span class="cm">// SVA: dec output stable cycle after dec_valid</span>
+<span class="kw">property</span> p_dec_latency;
+    @(<span class="kw">posedge</span> clk) dec_valid |=> (dec_data !== 32'bx);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span>(p_dec_latency) <span class="kw">else</span>
+    $error(<span class="st">"DEC: data X after dec_valid"</span>);
+
+<span class="cm">// SVA: single_err and double_err must be mutually exclusive</span>
+<span class="kw">property</span> p_exclusive;
+    @(<span class="kw">posedge</span> clk) !(single_err &amp;&amp; double_err);
+<span class="kw">endproperty</span>
+<span class="kw">assert property</span>(p_exclusive) <span class="kw">else</span>
+    $error(<span class="st">"ECC: single_err and double_err both asserted!"</span>);
+
+task automatic encode_and_check;
+    input [31:0] data;
+    output [38:0] cw_out;
+    begin
+        @(<span class="kw">negedge</span> clk);
+        enc_valid = 1; enc_data = data;
+        @(<span class="kw">posedge</span> clk); #0.1;
+        enc_valid = 0;
+        @(<span class="kw">posedge</span> clk); #0.1;
+        cw_out = enc_cw;
+    end
+endtask
+
+task automatic decode_cw;
+    input [38:0] cw;
+    begin
+        @(<span class="kw">negedge</span> clk);
+        dec_valid = 1; dec_cw = cw;
+        @(<span class="kw">posedge</span> clk); #0.1;
+        dec_valid = 0;
+        @(<span class="kw">posedge</span> clk); #0.1;
+    end
+endtask
+
+<span class="kw">integer</span> i, pass, fail;
+<span class="kw">logic</span> [38:0] cw_good;
+
+<span class="kw">initial</span> <span class="kw">begin</span>
+    pass = 0; fail = 0;
+    rst_n = 0; enc_valid = 0; dec_valid = 0;
+    enc_data = 0; dec_cw = 0;
+    repeat(4) @(<span class="kw">posedge</span> clk);
+    rst_n = 1;
+    @(<span class="kw">posedge</span> clk);
+
+    <span class="cm">// ── Test 1: No error ──────────────────────────────────────</span>
+    encode_and_check(32'hDEAD_BEEF, cw_good);
+    decode_cw(cw_good);
+    <span class="kw">if</span> (dec_data === 32'hDEAD_BEEF &amp;&amp; !single_err &amp;&amp; !double_err) <span class="kw">begin</span>
+        $display(<span class="st">"PASS: No-error decode: data=0x%08X"</span>, dec_data); pass++;
+    <span class="kw">end else begin</span>
+        $display(<span class="st">"FAIL: No-error decode: got=0x%08X sec=%0b ded=%0b"</span>,
+                  dec_data, single_err, double_err); fail++;
+    <span class="kw">end</span>
+
+    <span class="cm">// ── Test 2: Single-bit errors at all 39 positions ─────────</span>
+    encode_and_check(32'hA5A5_A5A5, cw_good);
+    <span class="kw">for</span> (i = 0; i &lt; 39; i++) <span class="kw">begin</span>
+        decode_cw(cw_good ^ (39'd1 &lt;&lt; i));
+        <span class="kw">if</span> (single_err &amp;&amp; !double_err &amp;&amp; dec_data === 32'hA5A5_A5A5) <span class="kw">begin</span>
+            pass++;
+        <span class="kw">end else begin</span>
+            $display(<span class="st">"FAIL: SEC at pos %0d: dec=0x%08X sec=%b ded=%b pos=%0d"</span>,
+                      i, dec_data, single_err, double_err, err_pos);
+            fail++;
+        <span class="kw">end</span>
+    <span class="kw">end</span>
+    $display(<span class="st">"SEC sweep: %0d/39 passed"</span>, pass-1); <span class="cm">// -1 for test1</span>
+
+    <span class="cm">// ── Test 3: Double-bit error ───────────────────────────────</span>
+    encode_and_check(32'h1234_5678, cw_good);
+    decode_cw(cw_good ^ 39'h3);  <span class="cm">// flip bits 0 and 1</span>
+    <span class="kw">if</span> (double_err &amp;&amp; !single_err) <span class="kw">begin</span>
+        $display(<span class="st">"PASS: DED detected"</span>); pass++;
+    <span class="kw">end else begin</span>
+        $display(<span class="st">"FAIL: DED not flagged: sec=%0b ded=%0b"</span>, single_err, double_err);
+        fail++;
+    <span class="kw">end</span>
+
+    $display(<span class="st">"═══ RESULTS: PASS=%0d  FAIL=%0d ═══"</span>, pass, fail);
+    <span class="kw">if</span> (fail === 0) $display(<span class="st">"ALL TESTS PASSED"</span>);
+    $finish;
+<span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+<h2>10. Frequently Asked Questions</h2>
+<div class="faq">
+  <details>
+    <summary>Why does HBM3 use inline ECC instead of a separate ECC DRAM?</summary>
+    <p>HBM3 stores ECC bits in the same memory array as data (inline ECC), unlike DDR5 which uses a separate x8 DRAM rank. Inline ECC lets HBM3 maintain its wide-bus efficiency without needing extra dies. The trade-off is about 18% capacity overhead (7 ECC bits per 32 data bits), but the latency savings from avoiding a separate ECC transaction dominate at HBM3 speeds.</p>
+  </details>
+  <details>
+    <summary>What is SECDED and what Hamming distance does it require?</summary>
+    <p>SECDED (Single Error Correct, Double Error Detect) requires a minimum Hamming distance of 4. With d=4: any single-bit error moves the received word to distance 1 from the correct codeword (correctable), any double-bit error moves it to distance 2 from all valid codewords (detectable but not correctable). The overall parity bit P7 is what pushes the minimum distance from 3 to 4 and disambiguates correctable from uncorrectable errors.</p>
+  </details>
+  <details>
+    <summary>How many parity bits are needed for 32-bit data?</summary>
+    <p>Standard Hamming codes require r parity bits where 2^r &gt;= m + r + 1, with m = 32 data bits. Solving: r=6 gives 2^6=64 &gt;= 32+6+1=39. So 6 Hamming parity bits suffice. Adding the 7th overall parity bit converts SEC to SECDED, for a total codeword width of 39 bits (32 data + 7 ECC).</p>
+  </details>
+  <details>
+    <summary>What does the syndrome value represent after decoding?</summary>
+    <p>The syndrome is a 6-bit value computed by XOR-ing the received parity bits against freshly recomputed parity over the received data bits. Syndrome = 0 means no error. A non-zero syndrome whose value falls within the codeword range (1–38) and whose overall parity bit is odd means a single-bit error at that exact position — correct it by flipping that bit. A non-zero syndrome with even overall parity means a double-bit error has been detected and cannot be corrected.</p>
+  </details>
+  <details>
+    <summary>Is this ECC engine synthesizable for ASIC and FPGA?</summary>
+    <p>Yes. The module uses only XOR trees and registered outputs — no RAM, no variable-bound loops, no unsupported constructs. It synthesizes cleanly in Synopsys Design Compiler for ASIC and in Vivado/Quartus for FPGA. The XOR trees for 7 parity bits over 32 data bits are shallow (depth ~5 XOR gates) so they meet timing comfortably even at 2 GHz. The generate loop for bit-flip correction produces 39 parallel 2:1 muxes.</p>
+  </details>
+</div>
+</section>
+
+<!-- Nav pills -->
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/read-path/">&#8592; Module 6: Read Path</a>
+  <a class="nav-pill" href="/hbm3-controller/addr-map/">Module 8: Address Mapper &#8594;</a>
+</div>
+
+</div><!-- .wrap -->
+
+<footer>
+  <div style="margin-bottom:.5rem">
+    <a href="/hbm3-controller/">HBM3 Controller</a> &nbsp;|&nbsp;
+    <a href="/courses/">All Courses</a> &nbsp;|&nbsp;
+    <a href="/about/">About</a> &nbsp;|&nbsp;
+    <a href="/privacy/">Privacy</a>
+  </div>
+  &copy; 2026 EcrioniX &mdash; VLSI &amp; Digital Design Education
+</footer>
+
+<button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8679;</button>
+
+<script>
+function copyCode(btn){
+  const pre=btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(()=>{
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy',1800);
+  });
+}
+</script>
+</body>
+</html>

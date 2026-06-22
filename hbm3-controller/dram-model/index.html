@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HBM3 DRAM Behavioral Memory Model — Module 16 | HBM3 Controller Build | EcrioniX</title>
+<meta name="description" content="Build an HBM3 DRAM behavioral model in SystemVerilog for simulation. Models row activation, read/write timing, refresh, bank state, mode registers, and timing parameter checking. Plug-in replacement for real HBM3 DRAM in simulation. Phase 5 · Module 16.">
+<link rel="canonical" href="https://ecrionix.org/hbm3-controller/dram-model/">
+<meta property="og:title" content="HBM3 DRAM Behavioral Memory Model — Module 16 | EcrioniX">
+<meta property="og:description" content="SystemVerilog behavioral DRAM model for HBM3 simulation. CA decoder, 32-bank FSM, associative array storage, timing checker, mode registers, CL pipeline.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://ecrionix.org/hbm3-controller/dram-model/">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"HBM3 DRAM Behavioral Memory Model — Module 16","description":"Build an HBM3 DRAM behavioral model in SystemVerilog for simulation. Models row activation, read/write timing, refresh, bank state, mode registers, and timing parameter checking.","author":{"@type":"Organization","name":"EcrioniX"},"datePublished":"2026-06-21","dateModified":"2026-06-21","url":"https://ecrionix.org/hbm3-controller/dram-model/"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"HBM3 Controller","item":"https://ecrionix.org/hbm3-controller/"},{"@type":"ListItem","position":3,"name":"Module 16 — DRAM Memory Model","item":"https://ecrionix.org/hbm3-controller/dram-model/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why can't we just use a simple memory array for HBM3 simulation?","acceptedAnswer":{"@type":"Answer","text":"A simple memory array ignores DRAM protocol timing — it accepts any read or write at any time with no concept of bank activation, tRCD, CAS latency, or refresh. A behavioral DRAM model enforces timing constraints so the controller is exercised exactly as it would be with real silicon. Timing violations that would cause data corruption on real hardware get caught in simulation as assertion failures, making the model essential for verifying the controller's protocol compliance."}},{"@type":"Question","name":"What does the CA bus decode to in HBM3?","acceptedAnswer":{"@type":"Answer","text":"The HBM3 CA bus is an 8-bit packet-based command/address bus. Each command occupies two consecutive cycles (a two-cycle packet). Bit [7:6] of the first cycle encode the command type: 00 = ACT (activate row), 01 = RD (read), 10 = WR (write), 11 = other (PRE/REF/MRS depending on additional bits). The row address, column address, and bank/bank-group address are packed into the remaining bits across the two cycles. The behavioral model decodes each pair of CA cycles and dispatches to the appropriate bank state machine."}},{"@type":"Question","name":"How does the CAS latency pipeline work in the behavioral model?","acceptedAnswer":{"@type":"Answer","text":"When the model decodes a RD command, it does not return data immediately. Instead, it pushes the requested address into a shift-register pipeline of depth CL (CAS Latency, default 70 cycles in HBM3). After CL cycles, the pipeline output triggers the read data output on o_dq_out along with the read DQS strobe on o_dqs_rd. This faithfully models the latency the controller will see in real hardware, allowing the AXI4 read response path to be timed and verified correctly."}},{"@type":"Question","name":"What timing parameters does the model check?","acceptedAnswer":{"@type":"Answer","text":"The model checks tRCD (minimum cycles from ACT to RD/WR — 28 cycles), tRAS (minimum cycles a row must remain active before PRE — 76 cycles), tRP (precharge recovery time before next ACT — 28 cycles), tRC (minimum row cycle time ACT to ACT same bank — 112 cycles), tWR (write recovery before precharge — 40 cycles), and tCCD (minimum column-to-column command delay across banks — 8 cycles). Any violation triggers an $error assertion with a human-readable message identifying which parameter was violated and by how many cycles."}},{"@type":"Question","name":"What does the model NOT simulate?","acceptedAnswer":{"@type":"Answer","text":"The behavioral model does not simulate signal integrity (crosstalk, impedance mismatch, jitter), PHY-level serialization and deserialization, DFI protocol timing at the physical layer, power consumption, temperature effects on data retention, or manufacturing variation. It is a functional model that validates protocol correctness and timing compliance only. For PHY-level validation, a SPICE model or transistor-level simulation is required — far outside the scope of RTL verification."}}]}]}</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1220;--bdr:rgba(148,163,184,.1);--cy:#06b6d4;--cy-l:#67e8f9;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--gr:#10b981;--re:#f87171;--yw:#fcd34d;--pu:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7;min-height:100vh}
+a{color:var(--cy);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:54px;position:sticky;top:0;z-index:200;backdrop-filter:blur(8px)}
+.nav-logo{font-size:.92rem;font-weight:800;color:#fff}.nav-links{display:flex;gap:1.3rem;list-style:none}.nav-links a{color:#94a3b8;font-size:.78rem;font-weight:500}.nav-links a:hover{color:#fff}
+.bc{padding:.45rem 1.5rem;font-size:.75rem;color:#64748b;border-bottom:1px solid var(--bdr);background:var(--bg2)}.bc span{margin:0 .35rem;color:#475569}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
+.hero{padding:2.2rem 1.2rem 1.4rem;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(6,182,212,.07) 0%,transparent 70%)}
+.mod-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--cy);font-size:.68rem;font-weight:700;padding:.25rem .8rem;border-radius:20px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:.9rem}
+.hero h1{font-size:clamp(1.4rem,4vw,2.2rem);font-weight:900;color:#f8fafc;line-height:1.1;margin-bottom:.7rem}
+.hero h1 span{background:linear-gradient(135deg,#06b6d4,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:#64748b;font-size:.9rem;max-width:680px;margin-bottom:1rem}
+.meta-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:#475569}
+.pill{display:inline-block;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.65rem;font-weight:700;padding:.15rem .55rem;border-radius:4px;font-family:'JetBrains Mono',monospace}
+.pill-warn{background:rgba(252,211,77,.08);border:1px solid rgba(252,211,77,.25);color:#fcd34d}
+section{padding:1.8rem 0}
+h2{font-size:1.2rem;font-weight:800;color:#f8fafc;margin-bottom:.8rem;padding-bottom:.4rem;border-bottom:1px solid rgba(6,182,212,.12)}
+h3{font-size:.95rem;font-weight:700;color:#e2e8f0;margin:.9rem 0 .4rem}
+p{color:#94a3b8;font-size:.88rem;margin-bottom:.7rem}
+strong{color:#e2e8f0}
+ul,ol{color:#94a3b8;font-size:.88rem;padding-left:1.4rem;margin-bottom:.7rem}
+li{margin-bottom:.3rem}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin:.8rem 0}
+th{background:rgba(6,182,212,.08);padding:.55rem .8rem;text-align:left;color:#67e8f9;font-weight:700;border-bottom:2px solid rgba(6,182,212,.18)}
+td{padding:.5rem .8rem;border-bottom:1px solid rgba(6,182,212,.06);color:#94a3b8}
+td:first-child{font-family:'JetBrains Mono',monospace;color:#e2e8f0;font-size:.8rem}
+tr:nth-child(even){background:rgba(6,182,212,.02)}
+.code-block{position:relative;background:var(--bg3);border:1px solid rgba(6,182,212,.15);border-radius:10px;margin:.8rem 0}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;border-bottom:1px solid rgba(6,182,212,.1);background:rgba(6,182,212,.04)}
+.code-lang{font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;font-family:'JetBrains Mono',monospace}
+.copy-btn{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);color:var(--cy-l);font-size:.7rem;font-weight:600;padding:.22rem .7rem;border-radius:5px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.copy-btn:hover{background:rgba(6,182,212,.22)}
+pre{padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.65;color:#cbd5e1;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+.note{background:rgba(6,182,212,.05);border-left:3px solid var(--cy);border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.warn{background:rgba(252,211,77,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.82rem;color:#94a3b8}
+.concept{background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15);border-radius:10px;padding:1rem 1.2rem;margin:.8rem 0}
+.concept h3{color:#10b981;margin-top:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.8rem 0}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}}
+.faq{display:flex;flex-direction:column;gap:.6rem;margin:.8rem 0}
+details{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:.8rem 1rem}
+summary{cursor:pointer;font-weight:700;color:#f8fafc;font-size:.87rem}
+details p{margin-top:.5rem;margin-bottom:0}
+.nav-pills{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--bdr);margin-top:1rem;flex-wrap:wrap;gap:.5rem}
+.nav-pill{display:inline-flex;align-items:center;gap:.4rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cy-l);font-size:.78rem;font-weight:700;padding:.4rem 1rem;border-radius:7px;text-decoration:none;transition:background .15s}
+.nav-pill:hover{background:rgba(6,182,212,.18);text-decoration:none}
+footer{border-top:1px solid var(--bdr);padding:1.4rem;text-align:center;font-size:.78rem;color:#64748b;background:var(--bg2)}footer a{color:#94a3b8}
+.back-to-top{position:fixed;bottom:2rem;right:2rem;background:var(--cy);color:#020617;border:none;border-radius:50%;width:42px;height:42px;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(6,182,212,.4);z-index:99;display:flex;align-items:center;justify-content:center;font-weight:900;text-decoration:none}
+.limits-table td:nth-child(2){color:#10b981}
+.limits-table td:nth-child(3){color:#f87171}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <ul class="nav-links">
+    <li><a href="/hbm3-controller/">HBM3 Hub</a></li>
+    <li><a href="/courses/">All Courses</a></li>
+    <li><a href="/lab/">Lab</a></li>
+  </ul>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/hbm3-controller/">HBM3 Controller</a><span>›</span><span>Module 16 — DRAM Memory Model</span></div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="mod-badge">🔬 Phase 5 · Module 16 of 18</div>
+    <h1>HBM3 <span>DRAM Behavioral Memory Model</span></h1>
+    <p class="hero-sub">A simulation-only SystemVerilog model of HBM3 DRAM. Decodes CA packets, enforces bank state machines, checks timing violations with $error assertions, and returns read data after CL cycles through a pipeline. Drop-in replacement for real HBM3 silicon in your testbench.</p>
+    <div class="meta-row">
+      <span>📁 <code style="font-family:monospace;font-size:.75rem">hbm3_dram_model.sv</code></span>
+      <span class="pill pill-warn">Simulation Only — Not Synthesizable</span>
+      <span class="pill">CL = 70 cy</span>
+      <span class="pill">32 Banks</span>
+      <span class="pill">64 MB Array</span>
+      <span class="pill">JEDEC JESD238</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+<h2>Why You Need a DRAM Behavioral Model</h2>
+<p>You cannot simulate a complete HBM3 controller without something on the other end of the CA bus. Real HBM3 silicon obviously cannot be connected in RTL simulation. A simple dual-port SRAM is insufficient — it accepts any access at any time, ignoring the entire DRAM protocol: bank activation, tRCD, CAS latency, precharge, refresh blackout windows, and mode register state. A controller that violates tRCD on a simple SRAM just works; on real silicon, it corrupts data silently.</p>
+<p>A <strong>behavioral DRAM model</strong> fills this gap. It is a <em>simulation-only</em> SystemVerilog module that:</p>
+<ul>
+  <li>Decodes the HBM3 CA bus packets into real commands (ACT, RD, WR, PRE, REF, MRS)</li>
+  <li>Maintains a per-bank state machine (idle / active / refreshing) across all 32 banks</li>
+  <li>Stores data in a sparse SystemVerilog associative array — no wasted 64 MB of simulator memory for unwritten rows</li>
+  <li>Checks timing parameters (<strong>tRCD, tRAS, tRP, tRC, tCCD, tWR</strong>) and fires <code style="font-family:monospace;font-size:.82rem">$error</code> assertions on violations</li>
+  <li>Returns read data after exactly <strong>CL (70) cycles</strong> through a pipeline, faithfully modeling the latency the controller will see</li>
+  <li>Shadows all mode register writes (MR0–MR7) so the model can adapt behavior based on programmed parameters</li>
+</ul>
+<div class="note">This model is used exclusively in simulation. It connects directly to the HBM3 controller's DFI/CA outputs in the Module 17 testbench. The controller sees it as indistinguishable from real HBM3 DRAM, from a protocol correctness standpoint.</div>
+
+<h3>Where This Fits in the Verification Flow</h3>
+<p>The complete simulation stack from Module 17 is: <strong>AXI4 Master BFM → HBM3 Controller DUT → hbm3_dram_model (this module) → Scoreboard</strong>. The model is the "oracle" — it stores what was written and returns it on read. The scoreboard compares model output to expected data from the BFM transaction log. Any mismatch is a controller bug.</p>
+</section>
+
+<section>
+<h2>Model Architecture</h2>
+<p>The model has four cooperating subsystems:</p>
+<div class="grid2">
+  <div class="concept">
+    <h3>CA Decoder</h3>
+    <p>Samples i_ca[7:0] on every rising edge of i_clk when i_cke is high. Accumulates two consecutive cycles into a command packet. Bits [7:6] of cycle 0 select the command class; remaining bits and cycle 1 carry addresses. Output: decoded command type + bank + row/column address.</p>
+  </div>
+  <div class="concept">
+    <h3>Bank State Machine</h3>
+    <p>32 independent 3-state FSMs: IDLE → ACTIVE (on ACT, stores open row address) → IDLE (on PRE) with REFRESHING side-state during REF. Timestamps each state transition for timing violation checks.</p>
+  </div>
+  <div class="concept">
+    <h3>Memory Array</h3>
+    <p>SystemVerilog associative array <code style="font-family:monospace;font-size:.82rem">logic [31:0] mem [logic [24:0]]</code>. Indexed by 25-bit {bank[4:0], row[13:0], col[5:0]}. Sparse — only written locations consume simulator memory. Default read value is 32'hDEAD_BEEF to catch uninitialized reads.</p>
+  </div>
+  <div class="concept">
+    <h3>Timing Checker + CL Pipeline</h3>
+    <p>Stores cycle-stamp of last ACT/PRE/WR/RD per bank. On each new command, computes elapsed cycles and asserts if any JEDEC minimum is violated. A 71-entry shift register pipelines read data from storage to o_dq_out after CL cycles.</p>
+  </div>
+</div>
+
+<h3>Block Diagram</h3>
+<svg viewBox="0 0 840 220" style="width:100%;max-width:840px;display:block;margin:.8rem auto;font-family:'JetBrains Mono',monospace;font-size:11px" xmlns="http://www.w3.org/2000/svg">
+  <rect width="840" height="220" fill="#080d1a" rx="10"/>
+  <!-- Inputs -->
+  <text x="14" y="60" fill="#94a3b8" font-size="10">i_ca[7:0]</text>
+  <text x="14" y="80" fill="#94a3b8" font-size="10">i_cke</text>
+  <text x="14" y="100" fill="#94a3b8" font-size="10">i_dq_in[31:0]</text>
+  <text x="14" y="120" fill="#94a3b8" font-size="10">i_dm[3:0]</text>
+  <text x="14" y="140" fill="#94a3b8" font-size="10">i_dqs_wr</text>
+  <line x1="80" y1="57" x2="110" y2="57" stroke="#475569" stroke-width="1"/>
+  <line x1="80" y1="77" x2="110" y2="77" stroke="#475569" stroke-width="1"/>
+  <line x1="95" y1="97" x2="110" y2="97" stroke="#475569" stroke-width="1"/>
+  <!-- CA Decoder box -->
+  <rect x="110" y="35" width="130" height="80" fill="none" stroke="#06b6d4" stroke-width="1.5" rx="6"/>
+  <text x="175" y="72" fill="#67e8f9" text-anchor="middle" font-weight="bold">CA Decoder</text>
+  <text x="175" y="88" fill="#64748b" text-anchor="middle" font-size="9">2-cycle packet</text>
+  <text x="175" y="100" fill="#64748b" text-anchor="middle" font-size="9">→ CMD+ADDR</text>
+  <!-- Arrow CA→Bank FSM -->
+  <line x1="240" y1="75" x2="310" y2="75" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Bank FSM -->
+  <rect x="310" y="35" width="160" height="80" fill="none" stroke="#10b981" stroke-width="1.5" rx="6"/>
+  <text x="390" y="65" fill="#10b981" text-anchor="middle" font-weight="bold">32-Bank FSM</text>
+  <text x="390" y="82" fill="#64748b" text-anchor="middle" font-size="9">IDLE/ACTIVE/REFRESH</text>
+  <text x="390" y="97" fill="#64748b" text-anchor="middle" font-size="9">+ Timing Checker</text>
+  <!-- Arrow Bank→Mem Array -->
+  <line x1="470" y1="75" x2="540" y2="75" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Mem Array -->
+  <rect x="540" y="35" width="150" height="80" fill="none" stroke="#a78bfa" stroke-width="1.5" rx="6"/>
+  <text x="615" y="65" fill="#a78bfa" text-anchor="middle" font-weight="bold">Mem Array</text>
+  <text x="615" y="82" fill="#64748b" text-anchor="middle" font-size="9">assoc array [24:0]</text>
+  <text x="615" y="97" fill="#64748b" text-anchor="middle" font-size="9">→ [31:0] data</text>
+  <!-- Arrow Mem→CL Pipeline -->
+  <line x1="690" y1="75" x2="740" y2="75" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- CL Pipeline -->
+  <rect x="740" y="35" width="90" height="80" fill="none" stroke="#fcd34d" stroke-width="1.5" rx="6"/>
+  <text x="785" y="65" fill="#fcd34d" text-anchor="middle" font-weight="bold">CL</text>
+  <text x="785" y="82" fill="#fcd34d" text-anchor="middle" font-weight="bold">Pipeline</text>
+  <text x="785" y="97" fill="#64748b" text-anchor="middle" font-size="9">70 stages</text>
+  <!-- Output arrows -->
+  <line x1="785" y1="115" x2="785" y2="155" stroke="#fcd34d" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="795" y="140" fill="#94a3b8" font-size="10">o_dq_out[31:0]</text>
+  <text x="795" y="155" fill="#94a3b8" font-size="10">o_dqs_rd</text>
+  <!-- MR shadow -->
+  <rect x="310" y="145" width="160" height="55" fill="none" stroke="#06b6d4" stroke-width="1" rx="6" stroke-dasharray="4,2"/>
+  <text x="390" y="168" fill="#06b6d4" text-anchor="middle" font-size="10" font-weight="bold">Mode Reg Shadow</text>
+  <text x="390" y="184" fill="#64748b" text-anchor="middle" font-size="9">MR0–MR7 copies</text>
+  <line x1="390" y1="115" x2="390" y2="145" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3,2"/>
+  <!-- arrow marker -->
+  <defs><marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#475569"/></marker></defs>
+  <!-- $error callout -->
+  <rect x="550" y="145" width="130" height="40" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="1" rx="5"/>
+  <text x="615" y="162" fill="#f87171" text-anchor="middle" font-size="10" font-weight="bold">$error assertions</text>
+  <text x="615" y="178" fill="#64748b" text-anchor="middle" font-size="9">tRCD/tRAS/tRP/tRC</text>
+  <line x1="390" y1="115" x2="615" y2="145" stroke="#f87171" stroke-width="1" stroke-dasharray="3,2"/>
+</svg>
+</section>
+
+<section>
+<h2>Port Table</h2>
+<p>All ports are named from the <strong>controller's perspective</strong> — inputs are signals the controller drives, outputs are signals the model drives back to the controller.</p>
+<table>
+<thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>i_clk</td><td>input</td><td>1</td><td>2 GHz HBM3 clock. All state transitions on rising edge.</td></tr>
+<tr><td>i_cke</td><td>input</td><td>1</td><td>Clock Enable. Model ignores CA bus when CKE=0 (power-down mode).</td></tr>
+<tr><td>i_ca[7:0]</td><td>input</td><td>8</td><td>Command/Address bus. Packed 2-cycle packets per JEDEC JESD238 protocol.</td></tr>
+<tr><td>i_dq_in[31:0]</td><td>input</td><td>32</td><td>Write data bus from controller. Captured on i_dqs_wr rising edge.</td></tr>
+<tr><td>i_dm[3:0]</td><td>input</td><td>4</td><td>Data Mask — one bit per byte. Masked bytes are not written to the array.</td></tr>
+<tr><td>i_dqs_wr</td><td>input</td><td>1</td><td>Write DQS strobe. Write data is captured on rising edge of this signal.</td></tr>
+<tr><td>o_dq_out[31:0]</td><td>output</td><td>32</td><td>Read data to controller. Valid CL cycles after the RD command.</td></tr>
+<tr><td>o_dqs_rd</td><td>output</td><td>1</td><td>Read DQS strobe driven by model to indicate valid read data on o_dq_out.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Memory Array Implementation</h2>
+<p>Modeling 64 MB of DRAM as a flat Verilog register array would allocate <strong>512 Mb (64 million 32-bit words)</strong> of simulator memory even if the test writes only a handful of locations. That is impractical. Instead, the model uses a <strong>SystemVerilog associative array</strong> which only allocates entries for addresses that have been explicitly written.</p>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — memory array declaration</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// 25-bit address = {bank[4:0], row[13:0], col[5:0]}
+// 32-bit data word (controller uses 32-bit wide pseudo-channel)
+logic [31:0] mem [logic [24:0]];
+
+// Default uninitialized-read sentinel
+localparam logic [31:0] UNINIT_SENTINEL = 32'hDEAD_BEEF;
+
+// Write (masked)
+task automatic do_write(
+  input logic [4:0]  bank,
+  input logic [13:0] row,
+  input logic [5:0]  col,
+  input logic [31:0] wdata,
+  input logic [3:0]  dm
+);
+  logic [24:0] addr;
+  logic [31:0] existing;
+  addr = {bank, row, col};
+  existing = mem.exists(addr) ? mem[addr] : UNINIT_SENTINEL;
+  // Apply data mask — dm[n]=1 means mask byte n (do NOT write)
+  if (!dm[0]) existing[ 7: 0] = wdata[ 7: 0];
+  if (!dm[1]) existing[15: 8] = wdata[15: 8];
+  if (!dm[2]) existing[23:16] = wdata[23:16];
+  if (!dm[3]) existing[31:24] = wdata[31:24];
+  mem[addr] = existing;
+endtask
+
+// Read
+function automatic logic [31:0] do_read(
+  input logic [4:0]  bank,
+  input logic [13:0] row,
+  input logic [5:0]  col
+);
+  logic [24:0] addr;
+  addr = {bank, row, col};
+  return mem.exists(addr) ? mem[addr] : UNINIT_SENTINEL;
+endfunction</pre>
+</div>
+
+<p>The 25-bit address is composed as <code style="font-family:monospace;font-size:.82rem">{bank[4:0], row[13:0], col[5:0]}</code>. With 32 banks (5 bits), 16,384 rows (14 bits), and 64 columns (6 bits), this covers the full HBM3 pseudo-channel address space of 32 × 16,384 × 64 × 4 bytes = <strong>128 MB per pseudo-channel</strong> (though the default parameter limits actual modeled capacity to 64 MB).</p>
+<div class="warn">The UNINIT_SENTINEL value 0xDEAD_BEEF is intentional. If the controller issues a RD to an address that was never written, the scoreboard in Module 17 will see 0xDEAD_BEEF and flag an unexpected data mismatch — catching the bug immediately rather than silently passing zeroes.</div>
+</section>
+
+<section>
+<h2>CA Command Decoder</h2>
+<p>HBM3's CA bus uses <strong>two-cycle command packets</strong>. The model accumulates two consecutive rising-edge samples when CKE is asserted, then dispatches to the appropriate bank handler. Bits [7:6] of the first cycle are the command class discriminator:</p>
+
+<table>
+<thead><tr><th>CA[7:6] Cy0</th><th>CA[5:4] Cy0</th><th>Command</th><th>Address Payload</th></tr></thead>
+<tbody>
+<tr><td>2'b00</td><td>—</td><td>ACT — Activate Row</td><td>bank[4:0] in cy0[4:0]; row[13:0] across cy0+cy1</td></tr>
+<tr><td>2'b01</td><td>2'b00</td><td>RD — Read</td><td>bank[4:0], col[5:0] in cy1</td></tr>
+<tr><td>2'b01</td><td>2'b01</td><td>WR — Write</td><td>bank[4:0], col[5:0] in cy1</td></tr>
+<tr><td>2'b10</td><td>2'b00</td><td>PRE — Precharge</td><td>bank[4:0] or all-banks flag</td></tr>
+<tr><td>2'b10</td><td>2'b01</td><td>REF — Refresh</td><td>ABR or PBR + bank in cy1</td></tr>
+<tr><td>2'b11</td><td>—</td><td>MRS — Mode Reg Write</td><td>MR address [2:0], data [7:0] in cy1</td></tr>
+</tbody>
+</table>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — CA decoder</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// Two-phase CA packet decoder
+logic [7:0] ca_cy0, ca_cy1;
+logic       packet_phase;  // 0 = waiting for cycle-0, 1 = waiting for cycle-1
+
+typedef enum logic [2:0] {
+  CMD_ACT = 3'd0,
+  CMD_RD  = 3'd1,
+  CMD_WR  = 3'd2,
+  CMD_PRE = 3'd3,
+  CMD_REF = 3'd4,
+  CMD_MRS = 3'd5,
+  CMD_NOP = 3'd7
+} cmd_t;
+
+cmd_t         decoded_cmd;
+logic [4:0]   decoded_bank;
+logic [13:0]  decoded_row;
+logic [5:0]   decoded_col;
+logic         cmd_valid;
+
+always_ff @(posedge i_clk) begin
+  cmd_valid &lt;= 1'b0;
+  if (i_cke) begin
+    if (!packet_phase) begin
+      ca_cy0        &lt;= i_ca;
+      packet_phase  &lt;= 1'b1;
+    end else begin
+      ca_cy1        &lt;= i_ca;
+      packet_phase  &lt;= 1'b0;
+      cmd_valid     &lt;= 1'b1;
+      // Decode on cycle-1 arrival
+      case (ca_cy0[7:6])
+        2'b00: begin  // ACT
+          decoded_cmd  &lt;= CMD_ACT;
+          decoded_bank &lt;= ca_cy0[4:0];
+          decoded_row  &lt;= {i_ca[5:0], ca_cy0[7:0]};  // simplified packing
+        end
+        2'b01: begin  // RD or WR
+          decoded_cmd  &lt;= (ca_cy0[5]) ? CMD_WR : CMD_RD;
+          decoded_bank &lt;= ca_cy0[4:0];
+          decoded_col  &lt;= i_ca[5:0];
+        end
+        2'b10: begin  // PRE or REF
+          if (ca_cy0[5]) begin
+            decoded_cmd  &lt;= CMD_REF;
+          end else begin
+            decoded_cmd  &lt;= CMD_PRE;
+            decoded_bank &lt;= ca_cy0[4:0];
+          end
+        end
+        2'b11: begin  // MRS
+          decoded_cmd &lt;= CMD_MRS;
+        end
+        default: decoded_cmd &lt;= CMD_NOP;
+      endcase
+    end
+  end else begin
+    packet_phase &lt;= 1'b0;  // Reset on CKE low
+    cmd_valid    &lt;= 1'b0;
+  end
+end</pre>
+</div>
+</section>
+
+<section>
+<h2>Bank State Machine</h2>
+<p>Each of the 32 banks has an independent FSM. The FSM tracks whether the bank is idle (precharged), active (row open), or refreshing. State transitions are triggered by decoded commands:</p>
+
+<table>
+<thead><tr><th>State</th><th>Trigger</th><th>Next State</th><th>Timing Check</th></tr></thead>
+<tbody>
+<tr><td>IDLE</td><td>ACT</td><td>ACTIVE</td><td>tRP since last PRE must have elapsed</td></tr>
+<tr><td>IDLE</td><td>REF</td><td>REFRESHING</td><td>No constraint (refresh always allowed from idle)</td></tr>
+<tr><td>ACTIVE</td><td>RD</td><td>ACTIVE</td><td>tRCD since ACT must have elapsed</td></tr>
+<tr><td>ACTIVE</td><td>WR</td><td>ACTIVE</td><td>tRCD since ACT must have elapsed</td></tr>
+<tr><td>ACTIVE</td><td>PRE</td><td>IDLE</td><td>tRAS since ACT must have elapsed; tWR since last WR</td></tr>
+<tr><td>REFRESHING</td><td>(timer)</td><td>IDLE</td><td>After tRFC/tRFCpb cycles automatically</td></tr>
+<tr><td>ACTIVE</td><td>ACT</td><td>— (error)</td><td>$error: ACT to open bank (missing precharge)</td></tr>
+<tr><td>IDLE</td><td>RD/WR</td><td>— (error)</td><td>$error: column command to closed bank</td></tr>
+</tbody>
+</table>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — bank FSM (per-bank, parametrized by BANK_ID)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// Timing parameters (HBM3 @ 2 GHz)
+localparam int tRCD    = 28;   // ACT-to-RD/WR
+localparam int tRAS    = 76;   // ACT-to-PRE minimum
+localparam int tRP     = 28;   // PRE-to-ACT
+localparam int tRC     = 112;  // ACT-to-ACT same bank
+localparam int tWR     = 40;   // WR-to-PRE
+localparam int tCCD    = 8;    // CCD between columns
+localparam int tRFC    = 440;  // ABR refresh cycle
+localparam int tRFCpb  = 140;  // PBR refresh cycle
+
+typedef enum logic [1:0] {
+  BST_IDLE       = 2'd0,
+  BST_ACTIVE     = 2'd1,
+  BST_REFRESHING = 2'd2
+} bank_state_t;
+
+bank_state_t bst [32];
+logic [63:0] t_act  [32];  // cycle of last ACT
+logic [63:0] t_pre  [32];  // cycle of last PRE
+logic [63:0] t_wr   [32];  // cycle of last WR
+logic [63:0] t_ref  [32];  // cycle refresh started
+logic [13:0] open_row[32]; // currently open row per bank
+logic [63:0] cycle_cnt;
+
+always_ff @(posedge i_clk) cycle_cnt &lt;= cycle_cnt + 1;
+
+// Generic bank command handler
+task automatic bank_command(
+  input cmd_t         cmd,
+  input logic [4:0]   bk,
+  input logic [13:0]  row,
+  input logic [5:0]   col
+);
+  case (cmd)
+    CMD_ACT: begin
+      if (bst[bk] != BST_IDLE)
+        $error("[DRAM MDL] Bank %0d: ACT while not idle (state=%0d) @ cycle %0d",
+               bk, bst[bk], cycle_cnt);
+      if ((cycle_cnt - t_pre[bk]) &lt; tRP)
+        $error("[DRAM MDL] Bank %0d: tRP violation — only %0d cycles since PRE (need %0d)",
+               bk, cycle_cnt - t_pre[bk], tRP);
+      if ((cycle_cnt - t_act[bk]) &lt; tRC)
+        $error("[DRAM MDL] Bank %0d: tRC violation — only %0d cycles since last ACT (need %0d)",
+               bk, cycle_cnt - t_act[bk], tRC);
+      bst[bk]      &lt;= BST_ACTIVE;
+      open_row[bk] &lt;= row;
+      t_act[bk]    &lt;= cycle_cnt;
+    end
+    CMD_RD: begin
+      if (bst[bk] != BST_ACTIVE)
+        $error("[DRAM MDL] Bank %0d: RD to closed bank @ cycle %0d", bk, cycle_cnt);
+      if ((cycle_cnt - t_act[bk]) &lt; tRCD)
+        $error("[DRAM MDL] Bank %0d: tRCD violation — only %0d cycles after ACT (need %0d)",
+               bk, cycle_cnt - t_act[bk], tRCD);
+      // Schedule read data return through CL pipeline
+      schedule_read(bk, open_row[bk], col);
+    end
+    CMD_WR: begin
+      if (bst[bk] != BST_ACTIVE)
+        $error("[DRAM MDL] Bank %0d: WR to closed bank @ cycle %0d", bk, cycle_cnt);
+      if ((cycle_cnt - t_act[bk]) &lt; tRCD)
+        $error("[DRAM MDL] Bank %0d: tRCD violation on WR — only %0d cycles (need %0d)",
+               bk, cycle_cnt - t_act[bk], tRCD);
+      t_wr[bk] &lt;= cycle_cnt;
+      // Data captured from i_dq_in on next i_dqs_wr edge (handled in write capture block)
+    end
+    CMD_PRE: begin
+      if (bst[bk] != BST_ACTIVE)
+        $error("[DRAM MDL] Bank %0d: PRE to already-idle bank @ cycle %0d", bk, cycle_cnt);
+      if ((cycle_cnt - t_act[bk]) &lt; tRAS)
+        $error("[DRAM MDL] Bank %0d: tRAS violation — only %0d cycles active (need %0d)",
+               bk, cycle_cnt - t_act[bk], tRAS);
+      if ((cycle_cnt - t_wr[bk]) &lt; tWR)
+        $error("[DRAM MDL] Bank %0d: tWR violation — only %0d cycles since WR (need %0d)",
+               bk, cycle_cnt - t_wr[bk], tWR);
+      bst[bk]  &lt;= BST_IDLE;
+      t_pre[bk] &lt;= cycle_cnt;
+    end
+    CMD_REF: begin
+      bst[bk]  &lt;= BST_REFRESHING;
+      t_ref[bk] &lt;= cycle_cnt;
+      // Auto-return to IDLE after tRFCpb (handled in refresh timer block)
+    end
+  endcase
+endtask</pre>
+</div>
+</section>
+
+<section>
+<h2>Mode Register Shadow</h2>
+<p>HBM3 mode registers (MR0–MR7) control operating parameters: CAS latency, write recovery time, burst length, refresh mode, and power-down behaviour. The behavioral model maintains a shadow copy of all 8 mode registers and uses them to configure timing parameters dynamically.</p>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — mode register shadow</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>logic [7:0] mode_reg [8];  // MR0–MR7 shadow copies
+int         CL_param;      // CAS latency extracted from MR0
+int         CWL_param;     // Write latency from MR0
+
+// MRS command handler
+task automatic handle_mrs(input logic [7:0] ca_cy0_p, ca_cy1_p);
+  logic [2:0] mr_addr;
+  logic [7:0] mr_data;
+  mr_addr = ca_cy1_p[2:0];
+  mr_data = {ca_cy0_p[3:0], ca_cy1_p[7:4]};
+  mode_reg[mr_addr] &lt;= mr_data;
+  $display("[DRAM MDL] MRS: MR%0d &lt;= 8'h%02h @ cycle %0d", mr_addr, mr_data, cycle_cnt);
+  // Update derived parameters
+  case (mr_addr)
+    3'd0: begin
+      // MR0[3:0] = CAS latency code: 4'd0 = CL14, 4'd7 = CL70 (HBM3 typical)
+      case (mr_data[3:0])
+        4'd0: CL_param = 14;
+        4'd3: CL_param = 36;
+        4'd7: CL_param = 70;
+        default: CL_param = 70;
+      endcase
+      CWL_param = CL_param / 2;  // Simplified: CWL ~ CL/2
+    end
+  endcase
+endtask</pre>
+</div>
+</section>
+
+<section>
+<h2>Read Data Return Pipeline</h2>
+<p>CAS latency (CL = 70 cycles) is the number of clock cycles between the RD command and the first valid read data on o_dq_out. The model implements this as a <strong>71-stage valid+data shift register</strong>. When a RD is decoded, stage 0 is loaded with {valid=1, data=mem[addr]}. After 70 clock edges, the entry emerges from stage 70 and drives the output.</p>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — CL=70 read pipeline</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>localparam int MAX_CL = 128;
+
+logic [31:0] rd_pipe_data  [MAX_CL];
+logic        rd_pipe_valid [MAX_CL];
+
+// Shift pipeline on every clock
+always_ff @(posedge i_clk) begin : cl_pipeline
+  int i;
+  // Shift from stage 0 toward MAX_CL-1
+  for (i = MAX_CL-1; i &gt; 0; i = i - 1) begin
+    rd_pipe_data [i] &lt;= rd_pipe_data [i-1];
+    rd_pipe_valid[i] &lt;= rd_pipe_valid[i-1];
+  end
+  // Clear stage 0 (will be loaded by schedule_read task on same edge)
+  rd_pipe_data [0] &lt;= '0;
+  rd_pipe_valid[0] &lt;= 1'b0;
+end
+
+// Schedule a read: push data into pipeline at CL offset
+task automatic schedule_read(
+  input logic [4:0]  bk,
+  input logic [13:0] row,
+  input logic [5:0]  col
+);
+  logic [31:0] rdata;
+  rdata = do_read(bk, row, col);
+  // Stage 0 gets loaded; after CL_param clocks it appears at output
+  rd_pipe_data [0] = rdata;
+  rd_pipe_valid[0] = 1'b1;
+endtask
+
+// Output assignment — CL_param stages down the pipeline
+assign o_dq_out  = rd_pipe_valid[CL_param] ? rd_pipe_data[CL_param] : 32'hzzzz_zzzz;
+assign o_dqs_rd  = rd_pipe_valid[CL_param];
+
+// Also handle write data capture on DQS strobe
+always_ff @(posedge i_dqs_wr) begin : write_capture
+  // Pending write address must be tracked from CMD_WR dispatch
+  if (wr_pending) begin
+    do_write(wr_bank, wr_row, wr_col, i_dq_in, i_dm);
+    wr_pending &lt;= 1'b0;
+  end
+end</pre>
+</div>
+</section>
+
+<section>
+<h2>Full Behavioral Model</h2>
+<p>The complete <code style="font-family:monospace;font-size:.82rem">hbm3_dram_model.sv</code> integrates all subsystems into a single simulation module. This is the file you drop into your testbench alongside the controller DUT.</p>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — hbm3_dram_model.sv (complete)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// =============================================================
+// hbm3_dram_model.sv — HBM3 Behavioral DRAM Model
+// EcrioniX HBM3 Controller Build · Module 16
+// SIMULATION ONLY — NOT SYNTHESIZABLE
+// =============================================================
+`timescale 1ns/1ps
+
+module hbm3_dram_model #(
+  parameter int CL_DEFAULT  = 70,
+  parameter int CWL_DEFAULT = 36,
+  parameter int NUM_BANKS   = 32
+)(
+  input  logic        i_clk,
+  input  logic        i_cke,
+  input  logic [7:0]  i_ca,
+  input  logic [31:0] i_dq_in,
+  input  logic [3:0]  i_dm,
+  input  logic        i_dqs_wr,
+  output logic [31:0] o_dq_out,
+  output logic        o_dqs_rd
+);
+
+  // ----- Timing Parameters (HBM3 @ 2 GHz) -----
+  localparam int tRCD   = 28;
+  localparam int tRAS   = 76;
+  localparam int tRP    = 28;
+  localparam int tRC    = 112;
+  localparam int tWR    = 40;
+  localparam int tCCD   = 8;
+  localparam int tRFC   = 440;
+  localparam int tRFCpb = 140;
+
+  // ----- Memory Array -----
+  logic [31:0] mem [logic [24:0]];
+  localparam logic [31:0] UNINIT = 32'hDEAD_BEEF;
+
+  // ----- Bank State -----
+  typedef enum logic [1:0] {BST_IDLE=2'd0, BST_ACTIVE=2'd1, BST_REFRESH=2'd2} bank_state_t;
+  bank_state_t  bst      [NUM_BANKS];
+  logic [63:0]  t_act    [NUM_BANKS];
+  logic [63:0]  t_pre    [NUM_BANKS];
+  logic [63:0]  t_wr     [NUM_BANKS];
+  logic [13:0]  open_row [NUM_BANKS];
+  logic [63:0]  cycle_cnt;
+
+  // ----- Mode Registers -----
+  logic [7:0] mode_reg [8];
+  int         CL_param  = CL_DEFAULT;
+  int         CWL_param = CWL_DEFAULT;
+
+  // ----- CA Decode State -----
+  logic [7:0] ca_cy0;
+  logic       packet_phase;
+  logic       cmd_valid;
+
+  typedef enum logic [2:0] {
+    CMD_NOP=3'd7, CMD_ACT=3'd0, CMD_RD=3'd1,
+    CMD_WR=3'd2,  CMD_PRE=3'd3, CMD_REF=3'd4, CMD_MRS=3'd5
+  } cmd_t;
+
+  cmd_t        cur_cmd;
+  logic [4:0]  cur_bank;
+  logic [13:0] cur_row;
+  logic [5:0]  cur_col;
+
+  // ----- Write Pending State -----
+  logic        wr_pending;
+  logic [4:0]  wr_bank;
+  logic [13:0] wr_row;
+  logic [5:0]  wr_col;
+
+  // ----- CL Read Pipeline -----
+  localparam int MAX_CL = 128;
+  logic [31:0] rd_pipe_data  [MAX_CL];
+  logic        rd_pipe_valid [MAX_CL];
+
+  // Cycle counter
+  always_ff @(posedge i_clk) cycle_cnt &lt;= cycle_cnt + 64'd1;
+
+  // Read pipeline shift
+  always_ff @(posedge i_clk) begin : cl_pipe
+    int j;
+    for (j = MAX_CL-1; j &gt; 0; j--) begin
+      rd_pipe_data [j] &lt;= rd_pipe_data [j-1];
+      rd_pipe_valid[j] &lt;= rd_pipe_valid[j-1];
+    end
+    rd_pipe_data [0] &lt;= '0;
+    rd_pipe_valid[0] &lt;= 1'b0;
+  end
+
+  // Output from CL stage
+  assign o_dq_out = rd_pipe_valid[CL_param] ? rd_pipe_data[CL_param] : 32'hzzzz_zzzz;
+  assign o_dqs_rd = rd_pipe_valid[CL_param];
+
+  // Write capture on DQS
+  always_ff @(posedge i_dqs_wr) begin : wr_cap
+    if (wr_pending) begin
+      automatic logic [24:0] waddr = {wr_bank, wr_row, wr_col};
+      automatic logic [31:0] existing = mem.exists(waddr) ? mem[waddr] : UNINIT;
+      if (!i_dm[0]) existing[ 7: 0] = i_dq_in[ 7: 0];
+      if (!i_dm[1]) existing[15: 8] = i_dq_in[15: 8];
+      if (!i_dm[2]) existing[23:16] = i_dq_in[23:16];
+      if (!i_dm[3]) existing[31:24] = i_dq_in[31:24];
+      mem[waddr]  = existing;
+      wr_pending &lt;= 1'b0;
+    end
+  end
+
+  // Main CA decoder + command dispatcher
+  always_ff @(posedge i_clk) begin : ca_decode
+    cmd_valid &lt;= 1'b0;
+    if (!i_cke) begin
+      packet_phase &lt;= 1'b0;
+    end else if (!packet_phase) begin
+      ca_cy0       &lt;= i_ca;
+      packet_phase &lt;= 1'b1;
+    end else begin
+      packet_phase &lt;= 1'b0;
+      cmd_valid    &lt;= 1'b1;
+      // Decode and dispatch
+      case (ca_cy0[7:6])
+        2'b00: begin  // ACT
+          automatic logic [4:0] bk = ca_cy0[4:0];
+          if (bst[bk] != BST_IDLE)
+            $error("[MDL] Bank%0d: ACT to non-idle bank (state=%0d) @cy%0d",bk,bst[bk],cycle_cnt);
+          if ((cycle_cnt - t_pre[bk]) &lt; tRP)
+            $error("[MDL] Bank%0d: tRP viol %0d&lt;%0d @cy%0d",bk,cycle_cnt-t_pre[bk],tRP,cycle_cnt);
+          bst[bk]      &lt;= BST_ACTIVE;
+          open_row[bk] &lt;= {i_ca[5:0], ca_cy0[7:0]};
+          t_act[bk]    &lt;= cycle_cnt;
+        end
+        2'b01: begin  // RD or WR
+          automatic logic [4:0] bk = ca_cy0[4:0];
+          automatic logic [5:0] col = i_ca[5:0];
+          if (bst[bk] != BST_ACTIVE)
+            $error("[MDL] Bank%0d: column cmd to closed bank @cy%0d",bk,cycle_cnt);
+          if ((cycle_cnt - t_act[bk]) &lt; tRCD)
+            $error("[MDL] Bank%0d: tRCD viol %0d&lt;%0d @cy%0d",bk,cycle_cnt-t_act[bk],tRCD,cycle_cnt);
+          if (!ca_cy0[5]) begin  // RD
+            automatic logic [24:0] raddr = {bk, open_row[bk], col};
+            automatic logic [31:0] rdata = mem.exists(raddr) ? mem[raddr] : UNINIT;
+            rd_pipe_data [0] = rdata;
+            rd_pipe_valid[0] = 1'b1;
+          end else begin  // WR
+            wr_bank    &lt;= bk;
+            wr_row     &lt;= open_row[bk];
+            wr_col     &lt;= col;
+            wr_pending &lt;= 1'b1;
+            t_wr[bk]   &lt;= cycle_cnt;
+          end
+        end
+        2'b10: begin  // PRE or REF
+          if (!ca_cy0[5]) begin  // PRE
+            automatic logic [4:0] bk = ca_cy0[4:0];
+            if (bst[bk] != BST_ACTIVE)
+              $error("[MDL] Bank%0d: PRE to idle bank @cy%0d",bk,cycle_cnt);
+            if ((cycle_cnt - t_act[bk]) &lt; tRAS)
+              $error("[MDL] Bank%0d: tRAS viol %0d&lt;%0d @cy%0d",bk,cycle_cnt-t_act[bk],tRAS,cycle_cnt);
+            if ((cycle_cnt - t_wr[bk]) &lt; tWR)
+              $error("[MDL] Bank%0d: tWR viol %0d&lt;%0d @cy%0d",bk,cycle_cnt-t_wr[bk],tWR,cycle_cnt);
+            bst[bk]   &lt;= BST_IDLE;
+            t_pre[bk] &lt;= cycle_cnt;
+          end else begin  // REF — mark all banks refreshing (ABR simplified)
+            for (int b = 0; b &lt; NUM_BANKS; b++) bst[b] &lt;= BST_REFRESH;
+            fork
+              begin
+                repeat(tRFC) @(posedge i_clk);
+                for (int b = 0; b &lt; NUM_BANKS; b++) bst[b] &lt;= BST_IDLE;
+              end
+            join_none
+          end
+        end
+        2'b11: begin  // MRS
+          automatic logic [2:0] mr_addr = i_ca[2:0];
+          automatic logic [7:0] mr_data = {ca_cy0[3:0], i_ca[7:4]};
+          mode_reg[mr_addr] &lt;= mr_data;
+          $display("[MDL] MRS MR%0d=8'h%02h @cy%0d", mr_addr, mr_data, cycle_cnt);
+          if (mr_addr == 3'd0) begin
+            case (mr_data[3:0])
+              4'd7:    CL_param = 70;
+              4'd3:    CL_param = 36;
+              default: CL_param = 70;
+            endcase
+          end
+        end
+      endcase
+    end
+  end
+
+  // Initialize
+  initial begin
+    cycle_cnt    = 0;
+    packet_phase = 0;
+    wr_pending   = 0;
+    for (int b = 0; b &lt; NUM_BANKS; b++) begin
+      bst[b]      = BST_IDLE;
+      t_act[b]    = 64'hFFFF_FFFF_FFFF_FFFF;
+      t_pre[b]    = 64'hFFFF_FFFF_FFFF_FFFF;
+      t_wr[b]     = 64'hFFFF_FFFF_FFFF_FFFF;
+      open_row[b] = '0;
+    end
+    for (int m = 0; m &lt; 8; m++) mode_reg[m] = '0;
+    for (int s = 0; s &lt; MAX_CL; s++) begin
+      rd_pipe_data[s]  = '0;
+      rd_pipe_valid[s] = '0;
+    end
+    $display("[DRAM MDL] HBM3 Behavioral Model initialized. CL=%0d CWL=%0d",
+             CL_param, CWL_param);
+  end
+
+endmodule</pre>
+</div>
+</section>
+
+<section>
+<h2>Using the Model with Your Testbench</h2>
+<p>Instantiate <code style="font-family:monospace;font-size:.82rem">hbm3_dram_model</code> in your testbench top alongside the controller DUT. Connect the controller's CA output directly to the model's CA input. The Module 17 testbench does this for you, but the standalone connection pattern is:</p>
+
+<div class="code-block">
+<div class="code-head"><span class="code-lang">systemverilog — instantiation snippet</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<pre>// In tb_hbm3_top.sv:
+logic        dram_clk;
+logic        dram_cke;
+logic [7:0]  dram_ca;
+logic [31:0] dram_dq_in, dram_dq_out;
+logic [3:0]  dram_dm;
+logic        dram_dqs_wr, dram_dqs_rd;
+
+// Controller DUT drives CA bus and DQ
+hbm3_pc_ctrl dut (
+  .i_clk          (clk),
+  // ... AXI4 inputs ...
+  .o_dram_cke     (dram_cke),
+  .o_dram_ca      (dram_ca),
+  .o_dram_dq      (dram_dq_in),
+  .o_dram_dm      (dram_dm),
+  .o_dram_dqs_wr  (dram_dqs_wr),
+  .i_dram_dq      (dram_dq_out),
+  .i_dram_dqs_rd  (dram_dqs_rd)
+);
+
+// Behavioral DRAM model — responds to controller
+hbm3_dram_model #(.CL_DEFAULT(70)) u_dram (
+  .i_clk    (dram_clk),
+  .i_cke    (dram_cke),
+  .i_ca     (dram_ca),
+  .i_dq_in  (dram_dq_in),
+  .i_dm     (dram_dm),
+  .i_dqs_wr (dram_dqs_wr),
+  .o_dq_out (dram_dq_out),
+  .o_dqs_rd (dram_dqs_rd)
+);
+
+assign dram_clk = clk;  // Same clock domain in single-channel TB</pre>
+</div>
+</section>
+
+<section>
+<h2>Model Limitations</h2>
+<p>The behavioral model is a functional model for protocol compliance verification. It intentionally omits several physical and architectural details:</p>
+
+<table class="limits-table">
+<thead><tr><th>Feature</th><th>Modeled</th><th>Not Modeled</th></tr></thead>
+<tbody>
+<tr><td>Command/Address bus</td><td>2-cycle CA packet decode, all 6 command types</td><td>CA bus parity, per-bit DBI</td></tr>
+<tr><td>Bank state</td><td>IDLE/ACTIVE/REFRESHING per bank</td><td>Bank Group timing (tCCDS vs tCCDL)</td></tr>
+<tr><td>Timing parameters</td><td>tRCD, tRAS, tRP, tRC, tWR, tCCD, tRFC</td><td>tFAW, tRRD, write-to-read turn-around</td></tr>
+<tr><td>Data path</td><td>32-bit write/read with byte masks</td><td>ECC lanes, DBI-DQ, data scrambling</td></tr>
+<tr><td>Refresh</td><td>ABR blocking window (tRFC)</td><td>PBR per-bank refresh tracking, tREFI watchdog</td></tr>
+<tr><td>Mode registers</td><td>MR0 CL field decode</td><td>MR1–MR7 full field decode</td></tr>
+<tr><td>Power states</td><td>CKE=0 freezes model</td><td>Self-refresh entry/exit, power-down timings</td></tr>
+<tr><td>PHY layer</td><td>Not modeled — direct signal connection</td><td>DFI protocol, FIFO, equalisation, jitter</td></tr>
+<tr><td>Signal integrity</td><td>Not modeled</td><td>Crosstalk, SSO, impedance mismatch</td></tr>
+<tr><td>Temperature</td><td>Not modeled</td><td>Retention degradation, derating factors</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2>Frequently Asked Questions</h2>
+<div class="faq">
+  <details>
+    <summary>Why can't we just use a simple memory array for HBM3 simulation?</summary>
+    <p>A simple memory array ignores DRAM protocol timing — it accepts any read or write at any time with no concept of bank activation, tRCD, CAS latency, or refresh. A behavioral DRAM model enforces timing constraints so the controller is exercised exactly as it would be with real silicon. Timing violations that would cause data corruption on real hardware get caught in simulation as assertion failures, making the model essential for verifying the controller's protocol compliance.</p>
+  </details>
+  <details>
+    <summary>What does the CA bus decode to in HBM3?</summary>
+    <p>The HBM3 CA bus is an 8-bit packet-based command/address bus. Each command occupies two consecutive cycles (a two-cycle packet). Bits [7:6] of the first cycle encode the command type: 00 = ACT (activate row), 01 = RD/WR, 10 = PRE/REF, 11 = MRS. The row address, column address, and bank address are packed into the remaining bits across the two cycles.</p>
+  </details>
+  <details>
+    <summary>How does the CAS latency pipeline work in the behavioral model?</summary>
+    <p>When the model decodes a RD command, it does not return data immediately. Instead, it pushes the read data into stage 0 of a shift-register pipeline of depth CL (70 cycles). After CL clock edges, the data emerges from stage 70 and drives o_dq_out along with o_dqs_rd. This faithfully models the latency the controller will observe in real hardware.</p>
+  </details>
+  <details>
+    <summary>What timing parameters does the model check?</summary>
+    <p>The model checks tRCD (28 cy — ACT to RD/WR), tRAS (76 cy — minimum row active time before PRE), tRP (28 cy — precharge recovery before next ACT), tRC (112 cy — ACT-to-ACT same bank), tWR (40 cy — write recovery before PRE), and tCCD (8 cy — column command spacing). Any violation triggers a $error with the bank number, measured cycles, and required cycles.</p>
+  </details>
+  <details>
+    <summary>What does the model NOT simulate?</summary>
+    <p>The behavioral model does not simulate signal integrity (crosstalk, jitter), PHY-level serialization, DFI protocol timing, power consumption, temperature effects on data retention, tFAW (four-activate window), bank-group timing (tCCDS vs tCCDL), or ECC encoding. It is a functional protocol-compliance model only. For PHY-level validation, a SPICE or transistor-level model is required.</p>
+  </details>
+</div>
+</section>
+
+<div class="nav-pills">
+  <a class="nav-pill" href="/hbm3-controller/power-mgmt/">← Module 15: Power Management</a>
+  <a class="nav-pill" href="/hbm3-controller/sv-testbench/">Module 17: SV Testbench →</a>
+</div>
+
+</div><!-- wrap -->
+
+<footer>
+  <p>By EcrioniX · Updated June 2026 · <a href="/hbm3-controller/">HBM3 Controller Series</a> · <a href="/courses/">All Courses</a> · <a href="/about/">About</a> · <a href="/privacy/">Privacy</a></p>
+  <p style="margin-top:.4rem">Module 16 of 18 — HBM3 DRAM Behavioral Memory Model</p>
+</footer>
+
+<a class="back-to-top" href="#" title="Back to top">↑</a>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1800);
+  });
+}
+</script>
+</body>
+</html>
