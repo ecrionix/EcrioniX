@@ -162,7 +162,7 @@
   <div class="section-title">Core Techniques &amp; Deep Dives</div>
   <div class="cards">
 
-    <a href="#" class="card">
+    <a href="#clock-gating" class="card">
       <div class="card-top">
         <div class="card-icon">🔒</div>
         <div>
@@ -177,7 +177,7 @@
       <div class="card-cta">Read →</div>
     </a>
 
-    <a href="#" class="card">
+    <a href="#power-gating" class="card">
       <div class="card-top">
         <div class="card-icon">💤</div>
         <div>
@@ -192,7 +192,7 @@
       <div class="card-cta">Read →</div>
     </a>
 
-    <a href="#" class="card">
+    <a href="#dvfs" class="card">
       <div class="card-top">
         <div class="card-icon">⚡</div>
         <div>
@@ -207,7 +207,7 @@
       <div class="card-cta">Read →</div>
     </a>
 
-    <a href="#" class="card">
+    <a href="#multi-vt" class="card">
       <div class="card-top">
         <div class="card-icon">🔬</div>
         <div>
@@ -253,6 +253,187 @@
 </section>
 
 <button class="back-to-top" id="btt" title="Back to top">↑</button>
+
+<!-- ═══════════════ DEEP DIVE SECTIONS ═══════════════ -->
+<section class="topics" style="padding-top:0">
+
+  <!-- Clock Gating -->
+  <div id="clock-gating" style="scroll-margin-top:80px;margin-bottom:3rem">
+    <div class="section-label">Deep Dive — Dynamic Power</div>
+    <div class="section-title">Clock Gating (ICG)</div>
+    <p style="color:var(--muted);margin-bottom:1.2rem">The clock network consumes 20–40% of a chip's total dynamic power. Clock gating switches off the clock to flip-flop groups when their data won't change, eliminating switching power entirely for those registers.</p>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:.8rem 0 .4rem">ICG Cell Structure</h3>
+    <p style="color:var(--muted)">An ICG (Integrated Clock Gating) cell is a <strong style="color:var(--text)">latch + AND gate</strong> combination. The latch captures the enable signal on the clock low phase (preventing glitches), and the AND gate combines the latched enable with the clock. The output is a clean, glitch-free gated clock.</p>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin:.8rem 0">
+      <table style="width:100%;border-collapse:collapse;font-size:.86rem">
+        <thead><tr style="background:rgba(52,211,153,.1)">
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Signal</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Role</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Timing</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">CK (clock in)</td><td style="padding:.65rem 1rem;color:var(--muted)">Raw clock from CTS</td><td style="padding:.65rem 1rem;color:var(--muted)">Continuous</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">EN (enable)</td><td style="padding:.65rem 1rem;color:var(--muted)">RTL enable signal</td><td style="padding:.65rem 1rem;color:var(--muted)">Must be stable during CK high</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">ECK (gated clock out)</td><td style="padding:.65rem 1rem;color:var(--muted)">Clock to flip-flops</td><td style="padding:.65rem 1rem;color:var(--muted)">Toggling only when EN=1</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">RTL Inference</h3>
+    <p style="color:var(--muted)">Synthesis tools automatically infer ICG cells from common RTL patterns. The most reliable pattern is a register with an explicit enable:</p>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre">// RTL — synthesis infers an ICG here
+always @(posedge clk) begin
+  if (data_valid) begin        // ← enable for ICG
+    result_reg &lt;= computed_result;
+  end
+end
+
+// Do NOT write this (no ICG inferred):
+always @(posedge clk) begin
+  result_reg &lt;= data_valid ? computed_result : result_reg;
+end</pre>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">UPF Clock Gating Pragma</h3>
+    <p style="color:var(--muted)">In the UPF power intent file, you control ICG insertion strategy:</p>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre"># UPF — set minimum bit-width for ICG insertion
+set_clock_gating_style -minimum_bitwidth 4 \
+                        -positive_edge_logic {integrated}
+# Exclude a register from gating:
+set_dont_touch_network [get_pins {u_reg/clk}]</pre>
+    <p style="color:var(--muted)">Typical ICG <strong style="color:var(--text)">area overhead</strong> is 5–10% (one ICG cell per gating group). The power saving easily justifies this: 20–40% reduction in total dynamic power for large designs.</p>
+  </div>
+
+  <!-- Power Gating -->
+  <div id="power-gating" style="scroll-margin-top:80px;margin-bottom:3rem">
+    <div class="section-label">Deep Dive — Leakage + Dynamic</div>
+    <div class="section-title">Power Gating</div>
+    <p style="color:var(--muted);margin-bottom:1.2rem">Power gating cuts the power supply (VDD or VSS) to an entire logic block when it is idle, eliminating both dynamic and leakage power. It is the most powerful technique for standby power reduction.</p>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:.8rem 0 .4rem">Header vs Footer Topologies</h3>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin:.8rem 0">
+      <table style="width:100%;border-collapse:collapse;font-size:.86rem">
+        <thead><tr style="background:rgba(52,211,153,.1)">
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Type</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Transistor</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Rail Switched</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Advantage</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Header</td><td style="padding:.65rem 1rem;color:var(--muted)">PMOS (HVT)</td><td style="padding:.65rem 1rem;color:var(--muted)">VDD → VVDD</td><td style="padding:.65rem 1rem;color:var(--muted)">Lower leakage in off state</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Footer</td><td style="padding:.65rem 1rem;color:var(--muted)">NMOS (HVT)</td><td style="padding:.65rem 1rem;color:var(--muted)">VGND → VSS</td><td style="padding:.65rem 1rem;color:var(--muted)">Faster wake-up (NMOS stronger)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">Wake-up Sequence</h3>
+    <p style="color:var(--muted)">The sleep/wake sequence must be carefully managed to avoid inrush current spikes and ensure correct state restoration:</p>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre">// Power-down sequence (RTL pseudo-code)
+1. assert isolation cells (block X-prop from powered-off domain)
+2. retention FFs: pulse SAVE = 1 (state saved to balloon latches)
+3. deassert sleep transistor enable → block powers off
+
+// Wake-up sequence
+1. assert sleep transistor enable → VVDD charges up
+2. wait for VVDD_OK flag (power switch controller)
+3. retention FFs: pulse RESTORE = 1 (state returns to main FF)
+4. deassert isolation cells
+5. release reset of block</pre>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">UPF Power Domain Definition</h3>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre">create_power_domain PD_DSP -include_scope
+create_supply_net  VVDD_DSP -domain PD_DSP
+create_power_switch SW_DSP  -domain PD_DSP \
+  -output_supply_port {vout VVDD_DSP}  \
+  -input_supply_port  {vin VDD}        \
+  -control_port       {sleep SLEEP_N}  \
+  -on_state  {on  vin {!sleep}}        \
+  -off_state {off     {sleep}}
+set_retention PD_DSP -save_signal {SAVE posedge} -restore_signal {RESTORE posedge}</pre>
+  </div>
+
+  <!-- DVFS -->
+  <div id="dvfs" style="scroll-margin-top:80px;margin-bottom:3rem">
+    <div class="section-label">Deep Dive — System Level</div>
+    <div class="section-title">DVFS &amp; Voltage Scaling</div>
+    <p style="color:var(--muted);margin-bottom:1.2rem">Dynamic Voltage and Frequency Scaling adjusts both supply voltage and clock frequency based on workload. Since <strong style="color:var(--text)">P ∝ V²·f</strong>, reducing voltage from 1.0 V to 0.8 V saves 36% dynamic power — the largest single-variable lever available.</p>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:.8rem 0 .4rem">Voltage–Frequency Operating Points</h3>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin:.8rem 0">
+      <table style="width:100%;border-collapse:collapse;font-size:.86rem">
+        <thead><tr style="background:rgba(52,211,153,.1)">
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Mode</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">VDD</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Freq</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Dynamic Power</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Use Case</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Turbo</td><td style="padding:.65rem 1rem;color:var(--muted)">1.1 V</td><td style="padding:.65rem 1rem;color:var(--muted)">2.0 GHz</td><td style="padding:.65rem 1rem;color:#34d399">100% (baseline)</td><td style="padding:.65rem 1rem;color:var(--muted)">Peak burst workload</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Nominal</td><td style="padding:.65rem 1rem;color:var(--muted)">1.0 V</td><td style="padding:.65rem 1rem;color:var(--muted)">1.5 GHz</td><td style="padding:.65rem 1rem;color:#34d399">~52%</td><td style="padding:.65rem 1rem;color:var(--muted)">Normal operation</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Low</td><td style="padding:.65rem 1rem;color:var(--muted)">0.8 V</td><td style="padding:.65rem 1rem;color:var(--muted)">800 MHz</td><td style="padding:.65rem 1rem;color:#34d399">~21%</td><td style="padding:.65rem 1rem;color:var(--muted)">Light workload, background tasks</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">Ultra-low</td><td style="padding:.65rem 1rem;color:var(--muted)">0.6 V</td><td style="padding:.65rem 1rem;color:var(--muted)">200 MHz</td><td style="padding:.65rem 1rem;color:#34d399">~6%</td><td style="padding:.65rem 1rem;color:var(--muted)">Idle polling loop</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">Voltage Island Design</h3>
+    <p style="color:var(--muted)">When different blocks run at different voltages simultaneously (e.g. GPU at 0.9 V, always-on controller at 1.0 V), the chip uses <strong style="color:var(--text)">voltage islands</strong> separated by:</p>
+    <ul style="color:var(--muted);margin-left:1.5rem;line-height:2">
+      <li><strong style="color:var(--text)">Level shifters</strong> — convert logic levels crossing voltage boundaries (LS-LH and LS-HL variants)</li>
+      <li><strong style="color:var(--text)">Isolation cells</strong> — clamp outputs of a powered-off domain to a safe value (0 or 1)</li>
+      <li><strong style="color:var(--text)">Always-on buffers</strong> — in the low-voltage domain, powered from the always-on rail</li>
+    </ul>
+  </div>
+
+  <!-- Multi-Vt -->
+  <div id="multi-vt" style="scroll-margin-top:80px;margin-bottom:3rem">
+    <div class="section-label">Deep Dive — Cell Level</div>
+    <div class="section-title">Multi-V<sub>t</sub> &amp; Cell-Level Techniques</div>
+    <p style="color:var(--muted);margin-bottom:1.2rem">Modern standard cell libraries offer cells at multiple threshold voltages. Higher V<sub>t</sub> means less leakage but slower speed. The synthesis tool assigns cell flavours to maximise leakage reduction while meeting timing.</p>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:.8rem 0 .4rem">V<sub>t</sub> Flavour Comparison</h3>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin:.8rem 0">
+      <table style="width:100%;border-collapse:collapse;font-size:.86rem">
+        <thead><tr style="background:rgba(52,211,153,.1)">
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Flavour</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Leakage</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Speed</th>
+          <th style="padding:.65rem 1rem;text-align:left;color:#34d399;font-size:.75rem;text-transform:uppercase">Where Used</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">LVT (Low V<sub>t</sub>)</td><td style="padding:.65rem 1rem;color:#f87171">High</td><td style="padding:.65rem 1rem;color:#34d399">Fast</td><td style="padding:.65rem 1rem;color:var(--muted)">Timing-critical paths only</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">SVT (Standard V<sub>t</sub>)</td><td style="padding:.65rem 1rem;color:#fbbf24">Medium</td><td style="padding:.65rem 1rem;color:#fbbf24">Medium</td><td style="padding:.65rem 1rem;color:var(--muted)">Near-critical paths</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">HVT (High V<sub>t</sub>)</td><td style="padding:.65rem 1rem;color:#34d399">Low</td><td style="padding:.65rem 1rem;color:#f87171">Slow</td><td style="padding:.65rem 1rem;color:var(--muted)">Non-critical paths (majority)</td></tr>
+          <tr style="border-top:1px solid rgba(148,163,184,.06)"><td style="padding:.65rem 1rem;color:var(--text)">ULVT / SLVT</td><td style="padding:.65rem 1rem;color:#f87171">Very High</td><td style="padding:.65rem 1rem;color:#34d399">Very Fast</td><td style="padding:.65rem 1rem;color:var(--muted)">Only the most critical few gates</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">DC Shell — Leakage-Aware Synthesis</h3>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre"># Synopsys DC — enable multi-Vt leakage optimisation
+compile_ultra -leakage_power
+
+# Set leakage-to-dynamic trade-off weight (0=speed only, 10=leakage only)
+set_leakage_optimization true
+set power_cg_auto_identify true
+
+# Swap non-critical cells to HVT post-route
+swap_cell [get_cells -filter "is_critical==false"] -lib_cell HVT_AND2</pre>
+
+    <h3 style="color:var(--green-l);font-size:1.05rem;margin:1.2rem 0 .4rem">Operand Isolation</h3>
+    <p style="color:var(--muted)">When a functional unit (multiplier, FPU) is idle, its inputs often still toggle with garbage data, wasting power. Operand isolation inserts an AND or MUX gate to clamp inputs to zero when the unit is disabled:</p>
+    <pre style="background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.3rem;overflow-x:auto;font-family:'Courier New',monospace;font-size:.84rem;line-height:1.6;color:#a5f3fc;margin:.8rem 0 1.2rem;white-space:pre">// Without isolation — multiplier toggles even when idle
+assign product = a * b;
+
+// With operand isolation — zero inputs when mul_en=0
+assign a_iso = mul_en ? a : '0;
+assign b_iso = mul_en ? b : '0;
+assign product = a_iso * b_iso;   // Synthesis recognises this pattern</pre>
+    <p style="color:var(--muted)">Synthesis tools can insert operand isolation automatically from RTL enable signals when using <code style="background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1">set_operand_isolation</code> pragmas or UPF.</p>
+  </div>
+
+</section>
 
 <!--data-enriched-->
 <section style="max-width:880px;margin:2.5rem auto;padding:1.6rem 1.8rem;background:#080d1a;border:1px solid rgba(148,163,184,.12);border-radius:14px;color:#94a3b8;line-height:1.85;font-size:1rem"><h2 style="color:#f1f5f9;font-size:1.5rem;margin:0 0 .7rem;line-height:1.25">Low-Power VLSI Design — Techniques &amp; Trade-offs</h2><p style="margin:0 0 .9rem">Power has become the primary constraint in modern chip design. Whether the target is a battery-powered wearable or a data-centre accelerator limited by heat, engineers must squeeze the most computation out of every milliwatt. Low-power design is the collection of techniques used to reduce both the energy a chip burns while working and the energy it leaks while idle.</p><p style="margin:0 0 .9rem">Power dissipation has two main components. <b>Dynamic power</b> is consumed when transistors switch, and scales with capacitance, the square of the supply voltage, and clock frequency. <b>Static (leakage) power</b> is drained continuously even when nothing is switching, and has grown dramatically as transistors shrank. A good low-power strategy attacks both.</p><h3 style="color:#38bdf8;font-size:1.1rem;margin:1.2rem 0 .4rem">Common techniques</h3><ul style="margin:0 0 1rem 1.25rem"><li style="margin:.25rem 0"><b>Clock gating</b> — switch off the clock to idle blocks to kill needless dynamic power.</li><li style="margin:.25rem 0"><b>Power gating</b> — fully disconnect unused blocks from supply to cut leakage.</li><li style="margin:.25rem 0"><b>Multi-V<sub>t</sub> cells</b> — use fast (leaky) cells only on critical paths, low-leakage cells elsewhere.</li><li style="margin:.25rem 0"><b>DVFS</b> — dynamic voltage and frequency scaling to match performance to demand.</li><li style="margin:.25rem 0"><b>Multiple power domains</b> — managed via a power-intent file (UPF/CPF) and level shifters/isolation.</li></ul><p style="margin:0 0 .9rem">These methods interact with every other part of the flow — synthesis, placement, clock trees and verification — and are described in a power-intent specification so tools apply them consistently. Understanding the dynamic-versus-leakage trade-off is the foundation for everything else in low-power engineering.</p></section>
