@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 12: Fixing Setup Violations — Cell Sizing, LVT Swap, Pipeline, Useful Skew | EcrioniX STA Course</title>
+<meta name="description" content="Day 12 of the EcrioniX STA course. The iterative timing closure loop, cell upsizing, LVT cell swapping, buffer removal, logic restructuring, pipeline register insertion, useful skew, and when to accept a timing exception.">
+<meta name="keywords" content="fixing setup violations STA, cell upsizing, LVT swap timing, timing closure loop, pipeline register insertion, useful skew setup, buffer removal critical path, logic restructuring STA, timing closure techniques VLSI">
+<link rel="canonical" href="https://ecrionix.org/sta/day-12-fixing-setup-violations/">
+<meta property="og:title" content="Day 12: Fixing Setup Violations | EcrioniX STA Course">
+<meta property="og:description" content="Timing closure for setup: cell upsizing, LVT swap, buffer removal, pipeline insertion, useful skew, logic restructuring, iterative loop.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-28","dateModified":"2026-06-28","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 12: Fixing Setup Violations","description":"Complete guide to fixing setup timing violations in STA: iterative closure loop, cell upsizing, LVT swapping, pipeline insertion, useful skew, logic restructuring, and ECO techniques.","url":"https://ecrionix.org/sta/day-12-fixing-setup-violations/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Static Timing Analysis Course","url":"https://ecrionix.org/sta/"}},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"STA Course","item":"https://ecrionix.org/sta/"},{"@type":"ListItem","position":3,"name":"Day 12","item":"https://ecrionix.org/sta/day-12-fixing-setup-violations/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the most effective first step for fixing setup violations?","acceptedAnswer":{"@type":"Answer","text":"The most effective first step is cell upsizing on the critical path. Replacing a weak driver (e.g., BUFX2) with a stronger one (BUFX8) reduces gate delay and output slew, which also reduces the next cell's delay. This is fast to implement and does not change the logic. However, upsizing increases power and may worsen congestion, so it's a tool for addressing the worst few paths, not a brute-force solution for hundreds of paths."}},
+   {"@type":"Question","name":"What is an LVT cell swap for setup fixing?","acceptedAnswer":{"@type":"Answer","text":"LVT (Low-Vt threshold) cells have a lower threshold voltage than standard (SVT) cells. This makes them faster because transistors turn on more easily. Swapping a critical path cell from SVT to LVT reduces its delay, improving setup slack. The trade-off is significantly higher leakage current (5-10x), which increases static power. LVT cells are used sparingly on the most critical paths."}},
+   {"@type":"Question","name":"When is pipeline register insertion used for setup?","acceptedAnswer":{"@type":"Answer","text":"Pipeline register insertion splits a long combinational path into two shorter stages by inserting a flip-flop in the middle. Each stage now needs to meet only half the timing budget. This is the most powerful technique for fundamentally long paths (e.g., floating-point arithmetic, complex ALU paths) but it adds one cycle of latency to the computation, which must be acceptable at the architecture level."}},
+   {"@type":"Question","name":"What is useful skew for setup violation fixing?","acceptedAnswer":{"@type":"Answer","text":"Useful skew intentionally delays the capture flip-flop's clock arrival relative to the launch flip-flop's clock. By making the capture clock arrive later, the effective required time increases, giving the data more time to arrive. The clock tree is adjusted to deliver the clock slightly later to the capture FF. The amount of useful skew must be carefully limited to avoid creating hold violations on the skewed path."}},
+   {"@type":"Question","name":"When should you accept a timing exception instead of fixing a setup violation?","acceptedAnswer":{"@type":"Answer","text":"A timing exception (set_multicycle_path or set_false_path) is only acceptable when there is a genuine architectural justification: the path is logically impossible to sensitise, or data on this path legitimately takes multiple cycles. Using exceptions to hide real violations is dangerous and can cause silicon failures. A valid multicycle path must be documented with which architectural condition guarantees the multi-cycle property."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--amber:#fbbf24;--cyan:#38bdf8;--green:#4ade80;--red:#f87171;--violet:#a78bfa;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.78}
+a{color:var(--amber);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--amber)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--amber);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:var(--amber);font-weight:600}
+.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}
+h3{font-size:1.02rem;font-weight:700;color:var(--amber);margin:1.3rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.05)}.box.key h3{color:var(--amber);margin-top:0}
+.box.warn{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}.box.warn h3{color:var(--red);margin-top:0}
+.box.info{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.05)}.box.info h3{color:var(--cyan);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+th{background:var(--bg3);color:var(--amber);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b{color:#e2e8f0}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}
+.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}
+.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fcd34d}
+.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}
+.cc-btns button:hover{background:#1e3050;color:#fff}
+.codecard pre{margin:0;padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(251,191,36,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.takeaways h3{color:var(--amber);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}
+.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+.svg-wrap{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.3rem 0;overflow-x:auto;text-align:center}
+@media(max-width:600px){.nav-links{display:none}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/sta/">STA</a><a href="/clock-domain-crossing/">CDC</a><a href="/low-power/">Low Power</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/sta/">STA Course</a><span>&#8250;</span><span>Day 12</span></div>
+
+<div class="wrap">
+<span class="daytag">DAY 12 &middot; TIMING CLOSURE &amp; SIGN-OFF</span>
+<h1>Fixing Setup Violations</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated June 2026</div>
+<p class="lead">Setup violations mean your critical paths are too slow for the target clock frequency. Fixing them is the central activity of timing closure &mdash; an iterative, systematic process that demands understanding which technique to apply to which type of violation. The goal is to reduce path delay until slack &ge; 0 at every corner, while minimising the collateral damage to power, area, and hold timing.</p>
+
+<h2>1. The timing closure loop</h2>
+<p>Setup closure is never done in one pass. It is an iterative loop that converges as violations are progressively fixed:</p>
+
+<div class="svg-wrap">
+<svg width="660" height="170" viewBox="0 0 660 170" xmlns="http://www.w3.org/2000/svg" font-family="'Outfit',sans-serif" font-size="11">
+  <text x="330" y="22" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Iterative Timing Closure Loop</text>
+
+  <!-- Steps -->
+  <rect x="30" y="40" width="100" height="50" rx="6" fill="#0c1526" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="80" y="62" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="700">Run STA</text>
+  <text x="80" y="78" text-anchor="middle" fill="#94a3b8" font-size="9">report_timing</text>
+
+  <rect x="170" y="40" width="100" height="50" rx="6" fill="#0c1526" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="220" y="62" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700">Analyse</text>
+  <text x="220" y="78" text-anchor="middle" fill="#94a3b8" font-size="9">WNS, TNS, paths</text>
+
+  <rect x="310" y="40" width="100" height="50" rx="6" fill="#0c1526" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="360" y="62" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="700">Apply Fix</text>
+  <text x="360" y="78" text-anchor="middle" fill="#94a3b8" font-size="9">ECO / re-synth</text>
+
+  <rect x="450" y="40" width="100" height="50" rx="6" fill="#0c1526" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="500" y="62" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="700">Verify</text>
+  <text x="500" y="78" text-anchor="middle" fill="#94a3b8" font-size="9">WNS ≥ 0?</text>
+
+  <!-- Arrows -->
+  <line x1="130" y1="65" x2="165" y2="65" stroke="#64748b" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="270" y1="65" x2="305" y2="65" stroke="#64748b" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="410" y1="65" x2="445" y2="65" stroke="#64748b" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- Loop back arrow -->
+  <path d="M 550 90 Q 550 145 330 145 Q 110 145 80 90" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a1)"/>
+  <text x="330" y="158" text-anchor="middle" fill="#64748b" font-size="9">Not clean — iterate</text>
+
+  <!-- Done -->
+  <text x="580" y="68" fill="#4ade80" font-size="10" font-weight="700">DONE!</text>
+  <line x1="550" y1="65" x2="575" y2="65" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <defs>
+    <marker id="a1" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker>
+    <marker id="a2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4ade80"/></marker>
+  </defs>
+</svg>
+</div>
+
+<p>Each iteration should address a specific category of violations &mdash; not random individual paths. Fixing one path often shifts the critical path to the next-worst, so working on the statistically worst group each iteration converges faster than fixing paths one by one.</p>
+
+<h2>2. Fix techniques ordered by cost and impact</h2>
+
+<table>
+  <thead><tr><th>Technique</th><th>Delay reduction</th><th>Area cost</th><th>Power cost</th><th>When to use</th></tr></thead>
+  <tbody>
+    <tr><td><b>Buffer removal on critical path</b></td><td>20&ndash;50ps per buffer</td><td>Saves area</td><td>Saves power</td><td>When excessive buffering (for fanout/SI) is on the critical path</td></tr>
+    <tr><td><b>Cell upsizing</b></td><td>30&ndash;100ps per cell</td><td>+10&ndash;30%</td><td>+10&ndash;30%</td><td>First response for setup violations on critical cells</td></tr>
+    <tr><td><b>LVT cell swap (SVT&rarr;LVT)</b></td><td>50&ndash;150ps</td><td>Same</td><td>+300&ndash;1000% leakage</td><td>Last resort for critical cells when upsizing is insufficient</td></tr>
+    <tr><td><b>Useful skew</b></td><td>20&ndash;80ps effective</td><td>CTS change</td><td>Negligible</td><td>When timing budget can be shifted from one path pair to another</td></tr>
+    <tr><td><b>Logic restructuring</b></td><td>Path-specific</td><td>Variable</td><td>Variable</td><td>When logic depth is the fundamental limit (re-synthesis)</td></tr>
+    <tr><td><b>Placement optimisation</b></td><td>30&ndash;200ps (wire)</td><td>No change</td><td>No change</td><td>When wire delay dominates the critical path</td></tr>
+    <tr><td><b>Pipeline insertion</b></td><td>Full path split</td><td>+FF area</td><td>+FF power</td><td>When path fundamentally exceeds one clock cycle even after all other fixes</td></tr>
+  </tbody>
+</table>
+
+<h2>3. Cell upsizing</h2>
+<p>Cell upsizing replaces a cell with a larger drive-strength version of the same function. A stronger driver has lower output resistance, which charges the output capacitance faster. This reduces both cell delay and output slew, which also speeds up subsequent cells in the path.</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Cell upsizing ECO in PrimeTime</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Identify cells contributing most delay on worst path
+report_timing -nworst 1 -path_type full
+
+## Target the cell with highest Incr value on the critical path
+## Example: AND2X2 has 0.09 ns delay; try AND2X8 (stronger)
+size_cell [get_cells u_core/U_and1] AND2X8
+
+## Verify improvement
+update_timing
+report_timing -from [get_cells u_core/ff_A] -to [get_cells u_core/ff_B] -nworst 1
+
+## Automated sizing: optimize worst N paths
+optimize_critical_paths -slack_threshold 0 -max_paths 100
+
+## Check for hold side effects from upsizing
+## Upsizing = faster cell = shorter min delay = more hold risk
+report_timing -delay_type min -nworst 10
+
+## Size multiple cells at once (ECO approach)
+foreach cell {u_core/U1 u_core/U2 u_core/U4} {
+  set cur [get_attribute [get_cells $cell] ref_name]
+  puts "Sizing $cell from $cur"
+}
+size_cell [get_cells u_core/U1] BUFX8
+size_cell [get_cells u_core/U2] OR2X8
+size_cell [get_cells u_core/U4] AND3X4</pre>
+</div>
+
+<h2>4. LVT cell swapping</h2>
+<p>Low-Vt (LVT) cells are the same logic function as standard-Vt (SVT) but with a lower threshold voltage. Lower Vt means transistors turn on earlier, giving faster switching at the cost of dramatically higher subthreshold leakage.</p>
+<ul>
+  <li>Typical speed gain from SVT&rarr;LVT: <b>15&ndash;30% delay reduction per cell</b></li>
+  <li>Typical leakage increase: <b>5&ndash;10&times;</b> per cell</li>
+  <li>Best strategy: use LVT only on the <b>top 5&ndash;10% of critical cells</b>; do not blanket-swap</li>
+</ul>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">LVT cell swapping in post-synthesis ECO</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Identify cells on timing-critical paths for LVT swap
+## Typical: swap cells contributing >50% of path delay
+
+## List cells on worst path
+set worst_path [get_timing_paths -delay_type max -nworst 1]
+set critical_cells [get_cells -of [get_timing_path_pins $worst_path]]
+
+## Check current Vt of cells
+foreach cell $critical_cells {
+  puts "[get_object_name $cell]: [get_attribute $cell ref_name]"
+}
+
+## Swap specific cell from SVT to LVT
+## Library naming: BUFX4 -> BUFX4_LVT
+size_cell [get_cells u_core/U_crit] BUFX4_LVT
+size_cell [get_cells u_core/U_and2] AND2X4_LVT
+
+## After LVT swap, verify leakage impact
+report_power -cell [get_cells {u_core/U_crit u_core/U_and2}]
+
+## Check hold: LVT is faster, so hold slack decreases
+report_timing -delay_type min -through [get_cells u_core/U_crit] -nworst 5</pre>
+</div>
+
+<h2>5. Buffer removal on the critical path</h2>
+<p>Paradoxically, removing buffers can improve setup timing. Buffers added for fanout control or signal integrity add delay to the path. If the fanout situation has changed (after placement optimisation) or the buffer was over-estimated as necessary, removing it saves 20&ndash;50ps per stage.</p>
+<p>Look for buffers in the timing report where: (1) the buffer&rsquo;s fanout is 1 (only one receiver), or (2) the net capacitance after the buffer is small (the buffer wasn&rsquo;t needed), or (3) the buffer was inserted during CTS but doesn&rsquo;t carry a clock signal.</p>
+
+<h2>6. Logic restructuring</h2>
+<p>When a path has too many logic levels (gates in series), reducing the gate count through restructuring is more powerful than any ECO fix. Common techniques:</p>
+<ul>
+  <li><b>Logic flattening</b> &mdash; re-synthesise a logic cone without hierarchy constraints; the synthesiser may find a more parallel implementation</li>
+  <li><b>Retiming</b> &mdash; move registers across combinational logic to balance path lengths (done in synthesis with <code>compile_ultra -retime</code>)</li>
+  <li><b>Carry-lookahead for adders</b> &mdash; replace a ripple-carry adder with a parallel prefix adder if adder paths are critical</li>
+  <li><b>Factor extraction</b> &mdash; re-express logic in a form that allows more sharing, reducing depth</li>
+</ul>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Logic restructuring in Design Compiler</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## In Design Compiler: identify cells with highest fanin contributing to violations
+report_timing -path_type full -nworst 10
+
+## For a specific block, re-synthesise with restructuring enabled
+compile_ultra -retime          ; # retime registers across paths
+compile_ultra -incremental     ; # incremental optimisation only
+
+## Target a specific path for restructuring
+group_path -name critical_adder \
+  -from [get_cells u_alu/add_in_reg/*] \
+  -to   [get_cells u_alu/result_reg/*]
+compile_ultra -only_design_rule_fix -incremental
+
+## In Genus: restructure-aware synthesis
+syn_opt -effort ultra
+time_design -pre_place
+restructure
+time_design -pre_place  ; # check if restructuring helped</pre>
+</div>
+
+<h2>7. Pipeline register insertion</h2>
+<p>If a path fundamentally has too many logic levels &mdash; even after cell sizing, LVT swapping, and placement optimisation &mdash; the only path to fixing it is adding a pipeline register to split it into two stages. Each stage now has only half the logic depth.</p>
+<p>The cost is one additional clock cycle of latency on that computation. This must be architecturally acceptable: downstream logic must be updated to account for the extra cycle. Retiming in synthesis can automate this across the whole design.</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Pipeline insertion (Tcl ECO + synthesis)</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Identify a long path candidate for pipelining
+## Slack: -0.250 ns, path delay: 1.950 ns, clock period: 1.0 ns
+## -> path needs to be split into 2 stages of ~0.975 ns each
+
+## In RTL (Verilog): insert a pipeline register
+// Before: result = A + B + C + D (long combinational chain)
+// After:
+//   always @(posedge clk) pipe_stage <= A + B;  // Stage 1
+//   always @(posedge clk) result <= pipe_stage + C + D; // Stage 2
+
+## In synthesis (post-RTL fix): use retiming
+set_optimize_registers true -design [get_designs ADDER]
+compile_ultra -retime -sequential_area_recovery
+
+## Verify after retiming
+report_timing -nworst 5 -group adder_path
+report_register -level_sensitive  ; # ensure no latches created</pre>
+</div>
+
+<h2>8. Useful skew for setup</h2>
+<p>Useful skew intentionally introduces a clock arrival time difference between launch and capture flip-flops to benefit timing. If the capture FF&rsquo;s clock arrives slightly <em>later</em> than the launch FF&rsquo;s clock, the required time effectively increases, giving data more margin.</p>
+<p>Useful skew is applied during CTS by adjusting clock buffer delays to individual clock sinks. The maximum useful skew is limited by the hold requirement on the same path (introducing too much skew will cause a hold violation in the other direction).</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Useful skew constraints for CTS (ICC2 / Innovus)</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## In ICC2: apply useful skew target for specific flip-flops
+## Delay capture FF clock by 100 ps to gain 100 ps setup margin
+set_clock_latency -late 0.100 [get_cells u_core/ff_capture]
+
+## Or set target insertion delay for the capture sink
+# (Tool will adjust buffer sizing to hit this target)
+set_clock_balance_point -delay 0.650 [get_pins u_core/ff_capture/CK]
+# vs nominal insertion delay of 0.550 for other FFs in this domain
+
+## After CTS: verify skew and check hold
+report_clock_timing -type skew -clock clk_core -nworst 10
+report_timing -delay_type min -nworst 10  ; # check hold on this path!</pre>
+</div>
+
+<div class="box warn">
+  <h3>Every setup improvement can create a hold violation</h3>
+  <p style="margin:0">Every technique that reduces the data arrival time (faster data) or increases the required time (later capture clock) also reduces hold margin on the same path. After any setup fix, always run <code>report_timing -delay_type min</code> on the affected paths. Cell upsizing, LVT swap, and useful skew are the three most common inadvertent creators of hold violations during setup closure.</p>
+</div>
+
+<h2>9. Physical optimisation</h2>
+<p>After gate-level fixes, placement and routing can also help:</p>
+<ul>
+  <li><b>Place critical cells closer</b> &mdash; shorter wire = lower wire RC = less wire delay; 30&ndash;100ps possible</li>
+  <li><b>Remove routing detours</b> &mdash; reroute congested nets to take a shorter path</li>
+  <li><b>Net widening</b> &mdash; wider wires have lower resistance; helps long nets on critical paths</li>
+  <li><b>Layer upgrade</b> &mdash; upper metal layers have lower resistance; route critical nets on higher metal</li>
+</ul>
+
+<div class="takeaways">
+  <h3>Day 12 Key Takeaways</h3>
+  <ul>
+    <li><b>Timing closure is iterative</b>: run STA &rarr; analyse WNS/TNS &rarr; fix worst category &rarr; verify &rarr; repeat</li>
+    <li><b>Cell upsizing</b> &mdash; fastest ECO fix; increases drive strength; use for the worst few cells on critical paths</li>
+    <li><b>LVT swap</b> &mdash; 15&ndash;30% delay reduction per cell; 5&ndash;10&times; leakage penalty; use sparingly on most critical cells</li>
+    <li><b>Buffer removal</b> &mdash; paradoxically reduces delay on over-buffered critical paths; check fanout first</li>
+    <li><b>Useful skew</b> &mdash; delays capture clock arrival to give data more time; limited by hold margin on same path</li>
+    <li><b>Pipeline insertion</b> &mdash; architectural fix for fundamentally long paths; costs one cycle of latency</li>
+    <li><b>Every setup fix risks hold</b>: always check hold timing after applying any setup optimisation</li>
+  </ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>What is the most effective first step for fixing setup violations?</h3><p>The most effective immediate step is cell upsizing on the critical path. A stronger driver reduces gate delay and output slew, improving multiple downstream cells. It doesn&rsquo;t change logic, doesn&rsquo;t affect functionality, and is fast to implement in an ECO flow. Follow it by checking hold violations on the same path, as upsizing speeds up the cell and can reduce hold margin.</p></div>
+<div class="faq-item"><h3>What is an LVT cell swap for setup fixing?</h3><p>LVT (Low Threshold Voltage) cells switch faster than SVT cells because transistors turn on at a lower gate voltage. Swapping a critical path cell from SVT to LVT can reduce its delay by 15&ndash;30%. The trade-off is 5&ndash;10&times; higher leakage current on that cell, increasing static power. LVT should be used only on the most critical cells where other techniques have been exhausted.</p></div>
+<div class="faq-item"><h3>When is pipeline register insertion used for setup?</h3><p>Pipeline insertion is used when a path is fundamentally too long &mdash; even after upsizing, LVT swapping, and placement optimisation, the path delay exceeds one clock period. Inserting a flip-flop in the middle of the path splits it into two shorter stages. Each stage must meet only half the timing budget. The cost is one additional clock cycle of latency, which must be architecturally acceptable.</p></div>
+<div class="faq-item"><h3>What is useful skew for setup violation fixing?</h3><p>Useful skew delays the capture flip-flop&rsquo;s clock arrival relative to the launch flip-flop, effectively increasing the required time for that path. By arriving later, the capture window opens later, giving the data more time to propagate. The CTS tool can implement this by adjusting local buffer delays. The maximum amount of useful skew is bounded by the hold margin on the same path.</p></div>
+<div class="faq-item"><h3>When should you accept a timing exception instead of fixing a setup violation?</h3><p>A multicycle path exception is appropriate when the path is architecturally guaranteed to have multiple clock cycles before data is used. The justification must be explicit: which handshake, enable signal, or protocol ensures the multi-cycle property? Never apply exceptions to avoid fixing real single-cycle violations &mdash; that causes silicon failures. Document every exception with the architectural proof of why it is safe.</p></div>
+
+<div class="pager">
+  <a href="/sta/day-11-reading-timing-reports/"><div class="lab">&#8592; Previous</div><div class="ti">Day 11: Reading Timing Reports</div></a>
+  <a class="next" href="/sta/day-13-fixing-hold-violations/"><div class="lab">Next &#8594;</div><div class="ti">Day 13: Fixing Hold Violations</div></a>
+</div>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/sta/">STA Course</a> &middot; <a href="/clock-domain-crossing/">CDC</a> &middot; <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a>
+<div style="margin-top:.4rem">By EcrioniX &middot; Updated June 2026</div></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCode(btn){var pre=btn.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy';},1800);});}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
