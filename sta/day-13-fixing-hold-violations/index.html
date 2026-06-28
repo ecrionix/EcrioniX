@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 13: Fixing Hold Violations — Buffer Insertion, HVT Swap, ECO Flow | EcrioniX STA Course</title>
+<meta name="description" content="Day 13 of the EcrioniX STA course. Why hold violations appear post-CTS, buffer/delay cell insertion, HVT swapping, useful skew for hold, ECO buffer insertion flow, hold-aware CTS, and reporting with report_timing -delay_type min.">
+<meta name="keywords" content="fixing hold violations STA, buffer insertion hold, HVT swap timing, delay cell ECO, hold-aware CTS, short path hold violation, ECO buffer flow, report_timing min hold, VLSI hold violation fix">
+<link rel="canonical" href="https://ecrionix.org/sta/day-13-fixing-hold-violations/">
+<meta property="og:title" content="Day 13: Fixing Hold Violations | EcrioniX STA Course">
+<meta property="og:description" content="Hold violations post-CTS: buffer insertion, HVT swap, useful skew, ECO flow, hold-aware CTS, and reporting hold with report_timing min.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-28","dateModified":"2026-06-28","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 13: Fixing Hold Violations","description":"Complete guide to fixing hold timing violations: why they appear post-CTS, buffer insertion ECO, HVT swapping, useful skew, ECO flow, and never waiving hold violations.","url":"https://ecrionix.org/sta/day-13-fixing-hold-violations/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Static Timing Analysis Course","url":"https://ecrionix.org/sta/"}},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"STA Course","item":"https://ecrionix.org/sta/"},{"@type":"ListItem","position":3,"name":"Day 13","item":"https://ecrionix.org/sta/day-13-fixing-hold-violations/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"Why do hold violations appear after CTS?","acceptedAnswer":{"@type":"Answer","text":"Pre-CTS STA uses ideal clocks with no skew between flip-flops. After CTS, the real clock tree introduces local skew — some capture flip-flops receive the clock slightly earlier than their launch flip-flops. This positive skew (in the capture-arrival-first direction) reduces the hold window, causing hold violations on short data paths. The shorter the data path, the more vulnerable it is to hold violations from local skew."}},
+   {"@type":"Question","name":"What is the primary fix for hold violations?","acceptedAnswer":{"@type":"Answer","text":"The primary fix for hold violations is delay cell (buffer pair) insertion on the short data path. Adding one or more buffers increases the minimum path delay, ensuring data does not arrive at the capture flip-flop too early. Delay cells are chosen from the standard cell library (DLYB, BUF pairs) and are inserted by the ECO tool on the shortest violating paths."}},
+   {"@type":"Question","name":"What is HVT swapping for hold fixing?","acceptedAnswer":{"@type":"Answer","text":"HVT (High Threshold Voltage) cells switch slower than SVT cells due to their higher Vt. Swapping cells on a short path from SVT (or LVT) to HVT increases the minimum path delay, helping the hold requirement. This is complementary to delay cell insertion and is especially useful for hold violations caused by fast (LVT) cells on the shortest paths."}},
+   {"@type":"Question","name":"Can you ever waive a hold violation?","acceptedAnswer":{"@type":"Answer","text":"No. Hold violations cannot be waived for tape-out. A hold violation means data will be captured at the wrong clock edge — new data arrives before the flip-flop has finished capturing the previous value. This causes a functional failure that is independent of clock frequency. Unlike setup violations (which can sometimes be relaxed by reducing frequency), hold violations are physical failures that must be fixed with delay cells or clock tree adjustments."}},
+   {"@type":"Question","name":"What is hold-aware CTS?","acceptedAnswer":{"@type":"Answer","text":"Hold-aware CTS is a CTS strategy that actively limits local skew between adjacent flip-flops during clock tree building. By keeping local insertion delay differences small (targeting <30ps between adjacent FFs), the CTS tool minimises the number of post-CTS hold violations, reducing the ECO buffer insertion work needed afterward. It trades slightly higher global skew for dramatically fewer hold violations."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--amber:#fbbf24;--cyan:#38bdf8;--green:#4ade80;--red:#f87171;--violet:#a78bfa;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.78}
+a{color:var(--amber);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--amber)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--amber);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:var(--amber);font-weight:600}
+.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}
+h3{font-size:1.02rem;font-weight:700;color:var(--amber);margin:1.3rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.05)}.box.key h3{color:var(--amber);margin-top:0}
+.box.warn{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}.box.warn h3{color:var(--red);margin-top:0}
+.box.info{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.05)}.box.info h3{color:var(--cyan);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+th{background:var(--bg3);color:var(--amber);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b{color:#e2e8f0}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}
+.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}
+.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fcd34d}
+.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}
+.cc-btns button:hover{background:#1e3050;color:#fff}
+.codecard pre{margin:0;padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(251,191,36,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.takeaways h3{color:var(--amber);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}
+.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+.svg-wrap{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.3rem 0;overflow-x:auto;text-align:center}
+@media(max-width:600px){.nav-links{display:none}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/sta/">STA</a><a href="/clock-domain-crossing/">CDC</a><a href="/low-power/">Low Power</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/sta/">STA Course</a><span>&#8250;</span><span>Day 13</span></div>
+
+<div class="wrap">
+<span class="daytag">DAY 13 &middot; TIMING CLOSURE &amp; SIGN-OFF</span>
+<h1>Fixing Hold Violations</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated June 2026</div>
+<p class="lead">Hold violations are frequency-independent, physically guaranteed failures. Unlike setup violations (which can be resolved by reducing the clock frequency), a hold violation means data will overwrite a flip-flop before it has finished capturing its current value &mdash; every time, regardless of how slow the clock is. They appear en masse after CTS and must be eliminated &mdash; without exception &mdash; before tape-out.</p>
+
+<h2>1. Why hold violations appear post-CTS</h2>
+<p>Before CTS, STA uses ideal clocks with zero skew. After CTS, real clock tree buffers introduce <b>local skew</b> &mdash; the clock arrives at different times at physically adjacent flip-flops. Consider two flip-flops FF_L (launch) and FF_C (capture) connected by a very short combinational path:</p>
+<ul>
+  <li>Pre-CTS (ideal): both FFs see the clock at exactly t=0. No skew. Hold check: data arrival time vs t=0 &mdash; passes easily</li>
+  <li>Post-CTS (real): FF_L&rsquo;s clock arrives at t=0.60 ns, FF_C&rsquo;s clock arrives at t=0.55 ns (local skew = 0.05 ns). Now the capture edge is <em>earlier</em> than the launch edge by 50ps. The hold check is now relative to an edge that arrived 50ps early &mdash; the data from the new launch must not arrive before the old data was safely captured.</li>
+</ul>
+<p>Short paths are the most vulnerable because a very short combinational delay (e.g., a direct connection or a single buffer) means data arrives almost immediately after FF_L launches it. If FF_C&rsquo;s clock came even 10ps early, a 1-gate path may have a hold violation.</p>
+
+<h2>2. The hold check equation</h2>
+<p>The hold check compares the minimum data arrival time against the minimum required hold time:</p>
+<p style="font-family:'JetBrains Mono',monospace;font-size:.9rem;background:var(--bg2);border:1px solid var(--bdr);padding:.7rem 1rem;border-radius:8px;color:#4ade80">
+  Hold slack = Min_data_arrival &minus; (Capture_clock_arrival + Hold_time)
+</p>
+<p>For hold to pass, this must be &ge; 0. <b>Min_data_arrival</b> uses the fastest (best-case) data path; <b>Capture_clock_arrival</b> uses the latest (worst-case) capture clock to maximise pessimism (making the hold window as short as possible); <b>Hold_time</b> is the flip-flop&rsquo;s hold time from Liberty.</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Hold timing report — annotated</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">  Startpoint: ff_launch (rising edge, clocked by clk_core)
+  Endpoint:   ff_capture (rising edge, clocked by clk_core)
+  Path Type:  min   <- hold analysis uses minimum path delay
+
+  Point                              Incr   Path
+  ────────────────────────────────────────────────
+  clock clk_core (rise edge)         0.00   0.00
+  clock network delay (propagated)   0.60   0.60   <- FF_L clock arrival
+  ff_launch/CK (rise)                0.00   0.60
+  ff_launch/Q (rise)                 0.04   0.64   <- fastest Clk-to-Q
+  U_buf/Z (rise)         [net1]      0.02   0.66   <- single buffer on path
+  ff_capture/D (rise)    [net2]      0.01   0.67   <- data arrives at 0.67 ns
+
+  data arrival time                         0.67   <- MINIMUM arrival
+
+  clock clk_core (rise edge)         0.00   0.00
+  clock network delay (propagated)   0.55   0.55   <- FF_C clock arrival (EARLIER!)
+  ff_capture/CK (rise)               0.00   0.55
+  clock reconvergence pessimism      0.02   0.57   <- CPPR (helps slightly)
+  clock uncertainty                 -0.05   0.52
+  library hold time                  0.03   0.55   <- FF hold requirement
+
+  required time                             0.55
+
+  ────────────────────────────────────────────────
+  slack (VIOLATED)                         -0.12   <- 120 ps hold violation!</pre>
+</div>
+
+<h2>3. Buffer/delay cell insertion — the primary fix</h2>
+<p>The primary fix for a hold violation is inserting buffers (delay cells) on the data path to increase the minimum data arrival time. The goal: make <code>Min_data_arrival</code> exceed <code>Capture_clock + Hold_time</code>.</p>
+<p>Standard cells provide dedicated delay elements: <code>DLYB1</code>, <code>DLYB2</code>, <code>DLYB4</code> (increasing delay values), or simply a pair of series inverters. The number of buffers needed depends on the hold violation amount.</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Buffer insertion ECO for hold violations</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Step 1: Find worst hold violations
+report_timing -delay_type min -nworst 20 -slack_lesser_than 0
+
+## Step 2: For each violation, calculate buffers needed
+## Violation = -0.120 ns; DLYB2 adds ~0.070 ns each
+## Need 2 x DLYB2 = 0.140 ns -> fixes the 0.120 ns violation with 20 ps margin
+
+## Step 3: Insert delay cells via PT ECO
+## In PrimeTime ECO flow:
+insert_buffer ff_capture/D  DLYB2  ; # inserts buffer before D input
+insert_buffer ff_capture/D  DLYB2  ; # second buffer for more delay
+
+## Or using Innovus ECO flow:
+# eco_opt -hold -slack_threshold 0.0 -eco_route
+
+## Step 4: Verify hold is fixed without setup regression
+update_timing -full
+report_timing -delay_type min -from [get_cells ff_launch] -nworst 3
+report_timing -delay_type max -from [get_cells ff_launch] -nworst 3
+
+## Important: check that buffer insertion didn't create a setup violation!
+## Each DLYB2 adds delay to min path (+hold) but also to max path (-setup margin)
+## Typical buffer adds 0.07 ns to both min and max paths.</pre>
+</div>
+
+<div class="box warn">
+  <h3>Buffer insertion for hold REDUCES setup margin</h3>
+  <p style="margin:0">Every buffer inserted for hold increases both the minimum AND maximum path delay. If setup slack on that path was already tight (say +0.050 ns) and you insert a DLYB2 adding 0.070 ns, you&rsquo;ve now created a setup violation (-0.020 ns). Always check setup timing after hold ECO. Hold-aware timing closure alternates between hold and setup fixes.</p>
+</div>
+
+<h2>4. HVT cell swapping for hold</h2>
+<p>Cells on very short paths (single-gate or two-gate paths) may have been previously upsized or swapped to LVT for setup fixing. LVT cells are fast &mdash; which is great for setup but makes them the worst cells for hold. Swapping them back to SVT or HVT slows the minimum path.</p>
+
+<table>
+  <thead><tr><th>Cell Vt</th><th>Min path delay</th><th>Hold impact</th><th>Setup impact</th></tr></thead>
+  <tbody>
+    <tr><td><b>LVT</b></td><td>Shortest (fastest)</td><td>Worst for hold (data arrives earliest)</td><td>Best for setup</td></tr>
+    <tr><td><b>SVT</b></td><td>Nominal</td><td>Standard</td><td>Standard</td></tr>
+    <tr><td><b>HVT</b></td><td>Longest (slowest)</td><td>Best for hold (data arrives latest)</td><td>Worst for setup</td></tr>
+  </tbody>
+</table>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">HVT swap for hold fixing</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Identify cells on short hold-violating paths
+## Look for LVT cells (introduced during setup fixes) on hold-critical paths
+report_timing -delay_type min -nworst 10 -path_type full
+
+## Check Vt of critical cells
+foreach cell [get_cells u_short_path/*] {
+  puts "[get_object_name $cell]: [get_attribute $cell ref_name]"
+}
+
+## Swap LVT to SVT on the shortest path cell
+## SVT is slower = more hold margin, and leakage is less than LVT
+size_cell [get_cells u_path/U_buf_lvt] BUFX4    ; # SVT equivalent
+size_cell [get_cells u_path/U_inv_lvt] INVX2    ; # SVT equivalent
+
+## Or swap to HVT for maximum hold improvement
+size_cell [get_cells u_path/U_buf_lvt] BUFX4_HVT
+
+## Verify: hold improved, setup not violated
+update_timing
+report_timing -delay_type min -from [get_cells ff_A] -nworst 5
+report_timing -delay_type max -from [get_cells ff_A] -nworst 5</pre>
+</div>
+
+<h2>5. Useful skew for hold</h2>
+<p>Useful skew can also help hold violations. By making the launch FF&rsquo;s clock arrive <em>later</em> relative to the capture FF&rsquo;s clock (increasing the effective data flight time budget), hold margin improves on that specific path pair. However, this means delaying the launch clock, which <em>reduces setup margin</em> on that same path. Useful skew for hold trades setup margin for hold margin &mdash; only viable if setup has sufficient margin to spare.</p>
+
+<h2>6. ECO buffer insertion flow</h2>
+<p>In production design flows, hold fixing is an automated ECO step run after CTS and routing:</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Automated hold ECO in Innovus / PrimeTime</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## ── In Innovus (post-route) ──
+## Run hold optimisation (inserts delay buffers automatically)
+opt_design -post_route -hold
+# or:
+eco_opt -hold -slack_threshold 0.0
+
+## After hold ECO, re-route the new buffers
+route_eco -fix_drc true
+
+## Re-run STA to verify
+time_design -post_route
+report_timing -delay_type min -nworst 20
+
+## ── In PrimeTime ECO mode ──
+## Set up ECO mode
+set_eco_mode -verbose -eco_all_layers true
+set_eco_opt_clock false          ; # don't touch clock tree
+set_eco_opt_power false          ; # don't power-optimise
+
+## Run hold fixing
+eco_opt -hold -slack_threshold 0.0 -max_buffer_count 500
+
+## Write ECO changes back to layout tool
+write_changes -format icctcl -output hold_eco.tcl
+# Apply hold_eco.tcl in ICC2 / Innovus</pre>
+</div>
+
+<h2>7. Hold-aware CTS</h2>
+<p>The best time to prevent hold violations is during CTS, not after. A hold-aware CTS strategy actively controls local skew:</p>
+<ul>
+  <li><b>Target local skew &lt; 30ps</b> between physically adjacent flip-flops</li>
+  <li><b>Use smaller buffer variants</b> in leaf branches to reduce step-size of skew</li>
+  <li><b>Set a skew budget per clock segment</b> in the CTS spec</li>
+  <li><b>CTS cluster sizing</b>: keep FF clusters small so each cluster has a uniform insertion delay</li>
+</ul>
+<p>Investing effort in hold-aware CTS typically reduces post-route hold ECO buffer count by 50&ndash;80%, saving routing resources and reducing congestion from inserted buffers.</p>
+
+<div class="box warn">
+  <h3>Never waive hold violations</h3>
+  <p style="margin:0">Hold violations are physical failures that occur every clock cycle, regardless of clock frequency. They cannot be fixed by running at a lower frequency. A design with unresolved hold violations is non-functional silicon &mdash; period. Never approve tape-out with any hold violations, and never apply <code>set_false_path</code> or <code>set_multicycle_path</code> to hide a real hold violation. The only acceptable fixes are physical: more delay on the data path, less skew in the clock tree.</p>
+</div>
+
+<div class="takeaways">
+  <h3>Day 13 Key Takeaways</h3>
+  <ul>
+    <li><b>Hold violations appear post-CTS</b> because real local clock skew makes the capture clock arrive before the launch clock, reducing the hold window</li>
+    <li><b>Short paths are most vulnerable</b>: less data path delay = less margin against early clock arrival</li>
+    <li><b>Buffer insertion</b> is the primary fix: adds delay to data path; number of buffers = ceil(violation / buffer_delay)</li>
+    <li><b>HVT swap</b>: swap LVT/SVT cells to HVT on short paths to slow minimum delay</li>
+    <li><b>Buffer insertion hurts setup</b>: after every hold ECO, verify setup slack on the same paths</li>
+    <li><b>Hold-aware CTS</b>: limit local skew during CTS to reduce post-route hold ECO workload by 50&ndash;80%</li>
+    <li><b>Never waive hold violations</b>: they are frequency-independent physical failures; must be fixed before tape-out</li>
+  </ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>Why do hold violations appear after CTS?</h3><p>Pre-CTS STA uses ideal clocks with zero local skew. After CTS, real clock buffers create local skew between adjacent flip-flops. If the capture FF&rsquo;s clock arrives earlier than the launch FF&rsquo;s clock (positive skew in capture direction), the hold window shrinks. Short data paths can&rsquo;t sustain even 30&ndash;50ps of this skew without violating hold.</p></div>
+<div class="faq-item"><h3>What is the primary fix for hold violations?</h3><p>Buffer (delay cell) insertion on the data path is the primary fix. By adding one or more delay cells between the launch FF&rsquo;s output and the capture FF&rsquo;s input, the minimum data arrival time increases. Each delay cell adds approximately 0.05&ndash;0.10 ns depending on cell type. The inserted delay must exceed the hold violation amount plus hold margin.</p></div>
+<div class="faq-item"><h3>What is HVT swapping for hold fixing?</h3><p>HVT (High Threshold Voltage) cells switch slower than SVT or LVT cells due to higher Vt. Swapping cells on a short hold-violating path from LVT or SVT to HVT increases the minimum path delay. This is complementary to buffer insertion and is especially useful when LVT cells were previously inserted for setup fixes, inadvertently creating hold vulnerabilities on those paths.</p></div>
+<div class="faq-item"><h3>Can you ever waive a hold violation?</h3><p>No. Hold violations are frequency-independent functional failures &mdash; they occur every clock cycle regardless of how slow the clock is. A chip with hold violations will fail in the field, consistently and irrecoverably. Unlike setup violations (which can be mitigated by reducing frequency), hold violations have no operational workaround. They must be fixed physically before tape-out.</p></div>
+<div class="faq-item"><h3>What is hold-aware CTS?</h3><p>Hold-aware CTS controls local skew between adjacent flip-flops during clock tree building. By targeting local skew &lt; 30ps, the CTS tool prevents the worst-case skew conditions that cause post-CTS hold violations. This reduces the amount of ECO buffer insertion needed after routing, saving routing resources and avoiding congestion from hundreds of inserted delay cells.</p></div>
+
+<div class="pager">
+  <a href="/sta/day-12-fixing-setup-violations/"><div class="lab">&#8592; Previous</div><div class="ti">Day 12: Fixing Setup Violations</div></a>
+  <a class="next" href="/sta/day-14-eco-flow/"><div class="lab">Next &#8594;</div><div class="ti">Day 14: ECO Flow</div></a>
+</div>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/sta/">STA Course</a> &middot; <a href="/clock-domain-crossing/">CDC</a> &middot; <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a>
+<div style="margin-top:.4rem">By EcrioniX &middot; Updated June 2026</div></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCode(btn){var pre=btn.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy';},1800);});}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
