@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day 8: Timing Exceptions — False Paths, Multicycle, Max/Min Delay | EcrioniX STA Course</title>
+<meta name="description" content="Day 8 of the EcrioniX STA course. Deep dive into timing exceptions: set_false_path vs set_clock_groups, multicycle path pairing, set_max_delay -datapath_only for async FIFOs, set_min_delay, common mistakes, and auditing exceptions.">
+<meta name="keywords" content="timing exceptions STA, set_false_path, set_multicycle_path, set_max_delay datapath_only, set_min_delay, set_clock_groups asynchronous, false path mistakes, timing exception audit, VLSI interview timing exceptions">
+<link rel="canonical" href="https://ecrionix.org/sta/day-08-timing-exceptions/">
+<meta property="og:title" content="Day 8: Timing Exceptions — False Paths, Multicycle, Max/Min Delay | EcrioniX STA Course">
+<meta property="og:description" content="Deep dive into timing exceptions: false paths, multicycle path pairing, set_max_delay datapath_only for async FIFOs, common mistakes, and auditing.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-06-28","dateModified":"2026-06-28","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Day 8: Timing Exceptions — False Paths, Multicycle, Max/Min Delay","description":"Complete deep-dive into STA timing exceptions: when to use each, set_false_path vs set_clock_groups, multicycle path pairing rules, set_max_delay -datapath_only for async FIFOs, and exception auditing.","url":"https://ecrionix.org/sta/day-08-timing-exceptions/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Static Timing Analysis Course","url":"https://ecrionix.org/sta/"}},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"STA Course","item":"https://ecrionix.org/sta/"},{"@type":"ListItem","position":3,"name":"Day 8","item":"https://ecrionix.org/sta/day-08-timing-exceptions/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is the difference between set_false_path and set_clock_groups?","acceptedAnswer":{"@type":"Answer","text":"set_false_path marks specific paths as not timing-critical, removing them from analysis. set_clock_groups -asynchronous marks entire clock domain relationships as having no timing requirement. For truly asynchronous domains, set_clock_groups is preferred because it handles all paths between the domains in one command and is harder to apply incorrectly."}},
+   {"@type":"Question","name":"Why must set_multicycle_path setup always have a hold adjustment?","acceptedAnswer":{"@type":"Answer","text":"When you declare set_multicycle_path 2 -setup, STA checks setup at cycle 2 but still checks hold at the default single-cycle hold window (cycle 0). This means the hold check is now relative to a different clock edge than intended, producing incorrect hold analysis. The standard fix is always: set_multicycle_path 1 -hold on the same path, which adjusts the hold window back to be consistent with the 2-cycle setup."}},
+   {"@type":"Question","name":"What is set_max_delay -datapath_only used for?","acceptedAnswer":{"@type":"Answer","text":"set_max_delay -datapath_only is used for asynchronous FIFO pointer crossings and other CDC paths where a constraint is needed but the path is not synchronous to any clock. The -datapath_only flag tells STA to check only the combinational delay without applying setup time or clock jitter — it treats the path as a pure combinational delay check, not a flip-flop to flip-flop timing check."}},
+   {"@type":"Question","name":"How do you audit timing exceptions to ensure they are correct?","acceptedAnswer":{"@type":"Answer","text":"Use report_exceptions to list all applied exceptions with their from/to/through specifications. Cross-reference each exception against design documentation. Check for over-broad exceptions (e.g., false paths applied to all paths from a clock that includes real timing paths). Use report_timing -path_type full to verify that exceptions are not silently removing real violations from view."}},
+   {"@type":"Question","name":"What happens if you forget the hold adjustment in set_multicycle_path?","acceptedAnswer":{"@type":"Answer","text":"Without the hold adjustment, STA checks setup timing at cycle N but checks hold timing relative to an incorrect clock edge. For a 2-cycle setup path, this often produces phantom hold violations that are impossible to fix, or worse, misses real hold violations because the tool is checking the wrong edge. Always pair set_multicycle_path N -setup with set_multicycle_path (N-1) -hold on the exact same -from/-to specification."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--amber:#fbbf24;--cyan:#38bdf8;--green:#4ade80;--red:#f87171;--violet:#a78bfa;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.78}
+a{color:var(--amber);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.1rem .35rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--amber)}.bc span{opacity:.4}
+.wrap{max-width:800px;margin:0 auto;padding:2.4rem 1.5rem}
+.daytag{display:inline-block;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--amber);font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;padding:.25rem .7rem;border-radius:6px;letter-spacing:.06em;margin-bottom:1rem}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:900;color:#f8fafc;line-height:1.15;margin-bottom:.4rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1rem}.byline a{color:var(--amber);font-weight:600}
+.lead{color:var(--sl);font-size:1.06rem;margin-bottom:1.4rem}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2rem 0 .6rem;padding-top:.5rem}
+h3{font-size:1.02rem;font-weight:700;color:var(--amber);margin:1.3rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.9rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.1rem 1.3rem;margin:1.3rem 0}
+.box.key{border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.05)}.box.key h3{color:var(--amber);margin-top:0}
+.box.warn{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}.box.warn h3{color:var(--red);margin-top:0}
+.box.info{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.05)}.box.info h3{color:var(--cyan);margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:.84rem;margin:1rem 0}
+th{background:var(--bg3);color:var(--amber);text-align:left;padding:.5rem .6rem;border:1px solid var(--bdr);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+td{border:1px solid var(--bdr);padding:.45rem .6rem;color:var(--sl);vertical-align:top}td b{color:#e2e8f0}
+.codecard{border:1px solid var(--bdr);border-radius:10px;margin:1rem 0;overflow:hidden;background:#05080f}
+.cc-head{display:flex;align-items:center;justify-content:space-between;background:#0c1526;padding:.45rem .7rem;border-bottom:1px solid var(--bdr)}
+.cc-name{font-family:'JetBrains Mono',monospace;font-size:.76rem;color:#fcd34d}
+.cc-btns button{background:#16233b;border:1px solid var(--bdr);color:#cbd5e1;font-size:.7rem;font-weight:600;padding:.25rem .65rem;border-radius:6px;cursor:pointer}
+.cc-btns button:hover{background:#1e3050;color:#fff}
+.codecard pre{margin:0;padding:.9rem 1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;color:#cbd5e1;white-space:pre}
+.takeaways{background:var(--bg2);border:1px solid rgba(251,191,36,.25);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.takeaways h3{color:var(--amber);margin-top:0}.takeaways ul{margin-bottom:0}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.7rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.95rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0}
+.pager{display:flex;justify-content:space-between;gap:1rem;margin-top:2.2rem;flex-wrap:wrap}
+.pager a{flex:1;min-width:200px;border:1px solid var(--bdr);border-radius:12px;padding:.9rem 1.1rem;background:var(--bg2)}
+.pager .lab{font-size:.66rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+.pager .ti{font-size:.9rem;color:#e2e8f0;font-weight:600;margin-top:.2rem}.pager .next{text-align:right}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+.svg-wrap{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.3rem 0;overflow-x:auto;text-align:center}
+@media(max-width:600px){.nav-links{display:none}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/sta/">STA</a><a href="/clock-domain-crossing/">CDC</a><a href="/low-power/">Low Power</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/sta/">STA Course</a><span>&#8250;</span><span>Day 8</span></div>
+
+<div class="wrap">
+<span class="daytag">DAY 8 &middot; ADVANCED STA</span>
+<h1>Timing Exceptions &mdash; False Paths, Multicycle, Max/Min Delay</h1>
+<div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated June 2026</div>
+<p class="lead">Real designs have paths that the default single-cycle STA check doesn&rsquo;t apply to. A path that can never be sensitised. A computation that deliberately takes two clock cycles. A CDC path between async domains. Timing exceptions are how you tell STA about these special cases &mdash; and incorrect exceptions are how real silicon failures get shipped by mistake.</p>
+
+<h2>1. The exception hierarchy</h2>
+<p>STA applies timing checks based on a priority hierarchy. When multiple exceptions apply to the same path, the tool applies the highest-priority one. Understanding this hierarchy prevents silent constraint overrides:</p>
+<ol>
+  <li><b>set_false_path</b> &mdash; highest priority; removes path from all analysis</li>
+  <li><b>set_max_delay / set_min_delay</b> &mdash; overrides the clock-period derived requirement</li>
+  <li><b>set_multicycle_path</b> &mdash; adjusts the number of cycles for setup/hold check</li>
+  <li><b>Default single-cycle check</b> &mdash; lowest priority; applies when no exception is present</li>
+</ol>
+<p>The most specific exception wins. An exception with <code>-through</code> overrides one with only <code>-from</code>. An exception with both <code>-from</code> and <code>-to</code> overrides one with only <code>-from</code>.</p>
+
+<h2>2. set_false_path &mdash; deep dive</h2>
+<p>A false path is a path that exists structurally in the netlist but is never functionally exercised in a way that violates timing. There are two legitimate categories:</p>
+<ul>
+  <li><b>Functionally impossible paths</b> &mdash; the logic combination that would sensitise the path can never occur during operation</li>
+  <li><b>CDC paths with synchronisers</b> &mdash; paths between asynchronous clock domains where timing is deliberately non-deterministic and handled by a synchroniser, not by a timing constraint</li>
+</ul>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">set_false_path — correct and incorrect usage</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## ✅ CORRECT: Async reset path (not timing-critical in any real scenario)
+set_false_path -from [get_ports rst_n]
+
+## ✅ CORRECT: CDC crossing handled by synchronizer
+## The synchronizer guarantees safe capture; STA timing on the raw crossing is irrelevant
+set_false_path -from [get_clocks clk_a] -to [get_clocks clk_b]
+set_false_path -from [get_clocks clk_b] -to [get_clocks clk_a]
+
+## ✅ CORRECT: Test-mode only MUX bypass path
+## When test_mode=0 (functional), this path is never active
+set_case_analysis 0 [get_ports test_mode]
+set_false_path -through [get_pins test_mux/B]
+
+## ❌ WRONG: Removing a real path because it's hard to fix
+## This hides a real silicon failure!
+set_false_path -from FF_A/Q -to FF_B/D
+
+## ❌ WRONG: False path on a clock domain that has real synchronous paths
+set_false_path -from [get_clocks clk_core]
+## This removes ALL paths from clk_core — including real setup/hold paths!</pre>
+</div>
+
+<div class="box warn">
+  <h3>Every false path must have a written functional justification</h3>
+  <p style="margin:0">A false path declaration in production SDC should have a comment explaining exactly why the path is false. If you can&rsquo;t write the justification in one sentence, the false path may be incorrect. Common mistakes: (1) applying <code>set_false_path</code> to avoid fixing a real violation; (2) bidirectional CDC paths where only one direction is actually async; (3) over-broad specifications that catch unintended paths.</p>
+</div>
+
+<h2>3. set_false_path vs set_clock_groups</h2>
+<p>For asynchronous CDC, two commands can achieve similar results but with important differences:</p>
+
+<table>
+  <thead><tr><th>Aspect</th><th>set_false_path -from clk_a -to clk_b</th><th>set_clock_groups -asynchronous</th></tr></thead>
+  <tbody>
+    <tr><td><b>What it does</b></td><td>Marks specific one-directional paths as false</td><td>Marks the entire clock relationship as having no timing requirement (bidirectional, all paths)</td></tr>
+    <tr><td><b>Coverage</b></td><td>Only A&rarr;B; B&rarr;A needs a separate command</td><td>Both directions, all paths between all clocks in the groups</td></tr>
+    <tr><td><b>Generated clocks</b></td><td>May not cover generated clocks derived from clk_a</td><td>Applies to all clocks in the group including generated ones</td></tr>
+    <tr><td><b>Reports</b></td><td>Path appears in report_exceptions as false path</td><td>Paths are excluded from analysis entirely; do not appear in reports</td></tr>
+    <tr><td><b>When to use</b></td><td>When only one direction is false, or a specific subset of paths</td><td>When two clock domains have absolutely no timing relationship (preferred for CDC)</td></tr>
+  </tbody>
+</table>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">set_clock_groups vs set_false_path for CDC</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Preferred: set_clock_groups -asynchronous for true async domains
+## Covers all derived clocks, both directions, cleaner SDC
+set_clock_groups -asynchronous \
+  -group {clk_core clk_core_div2} \
+  -group {clk_usb} \
+  -group {clk_ddr}
+
+## vs. set_false_path (more verbose, error-prone for large designs)
+set_false_path -from [get_clocks clk_core] -to [get_clocks clk_usb]
+set_false_path -from [get_clocks clk_usb]  -to [get_clocks clk_core]
+set_false_path -from [get_clocks clk_core] -to [get_clocks clk_ddr]
+set_false_path -from [get_clocks clk_ddr]  -to [get_clocks clk_core]
+## ... (many more lines for each direction and generated clock combination)
+
+## Use set_false_path when ONLY ONE direction needs to be false:
+## e.g., clk_a launches data that flows to clk_b domain but not back
+set_false_path -from [get_clocks clk_fast] -to [get_clocks clk_slow]
+## Note: other direction (clk_slow to clk_fast) remains timing-checked!</pre>
+</div>
+
+<h2>4. set_multicycle_path &mdash; deep dive</h2>
+<p>A multicycle path allows data to travel across multiple clock cycles before being captured. This is used when a pipeline stage deliberately takes more than one cycle to complete &mdash; the result is only valid at cycle N and is not read until then.</p>
+
+<div class="svg-wrap">
+<svg width="660" height="190" viewBox="0 0 660 190" xmlns="http://www.w3.org/2000/svg" font-family="'Outfit',sans-serif" font-size="11">
+  <text x="330" y="20" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">2-Cycle Multicycle Path: Setup and Hold Check Windows</text>
+
+  <!-- Clock cycles -->
+  <text x="40" y="50" fill="#64748b" font-size="10">Clock:</text>
+  <line x1="80" y1="45" x2="80" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="80" y1="55" x2="200" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="200" y1="45" x2="200" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="200" y1="55" x2="320" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="320" y1="45" x2="320" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="320" y1="55" x2="440" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="440" y1="45" x2="440" y2="55" stroke="#38bdf8" stroke-width="2"/>
+  <line x1="440" y1="55" x2="580" y2="55" stroke="#38bdf8" stroke-width="2"/>
+
+  <text x="80" y="44" text-anchor="middle" fill="#38bdf8" font-size="9">Cyc 0 (launch)</text>
+  <text x="200" y="44" text-anchor="middle" fill="#38bdf8" font-size="9">Cyc 1</text>
+  <text x="320" y="44" text-anchor="middle" fill="#38bdf8" font-size="9">Cyc 2 (capture MCP)</text>
+  <text x="440" y="44" text-anchor="middle" fill="#38bdf8" font-size="9">Cyc 3</text>
+
+  <!-- Default single cycle setup check (bad) -->
+  <text x="40" y="90" fill="#f87171" font-size="10">Without MCP:</text>
+  <line x1="80" y1="98" x2="200" y2="98" stroke="#f87171" stroke-width="2.5" stroke-dasharray="5,3"/>
+  <text x="140" y="94" text-anchor="middle" fill="#f87171" font-size="9">Setup check at Cyc 1 ← VIOLATION!</text>
+
+  <!-- MCP setup check at Cyc 2 -->
+  <text x="40" y="125" fill="#4ade80" font-size="10">With MCP:</text>
+  <line x1="80" y1="133" x2="320" y2="133" stroke="#4ade80" stroke-width="2.5"/>
+  <text x="200" y="129" text-anchor="middle" fill="#4ade80" font-size="9">Setup checked at Cyc 2 (2 cycles) ✓</text>
+
+  <!-- Hold check -->
+  <text x="40" y="160" fill="#fbbf24" font-size="10">Hold check:</text>
+  <rect x="190" y="152" width="20" height="14" rx="2" fill="rgba(251,191,36,.2)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="285" y="163" fill="#fbbf24" font-size="9">Hold checked at Cyc 1 (MCP -hold 1) ✓</text>
+
+  <text x="330" y="183" text-anchor="middle" fill="#64748b" font-size="9">set_multicycle_path 2 -setup + set_multicycle_path 1 -hold (always pair them!)</text>
+</svg>
+</div>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">set_multicycle_path — correct patterns</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## ── 2-cycle path through a slow multiplier ──
+## Setup: check at cycle 2 (data can take 2 cycles to be valid)
+set_multicycle_path 2 -setup \
+  -from [get_cells u_mult/launch_reg/*] \
+  -to   [get_cells u_mult/capture_reg/*]
+
+## Hold: adjust to cycle 1 (hold checked at adjacent cycle, not cycle 0)
+## Without this: hold violation appears at the wrong clock edge!
+set_multicycle_path 1 -hold  \
+  -from [get_cells u_mult/launch_reg/*] \
+  -to   [get_cells u_mult/capture_reg/*]
+
+## ── 3-cycle path through floating-point unit ──
+set_multicycle_path 3 -setup -from [get_cells fpu/*] -to [get_cells fpu/result_reg/*]
+set_multicycle_path 2 -hold  -from [get_cells fpu/*] -to [get_cells fpu/result_reg/*]
+
+## ── Multicycle based on path endpoint only ──
+## When the destination register is always written at 4-cycle intervals:
+set_multicycle_path 4 -setup -to [get_cells low_rate_config_reg/*]
+set_multicycle_path 3 -hold  -to [get_cells low_rate_config_reg/*]
+
+## ── Verifying multicycle path is correctly applied ──
+report_timing -from [get_cells u_mult/launch_reg/*] \
+              -to   [get_cells u_mult/capture_reg/*] \
+              -path_type full</pre>
+</div>
+
+<div class="box warn">
+  <h3>The hold adjustment formula: always (N-1)</h3>
+  <p style="margin:0">For <code>set_multicycle_path N -setup</code>, the hold adjustment is always <code>set_multicycle_path (N-1) -hold</code>. For N=2, hold=1. For N=3, hold=2. This holds true for same-clock-frequency paths. For different-frequency paths (e.g., CDC with synchronous relationship), the formula may differ &mdash; consult your tool&rsquo;s documentation.</p>
+</div>
+
+<h2>5. set_max_delay -datapath_only</h2>
+<p><code>set_max_delay</code> overrides the clock-period-derived maximum delay for a path. Without <code>-datapath_only</code>, it still applies setup and hold checks relative to clocks. With <code>-datapath_only</code>, it treats the path as pure combinational logic with no clock relationship &mdash; only the total path delay is checked against the specified maximum.</p>
+<p>The primary use case is <b>asynchronous FIFO write-pointer &rarr; read-pointer crossing</b>. In a Gray-code FIFO, the pointer bits cross clock domains asynchronously. You need to constrain the maximum propagation delay (to ensure synchroniser setup time is met) but cannot use a clock-relative constraint because there is no clock relationship.</p>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">set_max_delay -datapath_only for async FIFO</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Async FIFO Gray pointer crossing:
+## write_ptr[N:0] registers (clocked by clk_wr) feed synchronizer inputs
+## synchronizer registers are clocked by clk_rd
+
+## Step 1: Remove clock relationship (no setup/hold check across domains)
+set_clock_groups -asynchronous \
+  -group [get_clocks clk_wr] \
+  -group [get_clocks clk_rd]
+
+## Step 2: Constrain the combinational path delay from write FF outputs
+## to the synchronizer input. This ensures the data is stable at the
+## synchronizer input before the first sync stage captures it.
+## The value (0.8 * Tclk_rd) is a common guideline — ensure stability
+## within one cycle of the receiving clock for the sync to work.
+set_max_delay 3.0 -datapath_only \
+  -from [get_cells fifo_wr_ptr_reg[*]/Q] \
+  -to   [get_cells sync_stage1_reg[*]/D]
+
+## Note: -datapath_only means:
+##   - No clock jitter added to the requirement
+##   - No setup time subtracted
+##   - No hold check performed
+##   - Just checks: total comb delay <= 3.0 ns
+
+## Similarly for read-to-write direction (if used):
+set_max_delay 3.0 -datapath_only \
+  -from [get_cells fifo_rd_ptr_reg[*]/Q] \
+  -to   [get_cells sync_wr_stage1_reg[*]/D]</pre>
+</div>
+
+<h2>6. set_min_delay</h2>
+<p><code>set_min_delay</code> overrides the minimum path delay requirement. It is less common than <code>set_max_delay</code> but has specific use cases:</p>
+<ul>
+  <li><b>Guaranteeing minimum propagation delay</b> &mdash; some analog-digital interfaces require a minimum stable time before a strobe; set_min_delay enforces this</li>
+  <li><b>Paired with set_max_delay for double data rate (DDR) interfaces</b> &mdash; both max and min delays need to be bounded for DDR timing windows</li>
+  <li><b>Async FIFO worst-case hold</b> &mdash; ensuring the data arriving at the synchroniser input is not changing too soon</li>
+</ul>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">set_min_delay usage</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## Ensure minimum 0.5 ns from output FF to I/O pad
+## (some GPIO standards require minimum stable data time before strobe)
+set_min_delay 0.5 -from [get_cells output_ff/*] -to [get_ports gpio_data]
+
+## DDR interface: bound both max and min data path delay
+## Ensures data window is centered around DDR strobe
+set_max_delay 1.5 -datapath_only \
+  -from [get_cells ddr_out_ff/*] -to [get_ports ddr_dq]
+set_min_delay 0.4 -datapath_only \
+  -from [get_cells ddr_out_ff/*] -to [get_ports ddr_dq]
+
+## Note: set_min_delay -datapath_only is the hold equivalent of
+## set_max_delay -datapath_only — checks only minimum combinational delay</pre>
+</div>
+
+<h2>7. Common mistakes with timing exceptions</h2>
+<table>
+  <thead><tr><th>Mistake</th><th>Effect</th><th>Correct approach</th></tr></thead>
+  <tbody>
+    <tr><td><b>Missing hold adjustment for MCP</b></td><td>False hold violations or missed real hold violations</td><td>Always pair <code>-setup N</code> with <code>-hold (N-1)</code></td></tr>
+    <tr><td><b>False path to hide real violation</b></td><td>Silicon failure; path is real but not fixed</td><td>Fix the path; document if exception is truly valid</td></tr>
+    <tr><td><b>Over-broad false path (-from a whole clock)</b></td><td>Removes all paths from a clock, including real ones</td><td>Always use both -from and -to to narrow the scope</td></tr>
+    <tr><td><b>Missing -datapath_only on set_max_delay for CDC</b></td><td>Tool still applies clock jitter, giving incorrect result</td><td>Always use <code>-datapath_only</code> for CDC path constraints</td></tr>
+    <tr><td><b>Unidirectional clock_groups for two-way CDC</b></td><td>One crossing direction left unconstrained</td><td>Use <code>set_clock_groups -asynchronous</code> (covers both directions)</td></tr>
+    <tr><td><b>False path on reset but reset is synchronous</b></td><td>Synchronous reset setup violation hidden</td><td>Apply false path only to truly async reset inputs</td></tr>
+  </tbody>
+</table>
+
+<h2>8. Auditing exceptions with report_exceptions</h2>
+
+<div class="codecard">
+  <div class="cc-head"><span class="cc-name">Auditing timing exceptions in PrimeTime</span><div class="cc-btns"><button onclick="copyCode(this)">Copy</button></div></div>
+  <pre">## List all exceptions and how many paths each covers
+report_exceptions -all -ignored
+
+## Exceptions that were applied but match no paths (suspicious!)
+report_exceptions -ignored
+
+## Show exceptions covering a specific path
+report_exceptions -from [get_cells u_mult/*] -to [get_cells result_reg/*]
+
+## Show all false paths sorted by path count (broad ones = most risky)
+report_exceptions -type false_path -significant_digits 4
+
+## Check if a specific path has an exception
+report_timing -from [get_cells src_ff/Q] -to [get_cells dst_ff/D] \
+  -path_type exception
+
+## Find all paths that are NOT covered by any exception
+## (confirms default single-cycle check is applied to real paths)
+report_timing -delay_type max -nworst 100 -slack_lesser_than 0 \
+  -exceptions none
+
+## Exception count summary
+puts "False paths:   [llength [get_exceptions -type false_path]]"
+puts "Multicycle:    [llength [get_exceptions -type multicycle_path]]"
+puts "Max delay:     [llength [get_exceptions -type max_delay]]"</pre>
+</div>
+
+<div class="takeaways">
+  <h3>Day 8 Key Takeaways</h3>
+  <ul>
+    <li><b>Exception priority</b>: false_path &gt; set_max/min_delay &gt; multicycle_path &gt; default; most specific exception wins</li>
+    <li><b>set_false_path</b> &mdash; use for functionally impossible paths or async CDC; always add a comment justifying why</li>
+    <li><b>set_clock_groups -asynchronous</b> &mdash; preferred over per-path false paths for CDC; covers both directions and all generated clocks</li>
+    <li><b>set_multicycle_path</b> &mdash; always pair <code>N -setup</code> with <code>(N-1) -hold</code>; use identical -from/-to for both</li>
+    <li><b>set_max_delay -datapath_only</b> &mdash; the correct way to constrain async FIFO pointer crossings; does not apply clock jitter or setup time</li>
+    <li><b>set_min_delay</b> &mdash; enforces minimum propagation delay; used for DDR interfaces and min-pulse constraints</li>
+    <li><b>Audit exceptions</b> with <code>report_exceptions -ignored</code> to catch exceptions that match no paths (likely wrong specifications)</li>
+  </ul>
+</div>
+
+<h2>Frequently Asked Questions</h2>
+<div class="faq-item"><h3>What is the difference between set_false_path and set_clock_groups?</h3><p><code>set_false_path</code> marks specific paths as not requiring timing analysis. <code>set_clock_groups -asynchronous</code> declares that two entire clock domains have no timing relationship &mdash; it removes all paths between them from analysis in both directions and covers all derived clocks. For CDC, <code>set_clock_groups</code> is preferred because it is harder to accidentally leave a direction uncovered.</p></div>
+<div class="faq-item"><h3>Why must set_multicycle_path setup always have a hold adjustment?</h3><p>Without the hold adjustment, STA checks setup at cycle N but checks hold relative to cycle 0 (the launch edge). For a 2-cycle setup path, the hold check at cycle 0 is incorrect &mdash; the actual hold window is at cycle 1 (one cycle before the capture at cycle 2). Always pair <code>set_multicycle_path N -setup</code> with <code>set_multicycle_path (N-1) -hold</code> on the exact same -from/-to specification.</p></div>
+<div class="faq-item"><h3>What is set_max_delay -datapath_only used for?</h3><p>It constrains the maximum combinational delay on a path without applying clock-related timing (no setup time, no jitter). It is primarily used for async FIFO Gray-code pointer crossings, where you need to bound the data propagation time but there is no synchronous clock relationship to reference. Always use <code>-datapath_only</code> for CDC paths or the tool will apply incorrect clock adjustments.</p></div>
+<div class="faq-item"><h3>How do you audit timing exceptions to ensure they are correct?</h3><p>Use <code>report_exceptions -ignored</code> to find exceptions that don&rsquo;t match any paths (likely wrong specifications). Use <code>report_exceptions -all</code> to list every exception with its path count. For each exception, verify: (a) the path is truly false or multicycle, (b) both directions are covered for CDC, (c) MCP hold adjustments are present, and (d) the -from/-to scope is narrow enough not to catch unintended paths.</p></div>
+<div class="faq-item"><h3>What happens if you forget the hold adjustment in set_multicycle_path?</h3><p>STA checks setup at cycle N (correct) but checks hold at cycle 0 (incorrect edge). This typically produces phantom hold violations at impossible-to-fix short paths, or misses real hold violations because it&rsquo;s checking the wrong edge. The hold check for a 2-cycle MCP should always be at cycle 1 &mdash; the cycle just before the intended capture. Always use <code>set_multicycle_path 1 -hold</code> after <code>set_multicycle_path 2 -setup</code>.</p></div>
+
+<div class="pager">
+  <a href="/sta/day-07-ocv-aocv-pocv/"><div class="lab">&#8592; Previous</div><div class="ti">Day 7: OCV, AOCV &amp; POCV</div></a>
+  <a class="next" href="/sta/day-09-crosstalk-si/"><div class="lab">Next &#8594;</div><div class="ti">Day 9: Crosstalk &amp; Signal Integrity</div></a>
+</div>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/sta/">STA Course</a> &middot; <a href="/clock-domain-crossing/">CDC</a> &middot; <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a>
+<div style="margin-top:.4rem">By EcrioniX &middot; Updated June 2026</div></div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCode(btn){var pre=btn.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy';},1800);});}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
