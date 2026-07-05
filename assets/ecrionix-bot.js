@@ -186,4 +186,27 @@
   function send(){ var v=input.value.trim(); if(!v) return; meMsg(v.replace(/</g,'&lt;')); input.value=''; respond(v, v); }
   box.querySelector('#ecx-send').onclick=send;
   input.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
+
+  // ---- Tamil language toggle (site-wide, via Google Translate) ----
+  (function(){
+    var langCss = ''
+    +'#ecx-lang-btn{position:fixed;top:14px;right:14px;z-index:99997;background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.25);color:#e2e8f0;font-family:Outfit,system-ui,sans-serif;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:999px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35);display:flex;align-items:center;gap:6px;text-decoration:none}'
+    +'#ecx-lang-btn:hover{border-color:rgba(56,189,248,.5);color:#7dd3fc}'
+    +'@media(max-width:480px){#ecx-lang-btn{top:auto;bottom:18px;right:18px}}';
+    var lst=document.createElement('style'); lst.textContent=langCss; document.head.appendChild(lst);
+
+    var isTranslated = /translate\.goog$/.test(location.hostname) || location.hostname.indexOf('translate.google') >= 0;
+    var langBtn = document.createElement('a');
+    langBtn.id = 'ecx-lang-btn';
+
+    if (isTranslated) {
+      langBtn.href = 'https://' + (window.__ecxOrigHost || 'ecrionix.org') + location.pathname + location.search;
+      langBtn.innerHTML = '🌐 English';
+    } else {
+      var target = 'https://translate.google.com/translate?sl=en&tl=ta&u=' + encodeURIComponent(location.href);
+      langBtn.href = target;
+      langBtn.innerHTML = '🌐 தமிழ்';
+    }
+    document.body.appendChild(langBtn);
+  })();
 })();
