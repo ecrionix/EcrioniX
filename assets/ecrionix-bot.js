@@ -186,4 +186,43 @@
   function send(){ var v=input.value.trim(); if(!v) return; meMsg(v.replace(/</g,'&lt;')); input.value=''; respond(v, v); }
   box.querySelector('#ecx-send').onclick=send;
   input.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
+
+  // ---- Universal mobile menu fix ----
+  // Many pages hide .nav-links on mobile via CSS with no toggle button to bring them back.
+  // This detects those pages (no existing .hamburger) and injects a working hamburger + dropdown.
+  (function(){
+    var linkLists = document.querySelectorAll('.nav-links');
+    if (!linkLists.length) return;
+
+    var css = ''
+      +'.ecx-mnav-btn{display:none;background:none;border:none;cursor:pointer;padding:6px;flex-direction:column;gap:4px;flex-shrink:0}'
+      +'.ecx-mnav-btn span{display:block;width:20px;height:2px;background:#e2e8f0;border-radius:2px}'
+      +'@media(max-width:768px){'
+        +'.ecx-mnav-btn{display:flex}'
+        +'.nav-links.ecx-mnav-managed:not(.ecx-mnav-open){display:none!important}'
+        +'.nav-links.ecx-mnav-open{display:flex!important;position:absolute;left:0;right:0;top:100%;flex-direction:column;background:#0c1526;border-bottom:1px solid rgba(148,163,184,.15);padding:.75rem 1.25rem;gap:0!important;z-index:200;list-style:none;margin:0}'
+        +'.nav-links.ecx-mnav-open a,.nav-links.ecx-mnav-open li{padding:.6rem 0;border-bottom:1px solid rgba(148,163,184,.1);display:block}'
+        +'.nav-links.ecx-mnav-open li:last-child,.nav-links.ecx-mnav-open a:last-child{border-bottom:none}'
+      +'}';
+    var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+    linkLists.forEach(function(links){
+      var container = links.parentElement;
+      if (!container) return;
+      if (container.querySelector('.hamburger')) return; // page already has a working toggle
+      if (container.querySelector('.ecx-mnav-btn')) return; // avoid double-inject
+
+      var cs = getComputedStyle(container);
+      if (cs.position === 'static') container.style.position = 'relative';
+
+      links.classList.add('ecx-mnav-managed');
+
+      var mbtn = document.createElement('button');
+      mbtn.className = 'ecx-mnav-btn';
+      mbtn.setAttribute('aria-label','Toggle menu');
+      mbtn.innerHTML = '<span></span><span></span><span></span>';
+      mbtn.onclick = function(){ links.classList.toggle('ecx-mnav-open'); };
+      container.appendChild(mbtn);
+    });
+  })();
 })();
