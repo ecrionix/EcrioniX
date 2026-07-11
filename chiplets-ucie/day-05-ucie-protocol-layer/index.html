@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UCIe Protocol Layer — PCIe, CXL, Streaming &amp; the 256B FLIT | Day 5 | EcrioniX</title>
+<meta name="description" content="Day 5 of the Chiplets & UCIe course: how the UCIe protocol layer maps PCIe flit mode, CXL.io/.cache/.mem, and raw streaming onto a die-to-die link — the 256-byte FLIT, ARB/MUX weighted round-robin arbitration, the FDI interface, and why PCIe-over-UCIe drops legacy encoding.">
+<meta name="keywords" content="UCIe protocol layer, UCIe PCIe flit mode, UCIe CXL io cache mem, 256 byte FLIT, UCIe ARB MUX arbitration, UCIe FDI interface, UCIe streaming raw mode, PCIe 6.0 flit UCIe, CXL 3.0 chiplet">
+<link rel="canonical" href="https://ecrionix.org/chiplets-ucie/day-05-ucie-protocol-layer/">
+<meta property="og:title" content="UCIe Protocol Layer — PCIe, CXL, Streaming & the 256B FLIT | Day 5 | EcrioniX">
+<meta property="og:description" content="How the UCIe protocol layer maps PCIe, CXL, and streaming onto a die-to-die link — the 256B FLIT, ARB/MUX arbitration, and the FDI interface.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"UCIe Protocol Layer — PCIe, CXL, Streaming & the 256B FLIT","description":"Day 5 of the Chiplets & UCIe course: how the UCIe protocol layer maps PCIe, CXL, and streaming onto a die-to-die link, the 256B FLIT, ARB/MUX arbitration, and the FDI interface.","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"datePublished":"2026-07-18","dateModified":"2026-07-18","url":"https://ecrionix.org/chiplets-ucie/day-05-ucie-protocol-layer/"},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Chiplets & UCIe","item":"https://ecrionix.org/chiplets-ucie/"},{"@type":"ListItem","position":3,"name":"Day 5","item":"https://ecrionix.org/chiplets-ucie/day-05-ucie-protocol-layer/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What protocols can the UCIe protocol layer carry?","acceptedAnswer":{"@type":"Answer","text":"The UCIe protocol layer carries PCIe (flit mode), CXL — including CXL.io, CXL.cache, and CXL.mem — and a raw streaming mode that can map any other protocol. This lets existing PCIe and CXL software stacks run unchanged over a die-to-die link instead of a board-level connection."}},
+   {"@type":"Question","name":"What is a FLIT in UCIe?","acceptedAnswer":{"@type":"Answer","text":"A FLIT (Flow Control Unit) is the fixed-size unit of data the protocol layer works with. UCIe uses a 256-byte FLIT, consistent with the 256-byte flit defined in PCIe 6.0 and CXL 3.0, so protocol packets are mapped into these fixed 256-byte units for transport across the die-to-die link."}},
+   {"@type":"Question","name":"What is the ARB/MUX in UCIe?","acceptedAnswer":{"@type":"Answer","text":"The ARB/MUX (Arbitration and Multiplexing block) sits in the CXL-based protocol path and uses weighted round-robin arbitration — with weights set by the host — to interleave traffic from the CXL.io and CXL.cache/mem link layers onto the single physical link, and to coordinate power-state transitions into one request to the physical layer."}},
+   {"@type":"Question","name":"Why does PCIe over UCIe drop 8b/10b and 128b/130b encoding?","acceptedAnswer":{"@type":"Answer","text":"Those line-coding schemes and non-flit-mode CRC/retry and framing logic exist to make PCIe robust over long board traces and connectors. A UCIe die-to-die link is extremely short and clean by comparison, so a PCIe protocol layer optimized for UCIe can omit that legacy overhead, saving area and latency while relying on UCIe's own flit-mode reliability."}},
+   {"@type":"Question","name":"What is the FDI interface?","acceptedAnswer":{"@type":"Answer","text":"FDI (Flit-Aware Die-to-Die Interface) is the standardized boundary between the protocol layer and the die-to-die adapter. The protocol layer hands flits and link-management signals across FDI, which lets protocol-layer IP and adapter/PHY IP be developed and sourced independently while still interoperating."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--cyan:#22d3ee;--pink:#ec4899;--green:#4ade80;--amber:#fbbf24;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--cyan)}.bc span{opacity:.4}
+.wrap{max-width:820px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+.daytag{display:inline-block;font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid rgba(34,211,238,.3);padding:.25rem .7rem;border-radius:4px;letter-spacing:.07em;margin-bottom:.85rem}
+h1{font-size:clamp(1.75rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.18;margin-bottom:.55rem}
+.byline{color:#475569;font-size:.82rem;margin-bottom:1.2rem}.byline a{color:#475569}
+.lead{font-size:1.06rem;color:var(--sl);margin-bottom:2.2rem;line-height:1.85}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2.5rem 0 .85rem}
+h3{font-size:1.05rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:var(--sl);margin-bottom:1rem;line-height:1.85}
+ul,ol{color:var(--sl);padding-left:1.4rem;margin-bottom:1rem}li{margin-bottom:.4rem;line-height:1.7}
+b,strong{color:#e2e8f0}code{background:rgba(34,211,238,.1);color:var(--cyan);padding:.1rem .4rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em}
+.box{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.box.cyan{border-color:rgba(34,211,238,.3);background:rgba(34,211,238,.05)}
+table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.85rem}
+th{background:rgba(34,211,238,.1);color:var(--cyan);font-weight:700;padding:.6rem .8rem;text-align:left;border:1px solid var(--bdr)}
+td{padding:.55rem .8rem;border:1px solid var(--bdr);color:var(--sl)}
+tr:nth-child(even) td{background:rgba(8,13,26,.5)}
+.codecard{background:#060e20;border:1px solid rgba(148,163,184,.12);border-radius:10px;margin:1.3rem 0;overflow:hidden}
+.codecard-head{display:flex;justify-content:space-between;align-items:center;padding:.5rem 1rem;background:rgba(34,211,238,.07);border-bottom:1px solid rgba(148,163,184,.1)}
+.codecard-head span{font-family:'Orbitron',sans-serif;font-size:.65rem;color:var(--cyan);font-weight:700;letter-spacing:.05em}
+.copy-btn{background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.3);color:var(--cyan);padding:.22rem .65rem;border-radius:5px;font-size:.72rem;cursor:pointer;font-family:'Outfit',sans-serif}
+.copy-btn:hover{background:rgba(34,211,238,.22)}
+pre{padding:1.1rem 1.2rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.65;color:#94a3b8}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;margin:1.3rem 0}
+.feat{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.9rem 1rem}
+.feat .fi{font-size:1.3rem;margin-bottom:.4rem}
+.feat b{display:block;color:#f1f5f9;font-size:.9rem;margin-bottom:.25rem}
+.feat span{font-size:.78rem;color:var(--sl)}
+.takeaways{background:linear-gradient(135deg,rgba(34,211,238,.07),rgba(236,72,153,.04));border:1px solid rgba(34,211,238,.25);border-radius:12px;padding:1.4rem 1.6rem;margin:2.5rem 0}
+.takeaways h3{color:var(--cyan);margin-top:0;font-size:1rem}
+.takeaways li{color:#e2e8f0;margin-bottom:.5rem}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;margin:.75rem 0;overflow:hidden}
+.faq-q{font-weight:700;color:#f1f5f9;padding:.85rem 1.1rem;cursor:pointer;background:var(--bg3);font-size:.93rem;display:flex;justify-content:space-between;align-items:center}
+.faq-q::after{content:'+';font-size:1.1rem;color:var(--cyan)}
+.faq-q.open::after{content:'-'}
+.faq-a{padding:0 1.1rem;max-height:0;overflow:hidden;transition:max-height .3s,padding .3s;color:var(--sl);font-size:.9rem}
+.faq-a.open{max-height:360px;padding:.8rem 1.1rem}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:3rem;flex-wrap:wrap}
+.pager a{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.7rem 1.2rem;font-size:.85rem;color:#e2e8f0;display:flex;flex-direction:column;gap:.1rem;text-decoration:none;transition:border-color .15s;max-width:48%}
+.pager a:hover{border-color:rgba(34,211,238,.4)}.pager a .pl{font-size:.7rem;color:var(--sl)}
+.pager a.next{text-align:right;margin-left:auto}
+.srcnote{font-size:.78rem;color:#475569;margin-top:.5rem;font-style:italic}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+@media(max-width:600px){.nav-links{display:none}.feat-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/physical-design/">Physical Design</a><a href="/sta/">STA</a><a href="/chiplets-ucie/">Chiplets &amp; UCIe</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/chiplets-ucie/">Chiplets &amp; UCIe</a><span>&#8250;</span><span>Day 5</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 5 &middot; PHASE 1 &mdash; FOUNDATIONS</span>
+  <h1>UCIe Protocol Layer<br>PCIe, CXL, Streaming &amp; the 256B FLIT</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated July 2026</div>
+  <p class="lead">Day 4 covered the wires. Day 5 covers what actually rides on them. The Protocol Layer is where UCIe makes its cleverest engineering decision: instead of inventing a new protocol, it reuses PCIe and CXL almost verbatim &mdash; so the software, drivers, and device models that already exist keep working, and only the physical transport changes. This lesson unpacks how, right down to the 256-byte FLIT and the arbitration block that shares one link between multiple protocols.</p>
+
+  <h2>The Protocol Layer's One Job</h2>
+  <p>Sitting at the top of the UCIe stack, the Protocol Layer generates and terminates the actual protocol packets that cross the die-to-die link. It hands those packets — packaged into fixed-size flits — down to the Die-to-Die Adapter across the <b>FDI (Flit-Aware Die-to-Die Interface)</b> you met on Day 3. Everything below FDI (the adapter and physical layer) is protocol-agnostic plumbing; everything at and above FDI is where "this link is carrying PCIe" or "this link is carrying CXL" is actually decided.</p>
+
+  <!-- SVG: protocol layer mapping -->
+  <svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;display:block;margin:1.4rem auto;border-radius:10px;overflow:hidden">
+    <rect width="720" height="280" fill="#060e20"/>
+    <text x="360" y="24" fill="#f1f5f9" font-size="13" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Protocol Layer — What Rides on a UCIe Link</text>
+
+    <!-- three protocol sources -->
+    <rect x="40" y="42" width="200" height="60" rx="8" fill="rgba(251,146,60,0.1)" stroke="rgba(251,146,60,0.4)" stroke-width="1.5"/>
+    <text x="140" y="66" fill="#fdba74" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">PCIe (flit mode)</text>
+    <text x="140" y="86" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">PCIe 5.0 / 6.0 traffic</text>
+
+    <rect x="260" y="42" width="200" height="60" rx="8" fill="rgba(56,189,248,0.1)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+    <text x="360" y="66" fill="#7dd3fc" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">CXL</text>
+    <text x="360" y="86" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">.io / .cache / .mem</text>
+
+    <rect x="480" y="42" width="200" height="60" rx="8" fill="rgba(74,222,128,0.1)" stroke="rgba(74,222,128,0.4)" stroke-width="1.5"/>
+    <text x="580" y="66" fill="#86efac" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Streaming (raw)</text>
+    <text x="580" y="86" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">any custom protocol</text>
+
+    <!-- arrows down to ARB/MUX -->
+    <line x1="140" y1="102" x2="300" y2="132" stroke="#475569" stroke-width="1.5"/>
+    <line x1="360" y1="102" x2="360" y2="132" stroke="#475569" stroke-width="1.5"/>
+    <line x1="580" y1="102" x2="420" y2="132" stroke="#475569" stroke-width="1.5"/>
+
+    <!-- ARB/MUX + flit -->
+    <rect x="200" y="134" width="320" height="46" rx="8" fill="rgba(236,72,153,0.1)" stroke="rgba(236,72,153,0.45)" stroke-width="1.5"/>
+    <text x="360" y="162" fill="#f9a8d4" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">ARB/MUX — weighted round-robin arbitration</text>
+
+    <text x="360" y="204" fill="#22d3ee" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Packed into 256-byte FLITs</text>
+
+    <!-- FDI boundary -->
+    <line x1="60" y1="224" x2="660" y2="224" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6,3"/>
+    <text x="360" y="242" fill="#fbbf24" font-size="11" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">FDI (Flit-Aware Die-to-Die Interface)</text>
+    <text x="360" y="262" fill="#64748b" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">&#8595;  down to Die-to-Die Adapter &amp; Physical Layer</text>
+  </svg>
+
+  <h2>The Three Things That Can Ride the Link</h2>
+  <div class="feat-grid">
+    <div class="feat"><div class="fi">&#11041;</div><b>PCIe (flit mode)</b><span>Standard PCIe 5.0/6.0 traffic — existing PCIe software and enumeration flows work unchanged, just over a die-to-die link</span></div>
+    <div class="feat"><div class="fi">&#128279;</div><b>CXL</b><span>CXL.io, CXL.cache, and CXL.mem — cache-coherent CPU-to-accelerator and CPU-to-memory traffic between chiplets</span></div>
+    <div class="feat"><div class="fi">&#127760;</div><b>Streaming (raw)</b><span>A protocol-agnostic channel to map any proprietary fabric onto the standardized UCIe link and packaging</span></div>
+  </div>
+
+  <h2>The 256-Byte FLIT — UCIe's Unit of Transport</h2>
+  <p>A <b>FLIT (Flow Control Unit)</b> is the fixed-size chunk the protocol layer works in. UCIe uses a <b>256-byte FLIT</b>, deliberately matching the 256-byte flit already defined by <b>PCIe 6.0</b> and <b>CXL 3.0</b>. This alignment is not a coincidence — it's the whole point:</p>
+  <ul>
+    <li>Because UCIe's flit size matches PCIe 6.0 and CXL 3.0, protocol packets from those standards map into UCIe flits with minimal translation</li>
+    <li>Fixed-size flits make flow control, error checking, and lane mapping far simpler than variable-length packets would</li>
+    <li>The same 256-byte flit framing is reused across protocols, so the adapter and physical layer below don't need to know or care which protocol produced a given flit</li>
+  </ul>
+  <div class="box cyan">
+    <p style="margin-bottom:0"><b>Why fixed-size matters:</b> older PCIe used variable-length transaction-layer packets (TLPs) with 8b/10b or 128b/130b line coding to stay robust over long board traces. Flit mode replaces that with fixed 256-byte units and a cleaner reliability scheme — a much better fit for the short, clean die-to-die environment UCIe operates in.</p>
+  </div>
+
+  <h2>ARB/MUX — Sharing One Link Between Protocols</h2>
+  <p>CXL famously runs three sub-protocols at once — <code>CXL.io</code> (PCIe-like configuration and I/O), <code>CXL.cache</code> (device caching of host memory), and <code>CXL.mem</code> (host access to device-attached memory). When those share a single physical link, something has to decide whose flit goes next. That something is the <b>ARB/MUX (Arbitration and Multiplexing block)</b>.</p>
+  <ul>
+    <li>It uses <b>weighted round-robin arbitration</b> — with the weights set by the host — to interleave traffic from the CXL.io and CXL.cache/mem link layers fairly but tunably</li>
+    <li>It multiplexes the selected flits down onto the single link based on those arbitration results</li>
+    <li>It also coordinates <b>power-state transitions</b>, collapsing separate link-layer power requests into a single, clean request to the physical layer so the link powers down smoothly</li>
+  </ul>
+
+  <h2>PCIe Over UCIe — What Gets Dropped, and Why</h2>
+  <p>Here's a detail that shows how thoughtfully UCIe reuses PCIe. A PCIe protocol layer built for board-level links carries a lot of machinery specifically to survive long, lossy copper traces and physical connectors. Over a UCIe die-to-die link — millimeters long, on a clean package medium — much of that machinery is dead weight. So a PCIe-over-UCIe implementation may <b>omit</b>:</p>
+  <table>
+    <tr><th>Legacy PCIe feature</th><th>Why it can be dropped over UCIe</th></tr>
+    <tr><td><b>8b/10b encoding</b></td><td>Line coding for DC balance over long traces — unnecessary on a short, clean die-to-die link</td></tr>
+    <tr><td><b>128b/130b encoding</b></td><td>Same rationale — the lower-overhead flit-mode scheme is used instead</td></tr>
+    <tr><td><b>Non-flit-mode CRC / Retry</b></td><td>Flit mode has its own reliability scheme; the old per-TLP CRC/retry path isn't needed</td></tr>
+    <tr><td><b>Legacy framing logic</b></td><td>Fixed 256-byte flits don't need the variable-length framing that TLPs required</td></tr>
+  </table>
+  <p>The payoff: dropping this legacy overhead saves silicon area and cuts latency, while UCIe's own flit-mode reliability (and the adapter's optional CRC + retry, from Day 2) provides the data integrity that the removed logic used to.</p>
+  <p class="srcnote">Protocol details per UCIe Consortium materials and the PCIe 6.0 / CXL 3.0 flit specifications.</p>
+
+  <h2>Why This Design Is So Powerful</h2>
+  <p>Step back and look at what this achieves. A CPU chiplet and an accelerator chiplet, possibly from different vendors and different foundries, can talk to each other over a UCIe link using <b>CXL.cache and CXL.mem</b> — full cache coherency — while the CPU's existing memory model, the accelerator's existing driver, and the operating system's existing CXL support all behave exactly as they would over a board-level CXL link. The chiplets don't know they're chiplets. The software doesn't know the transport changed. That transparency is the entire reason UCIe reuses these protocols instead of inventing a new one.</p>
+
+  <div class="takeaways">
+    <h3>&#127919; Day 5 Key Takeaways</h3>
+    <ul>
+      <li>The Protocol Layer generates/terminates protocol packets and hands flits to the adapter across the FDI interface</li>
+      <li>Three things can ride a UCIe link: PCIe flit mode, CXL (.io/.cache/.mem), and raw streaming for custom protocols</li>
+      <li>UCIe uses a 256-byte FLIT, matching PCIe 6.0 and CXL 3.0 so protocol packets map in with minimal translation</li>
+      <li>The ARB/MUX uses host-weighted round-robin arbitration to share one link between CXL.io and CXL.cache/mem, and coordinates power-state transitions</li>
+      <li>PCIe over UCIe can drop 8b/10b and 128b/130b encoding plus non-flit CRC/retry and legacy framing — saving area and latency on the short, clean die-to-die link</li>
+      <li>The net effect: existing PCIe/CXL software stacks run unchanged; only the physical transport changes from board-level to on-package</li>
+    </ul>
+  </div>
+
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What protocols can the UCIe protocol layer carry?</div><div class="faq-a">The UCIe protocol layer carries PCIe (flit mode), CXL — including CXL.io, CXL.cache, and CXL.mem — and a raw streaming mode that can map any other protocol. This lets existing PCIe and CXL software stacks run unchanged over a die-to-die link instead of a board-level connection.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is a FLIT in UCIe?</div><div class="faq-a">A FLIT (Flow Control Unit) is the fixed-size unit of data the protocol layer works with. UCIe uses a 256-byte FLIT, consistent with the 256-byte flit defined in PCIe 6.0 and CXL 3.0, so protocol packets are mapped into these fixed 256-byte units for transport across the die-to-die link.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is the ARB/MUX in UCIe?</div><div class="faq-a">The ARB/MUX (Arbitration and Multiplexing block) sits in the CXL-based protocol path and uses weighted round-robin arbitration — with weights set by the host — to interleave traffic from the CXL.io and CXL.cache/mem link layers onto the single physical link, and to coordinate power-state transitions into one request to the physical layer.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">Why does PCIe over UCIe drop 8b/10b and 128b/130b encoding?</div><div class="faq-a">Those line-coding schemes and non-flit-mode CRC/retry and framing logic exist to make PCIe robust over long board traces and connectors. A UCIe die-to-die link is extremely short and clean by comparison, so a PCIe protocol layer optimized for UCIe can omit that legacy overhead, saving area and latency while relying on UCIe's own flit-mode reliability.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is the FDI interface?</div><div class="faq-a">FDI (Flit-Aware Die-to-Die Interface) is the standardized boundary between the protocol layer and the die-to-die adapter. The protocol layer hands flits and link-management signals across FDI, which lets protocol-layer IP and adapter/PHY IP be developed and sourced independently while still interoperating.</div></div>
+
+  <nav class="pager">
+    <a href="/chiplets-ucie/day-04-ucie-physical-layer/"><span class="pl">&#8592; Day 4</span><span>UCIe Physical Layer</span></a>
+    <a class="next" href="/chiplets-ucie/"><span class="pl">Next: Day 6 &#8594;</span><span>2.5D Packaging &amp; CoWoS (Coming Soon)</span></a>
+  </nav>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/chiplets-ucie/">Chiplets &amp; UCIe Course</a> &middot; <a href="/physical-design/">Physical Design</a> &middot; <a href="/sta/">STA</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> &middot; By EcrioniX &middot; Updated July 2026</div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+function copyCode(btn){var pre=btn.closest('.codecard').querySelector('pre');navigator.clipboard.writeText(pre.innerText).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy';},1800);});}
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
