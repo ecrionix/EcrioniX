@@ -25,7 +25,9 @@
    {"@type":"Question","name":"What is a Flex Bus port?","acceptedAnswer":{"@type":"Answer","text":"A Flex Bus port is a port that can operate as either native PCIe or CXL, decided at link training based on what device is plugged in. It uses PCIe electricals, so it is compatible with PCIe retimers and form factors, and the protocol choice is made dynamically via Alternate Protocol Negotiation."}},
    {"@type":"Question","name":"What is Alternate Protocol Negotiation (APN)?","acceptedAnswer":{"@type":"Answer","text":"Alternate Protocol Negotiation is a PCIe 5.0 feature that lets a non-PCIe protocol use the PCIe physical layer while providing its own higher layers. In the PCIe TS1/TS2 training sequences there is an 'alternate protocol' field; CXL is the first and, so far, only alternate protocol defined for it."}},
    {"@type":"Question","name":"Why does CXL use two separate protocol stacks?","acceptedAnswer":{"@type":"Answer","text":"CXL.io flows through a stack nearly identical to standard PCIe, with dynamic message framing. CXL.cache and CXL.mem share a separate stack that is optimized for low latency, with its own transaction and link layers and fixed message framing. The separation exists because coherent memory access (load/store) needs far lower latency than general I/O, and a single shared stack could not optimize for both."}},
-   {"@type":"Question","name":"What is the CXL 68-byte flit made of?","acceptedAnswer":{"@type":"Answer","text":"In CXL 1.0, 1.1, and 2.0, the unit of transfer is a 68-byte flit made up of a 2-byte protocol ID, a 64-byte payload, and a 2-byte CRC that protects the payload. CXL 3.x moves to a larger 256-byte flit to enable forward error correction, mirroring PCIe 6.0."}}
+   {"@type":"Question","name":"What is the CXL 68-byte flit made of?","acceptedAnswer":{"@type":"Answer","text":"In CXL 1.0, 1.1, and 2.0, the unit of transfer is a 68-byte flit made up of a 2-byte protocol ID, a 64-byte payload, and a 2-byte CRC that protects the payload. CXL 3.x moves to a larger 256-byte flit to enable forward error correction, mirroring PCIe 6.0."}},
+   {"@type":"Question","name":"How much latency does CXL memory add compared to local DRAM?","acceptedAnswer":{"@type":"Answer","text":"Local directly-attached DRAM has access latency around 80-140 ns, while CXL-attached memory is around 170-250 ns, an added roughly 100-150 ns (one measured system added 153 ns). This makes CXL memory behave like a two-hop-away NUMA node. Most controllers add about 200 ns, and the penalty grows with distance and pool size, from about 70-90 ns for small pools to over 180 ns at rack scale."}},
+   {"@type":"Question","name":"How much bandwidth does a CXL link provide?","acceptedAnswer":{"@type":"Answer","text":"CXL bandwidth follows PCIe lane math. On a PCIe 5.0 PHY at 32 GT/s per lane with 128b/130b encoding, each lane delivers about 3.94 GB/s usable per direction. An x16 CXL 1.1/2.0 link provides roughly 64 GB/s per direction, or about 128 GB/s bidirectional since the link is full-duplex. x4 and x8 widths are also supported for bifurcation."}}
  ]}
 ]}
 </script>
@@ -151,6 +153,30 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
     <p style="margin-bottom:0"><b>The payoff:</b> because the coherent stack uses fixed framing and its own streamlined transaction/link layers, <code>CXL.mem</code> lets a processor access remote memory by issuing ordinary load/store instructions at <b>substantially lower latency than CXL.io or plain PCIe</b> could ever provide. A single shared stack could not have optimized for both flexible I/O and lowest-possible memory latency at once — so CXL didn't try.</p>
   </div>
 
+  <h2>The Honest Latency Cost — CXL Memory Is Not Local DRAM</h2>
+  <p>The latency-optimized stack matters enormously, but it's crucial to be honest about what it does and doesn't achieve: <b>CXL-attached memory is still meaningfully slower than the CPU's own directly-attached DRAM.</b> Real measurements bear this out:</p>
+  <table>
+    <tr><th>Memory Type</th><th>Typical Access Latency</th></tr>
+    <tr><td>Local (directly-attached) DRAM</td><td>~80&ndash;140 ns</td></tr>
+    <tr><td>CXL-attached memory</td><td>~170&ndash;250 ns</td></tr>
+    <tr><td><b>Added latency vs local DRAM</b></td><td><b>~100&ndash;150 ns</b> (one measured system: +153 ns)</td></tr>
+  </table>
+  <p class="srcnote">Latency figures per published CXL performance-characterization studies.</p>
+  <p>The most useful mental model: <b>CXL memory behaves roughly like a two-hop-away NUMA node.</b> A CPU accessing it pays a penalty similar to reaching across to memory attached to a distant socket — not free, but far cheaper than swapping to storage, and critically, still directly addressable with normal load/store instructions. Most CXL memory controllers add around <b>200 ns</b>, plus or minus a few tens of nanoseconds depending on how many retimers sit between the CPU and the device (i.e. how physically far away it is). That distance-dependence scales: small pools of 8&ndash;16 nodes may add only 70&ndash;90 ns, while rack-scale pooling can push added latency past 180 ns.</p>
+  <div class="box">
+    <p style="margin-bottom:0"><b>Why this matters for the rest of the course:</b> this latency profile is exactly why CXL isn't used to <i>replace</i> local DRAM, but to <i>tier</i> alongside it — hot data stays in fast local memory, while colder, capacity-heavy data lives in the CXL tier. That tiering strategy, and the software that manages it, is the entire subject of Days 12 and 13.</p>
+  </div>
+
+  <h2>Link Widths &amp; Bandwidth — What You Actually Get</h2>
+  <p>Because a CXL link is physically a PCIe link, its bandwidth follows PCIe's lane math directly. CXL runs on a <b>PCIe 5.0 PHY at 32 GT/s per lane</b>, in <b>x4, x8, or x16</b> lane configurations (the x4/x8 options exist to support bifurcation — splitting a physical x16 slot into multiple narrower links). With 128b/130b encoding contributing under 2% overhead, each lane delivers roughly <b>3.94 GB/s of usable bandwidth per direction</b>:</p>
+  <table>
+    <tr><th>Link Width</th><th>Per-Direction Bandwidth</th><th>Bidirectional Total</th></tr>
+    <tr><td>x4</td><td>~16 GB/s</td><td>~32 GB/s</td></tr>
+    <tr><td>x8</td><td>~32 GB/s</td><td>~64 GB/s</td></tr>
+    <tr><td>x16</td><td>~64 GB/s</td><td>~128 GB/s</td></tr>
+  </table>
+  <p>A key property inherited from PCIe: the link is <b>full-duplex</b>. Each lane has independent transmit and receive paths that operate simultaneously, so an x16 CXL 1.1/2.0 link can move ~64 GB/s <i>each way at the same time</i>. When Day 9 reaches CXL 4.0 on the PCIe 7.0 PHY (128 GT/s), these per-lane numbers roughly quadruple relative to PCIe 5.0 — but the lane-width math stays identical.</p>
+
   <h2>The 68-Byte Flit — The Unit of Transfer</h2>
   <p>Like most modern serial protocols, CXL moves data in fixed-size <b>flits</b> (flow-control units). In CXL 1.0, 1.1, and 2.0, that flit is <b>68 bytes</b>, laid out precisely:</p>
   <!-- SVG: 68-byte flit -->
@@ -181,6 +207,8 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
       <li>Alternate Protocol Negotiation (a PCIe 5.0 feature) carries CXL support in the TS1/TS2 "alternate protocol" field during the LTSSM Configuration state</li>
       <li>The link always starts as PCIe and only switches to CXL if both ends agree — giving clean backward compatibility; the final link must reach ≥8.0 GT/s</li>
       <li>CXL uses two stacks: a PCIe-like stack for CXL.io, and a separate latency-optimized stack (fixed framing) for CXL.cache + CXL.mem</li>
+      <li>CXL memory is not local DRAM: it adds ~100&ndash;150 ns (behaving like a ~2-hop NUMA node), which is why it's used to tier alongside DRAM, not replace it</li>
+      <li>Bandwidth follows PCIe lane math: ~3.94 GB/s usable per lane, so x16 CXL 1.1/2.0 = ~64 GB/s per direction (~128 GB/s bidirectional, full-duplex)</li>
       <li>The CXL 1.0/1.1/2.0 flit is 68 bytes: 2B protocol ID + 64B payload (one cache line) + 2B CRC; CXL 3.x grows it to 256B for FEC</li>
     </ul>
   </div>
@@ -191,6 +219,8 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
   <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is Alternate Protocol Negotiation (APN)?</div><div class="faq-a">Alternate Protocol Negotiation is a PCIe 5.0 feature that lets a non-PCIe protocol use the PCIe physical layer while providing its own higher layers. In the PCIe TS1/TS2 training sequences there is an 'alternate protocol' field; CXL is the first and, so far, only alternate protocol defined for it.</div></div>
   <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">Why does CXL use two separate protocol stacks?</div><div class="faq-a">CXL.io flows through a stack nearly identical to standard PCIe, with dynamic message framing. CXL.cache and CXL.mem share a separate stack that is optimized for low latency, with its own transaction and link layers and fixed message framing. The separation exists because coherent memory access (load/store) needs far lower latency than general I/O, and a single shared stack could not optimize for both.</div></div>
   <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is the CXL 68-byte flit made of?</div><div class="faq-a">In CXL 1.0, 1.1, and 2.0, the unit of transfer is a 68-byte flit made up of a 2-byte protocol ID, a 64-byte payload, and a 2-byte CRC that protects the payload. CXL 3.x moves to a larger 256-byte flit to enable forward error correction, mirroring PCIe 6.0.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">How much latency does CXL memory add compared to local DRAM?</div><div class="faq-a">Local directly-attached DRAM has access latency around 80-140 ns, while CXL-attached memory is around 170-250 ns — an added ~100-150 ns (one measured system added 153 ns). This makes CXL memory behave roughly like a two-hop-away NUMA node. Most controllers add about 200 ns, and the penalty grows with distance and pool size, from ~70-90 ns for small pools to over 180 ns at rack scale.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">How much bandwidth does a CXL link provide?</div><div class="faq-a">CXL bandwidth follows PCIe lane math. On a PCIe 5.0 PHY (32 GT/s per lane) with 128b/130b encoding, each lane delivers about 3.94 GB/s usable per direction. So an x16 CXL 1.1/2.0 link provides roughly 64 GB/s per direction, or about 128 GB/s bidirectional, since the link is full-duplex. x4 and x8 widths are also supported for bifurcation.</div></div>
 
   <nav class="pager">
     <a href="/cxl/day-01-what-is-cxl/"><span class="pl">&#8592; Day 1</span><span>What is CXL?</span></a>
