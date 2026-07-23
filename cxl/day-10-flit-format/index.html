@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The CXL FLIT Format — 68B vs 256B Flits, FEC &amp; CRC Explained | Day 10 | EcrioniX</title>
+<meta name="description" content="Day 10 of the CXL course: a deep dive into the CXL flit format — why the 68-byte flit of CXL 1.1/2.0 gave way to the 256-byte flit of CXL 3.0, the Standard vs Latency-Optimized flit split, how Reed-Solomon FEC and CRC keep PAM4 signaling reliable at 64 GT/s, and why flit format is the physical-layer trade-off underneath every CXL performance number.">
+<meta name="keywords" content="CXL flit format, 68 byte flit, 256 byte flit, latency optimized flit, forward error correction FEC, CRC, Reed-Solomon code, PAM4 signaling, PCIe 6.0 flit mode, CXL protocol flit, flex bus flit">
+<link rel="canonical" href="https://ecrionix.org/cxl/day-10-flit-format/">
+<meta property="og:title" content="The CXL FLIT Format — 68B vs 256B Flits, FEC & CRC Explained | Day 10 | EcrioniX">
+<meta property="og:description" content="Why CXL moved from a 68-byte flit to a 256-byte flit, the Standard vs Latency-Optimized split, and how FEC/CRC keep PAM4 signaling reliable.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"The CXL FLIT Format — 68B vs 256B Flits, FEC & CRC Explained","description":"Day 10 of the CXL course: why the 68-byte flit gave way to the 256-byte flit, the Standard vs Latency-Optimized split, and how FEC/CRC keep PAM4 signaling reliable at 64 GT/s.","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"datePublished":"2026-07-24","dateModified":"2026-07-24","url":"https://ecrionix.org/cxl/day-10-flit-format/"},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"CXL Course","item":"https://ecrionix.org/cxl/"},{"@type":"ListItem","position":3,"name":"Day 10","item":"https://ecrionix.org/cxl/day-10-flit-format/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What is a flit in CXL?","acceptedAnswer":{"@type":"Answer","text":"A flit (flow control unit) is the fixed-size chunk that CXL breaks all traffic into for transmission over the link, similar in spirit to a network packet but fixed in size and optimized for hardware pipelines. Every CXL.io, CXL.cache, and CXL.mem message is packed into one or more flits before it crosses the physical link, and flits are what carry the CRC and FEC protection that keeps the link reliable."}},
+   {"@type":"Question","name":"What is the difference between the 68-byte flit and the 256-byte flit in CXL?","acceptedAnswer":{"@type":"Answer","text":"CXL 1.1 and 2.0 use a 68-byte flit sized for links up to 32 GT/s. CXL 3.0 introduces a 256-byte flit for the PCIe 6.0 physical layer at 64 GT/s, which uses PAM4 signaling and needs much stronger error correction, so the flit grew to carry a Reed-Solomon FEC code alongside the payload and CRC."}},
+   {"@type":"Question","name":"What is the difference between Standard and Latency-Optimized 256-byte flits?","acceptedAnswer":{"@type":"Answer","text":"CXL 3.0 defines two 256-byte flit formats. The Standard 256B flit uses the same CRC/FEC structure across the whole flit for maximum protection. The Latency-Optimized 256B flit restructures the same 256 bytes with the CRC calculated differently, splitting the flit into smaller CRC-protected sub-blocks so that a receiver can start acting on part of the flit before the whole thing has arrived, trading a little protection efficiency for lower effective latency."}},
+   {"@type":"Question","name":"Why does CXL need forward error correction (FEC)?","acceptedAnswer":{"@type":"Answer","text":"CXL's higher-speed links (PCIe 6.0 at 64 GT/s and beyond) use PAM4 signaling, which packs more bits per symbol but has a much higher raw bit error rate than the simpler NRZ signaling used at lower speeds. FEC (Reed-Solomon coding over GF(2^8) in CXL's case) corrects a proportion of these errors within the flit itself, so the link can run reliably at PAM4 speeds without retransmitting constantly. CRC on top of FEC still catches errors FEC can't fix, triggering a retry."}},
+   {"@type":"Question","name":"Why does the flit format matter for CXL performance?","acceptedAnswer":{"@type":"Answer","text":"The flit format sets the floor on latency and overhead for every single CXL transaction. A larger flit amortizes header/CRC/FEC overhead better (higher efficiency) but takes longer to fill and transmit end-to-end (higher per-transaction latency) unless split into a latency-optimized form. This is the physical-layer trade-off underneath the latency numbers introduced back on Day 2 — flit format is where bandwidth and latency are actually being traded against each other in silicon."}},
+   {"@type":"Question","name":"How do CXL.io, CXL.cache, and CXL.mem share the same physical link?","acceptedAnswer":{"@type":"Answer","text":"A dedicated ARB/MUX (Arbitration and Multiplexer) block sits above the physical layer and uses weighted round-robin arbitration, with host-configurable weights, to decide whether CXL.io or the combined CXL.cache/CXL.mem traffic gets to use the link next. Once arbitration picks a winner, the ARB/MUX packs that protocol's data into the flit's slot structure, so all three sub-protocols time-share one Flex Bus link instead of needing separate physical links."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--violet:#a78bfa;--violet2:#c4b5fd;--pink:#f472b6;--green:#4ade80;--amber:#fbbf24;--cyan:#38bdf8;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--violet);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--violet)}.bc span{opacity:.4}
+.wrap{max-width:820px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+.daytag{display:inline-block;font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;background:rgba(167,139,250,.12);color:var(--violet);border:1px solid rgba(167,139,250,.3);padding:.25rem .7rem;border-radius:4px;letter-spacing:.07em;margin-bottom:.85rem}
+h1{font-size:clamp(1.75rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.18;margin-bottom:.55rem}
+.byline{color:#475569;font-size:.82rem;margin-bottom:1.2rem}.byline a{color:#475569}
+.lead{font-size:1.06rem;color:var(--sl);margin-bottom:2.2rem;line-height:1.85}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2.5rem 0 .85rem}
+h3{font-size:1.05rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:var(--sl);margin-bottom:1rem;line-height:1.85}
+ul,ol{color:var(--sl);padding-left:1.4rem;margin-bottom:1rem}li{margin-bottom:.4rem;line-height:1.7}
+b,strong{color:#e2e8f0}code{background:rgba(167,139,250,.1);color:var(--violet2);padding:.1rem .4rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em}
+.box{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.box.violet{border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.05)}
+.box.amber{border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.05)}
+table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.86rem}
+th{background:rgba(167,139,250,.1);color:var(--violet2);font-weight:700;padding:.6rem .8rem;text-align:left;border:1px solid var(--bdr)}
+td{padding:.55rem .8rem;border:1px solid var(--bdr);color:var(--sl)}
+tr:nth-child(even) td{background:rgba(8,13,26,.5)}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;margin:1.3rem 0}
+.feat{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.9rem 1rem}
+.feat .fi{font-size:1.3rem;margin-bottom:.4rem}
+.feat b{display:block;color:#f1f5f9;font-size:.9rem;margin-bottom:.25rem}
+.feat span{font-size:.78rem;color:var(--sl)}
+.takeaways{background:linear-gradient(135deg,rgba(167,139,250,.07),rgba(244,114,182,.04));border:1px solid rgba(167,139,250,.25);border-radius:12px;padding:1.4rem 1.6rem;margin:2.5rem 0}
+.takeaways h3{color:var(--violet);margin-top:0;font-size:1rem}
+.takeaways li{color:#e2e8f0;margin-bottom:.5rem}
+.srcnote{font-size:.78rem;color:#475569;margin-top:.5rem;font-style:italic}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;margin:.75rem 0;overflow:hidden}
+.faq-q{font-weight:700;color:#f1f5f9;padding:.85rem 1.1rem;cursor:pointer;background:var(--bg3);font-size:.93rem;display:flex;justify-content:space-between;align-items:center}
+.faq-q::after{content:'+';font-size:1.1rem;color:var(--violet)}
+.faq-q.open::after{content:'-'}
+.faq-a{padding:0 1.1rem;max-height:0;overflow:hidden;transition:max-height .3s,padding .3s;color:var(--sl);font-size:.9rem}
+.faq-a.open{max-height:420px;padding:.8rem 1.1rem}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:3rem;flex-wrap:wrap}
+.pager a{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.7rem 1.2rem;font-size:.85rem;color:#e2e8f0;display:flex;flex-direction:column;gap:.1rem;text-decoration:none;transition:border-color .15s;max-width:48%}
+.pager a:hover{border-color:rgba(167,139,250,.4)}.pager a .pl{font-size:.7rem;color:var(--sl)}
+.pager a.next{text-align:right;margin-left:auto}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+.copy-btn{position:absolute;top:.7rem;right:.7rem;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);color:var(--violet2);padding:.3rem .7rem;border-radius:6px;cursor:pointer;font-size:.72rem}
+.code-block{position:relative;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--cyan);white-space:pre}
+@media(max-width:600px){.nav-links{display:none}.feat-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/chiplets-ucie/">Chiplets &amp; UCIe</a><a href="/physical-design/">Physical Design</a><a href="/cxl/">CXL</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/cxl/">CXL Course</a><span>&#8250;</span><span>Day 10</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 10 &middot; PHASE 2 — SPEC EVOLUTION</span>
+  <h1>The FLIT Format<br>68B vs 256B Flits, FEC &amp; CRC</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated July 2026</div>
+  <p class="lead">Every day of this course so far has quietly leaned on one fact without unpacking it: CXL traffic doesn't travel as a free-form stream of bytes. It travels as <b>flits</b> — fixed-size chunks with strict internal structure. Day 2 mentioned the 68-byte flit in passing; Day 8 mentioned the jump to 256 bytes. Day 10 is where we actually open the flit up, because the flit format is where CXL's bandwidth, latency, and reliability numbers are all being decided, in silicon, one packet at a time. This closes Phase 2 — the spec-by-spec walk through CXL's version history.</p>
+
+  <h2>What a Flit Actually Is</h2>
+  <p>A <b>flit</b> (short for <b>flow control unit</b>) is the fixed-size packet that CXL breaks every message into before it crosses the physical link. Whatever protocol generated the traffic — CXL.io carrying a PCIe-style transaction, CXL.cache carrying a D2H request from Day 3, or CXL.mem carrying an M2S/S2M memory access — it all eventually gets packed into flits for the trip across the wire.</p>
+  <p>Why fixed size instead of variable-length packets like a network frame? Because CXL is latency-sensitive in a way most networks aren't. A memory access has to complete in tens to low-hundreds of nanoseconds (Day 2's latency numbers), and fixed-size units are dramatically easier for hardware to pipeline, decode, and forward at that speed than variable-length ones. The cost of that simplicity is that every flit carries some fixed overhead — header fields, error-detection bytes, and (at higher speeds) error-correction bytes — whether or not the payload inside is full.</p>
+
+  <h2>The 68-Byte Flit — CXL 1.1 and 2.0</h2>
+  <p>CXL 1.1 and CXL 2.0 (Days 6&ndash;7) use a <b>68-byte flit</b>, sized for the PCIe 5.0 physical layer running at up to <b>32 GT/s</b>. At these speeds, the physical layer uses relatively simple <b>NRZ (non-return-to-zero)</b> signaling — one bit per symbol — which has a comfortably low raw bit error rate. That means the 68-byte flit can get away with lightweight protection: a CRC (cyclic redundancy check) to detect errors, with retransmission as the fallback when an error is caught. No forward error correction is needed at this signaling rate; catch-and-retry is cheap enough.</p>
+  <div class="box">
+    <p style="margin-bottom:0"><b>Why this matters:</b> the 68-byte flit is small enough that its per-flit overhead (header + CRC) is a meaningful fraction of the total — but that's an acceptable trade at 32 GT/s, because the alternative (a bigger flit) would mean waiting longer to fill it, adding latency for no benefit at a speed where errors are already rare.</p>
+  </div>
+
+  <h2>The Jump to PAM4 — Why the Flit Had to Change</h2>
+  <p>CXL 3.0 (Day 8) moves to the <b>PCIe 6.0 physical layer at 64 GT/s</b> — double the previous generation's rate. Getting there required a signaling change with real consequences: PCIe 6.0 uses <b>PAM4 (4-level pulse amplitude modulation)</b> instead of NRZ. PAM4 packs <b>2 bits per symbol</b> instead of 1, which is how the data rate doubles without doubling the raw symbol rate — but it does this by making each symbol represent four possible voltage levels instead of two, which are inherently closer together and therefore <b>much easier to misread</b> as noise. PAM4 has a substantially higher raw bit error rate than NRZ at comparable rates.</p>
+  <p>A CRC-and-retry scheme that worked fine for NRZ's low error rate becomes far too costly under PAM4: if errors are frequent enough, constantly discarding and retransmitting whole flits kills throughput and adds unpredictable latency spikes. The fix is to correct as many errors as possible <i>within the flit itself</i>, before ever needing a retry — which is exactly what forward error correction is for.</p>
+
+  <h2>The 256-Byte Flit and Reed-Solomon FEC</h2>
+  <p>CXL 3.0 introduces the <b>256-byte flit</b>. Bigger for a reason: it needs room for a much stronger error-correction payload. Per published PCIe 6.0 flit-mode details, the 256-byte flit breaks down roughly as follows:</p>
+  <table>
+    <tr><th>Component</th><th>Size</th><th>Purpose</th></tr>
+    <tr><td>Payload (TLPs + DLPs)</td><td>236 bytes + 6 bytes</td><td>The actual protocol data (transaction-layer and data-link-layer packets)</td></tr>
+    <tr><td>CRC</td><td>8 bytes</td><td>Reed-Solomon code over GF(2<sup>8</sup>), protects the full 236+6 byte block</td></tr>
+    <tr><td>FEC</td><td>2 bytes &times; 3 interleaved ways</td><td>Single-symbol-correcting forward error correction across the entire 250-byte block</td></tr>
+  </table>
+  <p class="srcnote">Flit-mode byte breakdown per PCIe 6.0 / CXL 3.0 specification materials.</p>
+  <p>The FEC layer is what actually absorbs PAM4's higher raw error rate: a <b>3-way interleaved, single-symbol-correcting Reed-Solomon FEC</b> can fix a proportion of bit errors <i>without needing a retransmission at all</i>. The CRC still sits on top as a safety net — if an error is too large for FEC to correct, the CRC catches it and the flit gets retried, exactly as before. Header bytes, CRC, and FEC are all added by the <b>Flex Bus</b> layer (Day 2) as part of its error correction, detection, and retry responsibilities.</p>
+
+  <!-- SVG: 68B vs 256B flit structure comparison -->
+  <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;display:block;margin:1.4rem auto;border-radius:12px;overflow:hidden">
+    <rect width="720" height="240" fill="#060e20"/>
+    <text x="180" y="26" fill="#fbbf24" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">68-BYTE FLIT (CXL 1.1 / 2.0, 32 GT/s NRZ)</text>
+    <rect x="50" y="50" width="230" height="50" rx="6" fill="rgba(56,189,248,0.12)" stroke="rgba(56,189,248,0.4)"/>
+    <text x="165" y="80" fill="#7dd3fc" font-size="11" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Payload + Header</text>
+    <rect x="280" y="50" width="45" height="50" rx="6" fill="rgba(251,191,36,0.14)" stroke="rgba(251,191,36,0.45)"/>
+    <text x="302" y="80" fill="#fde68a" font-size="9.5" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">CRC</text>
+    <text x="190" y="120" fill="#94a3b8" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif">No FEC needed &mdash; NRZ error rate is low enough</text>
+    <text x="190" y="134" fill="#94a3b8" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif">for CRC + retry alone</text>
+    <line x1="380" y1="34" x2="380" y2="220" stroke="rgba(148,163,184,0.15)" stroke-width="1"/>
+    <text x="545" y="26" fill="#4ade80" font-size="12" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">256-BYTE FLIT (CXL 3.0+, 64 GT/s PAM4)</text>
+    <rect x="410" y="50" width="200" height="50" rx="6" fill="rgba(56,189,248,0.12)" stroke="rgba(56,189,248,0.4)"/>
+    <text x="510" y="80" fill="#7dd3fc" font-size="10.5" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">Payload: 236B TLP + 6B DLP</text>
+    <rect x="613" y="50" width="35" height="50" rx="6" fill="rgba(251,191,36,0.14)" stroke="rgba(251,191,36,0.45)"/>
+    <text x="630" y="80" fill="#fde68a" font-size="9" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">CRC 8B</text>
+    <rect x="410" y="110" width="238" height="26" rx="5" fill="rgba(244,114,182,0.14)" stroke="rgba(244,114,182,0.45)"/>
+    <text x="529" y="128" fill="#f9a8d4" font-size="9.5" font-weight="700" text-anchor="middle" font-family="Outfit,sans-serif">3-way interleaved Reed-Solomon FEC (2B each way)</text>
+    <text x="529" y="160" fill="#4ade80" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif">FEC absorbs PAM4's higher bit-error rate</text>
+    <text x="529" y="174" fill="#4ade80" font-size="9.5" text-anchor="middle" font-family="Outfit,sans-serif">without needing a retry</text>
+  </svg>
+
+  <h2>Standard vs Latency-Optimized 256B Flits</h2>
+  <p>CXL 3.0 doesn't stop at one 256-byte format — it defines <b>two</b>, because bandwidth and latency pull in opposite directions and different traffic wants different answers:</p>
+  <div class="feat-grid">
+    <div class="feat"><div class="fi">&#128230;</div><b>Standard 256B Flit</b><span>The CRC/FEC protects the full 256-byte block as one unit. Maximum protection efficiency, but a receiver must wait for the entire flit to arrive before it can verify and act on any of it.</span></div>
+    <div class="feat"><div class="fi">&#9889;</div><b>Latency-Optimized 256B Flit</b><span>The same 256 bytes, restructured with the CRC calculated differently — split into smaller CRC-protected sub-blocks, so a receiver can start processing part of the flit before the rest has arrived.</span></div>
+  </div>
+  <p>The latency-optimized format is described in CXL materials as having a <b>zero-latency adder over CXL 2.0</b> — meaning that despite carrying nearly four times the payload of the old 68-byte flit, a well-designed latency-optimized 256B flit doesn't have to cost any more end-to-end latency than the format it replaced. That's only possible because the sub-block CRC structure lets the receiver start acting on the earliest-arriving sub-block immediately, rather than blocking on the whole 256 bytes.</p>
+  <div class="box violet">
+    <p style="margin-bottom:0"><b>The trade-off in one sentence:</b> Standard 256B maximizes protection efficiency per byte; Latency-Optimized 256B sacrifices a little of that efficiency (smaller CRC blocks are less efficient than one large one) in exchange for letting the receiver start working sooner. Which one a given link uses depends on whether that traffic is latency-critical (CXL.cache/CXL.mem coherence traffic, where every nanosecond matters) or more bandwidth-oriented (bulk CXL.io transfers, where total throughput matters more than any single flit's latency).</p>
+  </div>
+
+  <h2>Why CXL 4.0 Didn't Need a Third Flit Redesign</h2>
+  <p>Recall from Day 9 that CXL 4.0 doubles the PHY rate again, to <b>128 GT/s on PCIe 7.0</b>. You might expect another ground-up flit redesign — but CXL 4.0 instead <b>keeps the standard 256-byte flit</b> and simply adds its own additional 256-byte <b>latency-optimized</b> variant on top, tuned for the new PHY's error characteristics. The lesson here mirrors Day 9's version-ladder takeaway: CXL's architects prefer to <b>extend</b> a working primitive rather than replace it. The 256-byte flit, once it existed, turned out to be a stable enough foundation that two full PHY-speed doublings (3.0&rarr;4.0, 64&rarr;128 GT/s) didn't require reinventing it — only retuning the error-correction math for the new signaling environment.</p>
+
+  <h2>How Three Protocols Share One Flit Stream: ARB/MUX</h2>
+  <p>There's a question the last nine days have skipped past: CXL.io, CXL.cache, and CXL.mem are three separate protocols with three separate jobs (Day 3) — so how do they all get onto the <i>same physical link</i> at the same time? The answer is a dedicated hardware block called the <b>ARB/MUX (Arbitration and Multiplexer)</b>, sitting directly above the physical layer.</p>
+  <p>CXL.cache and CXL.mem actually share a common link/transaction layer beneath them (separate from CXL.io's own PCIe-style layer), and the ARB/MUX's job is to decide, flit by flit, whose turn it is to use the link: CXL.io traffic, or the combined CXL.cache/CXL.mem traffic. It does this with <b>weighted round-robin arbitration</b>, where the weights are set by the host — meaning the host can bias the link toward more coherence traffic or more I/O traffic depending on the workload, rather than splitting bandwidth blindly 50/50.</p>
+  <div class="feat-grid">
+    <div class="feat"><div class="fi">&#9878;</div><b>Arbitration</b><span>Weighted round-robin decides, per flit slot, whether CXL.io or CXL.cache/mem traffic gets to transmit next — host-configurable weights</span></div>
+    <div class="feat"><div class="fi">&#128279;</div><b>Multiplexing</b><span>Once arbitration picks a winner, the ARB/MUX packs that protocol's data into the flit's slot structure for transmission</span></div>
+    <div class="feat"><div class="fi">&#128260;</div><b>Virtual LSM Sync</b><span>CXL keeps a virtual Link State Machine (vLSM) synchronized across every multiplexed layer, so all three protocols agree on link state even though they're time-sharing one physical link</span></div>
+  </div>
+  <p>This is also where a more granular view of the flit's internal layout comes in. Beneath the commonly-cited "68-byte flit" figure, CXL's flit is more precisely built from <b>four 16-byte slots plus a 2-byte CRC</b> — a <b>528-bit (66-byte) structure</b> that the flit header maps onto CXL.cache or CXL.mem formats slot by slot. Each slot can be independently dedicated to a different protocol's data, which is the actual mechanism that lets a single flit carry, say, a CXL.cache request in one slot and CXL.mem completion data in another. The flit header is what tells the receiving transaction layer how to route each slot back to the right protocol.</p>
+  <div class="box">
+    <p style="margin-bottom:0"><b>Why this matters:</b> without ARB/MUX and per-slot routing, CXL would need three separate physical links — one per sub-protocol — to keep CXL.io, CXL.cache, and CXL.mem from colliding. Instead, one Flex Bus link (Day 2) carries all three, and the ARB/MUX plus slotted flit structure is the specific mechanism that makes that sharing possible without one protocol starving another.</p>
+  </div>
+
+  <h2>From Power-On to First Flit: Link Training</h2>
+  <p>None of this flit traffic can begin the instant a device is plugged in. Every CXL link first goes through <b>LTSSM (Link Training and Status State Machine)</b> — the same link-training concept PCIe uses, extended for CXL's needs. During LTSSM, the two link partners exchange <b>Training Sequences (TS)</b> and <b>Modified Training Sequences (mTS)</b> to negotiate the basics: link width, signaling speed, and which CXL protocols each side actually supports (recall from Day 1 that Alternate Protocol Negotiation is what determines whether a link even attempts CXL mode over the shared PCIe electrical layer). Only after LTSSM completes successfully does the link reach <b>L0</b>, the active state where CXL flits actually start flowing.</p>
+  <p>This matters for understanding real-world CXL latency: LTSSM only happens once at link bring-up (and after certain power-state transitions), not per-transaction — so it doesn't show up in the per-access latency numbers from Day 2. But it's a reminder that everything this course discusses about flits, sub-protocols, and coherence assumes a link that has already successfully trained and negotiated CXL mode. A link stuck failing LTSSM never gets to send a single CXL flit, regardless of how correct its higher-layer logic is.</p>
+
+  <h2>A Worked Example: Where the Nanoseconds Actually Go</h2>
+  <p>To make the flit format concrete, walk through what happens, roughly, when one CXL.mem read flows across a link:</p>
+  <ol>
+    <li><b>Assembly:</b> the transaction layer packs the memory request into a flit's slot(s) per the flit header format — this takes a small, fixed number of clock cycles regardless of flit size.</li>
+    <li><b>Transmission:</b> the flit is serialized onto the physical link at the link's signaling rate. A 256-byte flit at 64 GT/s transmits in a different (shorter, per-byte) time than a 68-byte flit at 32 GT/s per byte — but the 256-byte flit carries roughly 3.75&times; the payload, so more useful work gets done per flit transmitted.</li>
+    <li><b>FEC/CRC check:</b> on arrival, the receiver runs the Reed-Solomon FEC decode and CRC check before trusting the payload. This is pure added latency that didn't exist in a hypothetical error-free link — it's the price of PAM4's higher raw error rate, paid on every single flit.</li>
+    <li><b>Disassembly and routing:</b> the transaction layer unpacks the payload back into a CXL.mem completion and routes it to the requesting agent.</li>
+  </ol>
+  <p>Every one of Day 2's headline latency figures (CXL-attached memory at roughly 170&ndash;250ns versus local DRAM's 80&ndash;140ns) has flit assembly, transmission, FEC/CRC checking, and disassembly baked into it, repeated at least twice for a round trip. The Standard vs Latency-Optimized flit choice from earlier on this page is precisely about minimizing step 3 and step 4's contribution to that total, for the traffic that can least afford to wait.</p>
+
+  <h2>Flit Format as the Physical Root of Everything Before It</h2>
+  <p>This is worth stating plainly, because it ties the entire course together: every latency number from Day 2, every bandwidth calculation, every "why is CXL memory 100&ndash;150ns slower than local DRAM" discussion — all of it ultimately bottoms out in flit-level decisions. A flit has to be assembled, transmitted, error-checked (and possibly corrected), and disassembled on the other end, and every one of those steps takes real time measured in nanoseconds. The flit format is not an obscure implementation detail sitting below the interesting parts of CXL — it <i>is</i> the physical-layer trade-off that produces the interesting parts of CXL. Sub-protocols, device types, coherence models, and fabric topology all describe <i>what</i> CXL moves and <i>who</i> owns it; the flit format describes the actual mechanics of <i>how</i> a bit gets from one side of the link to the other reliably, and at what latency cost.</p>
+
+  <div class="takeaways">
+    <h3>&#127919; Day 10 Key Takeaways</h3>
+    <ul>
+      <li>A flit (flow control unit) is CXL's fixed-size transmission unit — every CXL.io/cache/mem message is packed into flits before crossing the link</li>
+      <li>CXL 1.1/2.0 use a 68-byte flit on the PCIe 5.0 PHY (32 GT/s, NRZ signaling) — CRC + retry is sufficient at NRZ's low error rate</li>
+      <li>CXL 3.0's PCIe 6.0 PHY (64 GT/s) uses PAM4 signaling, which packs 2 bits/symbol but has a much higher raw bit error rate</li>
+      <li>The 256-byte flit adds 3-way interleaved Reed-Solomon FEC (2B/way) on top of an 8-byte CRC to absorb PAM4 errors without constant retransmission</li>
+      <li>CXL 3.0 defines both a Standard 256B flit (max protection efficiency) and a Latency-Optimized 256B flit (sub-block CRC, ~zero added latency vs CXL 2.0)</li>
+      <li>CXL 4.0 (128 GT/s, PCIe 7.0) reuses the 256B flit and adds its own latency-optimized variant rather than redesigning the format again</li>
+      <li>ARB/MUX uses weighted round-robin arbitration to let CXL.io and CXL.cache/mem time-share one physical link, packing data into a 528-bit (four 16B slots + 2B CRC) flit structure</li>
+      <li>LTSSM link training must complete (negotiating width, speed, and protocol support) before any CXL flit can flow — a one-time cost, not part of per-transaction latency</li>
+      <li>Flit format is the physical-layer root cause behind every CXL latency/bandwidth number covered earlier in the course</li>
+    </ul>
+  </div>
+
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is a flit in CXL?</div><div class="faq-a">A flit (flow control unit) is the fixed-size chunk that CXL breaks all traffic into for transmission over the link, similar in spirit to a network packet but fixed in size and optimized for hardware pipelines. Every CXL.io, CXL.cache, and CXL.mem message is packed into one or more flits before it crosses the physical link, and flits are what carry the CRC and FEC protection that keeps the link reliable.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is the difference between the 68-byte flit and the 256-byte flit in CXL?</div><div class="faq-a">CXL 1.1 and 2.0 use a 68-byte flit sized for links up to 32 GT/s. CXL 3.0 introduces a 256-byte flit for the PCIe 6.0 physical layer at 64 GT/s, which uses PAM4 signaling and needs much stronger error correction, so the flit grew to carry a Reed-Solomon FEC code alongside the payload and CRC.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is the difference between Standard and Latency-Optimized 256-byte flits?</div><div class="faq-a">CXL 3.0 defines two 256-byte flit formats. The Standard 256B flit uses the same CRC/FEC structure across the whole flit for maximum protection. The Latency-Optimized 256B flit restructures the same 256 bytes with the CRC calculated differently, splitting the flit into smaller CRC-protected sub-blocks so that a receiver can start acting on part of the flit before the whole thing has arrived, trading a little protection efficiency for lower effective latency.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">Why does CXL need forward error correction (FEC)?</div><div class="faq-a">CXL's higher-speed links (PCIe 6.0 at 64 GT/s and beyond) use PAM4 signaling, which packs more bits per symbol but has a much higher raw bit error rate than the simpler NRZ signaling used at lower speeds. FEC (Reed-Solomon coding over GF(2^8) in CXL's case) corrects a proportion of these errors within the flit itself, so the link can run reliably at PAM4 speeds without retransmitting constantly. CRC on top of FEC still catches errors FEC can't fix, triggering a retry.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">Why does the flit format matter for CXL performance?</div><div class="faq-a">The flit format sets the floor on latency and overhead for every single CXL transaction. A larger flit amortizes header/CRC/FEC overhead better (higher efficiency) but takes longer to fill and transmit end-to-end (higher per-transaction latency) unless split into a latency-optimized form. This is the physical-layer trade-off underneath the latency numbers introduced back on Day 2 — flit format is where bandwidth and latency are actually being traded against each other in silicon.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">How do CXL.io, CXL.cache, and CXL.mem share the same physical link?</div><div class="faq-a">A dedicated ARB/MUX (Arbitration and Multiplexer) block sits above the physical layer and uses weighted round-robin arbitration, with host-configurable weights, to decide whether CXL.io or the combined CXL.cache/CXL.mem traffic gets to use the link next. Once arbitration picks a winner, the ARB/MUX packs that protocol's data into the flit's slot structure, so all three sub-protocols time-share one Flex Bus link instead of needing separate physical links.</div></div>
+
+  <nav class="pager">
+    <a href="/cxl/day-09-cxl-3-1-and-4-0/"><span class="pl">&#8592; Day 9</span><span>CXL 3.1 &amp; 4.0</span></a>
+    <a class="next" href="/cxl/day-11-memory-pooling-disaggregation/"><span class="pl">Next: Day 11 &#8594;</span><span>Memory Pooling &amp; Disaggregation</span></a>
+  </nav>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/cxl/">CXL Course</a> &middot; <a href="/chiplets-ucie/">Chiplets &amp; UCIe</a> &middot; <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> &middot; By EcrioniX &middot; Updated July 2026</div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
