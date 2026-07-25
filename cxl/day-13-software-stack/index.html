@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The CXL Software Stack — Linux Kernel Driver, ACPI CDAT &amp; Hotplug | Day 13 | EcrioniX</title>
+<meta name="description" content="Day 13 of the CXL course: how Linux actually discovers, decodes, and exposes CXL memory — the cxl_acpi/cxl_pci/core driver split, ACPI CEDT/CFMWS root decoders, per-device CDAT latency/bandwidth reporting, HDM decoder programming, and the cxl/ndctl/daxctl userspace tools that turn a CXL device into a usable NUMA node.">
+<meta name="keywords" content="CXL Linux driver, ACPI CEDT CFMWS, CXL CDAT, HDM decoder, cxl-cli ndctl daxctl, CXL region decoder, CXL memory hotplug, cxl_acpi cxl_pci, dax device, Linux CXL sysfs">
+<link rel="canonical" href="https://ecrionix.org/cxl/day-13-software-stack/">
+<meta property="og:title" content="The CXL Software Stack — Linux Kernel Driver, ACPI CDAT & Hotplug | Day 13 | EcrioniX">
+<meta property="og:description" content="How Linux discovers, decodes, and exposes CXL memory: ACPI CEDT/CFMWS, per-device CDAT, HDM decoders, and the cxl/ndctl/daxctl toolchain.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","headline":"The CXL Software Stack — Linux Kernel Driver, ACPI CDAT & Hotplug","description":"Day 13 of the CXL course: the Linux CXL driver split, ACPI CEDT/CFMWS root decoders, per-device CDAT reporting, HDM decoder programming, and the cxl/ndctl/daxctl toolchain.","author":{"@type":"Organization","name":"EcrioniX"},"publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"datePublished":"2026-07-25","dateModified":"2026-07-25","url":"https://ecrionix.org/cxl/day-13-software-stack/"},
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"CXL Course","item":"https://ecrionix.org/cxl/"},{"@type":"ListItem","position":3,"name":"Day 13","item":"https://ecrionix.org/cxl/day-13-software-stack/"}]},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"How is the Linux CXL driver organized?","acceptedAnswer":{"@type":"Answer","text":"The Linux CXL driver code has a core module handling port/decoder topology, region construction, HDM decoder setup, mailbox interface, DVSEC parsing, and CDAT parsing, plus separate cxl_pci, cxl_mem, and cxl_acpi modules. Core objects like ports, decoders, and regions are shared between these subsystem drivers and the region-driver and nvdimm object-drivers built on top of them."}},
+   {"@type":"Question","name":"What is a CXL root decoder and where does it come from?","acceptedAnswer":{"@type":"Answer","text":"A root decoder is created during cxl_acpi_probe, with one root decoder created per CFMWS (CXL Fixed Memory Window Structure) entry found in the ACPI CEDT (CXL Early Discovery Table). The memory range described in the root decoder becomes a memory region, and its target hosts are presented in sysfs via the target_list parameter."}},
+   {"@type":"Question","name":"What is CDAT and why does it matter for CXL?","acceptedAnswer":{"@type":"Answer","text":"CDAT (Coherent Device Attribute Table) is a table reported by the CXL device itself, describing its own memory ranges along with the latency and bandwidth of each range. While ACPI's CEDT/CFMWS tell the kernel about the host's memory windows, CDAT is what lets the kernel's memory tiering framework place a specific CXL device into the correct performance tier automatically, based on real reported numbers rather than a guess."}},
+   {"@type":"Question","name":"How does a CXL memory region become usable RAM in Linux?","acceptedAnswer":{"@type":"Answer","text":"Once the kernel programs the host-side and device-side HDM decoders so a Host Physical Address range correctly routes to the right device, the resulting CXL region is exposed as a hot-pluggable NUMA node, typically surfaced first as a dax device. From there it can be reconfigured into ordinary System RAM using daxctl, or left as a DAX-mapped region for applications that want direct, byte-addressable access."}},
+   {"@type":"Question","name":"What userspace tools manage CXL memory on Linux?","acceptedAnswer":{"@type":"Answer","text":"The core userspace toolchain is cxl (the CXL-specific CLI for topology, regions, and decoders), ndctl (for the underlying nvdimm/persistent-memory subsystem CXL builds on), daxctl (for converting dax devices into System RAM or configuring DAX mode), plus general tools like numactl, lspci, and setpci used to validate the boot path from power-on through DRAM training, DVSEC/HDM reporting, decoder programming, CDAT delivery, and ACPI table handoff."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--violet:#a78bfa;--violet2:#c4b5fd;--pink:#f472b6;--green:#4ade80;--amber:#fbbf24;--cyan:#38bdf8;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.75}
+a{color:var(--violet);text-decoration:none}a:hover{text-decoration:underline}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--violet)}.bc span{opacity:.4}
+.wrap{max-width:820px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+.daytag{display:inline-block;font-family:'Orbitron',sans-serif;font-size:.65rem;font-weight:700;background:rgba(167,139,250,.12);color:var(--violet);border:1px solid rgba(167,139,250,.3);padding:.25rem .7rem;border-radius:4px;letter-spacing:.07em;margin-bottom:.85rem}
+h1{font-size:clamp(1.75rem,4vw,2.5rem);font-weight:900;color:#f8fafc;line-height:1.18;margin-bottom:.55rem}
+.byline{color:#475569;font-size:.82rem;margin-bottom:1.2rem}.byline a{color:#475569}
+.lead{font-size:1.06rem;color:var(--sl);margin-bottom:2.2rem;line-height:1.85}
+h2{font-size:1.35rem;font-weight:800;color:#f1f5f9;margin:2.5rem 0 .85rem}
+h3{font-size:1.05rem;font-weight:700;color:#e2e8f0;margin:1.6rem 0 .6rem}
+p{color:var(--sl);margin-bottom:1rem;line-height:1.85}
+ul,ol{color:var(--sl);padding-left:1.4rem;margin-bottom:1rem}li{margin-bottom:.4rem;line-height:1.7}
+b,strong{color:#e2e8f0}code{background:rgba(167,139,250,.1);color:var(--violet2);padding:.1rem .4rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em}
+.box{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem 1.4rem;margin:1.5rem 0}
+.box.violet{border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.05)}
+table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.86rem}
+th{background:rgba(167,139,250,.1);color:var(--violet2);font-weight:700;padding:.6rem .8rem;text-align:left;border:1px solid var(--bdr)}
+td{padding:.55rem .8rem;border:1px solid var(--bdr);color:var(--sl)}
+tr:nth-child(even) td{background:rgba(8,13,26,.5)}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;margin:1.3rem 0}
+.feat{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.9rem 1rem}
+.feat .fi{font-size:1.3rem;margin-bottom:.4rem}
+.feat b{display:block;color:#f1f5f9;font-size:.9rem;margin-bottom:.25rem}
+.feat span{font-size:.78rem;color:var(--sl)}
+.takeaways{background:linear-gradient(135deg,rgba(167,139,250,.07),rgba(244,114,182,.04));border:1px solid rgba(167,139,250,.25);border-radius:12px;padding:1.4rem 1.6rem;margin:2.5rem 0}
+.takeaways h3{color:var(--violet);margin-top:0;font-size:1rem}
+.takeaways li{color:#e2e8f0;margin-bottom:.5rem}
+.srcnote{font-size:.78rem;color:#475569;margin-top:.5rem;font-style:italic}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;margin:.75rem 0;overflow:hidden}
+.faq-q{font-weight:700;color:#f1f5f9;padding:.85rem 1.1rem;cursor:pointer;background:var(--bg3);font-size:.93rem;display:flex;justify-content:space-between;align-items:center}
+.faq-q::after{content:'+';font-size:1.1rem;color:var(--violet)}
+.faq-q.open::after{content:'-'}
+.faq-a{padding:0 1.1rem;max-height:0;overflow:hidden;transition:max-height .3s,padding .3s;color:var(--sl);font-size:.9rem}
+.faq-a.open{max-height:420px;padding:.8rem 1.1rem}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:3rem;flex-wrap:wrap}
+.pager a{background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:.7rem 1.2rem;font-size:.85rem;color:#e2e8f0;display:flex;flex-direction:column;gap:.1rem;text-decoration:none;transition:border-color .15s;max-width:48%}
+.pager a:hover{border-color:rgba(167,139,250,.4)}.pager a .pl{font-size:.7rem;color:var(--sl)}
+.pager a.next{text-align:right;margin-left:auto}
+footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2)}
+#btt{position:fixed;bottom:1.4rem;right:1.4rem;width:44px;height:44px;border-radius:50%;background:#334155;border:none;color:#e2e8f0;font-size:1.1rem;cursor:pointer;opacity:0;transition:opacity .3s;z-index:200}#btt.show{opacity:1}
+.code-block{position:relative;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.2rem 0;overflow-x:auto}
+.code-block code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--cyan);white-space:pre}
+@media(max-width:600px){.nav-links{display:none}.feat-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/chiplets-ucie/">Chiplets &amp; UCIe</a><a href="/physical-design/">Physical Design</a><a href="/cxl/">CXL</a><a href="/vlsi/">VLSI</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/cxl/">CXL Course</a><span>&#8250;</span><span>Day 13</span></div>
+
+<div class="wrap">
+  <span class="daytag">DAY 13 &middot; PHASE 3 — DEPLOYMENT</span>
+  <h1>The Software Stack<br>OS/Kernel Memory Tiering &amp; Page Migration</h1>
+  <div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated July 2026</div>
+  <p class="lead">Day 11 introduced the shape of Linux memory tiering — CXL memory as a CPU-less NUMA node, DAMON migrating hot and cold pages. Day 13 goes underneath that summary and asks the harder question: how does a CXL device go from a piece of silicon on a PCIe-style link to a NUMA node the kernel can safely hand out to applications at all? The answer is a specific, layered discovery-and-programming pipeline — and it's worth understanding, because every pooling and tiering benefit from Days 11&ndash;12 depends on this pipeline working correctly.</p>
+
+  <h2>The Kernel Driver Split</h2>
+  <p>The Linux CXL driver isn't one monolithic module — it's deliberately split so that different concerns stay separated:</p>
+  <div class="feat-grid">
+    <div class="feat"><div class="fi">&#9881;</div><b>Core Module</b><span>Port/decoder topology, region construction, HDM decoder setup, mailbox interface, DVSEC parsing, and CDAT parsing — the shared logic every other module builds on</span></div>
+    <div class="feat"><div class="fi">&#128268;</div><b>cxl_pci</b><span>PCI-layer specifics: discovering CXL devices as PCIe-style endpoints and handling their PCI configuration space</span></div>
+    <div class="feat"><div class="fi">&#128203;</div><b>cxl_acpi</b><span>ACPI-layer specifics: reading platform firmware tables that describe where CXL memory windows live in the system's address map</span></div>
+  </div>
+  <p>Core objects — <b>ports, decoders, and regions</b> — are shared across these subsystem drivers and the higher-level drivers built on top of them (a port-driver, a region-driver, and nvdimm object-drivers, since CXL persistent memory reuses much of the existing Linux NVDIMM subsystem from Day 6). This layering means the PCI-discovery logic and the ACPI-firmware logic don't need to know about each other's internals — they both feed into the same core topology model.</p>
+
+  <h2>Step 1: ACPI Tells the Kernel Where to Look</h2>
+  <p>Before Linux can talk to a single CXL device, platform firmware has to tell it where CXL memory windows exist in the system's address space. This comes from two ACPI structures:</p>
+  <table>
+    <tr><th>ACPI Structure</th><th>What It Provides</th></tr>
+    <tr><td><b>CEDT</b> (CXL Early Discovery Table)</td><td>Describes the platform's CXL Host Bridges and Fixed Memory Window Structures (CFMWS)</td></tr>
+    <tr><td><b>CFMWS</b> (CXL Fixed Memory Window Structure)</td><td>Each entry describes one fixed memory window — a range of host physical address space reserved for CXL memory</td></tr>
+  </table>
+  <p>During <code>cxl_acpi_probe</code>, the kernel creates one <b>root decoder</b> per CFMWS entry it finds in the CEDT. That root decoder's memory range becomes a memory region, and the hosts it's reachable from are presented in sysfs via a <code>target_list</code> parameter — meaning this ACPI data is what first tells the kernel "CXL memory could exist somewhere in this address range," well before any specific device has been identified.</p>
+
+  <h2>Step 2: CDAT Tells the Kernel What It Actually Found</h2>
+  <p>ACPI's CEDT/CFMWS describe the platform's side of the story — where memory windows are reserved. The device's own <b>CDAT (Coherent Device Attribute Table)</b> describes the other half: <b>what the device itself reports about its own memory</b>. CDAT parsing (handled by the core module) gives the kernel the device's memory ranges along with the <b>latency and bandwidth of each range</b> — real, hardware-reported numbers, not an assumption.</p>
+  <div class="box violet">
+    <p style="margin-bottom:0"><b>Why this two-table split matters:</b> CEDT/CFMWS answer "where in the address map should I look for CXL memory," while CDAT answers "now that I've found a device there, how fast is it really?" Day 11's memory tiering framework needs exactly this second answer — the kernel places a CXL node into its tier based on the device's own reported <i>abstract distance</i>, derived from CDAT's real latency/bandwidth figures, not a fixed assumption baked into the kernel.</p>
+  </div>
+
+  <h2>Step 3: Programming the HDM Decoders</h2>
+  <p>Knowing where memory <i>should</i> be and how fast a device claims to be still isn't enough to actually route traffic. The kernel has to program <b>HDM (Host-managed Device Memory) decoders</b> — both <b>host-side</b> and <b>device-side</b> — so that a contiguous <b>Host Physical Address (HPA)</b> range actually routes through the CXL fabric to the correct physical device. For interleaved regions (memory striped across multiple devices for bandwidth, similar in spirit to RAID striping), the decoders also have to agree on the correct <b>interleave granularity</b> so that consecutive address ranges land on the correct device in the correct order.</p>
+  <p>This is the step where the abstractions from earlier in this course become concrete register programming: Day 4's HDM concept, Day 7's Logical Devices, and Day 8's GFAM addressing all ultimately resolve down to an HDM decoder configuration that the kernel must get exactly right, on both ends of the link, before a single byte can be safely read or written.</p>
+
+  <h2>Step 4: Becoming a Usable NUMA Node</h2>
+  <p>Once HDM decoders are correctly programmed, the resulting CXL region is exposed as a <b>hot-pluggable NUMA node</b>. It typically first appears as a <b>dax device</b> (Direct Access) — a mode that gives applications direct, byte-addressable access to the memory without going through the page cache. From there, an administrator has a choice:</p>
+  <div class="feat-grid">
+    <div class="feat"><div class="fi">&#128190;</div><b>Convert to System RAM</b><span>Use daxctl to reconfigure the dax device into ordinary System RAM, which the memory tiering framework (Day 11) then manages transparently</span></div>
+    <div class="feat"><div class="fi">&#127919;</div><b>Leave as DAX-mapped</b><span>Keep the region in DAX mode for applications that specifically want direct, page-cache-bypassing access to the CXL memory</span></div>
+  </div>
+  <p>This is precisely the point where all the ACPI/CDAT/HDM machinery above becomes invisible to an application: whether it's a Day 11 DAMON-managed tiered NUMA node or a Day 12 GPU-reachable memory pool, the application (or in Day 12's case, the accelerator's runtime) just sees memory it can allocate from — the entire discovery-and-decode pipeline above is what made that simplicity possible.</p>
+
+  <h2>The Userspace Toolchain</h2>
+  <p>A parallel set of userspace tools exists to configure, validate, and debug every layer above:</p>
+  <div class="code-block"><code>cxl      # CXL-specific CLI: topology, regions, decoders
+ndctl    # nvdimm/persistent-memory subsystem CXL builds on
+daxctl   # convert dax devices to System RAM, or configure DAX mode
+numactl  # allocate/bind memory relative to NUMA nodes, including CXL tiers
+lspci    # inspect PCIe/CXL device configuration space
+setpci   # low-level PCI configuration space read/write, used in bring-up debug</code></div>
+  <p>Together, these tools validate the entire boot-to-usable-memory path this page just walked through: <b>power-on &rarr; DRAM training &rarr; DVSEC and HDM reporting &rarr; decoder programming &rarr; CDAT delivery &rarr; ACPI table handoff</b>. When a CXL memory expander doesn't show up as expected, this is the exact sequence an engineer steps through with these tools to find which stage failed — is the CEDT/CFMWS entry missing, did CDAT parsing fail to return sane latency numbers, or did HDM decoder programming leave the HPA range unrouted?</p>
+
+  <div class="takeaways">
+    <h3>&#127919; Day 13 Key Takeaways</h3>
+    <ul>
+      <li>Linux splits CXL driver logic into a shared core (topology, regions, HDM/DVSEC/CDAT parsing) plus cxl_pci and cxl_acpi subsystem modules</li>
+      <li>ACPI's CEDT and CFMWS entries tell the kernel where CXL memory windows exist in the address map; one root decoder is created per CFMWS entry during cxl_acpi_probe</li>
+      <li>Each device's own CDAT reports its actual memory ranges plus latency/bandwidth per range — the real data Day 11's tiering framework uses to place it in the correct tier</li>
+      <li>Host-side and device-side HDM decoders must be programmed so an HPA range correctly routes to the right device, with matching interleave granularity for striped regions</li>
+      <li>A configured CXL region surfaces as a hot-pluggable NUMA node, usually first as a dax device, then optionally converted to System RAM via daxctl</li>
+      <li>The userspace toolchain (cxl, ndctl, daxctl, numactl, lspci, setpci) validates the full boot path from power-on through ACPI table handoff</li>
+    </ul>
+  </div>
+
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">How is the Linux CXL driver organized?</div><div class="faq-a">The Linux CXL driver code has a core module handling port/decoder topology, region construction, HDM decoder setup, mailbox interface, DVSEC parsing, and CDAT parsing, plus separate cxl_pci, cxl_mem, and cxl_acpi modules. Core objects like ports, decoders, and regions are shared between these subsystem drivers and the region-driver and nvdimm object-drivers built on top of them.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is a CXL root decoder and where does it come from?</div><div class="faq-a">A root decoder is created during cxl_acpi_probe, with one root decoder created per CFMWS (CXL Fixed Memory Window Structure) entry found in the ACPI CEDT (CXL Early Discovery Table). The memory range described in the root decoder becomes a memory region, and its target hosts are presented in sysfs via the target_list parameter.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What is CDAT and why does it matter for CXL?</div><div class="faq-a">CDAT (Coherent Device Attribute Table) is a table reported by the CXL device itself, describing its own memory ranges along with the latency and bandwidth of each range. While ACPI's CEDT/CFMWS tell the kernel about the host's memory windows, CDAT is what lets the kernel's memory tiering framework place a specific CXL device into the correct performance tier automatically, based on real reported numbers rather than a guess.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">How does a CXL memory region become usable RAM in Linux?</div><div class="faq-a">Once the kernel programs the host-side and device-side HDM decoders so a Host Physical Address range correctly routes to the right device, the resulting CXL region is exposed as a hot-pluggable NUMA node, typically surfaced first as a dax device. From there it can be reconfigured into ordinary System RAM using daxctl, or left as a DAX-mapped region for applications that want direct, byte-addressable access.</div></div>
+  <div class="faq-item"><div class="faq-q" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">What userspace tools manage CXL memory on Linux?</div><div class="faq-a">The core userspace toolchain is cxl (the CXL-specific CLI for topology, regions, and decoders), ndctl (for the underlying nvdimm/persistent-memory subsystem CXL builds on), daxctl (for converting dax devices into System RAM or configuring DAX mode), plus general tools like numactl, lspci, and setpci used to validate the boot path from power-on through DRAM training, DVSEC/HDM reporting, decoder programming, CDAT delivery, and ACPI table handoff.</div></div>
+
+  <nav class="pager">
+    <a href="/cxl/day-12-cxl-for-ai/"><span class="pl">&#8592; Day 12</span><span>CXL for AI</span></a>
+    <a class="next" href="/cxl/day-14-products-ecosystem/"><span class="pl">Next: Day 14 &#8594;</span><span>Real Products &amp; Ecosystem</span></a>
+  </nav>
+</div>
+
+<footer>&#169; 2026 EcrioniX &middot; <a href="/cxl/">CXL Course</a> &middot; <a href="/chiplets-ucie/">Chiplets &amp; UCIe</a> &middot; <a href="/vlsi/">VLSI</a>
+<div style="margin-top:.9rem;font-size:.78rem;opacity:.85"><a href="/about/" style="color:#94a3b8">About</a> &middot; <a href="/contact/" style="color:#94a3b8">Contact</a> &middot; <a href="/legal/privacy.html" style="color:#94a3b8">Privacy</a> &middot; <a href="/legal/terms.html" style="color:#94a3b8">Terms</a> &middot; By EcrioniX &middot; Updated July 2026</div></footer>
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.classList.toggle('show',scrollY>400);});
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
