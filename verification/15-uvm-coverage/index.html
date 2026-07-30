@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Coverage — Day 15 | EcrioniX Verification Series</title>
+  <meta name="description" content="Functional coverage in UVM: covergroup inside uvm_subscriber, coverpoint bins, cross coverage, automatic vs manual sampling, coverage threshold in check_phase, and merging coverage across simulations.">
+  <meta name="keywords" content="UVM coverage, functional coverage, covergroup, coverpoint, cross coverage, uvm_subscriber, UCDB merge, SystemVerilog coverage, UVM tutorial">
+  <link rel="canonical" href="https://ecrionix.org/verification/15-uvm-coverage/">
+  <meta property="og:title" content="UVM Coverage — Day 15 | EcrioniX Verification Series">
+  <meta property="og:description" content="Functional coverage in UVM: covergroup inside uvm_subscriber, coverpoint bins, cross coverage, automatic vs manual sampling, coverage threshold in check_phase, and merging coverage.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/15-uvm-coverage/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"UVM Coverage","description":"Functional coverage in UVM: covergroup inside uvm_subscriber, coverpoint bins, cross coverage, automatic vs manual sampling, coverage threshold in check_phase, and merging coverage across simulations.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/verification/15-uvm-coverage/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 15 — UVM Coverage","item":"https://ecrionix.org/verification/15-uvm-coverage/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between functional coverage and code coverage?","acceptedAnswer":{"@type":"Answer","text":"Code coverage (line, toggle, branch, FSM) measures which RTL statements were executed — it answers whether the simulator touched the code. Functional coverage (covergroup/coverpoint) measures whether the design was exercised with the correct scenarios — it answers whether meaningful corner-cases were tested. 100% code coverage does not mean all interesting behaviour was stimulated; functional coverage closes that gap by letting the verification engineer explicitly model what matters."}},
+      {"@type":"Question","name":"Why put a covergroup inside a uvm_subscriber instead of the monitor?","acceptedAnswer":{"@type":"Answer","text":"Separation of concerns: the monitor's job is to observe the bus and emit transactions; the subscriber's job is to collect coverage from those transactions. This way you can independently enable or disable coverage collection per simulation run, swap in different coverage models, or reuse the monitor in a scoreboard context without dragging coverage overhead. uvm_subscriber already provides a write() callback connected to an analysis export, so no extra TLM wiring is needed."}},
+      {"@type":"Question","name":"When should I call sample() manually versus using automatic sampling?","acceptedAnswer":{"@type":"Answer","text":"Automatic sampling (triggered by a clocking-block event or an event inside the covergroup) is convenient but fires on every clock edge, which can pollute bins with idle-cycle noise. Manual sample() inside the subscriber's write() method fires exactly when a complete transaction has been captured, so bins only accumulate meaningful data. Prefer manual sample() in UVM flows; reserve automatic sampling for simple signal-level checks."}},
+      {"@type":"Question","name":"How do I merge coverage across multiple simulation runs?","acceptedAnswer":{"@type":"Answer","text":"Each run generates a UCDB (.ucdb) file. Use the vcover merge command — for example: vcover merge merged.ucdb run1.ucdb run2.ucdb run3.ucdb — to union the hit counts. Then run urgReport -dir merged.ucdb -format text (or -format html) to view combined coverage. In Cadence Xcelium the equivalent is the imc tool with imc -load run1.vdb -merge run2.vdb -report_file merged_rpt."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:#1e293b;color:var(--muted);border:1px solid var(--border)}.dnbtn-prev:hover{color:#fff}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--violet);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(167,139,250,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--violet);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted);transition:color .15s}.toc li a:hover{color:var(--sky)}
+    .diagram{background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;text-align:center}
+    .diagram svg{max-width:100%;height:auto}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .nav-cards{display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap}
+    .nav-card{flex:1;min-width:200px;background:rgba(15,23,42,.7);border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.2rem 1.5rem;text-decoration:none;color:inherit;transition:all .2s}
+    .nav-card:hover{border-color:var(--violet);transform:translateY(-2px)}
+    .nav-card-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .nav-card-title{font-size:.95rem;font-weight:700;color:#f1f5f9}
+    .nav-card.next{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04))}
+    .faq{margin:2rem 0}
+    details{background:rgba(15,23,42,.6);border:1px solid var(--border);border-radius:10px;margin-bottom:.8rem;padding:0}
+    summary{padding:1rem 1.2rem;cursor:pointer;font-size:.9rem;font-weight:600;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    summary::-webkit-details-marker{display:none}
+    summary::after{content:'›';font-size:1.3rem;color:var(--violet);transition:transform .2s}
+    details[open] summary::after{transform:rotate(90deg)}
+    .faq-body{padding:.2rem 1.2rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem;margin-top:auto}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .cov-bar-wrap{background:#1e293b;border-radius:6px;height:12px;margin:.4rem 0;overflow:hidden}
+    .cov-bar{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--violet),var(--sky))}
+    .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.8rem;margin:1.2rem 0}
+    .metric-card{background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.1rem}
+    .metric-label{font-size:.72rem;color:var(--dim);font-weight:600;text-transform:uppercase;margin-bottom:.25rem}
+    .metric-val{font-size:1.25rem;font-weight:700;color:var(--sky)}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/verification/">Verification</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 15 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/14-uvm-phasing/" class="dnbtn dnbtn-prev">&larr; Day 14</a>
+    <a href="/verification/16-constrained-random-verification/" class="dnbtn dnbtn-next">Day 16 &rarr;</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 15 — UVM Coverage</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 3 — UVM Architecture</div>
+  <h1>UVM Coverage</h1>
+  <div style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated Jun 22, 2026</span></div>
+  <p class="hero-sub">Coverage is the compass of verification — it tells you <em>what</em> you have tested, not just whether the RTL simulated. This day covers every coverage concept you need in UVM: covergroup anatomy, cross coverage, subscriber-based collection, <code>get_coverage()</code> in <code>check_phase</code>, and merging UCDB databases across regression runs.</p>
+  <div class="hero-meta">
+    <span>20 min read</span>
+    <span>Day 15 of 25</span>
+    <span>UVM / Functional Coverage</span>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- Coverage overview diagram -->
+  <div class="diagram">
+    <svg viewBox="0 0 780 200" xmlns="http://www.w3.org/2000/svg" style="max-width:760px">
+      <defs>
+        <marker id="arr" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#a78bfa"/></marker>
+      </defs>
+      <!-- Coverage types boxes -->
+      <rect x="20" y="30" width="200" height="140" rx="10" fill="rgba(167,139,250,.07)" stroke="rgba(167,139,250,.3)" stroke-width="1.2"/>
+      <text x="120" y="52" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="700">CODE COVERAGE</text>
+      <text x="120" y="72" text-anchor="middle" fill="#64748b" font-size="9">Line / Statement</text>
+      <text x="120" y="89" text-anchor="middle" fill="#64748b" font-size="9">Toggle</text>
+      <text x="120" y="106" text-anchor="middle" fill="#64748b" font-size="9">Branch / Condition</text>
+      <text x="120" y="123" text-anchor="middle" fill="#64748b" font-size="9">FSM State / Arc</text>
+      <text x="120" y="143" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">Tool-generated</text>
+      <text x="120" y="157" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">no user effort</text>
+
+      <rect x="280" y="30" width="200" height="140" rx="10" fill="rgba(56,189,248,.07)" stroke="rgba(56,189,248,.3)" stroke-width="1.2"/>
+      <text x="380" y="52" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700">FUNCTIONAL COVERAGE</text>
+      <text x="380" y="72" text-anchor="middle" fill="#64748b" font-size="9">covergroup / coverpoint</text>
+      <text x="380" y="89" text-anchor="middle" fill="#64748b" font-size="9">bins (manual / auto)</text>
+      <text x="380" y="106" text-anchor="middle" fill="#64748b" font-size="9">cross coverage</text>
+      <text x="380" y="123" text-anchor="middle" fill="#64748b" font-size="9">illegal / ignore bins</text>
+      <text x="380" y="143" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">User-written in SV</text>
+      <text x="380" y="157" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">inside uvm_subscriber</text>
+
+      <rect x="540" y="30" width="210" height="140" rx="10" fill="rgba(74,222,128,.07)" stroke="rgba(74,222,128,.3)" stroke-width="1.2"/>
+      <text x="645" y="52" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="700">COVERAGE CLOSURE</text>
+      <text x="645" y="72" text-anchor="middle" fill="#64748b" font-size="9">get_coverage() threshold</text>
+      <text x="645" y="89" text-anchor="middle" fill="#64748b" font-size="9">check_phase error</text>
+      <text x="645" y="106" text-anchor="middle" fill="#64748b" font-size="9">UCDB merge (vcover)</text>
+      <text x="645" y="123" text-anchor="middle" fill="#64748b" font-size="9">coverage-driven loop</text>
+      <text x="645" y="143" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">Regression flow</text>
+      <text x="645" y="157" text-anchor="middle" fill="#94a3b8" font-size="8" font-style="italic">to 100% sign-off</text>
+
+      <!-- arrows between boxes -->
+      <line x1="220" y1="100" x2="278" y2="100" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="480" y1="100" x2="538" y2="100" stroke="#38bdf8" stroke-width="1.2" marker-end="url(#arr)"/>
+    </svg>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#code-vs-functional">Functional vs Code Coverage</a></li>
+      <li><a href="#covergroup-basics">Covergroup Basics — coverpoint and bins</a></li>
+      <li><a href="#automatic-binning">Automatic Binning and Manual bins</a></li>
+      <li><a href="#cross-coverage">Cross Coverage — bin explosion and ignore_bins</a></li>
+      <li><a href="#sampling">Sampling — Automatic vs Manual sample()</a></li>
+      <li><a href="#subscriber">covergroup inside uvm_subscriber</a></li>
+      <li><a href="#check-phase">get_coverage() in check_phase</a></li>
+      <li><a href="#cov-driven">Coverage-Driven Verification Loop</a></li>
+      <li><a href="#ucdb">UCDB Merge — vcover / urgReport</a></li>
+      <li><a href="#axi4-example">Complete AXI4 Transfer Coverage Example</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- ─── SECTION 1 ──────────────────────────────────────── -->
+  <h2 id="code-vs-functional">1. Functional vs Code Coverage</h2>
+
+  <p>Simulation tools generate <strong>code coverage</strong> automatically by instrumenting the RTL. When every line, branch, toggle, and FSM arc is hit at least once, the tool reports 100% code coverage. This sounds good, but it says nothing about <em>what</em> stimulus was applied. A single random packet might touch every RTL line while never exercising a burst-length of 256, a narrow-byte-enable strobe, or back-to-back write-then-read with the same address.</p>
+
+  <p><strong>Functional coverage</strong> is the answer. You write a <code>covergroup</code> that explicitly models what "interesting" looks like — which field values matter, which combinations are corner cases, which sequences must be seen. The simulator then tracks how much of that model has been exercised. Until every coverpoint bin is hit, verification is not complete, regardless of code coverage percentage.</p>
+
+  <table>
+    <thead><tr><th>Dimension</th><th>Code Coverage</th><th>Functional Coverage</th></tr></thead>
+    <tbody>
+      <tr><td>Who writes it</td><td>Tool (automatic)</td><td>Verification engineer (manual)</td></tr>
+      <tr><td>What it measures</td><td>RTL lines / branches reached</td><td>Design scenarios exercised</td></tr>
+      <tr><td>100% guarantee</td><td>All code touched</td><td>All required scenarios seen</td></tr>
+      <tr><td>Miss corner cases?</td><td>Yes — easily</td><td>Only if you forgot to model them</td></tr>
+      <tr><td>SV construct</td><td>Simulator flags / plusargs</td><td><code>covergroup</code>, <code>coverpoint</code>, <code>cross</code></td></tr>
+      <tr><td>UVM home</td><td>EDA tool config</td><td><code>uvm_subscriber</code> / <code>uvm_coverage_model_e</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>Key insight:</strong> You need both. Code coverage finds dead RTL; functional coverage finds unstimulated scenarios. A mature sign-off plan requires both metrics to hit their thresholds — typically 90–100% code and 100% functional.</div>
+
+  <!-- ─── SECTION 2 ──────────────────────────────────────── -->
+  <h2 id="covergroup-basics">2. Covergroup Basics — coverpoint and bins</h2>
+
+  <p>A <code>covergroup</code> is a SystemVerilog construct that defines one or more <strong>coverpoints</strong>. Each coverpoint watches a variable or expression and tracks which values (or ranges) have been seen. Each tracked value lives in a <strong>bin</strong>. When the simulator sees that value, the bin's hit count increments.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">covergroup</span> cg_axi_write;
+
+  <span class="cm">// Coverpoint on burst length field (3 bits)</span>
+  <span class="kw">coverpoint</span> axlen {
+    <span class="kw">bins</span> single   = {<span class="num">0</span>};             <span class="cm">// 1-beat burst</span>
+    <span class="kw">bins</span> four     = {<span class="num">3</span>};             <span class="cm">// 4-beat burst</span>
+    <span class="kw">bins</span> eight    = {<span class="num">7</span>};             <span class="cm">// 8-beat burst</span>
+    <span class="kw">bins</span> sixteen  = {<span class="num">15</span>};            <span class="cm">// 16-beat burst</span>
+    <span class="kw">bins</span> others[] = default;         <span class="cm">// all remaining values</span>
+  }
+
+  <span class="cm">// Coverpoint on burst type (2 bits)</span>
+  <span class="kw">coverpoint</span> axburst {
+    <span class="kw">bins</span> fixed  = {<span class="num">2'b00</span>};
+    <span class="kw">bins</span> incr   = {<span class="num">2'b01</span>};
+    <span class="kw">bins</span> wrap   = {<span class="num">2'b10</span>};
+    <span class="kw">illegal_bins</span> rsvd = {<span class="num">2'b11</span>};   <span class="cm">// must never appear</span>
+  }
+
+<span class="kw">endgroup</span></pre>
+  </div>
+
+  <p>The covergroup above defines two coverpoints. <code>axlen</code> has four named bins plus a catch-all <code>others[]</code> that auto-creates one bin per remaining value. <code>axburst</code> has three valid bins and one <code>illegal_bins</code> entry — if the simulator samples the reserved value 2'b11, it flags a violation and increments an illegal counter rather than a hit counter.</p>
+
+  <h3>Bin types at a glance</h3>
+  <table>
+    <thead><tr><th>Keyword</th><th>Purpose</th><th>Counts toward coverage?</th></tr></thead>
+    <tbody>
+      <tr><td><code>bins</code></td><td>Normal tracked bin</td><td>Yes</td></tr>
+      <tr><td><code>illegal_bins</code></td><td>Must-never-occur — flags error when hit</td><td>No (error)</td></tr>
+      <tr><td><code>ignore_bins</code></td><td>Excluded from coverage calculation</td><td>No (silently skipped)</td></tr>
+      <tr><td><code>bins name[]</code></td><td>Array of auto-named bins (one per value)</td><td>Yes — each bin individually</td></tr>
+      <tr><td><code>wildcard bins</code></td><td>Matches values using X/Z wildcards</td><td>Yes</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─── SECTION 3 ──────────────────────────────────────── -->
+  <h2 id="automatic-binning">3. Automatic Binning and Manual bins</h2>
+
+  <p>When you write a coverpoint with no <code>bins</code> clauses, the tool performs <strong>automatic binning</strong>: it creates one bin per legal value of the expression's type. For a 2-bit signal that is four bins; for an 8-bit signal that is 256 bins. This is convenient for small signals but causes a <em>bin explosion</em> on wider fields.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">covergroup</span> cg_auto;
+  <span class="cm">// 8-bit field: auto creates 256 bins — probably not what you want</span>
+  <span class="kw">coverpoint</span> data_byte;
+<span class="kw">endgroup</span>
+
+<span class="kw">covergroup</span> cg_manual;
+  <span class="cm">// Group the 256 values into meaningful ranges instead</span>
+  <span class="kw">coverpoint</span> data_byte {
+    <span class="kw">bins</span> zero      = {<span class="num">8'h00</span>};
+    <span class="kw">bins</span> all_ones  = {<span class="num">8'hFF</span>};
+    <span class="kw">bins</span> low       = {[<span class="num">8'h01</span>:<span class="num">8'h3F</span>]};
+    <span class="kw">bins</span> mid       = {[<span class="num">8'h40</span>:<span class="num">8'hBF</span>]};
+    <span class="kw">bins</span> high      = {[<span class="num">8'hC0</span>:<span class="num">8'hFE</span>]};
+  }
+<span class="kw">endgroup</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>Auto-binning trap:</strong> A 32-bit address field with auto-binning creates over 4 billion bins. The simulator will silently cap at a tool-defined limit or run out of memory. Always write manual bins for wide fields.</div>
+
+  <p>The <code>[]</code> suffix on a bin name auto-generates individual bins for each value in the list or range:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">coverpoint</span> resp_code {
+  <span class="cm">// Creates bins: resp_code[0], resp_code[1], resp_code[2], resp_code[3]</span>
+  <span class="kw">bins</span> all_resp[] = {[<span class="num">0</span>:<span class="num">3</span>]};
+}</pre>
+  </div>
+
+  <!-- ─── SECTION 4 ──────────────────────────────────────── -->
+  <h2 id="cross-coverage">4. Cross Coverage — bin explosion and ignore_bins</h2>
+
+  <p><strong>Cross coverage</strong> tracks combinations of two or more coverpoints. If you have a 3-bin coverpoint for <code>axburst</code> and a 4-bin coverpoint for <code>axsize</code>, their cross produces 3 × 4 = 12 cross bins. Every combination must be seen before the cross coverpoint reaches 100%.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">covergroup</span> cg_axi_cross;
+
+  <span class="kw">coverpoint</span> axburst {
+    <span class="kw">bins</span> fixed = {<span class="num">0</span>}; <span class="kw">bins</span> incr = {<span class="num">1</span>}; <span class="kw">bins</span> wrap = {<span class="num">2</span>};
+  }
+
+  <span class="kw">coverpoint</span> axsize {          <span class="cm">// AXI size: 0=1B, 1=2B, 2=4B, 3=8B</span>
+    <span class="kw">bins</span> b1 = {<span class="num">0</span>}; <span class="kw">bins</span> b2 = {<span class="num">1</span>};
+    <span class="kw">bins</span> b4 = {<span class="num">2</span>}; <span class="kw">bins</span> b8 = {<span class="num">3</span>};
+  }
+
+  <span class="cm">// Cross: 3 bursts × 4 sizes = 12 bins</span>
+  <span class="kw">x_burst_size</span>: <span class="kw">cross</span> axburst, axsize {
+    <span class="cm">// FIXED burst with 8-byte transfers is meaningless for most DUTs</span>
+    <span class="kw">ignore_bins</span> fixed_8B = binsof(axburst.fixed) && binsof(axsize.b8);
+  }
+
+<span class="kw">endgroup</span></pre>
+  </div>
+
+  <p>The <code>binsof()</code> operator selects specific bins from a coverpoint for use inside cross ignore/illegal clauses. Without it, writing the filter condition manually would require a complex value expression.</p>
+
+  <div class="callout warn"><strong>Bin explosion:</strong> 8 coverpoints each with 8 bins crossed together = 8<sup>8</sup> = 16 million bins. Never cross more than 2–3 coverpoints at once. Break complex coverage models into multiple covergroups.</div>
+
+  <h3>Useful cross bin operators</h3>
+  <table>
+    <thead><tr><th>Operator</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>binsof(cp.bin)</code></td><td>Select one specific bin from a coverpoint</td></tr>
+      <tr><td><code>binsof(cp)</code></td><td>All bins of a coverpoint</td></tr>
+      <tr><td><code>&&</code> between binsof</td><td>Intersection — both conditions must match</td></tr>
+      <tr><td><code>||</code> between binsof</td><td>Union — either condition matches</td></tr>
+      <tr><td><code>!</code> before binsof</td><td>Complement — all bins NOT in this set</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─── SECTION 5 ──────────────────────────────────────── -->
+  <h2 id="sampling">5. Sampling — Automatic vs Manual sample()</h2>
+
+  <p>A covergroup is useless without a trigger that tells it when to capture the current values. SystemVerilog provides two mechanisms:</p>
+
+  <h3>Automatic sampling with an event or clocking block</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Samples on every positive edge of clk</span>
+<span class="kw">covergroup</span> cg_auto @(<span class="kw">posedge</span> clk);
+  <span class="kw">coverpoint</span> req;
+  <span class="kw">coverpoint</span> ack;
+<span class="kw">endgroup</span>
+
+<span class="cm">// Instantiation — sampling begins automatically</span>
+cg_auto cg_inst = <span class="kw">new</span>();</pre>
+  </div>
+
+  <p>Automatic sampling fires on every clock edge. This works for simple signal-level checks but in a UVM testbench the monitor fires transactions at irregular intervals — the covergroup would sample on idle cycles where fields have meaningless hold values.</p>
+
+  <h3>Manual sample()</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// No trigger — sampling is under programmer control</span>
+<span class="kw">covergroup</span> cg_txn;
+  <span class="kw">coverpoint</span> tr.axlen;
+  <span class="kw">coverpoint</span> tr.axburst;
+  <span class="kw">coverpoint</span> tr.axsize;
+<span class="kw">endgroup</span>
+
+<span class="cm">// Call sample() when a full transaction has been captured</span>
+<span class="kw">function void</span> write(<span class="ty">axi_txn</span> tr);
+  cg_inst.sample();   <span class="cm">// captures all coverpoint expressions at this moment</span>
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Best practice in UVM:</strong> Always use manual <code>sample()</code> inside <code>uvm_subscriber::write()</code>. This guarantees bins only accumulate from complete, valid transactions — not from intermediate or idle signals.</div>
+
+  <!-- ─── SECTION 6 ──────────────────────────────────────── -->
+  <h2 id="subscriber">6. covergroup inside uvm_subscriber</h2>
+
+  <p><code>uvm_subscriber</code> is a UVM component that extends <code>uvm_component</code> and provides a parameterised <code>analysis_export</code> and abstract <code>write()</code> method. It is the canonical home for coverage in a UVM testbench because:</p>
+
+  <ul>
+    <li>It plugs directly into an analysis port — no extra TLM wiring needed.</li>
+    <li>Coverage collection is independent from monitoring and scoring — you can disable it per test.</li>
+    <li>Multiple subscribers can listen to the same monitor port simultaneously.</li>
+  </ul>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">class</span> <span class="ty">axi_coverage</span> <span class="kw">extends</span> <span class="ty">uvm_subscriber</span> #(<span class="ty">axi_txn</span>);
+  `<span class="kw">uvm_component_utils</span>(<span class="ty">axi_coverage</span>)
+
+  <span class="cm">// ── Transaction handle (set in write, used by coverpoints) ──</span>
+  <span class="ty">axi_txn</span> tr;
+
+  <span class="cm">// ── Covergroup defined inside the class ──────────────────</span>
+  <span class="kw">covergroup</span> axi_write_cg;
+
+    cp_len: <span class="kw">coverpoint</span> tr.axlen {
+      <span class="kw">bins</span> single   = {<span class="num">0</span>};
+      <span class="kw">bins</span> burst4   = {<span class="num">3</span>};
+      <span class="kw">bins</span> burst8   = {<span class="num">7</span>};
+      <span class="kw">bins</span> burst16  = {<span class="num">15</span>};
+      <span class="kw">bins</span> others[] = default;
+    }
+
+    cp_burst: <span class="kw">coverpoint</span> tr.axburst {
+      <span class="kw">bins</span> fixed  = {<span class="num">2'b00</span>};
+      <span class="kw">bins</span> incr   = {<span class="num">2'b01</span>};
+      <span class="kw">bins</span> wrap   = {<span class="num">2'b10</span>};
+      <span class="kw">illegal_bins</span> rsvd = {<span class="num">2'b11</span>};
+    }
+
+    cp_size: <span class="kw">coverpoint</span> tr.axsize {
+      <span class="kw">bins</span> byte1 = {<span class="num">0</span>}; <span class="kw">bins</span> byte2 = {<span class="num">1</span>};
+      <span class="kw">bins</span> byte4 = {<span class="num">2</span>}; <span class="kw">bins</span> byte8 = {<span class="num">3</span>};
+    }
+
+    cp_resp: <span class="kw">coverpoint</span> tr.bresp {
+      <span class="kw">bins</span> okay   = {<span class="num">2'b00</span>};
+      <span class="kw">bins</span> exokay = {<span class="num">2'b01</span>};
+      <span class="kw">bins</span> slverr = {<span class="num">2'b10</span>};
+      <span class="kw">bins</span> decerr = {<span class="num">2'b11</span>};
+    }
+
+    <span class="cm">// Cross: burst type vs size — 3x4=12 bins</span>
+    x_burst_size: <span class="kw">cross</span> cp_burst, cp_size {
+      <span class="kw">ignore_bins</span> fixed_8B =
+        binsof(cp_burst.fixed) && binsof(cp_size.byte8);
+    }
+
+  <span class="kw">endgroup</span> : axi_write_cg
+
+  <span class="cm">// ── Constructor: instantiate covergroup here ─────────────</span>
+  <span class="kw">function new</span>(<span class="ty">string</span> name, <span class="ty">uvm_component</span> parent);
+    <span class="kw">super</span>.new(name, parent);
+    axi_write_cg = <span class="kw">new</span>();   <span class="cm">// covergroup constructor</span>
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// ── write() called by monitor's analysis port ────────────</span>
+  <span class="kw">function void</span> write(<span class="ty">axi_txn</span> t);
+    tr = t;
+    axi_write_cg.sample();  <span class="cm">// sample ALL coverpoints now</span>
+  <span class="kw">endfunction</span>
+
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>Notice that the coverpoint expressions reference <code>tr.axlen</code> etc. — a class member. Because <code>sample()</code> is called immediately after assigning <code>tr = t</code>, the coverpoints see the current transaction fields. This is the correct pattern; do not pass fields as constructor arguments (the covergroup captures the variable reference, not the value at construction time).</p>
+
+  <!-- ─── SECTION 7 ──────────────────────────────────────── -->
+  <h2 id="check-phase">7. get_coverage() in check_phase</h2>
+
+  <p>After simulation ends, UVM's <code>check_phase</code> is the right place to evaluate whether coverage targets were met. Use the built-in <code>$get_coverage()</code> system function or the covergroup's <code>.get_coverage()</code> method to query the current hit percentage.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="kw">function void</span> check_phase(<span class="ty">uvm_phase</span> phase);
+  <span class="ty">real</span> cov;
+
+  <span class="cm">// Query this covergroup's coverage (0.0 – 100.0)</span>
+  cov = axi_write_cg.get_coverage();
+
+  `<span class="kw">uvm_info</span>(<span class="str">"COV"</span>,
+    $sformatf(<span class="str">"AXI write coverage = %.1f%%"</span>, cov),
+    <span class="ty">UVM_MEDIUM</span>)
+
+  <span class="cm">// Fail the test if coverage threshold not met</span>
+  <span class="kw">if</span> (cov < <span class="num">95.0</span>)
+    `<span class="kw">uvm_error</span>(<span class="str">"COV_FAIL"</span>,
+      $sformatf(<span class="str">"Coverage %.1f%% below 95%% threshold"</span>, cov))
+
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <p>You can also query individual coverpoints and cross bins:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Individual coverpoint coverage</span>
+cov = axi_write_cg.cp_len.get_coverage();
+
+<span class="cm">// Check whether a specific bin was hit</span>
+<span class="kw">if</span> (!axi_write_cg.cp_burst.wrap.get_coverage())
+  `<span class="kw">uvm_warning</span>(<span class="str">"COV"</span>, <span class="str">"WRAP burst never seen"</span>)</pre>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-label">Typical threshold</div>
+      <div class="metric-val">95–100%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">AXI burst bins</div>
+      <div class="metric-val">3</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Cross bins (3x4)</div>
+      <div class="metric-val">11</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">After ignore_bins</div>
+      <div class="metric-val">11 / 12</div>
+    </div>
+  </div>
+
+  <p>A typical project defines a <strong>coverage closure target</strong> in a coverage plan (also called a verification plan or vPlan). The plan lists every covergroup, its threshold, and which test is responsible for hitting it. The <code>check_phase</code> check enforces this plan automatically during regression.</p>
+
+  <!-- ─── SECTION 8 ──────────────────────────────────────── -->
+  <h2 id="cov-driven">8. Coverage-Driven Verification Loop</h2>
+
+  <p>Coverage-driven verification (CDV) is the methodology where you iterate test generation until coverage converges. The loop looks like this:</p>
+
+  <!-- CDV loop diagram -->
+  <div class="diagram">
+    <svg viewBox="0 0 700 160" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#38bdf8"/></marker>
+      </defs>
+      <!-- boxes -->
+      <rect x="20"  y="50" width="110" height="60" rx="8" fill="rgba(56,189,248,.1)"  stroke="#38bdf8" stroke-width="1"/>
+      <text x="75"  y="77" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">Constrained</text>
+      <text x="75"  y="90" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">Random Test</text>
+      <text x="75"  y="103" text-anchor="middle" fill="#64748b" font-size="8">rand + constraints</text>
+
+      <line x1="130" y1="80" x2="165" y2="80" stroke="#38bdf8" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <rect x="165" y="50" width="110" height="60" rx="8" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="220" y="77" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700">UVM Testbench</text>
+      <text x="220" y="90" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700">Simulation</text>
+      <text x="220" y="103" text-anchor="middle" fill="#64748b" font-size="8">drive + monitor</text>
+
+      <line x1="275" y1="80" x2="310" y2="80" stroke="#38bdf8" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <rect x="310" y="50" width="110" height="60" rx="8" fill="rgba(74,222,128,.1)" stroke="#4ade80" stroke-width="1"/>
+      <text x="365" y="77" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">Coverage</text>
+      <text x="365" y="90" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">Collection</text>
+      <text x="365" y="103" text-anchor="middle" fill="#64748b" font-size="8">subscriber + sample</text>
+
+      <line x1="420" y1="80" x2="455" y2="80" stroke="#38bdf8" stroke-width="1.2" marker-end="url(#arr2)"/>
+
+      <rect x="455" y="50" width="110" height="60" rx="8" fill="rgba(251,191,36,.08)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="510" y="77" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">Coverage</text>
+      <text x="510" y="90" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">Analysis</text>
+      <text x="510" y="103" text-anchor="middle" fill="#64748b" font-size="8">check_phase / UCDB</text>
+
+      <!-- feedback arrow: bottom -->
+      <line x1="510" y1="110" x2="510" y2="140" stroke="#fbbf24" stroke-width="1.2"/>
+      <line x1="510" y1="140" x2="75"  y2="140" stroke="#fbbf24" stroke-width="1.2"/>
+      <line x1="75"  y1="140" x2="75"  y2="112" stroke="#fbbf24" stroke-width="1.2" marker-end="url(#arr2)"/>
+      <text x="292" y="155" text-anchor="middle" fill="#64748b" font-size="8">Uncovered bins? Add directed test or relax constraints</text>
+
+      <!-- right exit -->
+      <line x1="565" y1="80" x2="630" y2="80" stroke="#4ade80" stroke-width="1.2" marker-end="url(#arr2)"/>
+      <text x="655" y="77" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">Sign-off</text>
+      <text x="655" y="90" text-anchor="middle" fill="#4ade80" font-size="8">100% bins</text>
+    </svg>
+  </div>
+
+  <p>When coverage stalls — usually after 70–80% with random tests — you add <strong>directed tests</strong> that explicitly exercise the missing bins. For example, if the WRAP burst bin is never hit, write a sequence that forces <code>axburst = 2</code> and appropriate length constraints to satisfy the AXI WRAP alignment rules.</p>
+
+  <ul>
+    <li>Run a nightly regression of N random seeds — collect coverage from all runs.</li>
+    <li>Merge UCDB databases to get aggregate coverage.</li>
+    <li>Identify zero-hit bins and write directed tests for them.</li>
+    <li>Repeat until coverage plan is satisfied.</li>
+  </ul>
+
+  <!-- ─── SECTION 9 ──────────────────────────────────────── -->
+  <h2 id="ucdb">9. UCDB Merge — vcover / urgReport</h2>
+
+  <p>Each simulation run writes a <strong>UCDB</strong> (Unified Coverage Database) file — <code>.ucdb</code> in ModelSim/Questa, <code>.vdb</code> in Cadence Xcelium. To get the aggregate coverage picture across all regression runs you merge these databases.</p>
+
+  <h3>Questa / ModelSim (vcover)</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># Merge three run databases into one</span>
+vcover merge merged.ucdb run_seed1.ucdb run_seed2.ucdb run_seed3.ucdb
+
+<span class="cm"># Generate a text report from the merged database</span>
+vcover report -detail merged.ucdb
+
+<span class="cm"># Generate an HTML report</span>
+vcover report -html -htmldir ./cov_html merged.ucdb</pre>
+  </div>
+
+  <h3>Cadence Xcelium (imc)</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># Merge VDB directories</span>
+imc -load run1.vdb -merge run2.vdb -out merged.vdb
+
+<span class="cm"># Text report</span>
+imc -load merged.vdb -report_file cov_report.txt -show ratios</pre>
+  </div>
+
+  <h3>Synopsys VCS (urgReport)</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm"># Merge multiple .vdb directories</span>
+urg -dir run1.vdb -dir run2.vdb -dir run3.vdb \
+    -report summary -format text -dbname merged.vdb
+
+<span class="cm"># Detailed per-instance report</span>
+urgReport -dir merged.vdb -format html -output ./cov_html</pre>
+  </div>
+
+  <div class="callout tip"><strong>Automation tip:</strong> In a regression Makefile, loop over all seed directories and build the merge command dynamically:<br><code>UCDB_LIST := $(wildcard runs/*/sim.ucdb)</code><br><code>vcover merge merged.ucdb $(UCDB_LIST)</code></div>
+
+  <h3>Coverage merge workflow</h3>
+  <table>
+    <thead><tr><th>Step</th><th>Action</th><th>Tool</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Run regression (N seeds)</td><td>Makefile / LSF</td></tr>
+      <tr><td>2</td><td>Each run writes .ucdb</td><td>Simulator auto</td></tr>
+      <tr><td>3</td><td>Merge all .ucdb files</td><td><code>vcover merge</code></td></tr>
+      <tr><td>4</td><td>View HTML / text report</td><td><code>vcover report</code></td></tr>
+      <tr><td>5</td><td>Identify zero-hit bins</td><td>Report analysis</td></tr>
+      <tr><td>6</td><td>Write directed tests</td><td>Verification engineer</td></tr>
+      <tr><td>7</td><td>Re-run and re-merge</td><td>Repeat until 100%</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─── SECTION 10 ──────────────────────────────────────── -->
+  <h2 id="axi4-example">10. Complete AXI4 Transfer Coverage Example</h2>
+
+  <p>The following shows a production-style AXI4 write-channel coverage subscriber. It models length, burst type, size, byte enables, response code, and their relevant crosses. The <code>check_phase</code> enforces the coverage gate.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// ─── axi_txn.sv ─────────────────────────────────────────</span>
+<span class="kw">class</span> <span class="ty">axi_txn</span> <span class="kw">extends</span> <span class="ty">uvm_sequence_item</span>;
+  `<span class="kw">uvm_object_utils</span>(<span class="ty">axi_txn</span>)
+
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]  axlen;    <span class="cm">// burst length - 1</span>
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">1</span>:<span class="num">0</span>]  axburst;  <span class="cm">// 0=FIXED, 1=INCR, 2=WRAP</span>
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">2</span>:<span class="num">0</span>]  axsize;   <span class="cm">// bytes per beat = 2^axsize</span>
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">3</span>:<span class="num">0</span>]  wstrb;    <span class="cm">// write strobes (4-bit for 32-bit bus)</span>
+       <span class="ty">logic</span> [<span class="num">1</span>:<span class="num">0</span>]  bresp;    <span class="cm">// write response</span>
+
+  <span class="kw">function new</span>(<span class="ty">string</span> name = <span class="str">"axi_txn"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+
+<span class="cm">// ─── axi_write_coverage.sv ───────────────────────────────</span>
+<span class="kw">class</span> <span class="ty">axi_write_coverage</span> <span class="kw">extends</span> <span class="ty">uvm_subscriber</span> #(<span class="ty">axi_txn</span>);
+  `<span class="kw">uvm_component_utils</span>(<span class="ty">axi_write_coverage</span>)
+
+  <span class="ty">axi_txn</span> tr;  <span class="cm">// current transaction — coverpoints reference this</span>
+
+  <span class="kw">covergroup</span> axi_write_cg;
+
+    <span class="cm">// ── Burst length ─────────────────────────────────────</span>
+    cp_len: <span class="kw">coverpoint</span> tr.axlen {
+      <span class="kw">bins</span> single   = {<span class="num">8'h00</span>};
+      <span class="kw">bins</span> burst4   = {<span class="num">8'h03</span>};
+      <span class="kw">bins</span> burst8   = {<span class="num">8'h07</span>};
+      <span class="kw">bins</span> burst16  = {<span class="num">8'h0F</span>};
+      <span class="kw">bins</span> burst32  = {<span class="num">8'h1F</span>};
+      <span class="kw">bins</span> burst256 = {<span class="num">8'hFF</span>};
+      <span class="kw">bins</span> other[]  = default;
+    }
+
+    <span class="cm">// ── Burst type ───────────────────────────────────────</span>
+    cp_burst: <span class="kw">coverpoint</span> tr.axburst {
+      <span class="kw">bins</span> fixed  = {<span class="num">2'b00</span>};
+      <span class="kw">bins</span> incr   = {<span class="num">2'b01</span>};
+      <span class="kw">bins</span> wrap   = {<span class="num">2'b10</span>};
+      <span class="kw">illegal_bins</span> rsvd = {<span class="num">2'b11</span>};
+    }
+
+    <span class="cm">// ── Transfer size ────────────────────────────────────</span>
+    cp_size: <span class="kw">coverpoint</span> tr.axsize {
+      <span class="kw">bins</span> byte1 = {<span class="num">3'b000</span>};
+      <span class="kw">bins</span> byte2 = {<span class="num">3'b001</span>};
+      <span class="kw">bins</span> byte4 = {<span class="num">3'b010</span>};
+      <span class="kw">bins</span> byte8 = {<span class="num">3'b011</span>};
+    }
+
+    <span class="cm">// ── Write strobe patterns ────────────────────────────</span>
+    cp_strb: <span class="kw">coverpoint</span> tr.wstrb {
+      <span class="kw">bins</span> all_zero  = {<span class="num">4'b0000</span>};
+      <span class="kw">bins</span> byte0     = {<span class="num">4'b0001</span>};
+      <span class="kw">bins</span> byte1     = {<span class="num">4'b0010</span>};
+      <span class="kw">bins</span> byte2     = {<span class="num">4'b0100</span>};
+      <span class="kw">bins</span> byte3     = {<span class="num">4'b1000</span>};
+      <span class="kw">bins</span> halfword0 = {<span class="num">4'b0011</span>};
+      <span class="kw">bins</span> halfword1 = {<span class="num">4'b1100</span>};
+      <span class="kw">bins</span> all_ones  = {<span class="num">4'b1111</span>};
+      <span class="kw">bins</span> other[]   = default;
+    }
+
+    <span class="cm">// ── Write response ───────────────────────────────────</span>
+    cp_resp: <span class="kw">coverpoint</span> tr.bresp {
+      <span class="kw">bins</span> okay   = {<span class="num">2'b00</span>};
+      <span class="kw">bins</span> exokay = {<span class="num">2'b01</span>};
+      <span class="kw">bins</span> slverr = {<span class="num">2'b10</span>};
+      <span class="kw">bins</span> decerr = {<span class="num">2'b11</span>};
+    }
+
+    <span class="cm">// ── Cross: burst type × size ─────────────────────────</span>
+    x_burst_size: <span class="kw">cross</span> cp_burst, cp_size {
+      <span class="cm">// FIXED burst with 8-byte size is illegal in AXI4</span>
+      <span class="kw">ignore_bins</span> fixed_8B =
+        binsof(cp_burst.fixed) && binsof(cp_size.byte8);
+    }
+
+    <span class="cm">// ── Cross: length × burst type ───────────────────────</span>
+    x_len_burst: <span class="kw">cross</span> cp_len, cp_burst {
+      <span class="cm">// WRAP requires len = 1, 3, 7, or 15; exclude others here</span>
+      <span class="kw">ignore_bins</span> wrap_single =
+        binsof(cp_burst.wrap) && binsof(cp_len.single);
+      <span class="kw">ignore_bins</span> wrap_256 =
+        binsof(cp_burst.wrap) && binsof(cp_len.burst256);
+    }
+
+  <span class="kw">endgroup</span> : axi_write_cg
+
+  <span class="cm">// ── Constructor ──────────────────────────────────────────</span>
+  <span class="kw">function new</span>(<span class="ty">string</span> name, <span class="ty">uvm_component</span> parent);
+    <span class="kw">super</span>.new(name, parent);
+    axi_write_cg = <span class="kw">new</span>();
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// ── Analysis write() ─────────────────────────────────────</span>
+  <span class="kw">function void</span> write(<span class="ty">axi_txn</span> t);
+    tr = t;
+    axi_write_cg.sample();
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// ── Coverage gate in check_phase ─────────────────────────</span>
+  <span class="kw">function void</span> check_phase(<span class="ty">uvm_phase</span> phase);
+    <span class="ty">real</span> cov = axi_write_cg.get_coverage();
+    `<span class="kw">uvm_info</span>(<span class="str">"AXI_COV"</span>,
+      $sformatf(<span class="str">"AXI4 write coverage = %.2f%%"</span>, cov), <span class="ty">UVM_LOW</span>)
+    <span class="kw">if</span> (cov < <span class="num">95.0</span>)
+      `<span class="kw">uvm_error</span>(<span class="str">"AXI_COV"</span>,
+        $sformatf(<span class="str">"Coverage %.2f%% is below 95%% threshold"</span>, cov))
+  <span class="kw">endfunction</span>
+
+<span class="kw">endclass</span>
+
+
+<span class="cm">// ─── env.sv: wire subscriber to monitor ──────────────────</span>
+<span class="kw">class</span> <span class="ty">axi_env</span> <span class="kw">extends</span> <span class="ty">uvm_env</span>;
+  `<span class="kw">uvm_component_utils</span>(<span class="ty">axi_env</span>)
+
+  <span class="ty">axi_monitor</span>        mon;
+  <span class="ty">axi_write_coverage</span> cov;
+  <span class="ty">axi_scoreboard</span>     sb;
+
+  <span class="kw">function void</span> build_phase(<span class="ty">uvm_phase</span> phase);
+    mon = <span class="ty">axi_monitor</span>::<span class="ty">type_id</span>::create(<span class="str">"mon"</span>, <span class="kw">this</span>);
+    cov = <span class="ty">axi_write_coverage</span>::<span class="ty">type_id</span>::create(<span class="str">"cov"</span>, <span class="kw">this</span>);
+    sb  = <span class="ty">axi_scoreboard</span>::<span class="ty">type_id</span>::create(<span class="str">"sb"</span>,  <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function void</span> connect_phase(<span class="ty">uvm_phase</span> phase);
+    <span class="cm">// Monitor broadcasts to BOTH coverage and scoreboard</span>
+    mon.ap.connect(cov.analysis_export);
+    mon.ap.connect(sb.analysis_export);
+  <span class="kw">endfunction</span>
+
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="callout info"><strong>Key pattern:</strong> <code>mon.ap</code> is a <code>uvm_analysis_port</code>. Connecting it to both <code>cov.analysis_export</code> and <code>sb.analysis_export</code> is a fan-out — both receive every transaction the monitor emits. This is the standard UVM multi-subscriber pattern.</div>
+
+  <!-- ─── TAKEAWAYS ──────────────────────────────────────── -->
+  <div class="takeaways">
+    <h3>Day 15 Key Takeaways</h3>
+    <ul>
+      <li>Code coverage is automatic; functional coverage is engineer-written and captures design intent.</li>
+      <li>A <code>covergroup</code> holds <code>coverpoint</code>s; each coverpoint tracks which values or ranges have been seen in bins.</li>
+      <li>Use manual bins for any signal wider than 4 bits to avoid bin explosion.</li>
+      <li><code>cross</code> tracks combinations; limit to 2–3 coverpoints per cross, use <code>ignore_bins</code> to exclude illegal combos.</li>
+      <li>In UVM, always use manual <code>sample()</code> inside <code>uvm_subscriber::write()</code> — never automatic clock-edge sampling.</li>
+      <li>Query <code>get_coverage()</code> in <code>check_phase</code> and fail the test if the threshold is not met.</li>
+      <li>Merge UCDB databases across regression runs with <code>vcover merge</code> (Questa), <code>imc -merge</code> (Xcelium), or <code>urg -dir</code> (VCS).</li>
+    </ul>
+  </div>
+
+  <!-- ─── FAQ ──────────────────────────────────────────────── -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is the difference between functional coverage and code coverage?<span></span></summary>
+      <div class="faq-body">Code coverage (line, toggle, branch, FSM) measures which RTL statements were executed — it answers whether the simulator touched the code. Functional coverage (covergroup/coverpoint) measures whether the design was exercised with the correct scenarios — it answers whether meaningful corner-cases were tested. 100% code coverage does not mean all interesting behaviour was stimulated; functional coverage closes that gap by letting the verification engineer explicitly model what matters.</div>
+    </details>
+    <details>
+      <summary>Why put a covergroup inside a uvm_subscriber instead of the monitor?<span></span></summary>
+      <div class="faq-body">Separation of concerns: the monitor's job is to observe the bus and emit transactions; the subscriber's job is to collect coverage from those transactions. This way you can independently enable or disable coverage collection per simulation run, swap in different coverage models, or reuse the monitor in a scoreboard context without dragging coverage overhead. <code>uvm_subscriber</code> already provides a <code>write()</code> callback connected to an analysis export, so no extra TLM wiring is needed.</div>
+    </details>
+    <details>
+      <summary>When should I call sample() manually versus using automatic sampling?<span></span></summary>
+      <div class="faq-body">Automatic sampling (triggered by a clocking-block event or an event inside the covergroup) is convenient but fires on every clock edge, which can pollute bins with idle-cycle noise. Manual <code>sample()</code> inside the subscriber's <code>write()</code> method fires exactly when a complete transaction has been captured, so bins only accumulate meaningful data. Prefer manual <code>sample()</code> in UVM flows; reserve automatic sampling for simple signal-level checks.</div>
+    </details>
+    <details>
+      <summary>How do I merge coverage across multiple simulation runs?<span></span></summary>
+      <div class="faq-body">Each run generates a UCDB (.ucdb) file. Use the <code>vcover merge</code> command — for example: <code>vcover merge merged.ucdb run1.ucdb run2.ucdb run3.ucdb</code> — to union the hit counts. Then run <code>vcover report -html -htmldir ./html merged.ucdb</code> to view combined coverage. In Cadence Xcelium the equivalent is <code>imc -load run1.vdb -merge run2.vdb -out merged.vdb</code>. In Synopsys VCS use <code>urg -dir run1.vdb -dir run2.vdb -dbname merged.vdb</code>.</div>
+    </details>
+  </div>
+
+  <!-- ─── NAV CARDS ─────────────────────────────────────── -->
+  <div class="nav-cards">
+    <a href="/verification/14-uvm-phasing/" class="nav-card">
+      <div class="nav-card-label">&larr; Previous — Day 14</div>
+      <div class="nav-card-title">UVM Phasing</div>
+    </a>
+    <a href="/verification/16-constrained-random-verification/" class="nav-card next">
+      <div class="nav-card-label">Next — Day 16 &rarr;</div>
+      <div class="nav-card-title">Constrained Random Verification</div>
+    </a>
+  </div>
+
+</div><!-- /.body -->
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">&#8593;</button>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>By EcrioniX &middot; Updated Jun 22, 2026</p>
+  <p style="margin-top:.5rem">
+    <a href="/legal/privacy.html" style="color:var(--sky)">Privacy Policy</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/legal/terms.html" style="color:var(--sky)">Terms of Use</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/verification/" style="color:var(--sky)">Verification Series</a>
+  </p>
+</footer>
+
+<script>
+  // Hamburger
+  document.getElementById('hamburger').addEventListener('click', function() {
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+
+  // Back to top
+  var st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', function() {
+    st.classList.toggle('visible', window.scrollY > 400);
+  });
+  st.addEventListener('click', function() {
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  });
+
+  // Copy buttons
+  function copyCode(btn) {
+    var pre = btn.parentElement.querySelector('pre');
+    var text = pre.innerText || pre.textContent;
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1800);
+    });
+  }
+</script>
+</body>
+</html>

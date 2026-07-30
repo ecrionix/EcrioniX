@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDC Verification — Day 23 | EcrioniX Verification Series</title>
+  <meta name="description" content="Clock domain crossing verification: static CDC analysis with SpyGlass/Questa CDC, metastability injection in simulation, SVA for synchroniser outputs, gray code pointer verification, and CDC sign-off methodology.">
+  <meta name="keywords" content="CDC verification, clock domain crossing, SpyGlass CDC, Questa CDC, metastability injection, synchronizer SVA, gray code verification, CDC sign-off, static CDC analysis, functional CDC">
+  <link rel="canonical" href="https://ecrionix.org/verification/23-cdc-verification/">
+  <meta property="og:title" content="CDC Verification — Day 23 | EcrioniX Verification Series">
+  <meta property="og:description" content="Clock domain crossing verification: static CDC analysis, SpyGlass/Questa CDC tool flow, metastability injection, SVA for synchronisers, gray code pointer verification, and CDC sign-off checklist.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/23-cdc-verification/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"CDC Verification — Day 23","description":"Clock domain crossing verification: static CDC analysis with SpyGlass/Questa CDC, metastability injection in simulation, SVA for synchroniser outputs, gray code pointer verification, and CDC sign-off methodology.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/23-cdc-verification/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 23 — CDC Verification","item":"https://ecrionix.org/verification/23-cdc-verification/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between static and dynamic CDC verification?","acceptedAnswer":{"@type":"Answer","text":"Static CDC analysis (SpyGlass CDC, Questa CDC lint) checks the RTL netlist for structural crossing violations — missing synchronisers, reconvergence fanout (SRFF), and multi-bit buses crossing without handshake — without running any simulation. Dynamic CDC verification injects metastability delays into simulation to observe whether the design functionally tolerates a synchroniser resolving to either valid state. Static analysis finds structural issues early and cheaply; dynamic simulation validates functional correctness under metastability. Both are required for sign-off: static catches what simulation cannot exercise systematically, and simulation validates end-to-end behaviour."}},
+      {"@type":"Question","name":"What is synchroniser reconvergence fanout (SRFF) and why is it a CDC violation?","acceptedAnswer":{"@type":"Answer","text":"Synchroniser reconvergence fanout (SRFF) occurs when a signal crosses a clock domain through a two-flop synchroniser and then its output fans out to multiple downstream logic paths that reconverge — meaning two paths from the same synchronised bit merge at a subsequent gate. The hazard is that both copies of the synchronised bit are registered in the same destination-clock cycle, so they cannot enter metastability independently. However, SRFF can also flag false positives if the fanout paths are actually independent; each flagged SRFF must be reviewed and either fixed (by re-structuring logic) or formally waived with a written justification."}},
+      {"@type":"Question","name":"How do you inject metastability in SystemVerilog simulation?","acceptedAnswer":{"@type":"Answer","text":"The standard approach is to insert a random-delay model on every CDC crossing signal. In the testbench (or a dedicated metastability injection module), declare a real-valued delay per crossing bit sampled from a distribution (e.g., $urandom_range(0,300) picoseconds) and apply it via #delay on the signal assignment before the second flop samples it. A complementary technique is X-injection: force the crossing wire to 'X for one simulation time step after the source flop changes, then resolve to 0 or 1 randomly. The design must never propagate an X downstream — any downstream X on a primary output or memory write is flagged as a metastability escape."}},
+      {"@type":"Question","name":"How do you assert that a gray code pointer changes only 1 bit per step?","acceptedAnswer":{"@type":"Answer","text":"Use a SystemVerilog assertion that XORs consecutive pointer values and checks that exactly one bit is set: assert property (@(posedge clk) $onehot(ptr ^ $past(ptr))). The $onehot() system function returns 1 only when exactly one bit in its argument is set. Combining XOR with $past gives the bit-difference between the current and previous pointer value. This assertion fires if two or more bits change simultaneously, which would indicate either a binary-to-gray encoding bug or a pointer reset/wrap that skips a gray step. It should be bound to both the write-domain pointer and the read-domain pointer independently."}
+      }
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    .danger{background:rgba(248,113,113,.06);border-left:3px solid var(--red);color:var(--muted)}.danger strong{color:var(--red)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}.pp{color:#f78c6c}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .prev-next{display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap}
+    .pn-card{border-radius:14px;padding:1.2rem 1.5rem;flex:1;min-width:200px;text-decoration:none;color:inherit;transition:all .2s}
+    .prev-card{background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.02));border:1px solid rgba(167,139,250,.15)}.prev-card:hover{border-color:var(--violet)}
+    .next-card{background:linear-gradient(135deg,rgba(56,189,248,.08),rgba(167,139,250,.04));border:1px solid rgba(56,189,248,.2);display:flex;justify-content:space-between;align-items:center;gap:1rem}.next-card:hover{border-color:var(--sky);transform:translateX(3px)}
+    .pn-label{font-size:.7rem;font-weight:700;color:var(--dim);text-transform:uppercase;margin-bottom:.3rem}
+    .pn-title{font-size:.95rem;font-weight:700;color:#f1f5f9}
+    .pn-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--sky);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .phase-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.9rem;margin:1rem 0 1.5rem}
+    .phase-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.15rem}
+    .phase-num{font-family:'Orbitron',sans-serif;font-size:.7rem;font-weight:700;color:var(--violet);margin-bottom:.35rem}
+    .phase-title{font-size:.9rem;font-weight:700;color:#e2e8f0;margin-bottom:.4rem}
+    .phase-desc{font-size:.8rem;color:var(--dim);line-height:1.6}
+    .checklist{list-style:none;padding:0}
+    .checklist li{padding:.35rem 0 .35rem 1.6rem;position:relative;font-size:.87rem;color:var(--muted);border-bottom:1px solid rgba(148,163,184,.06)}
+    .checklist li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:700}
+    .checklist li.warn-item::before{content:'!';color:var(--amber)}
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/verification/">Verification</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+      <li><a href="/digital-electronics/">Digital</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a><a href="/digital-electronics/">Digital</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 23 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/22-fifo-verification/" class="dnbtn dnbtn-prev">&#8592; Day 22</a>
+    <a href="/verification/24-low-power-verification/" class="dnbtn dnbtn-next">Day 24 &#8594;</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/verification/">Verification</a><span>&#8250;</span>Day 23 &#8212; CDC Verification</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 5 &#8212; Protocol &amp; IP Verification</div>
+  <h1>CDC Verification</h1>
+  <div style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub">Clock domain crossings are the most common source of silicon failures that pass simulation. CDC verification demands two complementary disciplines: static structural analysis with CDC lint tools that examine every crossing without running a single simulation, and dynamic metastability injection that stress-tests whether the design is functionally robust when a synchroniser can resolve to either state. Master both, and you will catch the bugs that cost tapeout respins.</p>
+  <div class="hero-meta"><span>&#9200; 35 min read</span><span>&#128214; Day 23 of 25</span><span>&#127919; SpyGlass CDC &middot; Metastability &middot; SVA &middot; Gray Code &middot; Sign-off</span></div>
+</div>
+
+<!-- SVG Diagram -->
+<div style="max-width:860px;margin:0 auto;padding:0 1.25rem">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;display:block;margin:0 auto 1.5rem">
+  <rect width="720" height="200" fill="#0f172a" rx="12"/>
+  <!-- Clock A domain -->
+  <rect x="20" y="30" width="200" height="140" rx="8" fill="rgba(56,189,248,.04)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="120" y="52" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="11" font-weight="700">Clock Domain A (clk_a)</text>
+  <rect x="40" y="65" width="80" height="40" rx="6" fill="rgba(56,189,248,.12)" stroke="#38bdf8" stroke-width="1"/>
+  <text x="80" y="89" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="10">Source FF</text>
+  <text x="80" y="150" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">data_s</text>
+  <!-- Crossing arrow -->
+  <line x1="260" y1="85" x2="330" y2="85" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="295" y="78" text-anchor="middle" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="9" font-weight="700">CDC</text>
+  <text x="295" y="100" text-anchor="middle" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="8">crossing</text>
+  <!-- 2FF Synchroniser -->
+  <rect x="330" y="55" width="170" height="60" rx="8" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="415" y="75" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="10" font-weight="700">2-FF Synchroniser</text>
+  <rect x="345" y="85" width="32" height="22" rx="4" fill="rgba(167,139,250,.15)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="361" y="100" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="9">FF1</text>
+  <rect x="390" y="85" width="32" height="22" rx="4" fill="rgba(167,139,250,.15)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="406" y="100" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="9">FF2</text>
+  <line x1="377" y1="96" x2="390" y2="96" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="444" y="100" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">&#8594; data_d</text>
+  <!-- Clock B domain -->
+  <rect x="520" y="30" width="180" height="140" rx="8" fill="rgba(74,222,128,.04)" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="610" y="52" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="11" font-weight="700">Clock Domain B (clk_b)</text>
+  <rect x="540" y="65" width="80" height="40" rx="6" fill="rgba(74,222,128,.12)" stroke="#4ade80" stroke-width="1"/>
+  <text x="580" y="89" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="10">Dest Logic</text>
+  <text x="580" y="150" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">data_stable</text>
+  <!-- Arrow to dest -->
+  <line x1="490" y1="85" x2="538" y2="85" stroke="#4ade80" stroke-width="1.5" marker-end="url(#ga2)"/>
+  <!-- Source FF right -->
+  <line x1="120" y1="105" x2="120" y2="130" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="580" y1="105" x2="580" y2="130" stroke="#4ade80" stroke-width="1" stroke-dasharray="3,2"/>
+  <!-- clk labels bottom -->
+  <text x="120" y="145" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">200 MHz</text>
+  <text x="580" y="145" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">150 MHz</text>
+  <!-- Metastability label -->
+  <text x="361" y="135" text-anchor="middle" fill="#f87171" font-family="Outfit,sans-serif" font-size="9">metastability</text>
+  <text x="361" y="147" text-anchor="middle" fill="#f87171" font-family="Outfit,sans-serif" font-size="9">window</text>
+  <defs>
+    <marker id="ga2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0,7 3.5,0 7" fill="#4ade80"/></marker>
+  </defs>
+</svg>
+</div>
+
+<div class="body">
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#static-vs-dynamic">Static vs Dynamic CDC Verification</a></li>
+      <li><a href="#tool-flow">SpyGlass / Questa CDC Tool Flow</a></li>
+      <li><a href="#srff">Synchroniser Reconvergence Fanout (SRFF)</a></li>
+      <li><a href="#metastability">Metastability Injection in Simulation</a></li>
+      <li><a href="#sva">SVA for Synchroniser Output Stability</a></li>
+      <li><a href="#gray-code">Gray Code Pointer Verification</a></li>
+      <li><a href="#waivers">CDC Waivers and Review Process</a></li>
+      <li><a href="#signoff">CDC Sign-off Checklist</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- ========== 1 ========== -->
+  <h2 id="static-vs-dynamic">1. Static vs Dynamic CDC Verification</h2>
+
+  <p>Every CDC verification plan needs two independent layers. Neither alone is sufficient for tape-out sign-off, and the failure modes they catch are almost non-overlapping.</p>
+
+  <p><strong>Static CDC analysis</strong> examines the RTL or gate-level netlist without executing a single simulation cycle. The tool (SpyGlass CDC, Questa CDC, JasperGold CDC) traverses the design graph, labels every flip-flop with its clock domain, and then inspects each signal that crosses from one domain to another. It checks: is there a recognized synchroniser structure on the crossing path? Does the synchroniser have the correct number of stages? Does the synchronised output fan out only to a single capture flop, or does it reconverge (SRFF)? Are multi-bit buses protected by a handshake or encoded as gray code? Static analysis produces a comprehensive report of every crossing — often hundreds in a real SoC — without needing test vectors.</p>
+
+  <p><strong>Dynamic CDC verification</strong> runs simulation with metastability injection. Because simulation tools model flip-flops as ideal, a standard testbench will never produce a metastable output on a synchroniser — the DUT simply sees a clean 0 or 1. Metastability injection artificially adds a random resolution delay on each crossing signal so that the synchroniser may present either valid state to downstream logic. The simulation then checks that the design is functionally correct regardless of which value the synchroniser resolved to.</p>
+
+  <table>
+    <thead><tr><th>Attribute</th><th>Static Analysis</th><th>Dynamic (Simulation)</th></tr></thead>
+    <tbody>
+      <tr><td>Runs simulation?</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Coverage of crossings</td><td>100% structural</td><td>Depends on stimulus</td></tr>
+      <tr><td>Detects missing synchronisers</td><td>Yes</td><td>No (ideal model)</td></tr>
+      <tr><td>Detects SRFF violations</td><td>Yes</td><td>Rarely</td></tr>
+      <tr><td>Validates functional correctness</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Detects metastability escape</td><td>No</td><td>Yes (with injection)</td></tr>
+      <tr><td>Run time</td><td>Minutes</td><td>Hours to days</td></tr>
+      <tr><td>Entry point in flow</td><td>RTL lint / CDC lint</td><td>Block/chip simulation</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>Key insight:</strong> Static analysis catches structural CDC bugs. Dynamic simulation validates functional CDC correctness. Both are mandatory in every serious SoC methodology. Static must be clean (or all violations documented) before tapeout; dynamic must show no metastability escapes under random injection.</div>
+
+  <!-- ========== 2 ========== -->
+  <h2 id="tool-flow">2. SpyGlass / Questa CDC Tool Flow</h2>
+
+  <p>The industry CDC lint flow is a three-phase funnel: lint, structural CDC, then functional CDC. Each phase produces a categorised report and a waiver database. You carry forward only the residual violations that cannot be automatically fixed.</p>
+
+  <div class="phase-grid">
+    <div class="phase-card">
+      <div class="phase-num">Phase 1</div>
+      <div class="phase-title">CDC Lint</div>
+      <div class="phase-desc">Rule checks on RTL coding style: missing set/reset synchrony, asynchronous resets crossing domains, combinational logic directly on CDC output. Equivalent to RTL lint with CDC awareness.</div>
+    </div>
+    <div class="phase-card">
+      <div class="phase-num">Phase 2</div>
+      <div class="phase-title">Structural CDC</div>
+      <div class="phase-desc">Full crossing graph: every flip-flop labelled with its clock domain. Checks for missing synchronisers, wrong synchroniser depth, SRFF, and unprotected multi-bit buses. Produces crossing inventory.</div>
+    </div>
+    <div class="phase-card">
+      <div class="phase-num">Phase 3</div>
+      <div class="phase-title">Functional CDC</div>
+      <div class="phase-desc">Formal or quasi-formal analysis of data coherency. Checks that protocols (handshake, pulse synchroniser, gray code FIFO pointer) are correctly implemented and cannot pass incoherent data.</div>
+    </div>
+  </div>
+
+  <h3>SpyGlass CDC Invocation (Tcl snippet)</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">## spyglass_cdc.tcl — minimal CDC run script</span>
+<span class="cm">## Run with: spyglass -project cdc_run.prj -goal cdc_verify</span>
+
+<span class="cm"># 1. Read design</span>
+<span class="fn">read_file</span> -type verilog {rtl/top.v rtl/sync_2ff.v rtl/fifo_async.v}
+<span class="fn">set_option</span> top MyChip
+
+<span class="cm"># 2. Declare clocks</span>
+<span class="fn">define_clock</span> -name clk_a -period <span class="num">5000</span>  [<span class="fn">get_ports</span> clk_a]   <span class="cm">; # 200 MHz</span>
+<span class="fn">define_clock</span> -name clk_b -period <span class="num">6666</span>  [<span class="fn">get_ports</span> clk_b]   <span class="cm">; # 150 MHz</span>
+<span class="fn">define_clock</span> -name clk_c -period <span class="num">10000</span> [<span class="fn">get_ports</span> clk_c]   <span class="cm">; # 100 MHz</span>
+
+<span class="cm"># 3. Define recognised synchroniser cells</span>
+<span class="fn">set_cdc_synchronizer</span> -type FF2 sync_2ff <span class="cm">; # 2-flop sync</span>
+<span class="fn">set_cdc_synchronizer</span> -type PULSE pulse_sync <span class="cm">; # pulse sync</span>
+
+<span class="cm"># 4. Classify crossings to ignore (resets, tied-off signals)</span>
+<span class="fn">set_constant</span> scan_mode <span class="num">0</span>
+
+<span class="cm"># 5. Run CDC goal</span>
+<span class="fn">current_goal</span> cdc_verify
+<span class="fn">run_goal</span>
+
+<span class="cm"># 6. Report</span>
+<span class="fn">write_report</span> cdc_report.html</pre>
+  </div>
+
+  <h3>Questa CDC Lint Invocation</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">## questa_cdc.do — run from Questa CDC shell</span>
+
+<span class="fn">cdc_run</span> \
+  -d MyChip \
+  -work work \
+  -src {rtl/top.sv rtl/sync_2ff.sv rtl/fifo_async.sv} \
+  -clock {{clk_a -period <span class="num">5ns</span>} {clk_b -period <span class="num">6.666ns</span>}} \
+  -cdc_report cdc_results/
+
+<span class="cm"># Check output</span>
+<span class="cm"># cdc_results/cdc_summary.rpt — violation counts per category</span>
+<span class="cm"># cdc_results/cdc_detail.rpt  — per-crossing path details</span>
+<span class="cm"># cdc_results/cdc_srff.rpt    — SRFF candidates</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>Tool tip:</strong> Both tools require you to define every clock in the design. Any clock missed makes crossings involving that clock appear as a single domain — false negatives. Always cross-check the tool's recognised clock list against your design's clock tree.</div>
+
+  <!-- ========== 3 ========== -->
+  <h2 id="srff">3. Synchroniser Reconvergence Fanout (SRFF) Violations</h2>
+
+  <p><strong>SRFF</strong> (Synchroniser Reconvergence Fanout) is flagged when a synchroniser output fans out to multiple flip-flops or logic cones in the destination domain that later reconverge at a common gate. The CDC tool traces every load of the synchroniser's Q output and reports reconvergence whenever two paths from the same synchronised bit meet at an AND, OR, MUX, or any downstream flop whose inputs come from both paths.</p>
+
+  <p>SRFF is flagged as a potential violation because, in theory, a downstream reconvergence point could compare two different values derived from the same metastable bit — but in practice that cannot happen with a proper 2-FF synchroniser because both loads see the resolved (post-metastability) Q2 output. The real risk SRFF flags is a design topology where someone mistakenly placed logic between FF1 and FF2 in the synchroniser chain, or tapped off the partially-synchronised FF1 output for a faster but unsynchronised path.</p>
+
+  <h3>SRFF Resolution Flow</h3>
+
+  <ol>
+    <li><strong>Identify the tapped node.</strong> Look at the CDC report path — is the fanout coming from FF1 (first sync stage, partially synchronised) or FF2 (fully synchronised)? Fanout from FF1 is a real violation. Fanout from FF2 is usually false.</li>
+    <li><strong>Check reconvergence function.</strong> If both paths from FF2-Q feed into a MUX with separate select lines, they are functionally independent and the SRFF is a false positive. Document this in the waiver.</li>
+    <li><strong>Fix genuine SRFF.</strong> Re-structure the destination logic so the synchroniser output drives a single destination register first, then fan out from that registered version. This adds one cycle of latency but eliminates the reconvergence.</li>
+    <li><strong>Waive false positives.</strong> For each waived SRFF, the waiver must state the signal name, source and destination modules, why reconvergence is safe (e.g., "both loads are read-only status registers and never combinationally reconverge").</li>
+  </ol>
+
+  <div class="callout danger"><strong>Never waive an SRFF without reading the schematic.</strong> At least 20% of SRFF violations in practice are genuine — a developer accidentally tapped the partially-synchronised FF1 output for a timing-critical path. Always trace the full path before writing the waiver.</div>
+
+  <!-- ========== 4 ========== -->
+  <h2 id="metastability">4. Metastability Injection in Simulation</h2>
+
+  <p>Simulation tools model flip-flops as ideal: if a signal changes too close to the clock edge, the simulator picks 0 or 1 deterministically (usually retaining the old value or picking the new one based on ordering). Metastability — the actual silicon failure mode where the flop output oscillates for nanoseconds before resolving — never appears in RTL simulation. Metastability injection bridges this gap artificially.</p>
+
+  <h3>Random Delay Model</h3>
+
+  <p>The most common approach inserts a random sub-cycle delay on every CDC crossing signal before it reaches the synchroniser's input. The delay is sampled from a uniform distribution over 0 to just under one destination clock period. At the extreme end of the delay range, the signal arrives just before the clock edge, mimicking the worst-case metastability window. Because the synchroniser resolves to 0 or 1 based on which cycle the delayed signal reaches, the functional effect is that the synchroniser resolves to either valid state with equal probability.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// =============================================================
+// Metastability injection module — wraps a single CDC crossing
+// signal. Insert one instance per crossing in the testbench.
+// =============================================================</span>
+<span class="kw">module</span> <span class="ty">meta_inject</span> #(
+  <span class="kw">parameter int</span> MAX_DELAY_PS = <span class="num">5000</span>   <span class="cm">// max delay = just under dest period</span>
+) (
+  <span class="kw">input</span>  <span class="kw">logic</span> clk_src,
+  <span class="kw">input</span>  <span class="kw">logic</span> data_in,
+  <span class="kw">output</span> <span class="kw">logic</span> data_out
+);
+
+<span class="kw">real</span> delay_ps;
+<span class="kw">logic</span> data_delayed;
+
+<span class="cm">// Sample a new random delay on every source-clock rising edge</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk_src) <span class="kw">begin</span>
+  delay_ps = $urandom_range(<span class="num">0</span>, MAX_DELAY_PS);
+<span class="kw">end</span>
+
+<span class="cm">// Apply the fractional delay to any transition on data_in</span>
+<span class="kw">always</span> @(data_in) <span class="kw">begin</span>
+  <span class="cm">// Non-blocking with a time delay in ps</span>
+  data_delayed &lt;= <span class="pp">#</span>(delay_ps * <span class="num">1e-12</span>) data_in;
+<span class="kw">end</span>
+
+<span class="kw">assign</span> data_out = data_delayed;
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <h3>X-Injection Model</h3>
+
+  <p>A complementary technique forces the crossing wire to <code>'X</code> for a brief window after the source flop changes, then resolves to a randomly-chosen 0 or 1. The advantage is that any logic that combinationally uses the X will propagate X downstream, making metastability escapes immediately visible as X on primary outputs or memory write enables. Many simulators support this natively via the <code>$X_inject</code> PLI call or a UPF-based model.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// X-injection wrapper — simpler alternative to delay model</span>
+<span class="kw">module</span> <span class="ty">x_inject</span> (
+  <span class="kw">input</span>  <span class="kw">logic</span> data_in,
+  <span class="kw">output</span> <span class="kw">logic</span> data_out
+);
+
+<span class="kw">always</span> @(data_in) <span class="kw">begin</span>
+  data_out = <span class="num">1'bx</span>;          <span class="cm">// force X immediately on transition</span>
+  <span class="pp">#</span><span class="num">100ps</span>;                    <span class="cm">// metastability resolution window</span>
+  data_out = $urandom[<span class="num">0</span>];   <span class="cm">// resolve to random 0 or 1</span>
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Best practice:</strong> Run at least 100 simulation seeds with metastability injection enabled. A single seed run can miss the failure because the random resolution happens to pick the same value the synchroniser would have computed correctly. Sweep seeds systematically and look for any X propagation on primary outputs.</div>
+
+  <!-- ========== 5 ========== -->
+  <h2 id="sva">5. SVA for Synchroniser Output Stability</h2>
+
+  <p>After metastability injection, the synchroniser output must remain stable for at least two destination-clock cycles before being sampled by downstream logic. This is the fundamental property that makes a 2-FF synchroniser safe: the second flop samples the output of the first only after a full destination clock period, which is enough time for the first flop to resolve from metastability before the next capture edge.</p>
+
+  <p>We can verify this property directly in SVA. The key assertion checks that the synchroniser's second-stage output <code>data_d</code> (the value that downstream logic actually sees) does not change on consecutive clock edges of the destination clock. In other words, once <code>data_d</code> takes a new value, it must hold that value for at least two consecutive <code>clk_b</code> cycles.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// -------------------------------------------------------
+// SVA: synchroniser output must be stable for >= 2 cycles
+// after any transition on the destination-domain output.
+// Bind this module to your 2-FF synchroniser instance.
+// -------------------------------------------------------</span>
+<span class="kw">module</span> <span class="ty">sync_sva</span> (
+  <span class="kw">input</span> <span class="kw">logic</span> clk_b,
+  <span class="kw">input</span> <span class="kw">logic</span> rst_b_n,
+  <span class="kw">input</span> <span class="kw">logic</span> data_d   <span class="cm">// FF2 output — what dest logic sees</span>
+);
+
+<span class="pp">`ifdef</span> FORMAL_OR_SIM_ASSERTIONS
+
+<span class="cm">// Property: after data_d changes, it must hold the same value
+// on the very next clock edge (i.e., no glitch on consecutive cycles)</span>
+<span class="kw">property</span> p_sync_stable;
+  @(<span class="kw">posedge</span> clk_b) <span class="kw">disable iff</span> (!rst_b_n)
+  $changed(data_d) |=> $stable(data_d);
+<span class="kw">endproperty</span>
+
+<span class="kw">assert property</span> (p_sync_stable)
+  <span class="kw">else</span> $error(<span class="str">"[CDC] Synchroniser output changed on back-to-back cycles — metastability escape?"</span>);
+
+<span class="cm">// Cover: synchroniser output does eventually transition (sanity check)</span>
+<span class="kw">cover property</span> (@(<span class="kw">posedge</span> clk_b) $rose(data_d));
+<span class="kw">cover property</span> (@(<span class="kw">posedge</span> clk_b) $fell(data_d));
+
+<span class="pp">`endif</span>
+
+<span class="kw">endmodule</span>
+
+<span class="cm">// Bind to every 2-FF synchroniser instance in the design:</span>
+<span class="kw">bind</span> sync_2ff sync_sva u_sync_sva (
+  .clk_b   (clk_dest),
+  .rst_b_n (rst_n),
+  .data_d  (q2)
+);</pre>
+  </div>
+
+  <p>The <code>$changed(data_d) |=&gt; $stable(data_d)</code> construct reads: "if <code>data_d</code> changed on this clock edge, then on the immediately following clock edge it must remain the same." A violation of this property during simulation with metastability injection is evidence of a real metastability escape — the X resolved to different values on two successive samples, implying the first-stage flop was still resolving when the second stage captured it. This is a critical design bug requiring either a longer synchroniser chain (3-FF) or a reduced clock frequency.</p>
+
+  <!-- ========== 6 ========== -->
+  <h2 id="gray-code">6. Gray Code Pointer Verification</h2>
+
+  <p>Asynchronous FIFOs use gray-coded read and write pointers specifically to ensure that only one bit changes per pointer increment. This property is essential for safe CDC: when the gray-coded pointer crosses from the write clock domain to the read clock domain (or vice versa), the synchroniser may sample it during a transition — but since only one bit changes at a time, the worst case is that the destination domain sees either the old value or the new value, never a third, invalid pointer value.</p>
+
+  <p>If the gray code encoding is wrong — or if the binary-to-gray conversion has a bug — then two or more bits may change simultaneously on a pointer increment, and the synchroniser may capture an illegal intermediate state that does not correspond to any valid FIFO depth. This is the root cause of the classic async FIFO metastability bug.</p>
+
+  <h3>SVA: Only One Bit Changes Per Pointer Step</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// -------------------------------------------------------
+// SVA: Gray code pointer must change by exactly 1 bit
+// per clock cycle (including wrap-around at FIFO boundary).
+// Apply this to both write pointer and read pointer.
+// -------------------------------------------------------</span>
+<span class="kw">module</span> <span class="ty">gray_ptr_sva</span> #(
+  <span class="kw">parameter int</span> PTR_W = <span class="num">4</span>   <span class="cm">// pointer width in bits</span>
+) (
+  <span class="kw">input</span> <span class="kw">logic</span>             clk,
+  <span class="kw">input</span> <span class="kw">logic</span>             rst_n,
+  <span class="kw">input</span> <span class="kw">logic</span> [PTR_W-<span class="num">1</span>:<span class="num">0</span>] gray_ptr
+);
+
+<span class="pp">`ifdef</span> FORMAL_OR_SIM_ASSERTIONS
+
+<span class="cm">// Only one bit must change per step after reset</span>
+<span class="kw">property</span> p_gray_onehot_change;
+  @(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span> (!rst_n)
+  $changed(gray_ptr) |->
+    $onehot(gray_ptr ^ $past(gray_ptr));
+<span class="kw">endproperty</span>
+
+<span class="kw">assert property</span> (p_gray_onehot_change)
+  <span class="kw">else</span> $error(<span class="str">"[GRAY] Pointer changed by != 1 bit: was 0x%0h, now 0x%0h"</span>,
+              $past(gray_ptr), gray_ptr);
+
+<span class="cm">// Pointer must not be all-X after reset de-asserts</span>
+<span class="kw">assert property</span> (@(<span class="kw">posedge</span> clk) !rst_n |-> gray_ptr === <span class="num">'0</span>)
+  <span class="kw">else</span> $error(<span class="str">"[GRAY] Pointer not zero during reset"</span>);
+
+<span class="cm">// Functional coverage: pointer wraps (MSB toggles)</span>
+<span class="kw">cover property</span> (@(<span class="kw">posedge</span> clk) $rose(gray_ptr[PTR_W-<span class="num">1</span>]));
+
+<span class="pp">`endif</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <h3>Binary-to-Gray Conversion Reference</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// Standard binary-to-gray conversion
+// gray[i] = bin[i] ^ bin[i+1]  (MSB: gray[N-1] = bin[N-1])</span>
+<span class="kw">function automatic</span> <span class="kw">logic</span> [PTR_W-<span class="num">1</span>:<span class="num">0</span>] <span class="fn">bin2gray</span>;
+  <span class="kw">input logic</span> [PTR_W-<span class="num">1</span>:<span class="num">0</span>] bin;
+  <span class="kw">begin</span>
+    bin2gray = bin ^ (bin >> <span class="num">1</span>);
+  <span class="kw">end</span>
+<span class="kw">endfunction</span>
+
+<span class="cm">// Verify in an assertion checker:</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> wr_clk) <span class="kw">begin</span>
+  <span class="kw">if</span> (wr_en && !full) <span class="kw">begin</span>
+    <span class="kw">assert</span>(wr_ptr_gray == <span class="fn">bin2gray</span>(wr_ptr_bin))
+      <span class="kw">else</span> $fatal(<span class="num">1</span>, <span class="str">"Gray/binary mismatch on write pointer"</span>);
+  <span class="kw">end</span>
+<span class="kw">end</span></pre>
+  </div>
+
+  <div class="callout info"><strong>Why the MSB matters most:</strong> The gray code MSB is the bit most likely to be captured during a pointer wrap (e.g., going from the last address to 0). A simulation that never exercises the wrap-around cannot validate the MSB gray transition. Always include a test sequence that writes exactly FIFO_DEPTH entries to force at least one complete pointer wrap.</div>
+
+  <!-- ========== 7 ========== -->
+  <h2 id="waivers">7. CDC Waivers and Review Process</h2>
+
+  <p>No real SoC passes CDC analysis with zero violations — the tools are conservative and flag many legitimate crossings as potential issues. The waiver process documents every flagged crossing with a human-reviewed justification for why the violation is either safe or already mitigated by a higher-level protocol.</p>
+
+  <h3>Waiver Categories</h3>
+
+  <table>
+    <thead><tr><th>Category</th><th>Waiver Justification</th><th>Review Level</th></tr></thead>
+    <tbody>
+      <tr><td>False SRFF</td><td>Both fanout paths are independent, no combinational reconvergence</td><td>Engineer sign-off</td></tr>
+      <tr><td>Static signal crossing</td><td>Signal is tied to a constant or only changes during reset</td><td>Engineer sign-off</td></tr>
+      <tr><td>Gray-coded bus</td><td>Multi-bit bus is binary-to-gray encoded; SVA verifies 1-bit change property</td><td>Lead + SVA evidence</td></tr>
+      <tr><td>Handshake-protected bus</td><td>Multi-bit data is qualified by a synchronised valid/ack handshake</td><td>Lead + protocol proof</td></tr>
+      <tr><td>Resets</td><td>Asynchronous reset is self-synchronising by design (release sync)</td><td>Engineer sign-off</td></tr>
+      <tr><td>Genuine violation</td><td>N/A — must be fixed before waiver is allowed</td><td>Fix required</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Waiver File Format (SpyGlass)</h3>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">## cdc_waivers.sgdc — SpyGlass CDC waiver file
+## Format: waive -rule &lt;RULE&gt; -signal &lt;HIER_PATH&gt; -comment &lt;TEXT&gt;</span>
+
+<span class="cm"># Waive SRFF on status register: both loads are read-only,
+# no combinational reconvergence, confirmed on schematic 2026-06-10</span>
+<span class="fn">waive</span> -rule CDC_SRFF \
+      -signal {MyChip.u_clkb_logic.status_reg[3]} \
+      -comment {<span class="str">Read-only fanout to RD_DATA and IRQ_STATUS. No reconvergence. Reviewed by J.Smith 2026-06-10.</span>}
+
+<span class="cm"># Waive multi-bit gray-code FIFO pointer: SVA p_gray_onehot_change
+# verified in sim regression suite, 500 seeds, 0 failures.</span>
+<span class="fn">waive</span> -rule CDC_MULTIBIT \
+      -signal {MyChip.u_async_fifo.wr_ptr_gray[*]} \
+      -comment {<span class="str">Gray-coded write pointer. SVA assertion passes 500 seeds with metastability injection. Reviewed by K.Priya 2026-06-15.</span>}</pre>
+  </div>
+
+  <div class="callout warn"><strong>Waiver discipline:</strong> Every waiver must include: signal hierarchical path, rule name, reviewer name, review date, and a one-sentence justification. Waivers without justification are not acceptable at sign-off review. Maintain the waiver file in version control alongside the RTL.</div>
+
+  <!-- ========== 8 ========== -->
+  <h2 id="signoff">8. CDC Sign-off Checklist</h2>
+
+  <p>CDC sign-off is a formal gate in the design flow, typically at RTL freeze and again at gate-level netlist. The sign-off checklist must be fully checked before any waiver-incomplete design advances to physical implementation.</p>
+
+  <div class="takeaways">
+    <h3>CDC Sign-off Checklist</h3>
+    <ul class="checklist">
+      <li>All clock domains declared in CDC tool; tool-recognised clock list matches design clock tree</li>
+      <li>SpyGlass/Questa CDC structural analysis: zero unwaived violations</li>
+      <li>All SRFF violations reviewed by a second engineer; no genuine SRFF present</li>
+      <li>All multi-bit CDC buses protected by gray code (SVA verified) or handshake (formally proven)</li>
+      <li>Gray code pointer SVA (p_gray_onehot_change) passes at 100% coverage in all regression tests</li>
+      <li>Metastability injection enabled in chip-level simulation; minimum 100 random seeds run</li>
+      <li>Zero X-propagation from CDC crossings on primary outputs under injection</li>
+      <li>Synchroniser depth adequate: 2-FF for moderate freq ratios; 3-FF for freq ratio &gt; 4x or safety-critical paths</li>
+      <li>All waivers reviewed, dated, and justified; waiver file in version control</li>
+      <li class="warn-item">Functional CDC (coherency) analysis complete or explicitly deferred with risk documented</li>
+      <li>Gate-level CDC re-run after synthesis: no new crossings introduced by synthesis optimisation</li>
+      <li>CDC sign-off report archived in project release package</li>
+    </ul>
+  </div>
+
+  <h3>Why Gate-Level CDC Re-run Matters</h3>
+
+  <p>RTL CDC analysis operates on the designer's intended synchroniser topology. Synthesis may, in rare cases, restructure or optimise away a synchroniser if it does not recognise the cell as a timing exception. A gate-level CDC re-run with the synthesised netlist and the same clock constraints catches any synchronisers that were removed, re-ordered, or inadvertently replaced with a different cell that the CDC tool does not recognise. This is especially important when the synchroniser is implemented with instantiated primitives rather than inferred flip-flops, since instantiation bypasses the synthesis don't-touch attribute.</p>
+
+  <div class="callout danger"><strong>Post-synthesis risk:</strong> Synthesis tools can legally restructure RTL that has no explicit <code>/* synthesis preserve */</code> or <code>dont_touch</code> attribute on synchroniser flops. Always add <code>set_dont_touch</code> or equivalent constraints to every synchroniser cell in the synthesis script, and verify in the gate-level CDC run that the cell count is unchanged.</div>
+
+  <!-- ========== Full SV Example ========== -->
+  <h2 id="full-example">Full Example: Async FIFO CDC Verification Testbench Skeleton</h2>
+
+  <p>This skeleton ties together metastability injection, gray code SVA binding, and the synchroniser output stability check in a single testbench module. It is not a complete simulation — it shows the structural pattern for wiring the injection and assertion infrastructure to a real async FIFO DUT.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="cm">// =============================================================
+// cdc_fifo_tb.sv — Async FIFO CDC verification skeleton
+// DUT: async_fifo #(.DEPTH(16), .WIDTH(32))
+// =============================================================</span>
+<span class="kw">module</span> <span class="ty">cdc_fifo_tb</span>;
+
+<span class="cm">// --- Clocks ---------------------------------------------------</span>
+<span class="kw">logic</span> clk_wr = <span class="num">0</span>;  <span class="kw">always</span> <span class="pp">#</span><span class="num">2.5ns</span> clk_wr = ~clk_wr;  <span class="cm">// 200 MHz</span>
+<span class="kw">logic</span> clk_rd = <span class="num">0</span>;  <span class="kw">always</span> <span class="pp">#</span><span class="num">3.33ns</span> clk_rd = ~clk_rd; <span class="cm">// 150 MHz</span>
+
+<span class="cm">// --- DUT Signals ----------------------------------------------</span>
+<span class="kw">logic</span>        rst_n, wr_en, rd_en, full, empty;
+<span class="kw">logic</span> [<span class="num">31</span>:<span class="num">0</span>] wdata, rdata;
+
+<span class="cm">// --- Metastability-injected pointer signals -------------------</span>
+<span class="kw">logic</span> [<span class="num">4</span>:<span class="num">0</span>] wr_ptr_gray_raw;  <span class="cm">// from DUT write domain</span>
+<span class="kw">logic</span> [<span class="num">4</span>:<span class="num">0</span>] wr_ptr_gray_inj;  <span class="cm">// after injection, fed to rd-domain sync</span>
+
+<span class="cm">// Instantiate DUT</span>
+<span class="ty">async_fifo</span> #(.DEPTH(<span class="num">16</span>), .WIDTH(<span class="num">32</span>)) dut (
+  .clk_wr(clk_wr), .clk_rd(clk_rd), .rst_n(rst_n),
+  .wr_en(wr_en),   .wdata(wdata),    .full(full),
+  .rd_en(rd_en),   .rdata(rdata),    .empty(empty),
+  <span class="cm">// Expose internal gray pointer for injection</span>
+  .wr_ptr_gray_out(wr_ptr_gray_raw)
+);
+
+<span class="cm">// Inject metastability on wr_ptr crossing to rd domain</span>
+<span class="kw">genvar</span> gi;
+<span class="kw">generate</span>
+  <span class="kw">for</span> (gi = <span class="num">0</span>; gi &lt; <span class="num">5</span>; gi++) <span class="kw">begin</span> : gen_meta
+    <span class="ty">meta_inject</span> #(.MAX_DELAY_PS(<span class="num">6000</span>)) u_mi (
+      .clk_src  (clk_wr),
+      .data_in  (wr_ptr_gray_raw[gi]),
+      .data_out (wr_ptr_gray_inj[gi])
+    );
+  <span class="kw">end</span>
+<span class="kw">endgenerate</span>
+
+<span class="cm">// Bind gray-code pointer SVA to write-pointer in DUT</span>
+<span class="kw">bind</span> async_fifo gray_ptr_sva #(.PTR_W(<span class="num">5</span>)) u_gp_sva (
+  .clk    (clk_wr),
+  .rst_n  (rst_n),
+  .gray_ptr(wr_ptr_gray_raw)
+);
+
+<span class="cm">// Bind synchroniser SVA to the 2-FF sync inside DUT</span>
+<span class="kw">bind</span> sync_2ff sync_sva u_ss (
+  .clk_b  (clk_rd),
+  .rst_b_n(rst_n),
+  .data_d (q2)
+);
+
+<span class="cm">// --- Test sequence -------------------------------------------</span>
+<span class="kw">initial</span> <span class="kw">begin</span>
+  rst_n = <span class="num">0</span>; wr_en = <span class="num">0</span>; rd_en = <span class="num">0</span>; wdata = <span class="num">0</span>;
+  <span class="pp">#</span><span class="num">20ns</span>; rst_n = <span class="num">1</span>;
+
+  <span class="cm">// Fill FIFO completely (force pointer wrap)</span>
+  <span class="kw">repeat</span>(<span class="num">16</span>) @(<span class="kw">posedge</span> clk_wr) <span class="kw">begin</span>
+    wr_en = <span class="num">1</span>; wdata = $urandom;
+  <span class="kw">end</span>
+  wr_en = <span class="num">0</span>;
+  <span class="pp">#</span><span class="num">50ns</span>;
+
+  <span class="cm">// Drain FIFO</span>
+  <span class="kw">repeat</span>(<span class="num">16</span>) @(<span class="kw">posedge</span> clk_rd) rd_en = ~empty;
+  rd_en = <span class="num">0</span>;
+
+  <span class="cm">// Simultaneous push and pop stress test</span>
+  <span class="kw">repeat</span>(<span class="num">200</span>) @(<span class="kw">posedge</span> clk_wr) <span class="kw">begin</span>
+    wr_en = !full  && $urandom[<span class="num">0</span>];
+    wdata = $urandom;
+  <span class="kw">end</span>
+
+  <span class="pp">#</span><span class="num">200ns</span>;
+  $finish;
+<span class="kw">end</span>
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <!-- ========== FAQ ========== -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is the difference between static and dynamic CDC verification?</summary>
+      <div class="ans">Static CDC analysis (SpyGlass CDC, Questa CDC lint) checks the RTL netlist for structural crossing violations — missing synchronisers, reconvergence fanout (SRFF), and multi-bit buses crossing without handshake — without running any simulation. Dynamic CDC verification injects metastability delays into simulation to observe whether the design functionally tolerates a synchroniser resolving to either valid state. Static analysis finds structural issues early and cheaply; dynamic simulation validates functional correctness under metastability. Both are required for sign-off: static catches what simulation cannot exercise systematically, and simulation validates end-to-end behaviour.</div>
+    </details>
+    <details>
+      <summary>What is synchroniser reconvergence fanout (SRFF) and why is it a CDC violation?</summary>
+      <div class="ans">SRFF occurs when a signal crosses a clock domain through a two-flop synchroniser and then its output fans out to multiple downstream logic paths that reconverge — meaning two paths from the same synchronised bit merge at a subsequent gate. The hazard is that both copies of the synchronised bit are registered in the same destination-clock cycle, so they cannot enter metastability independently. However, SRFF can also flag false positives if the fanout paths are actually independent; each flagged SRFF must be reviewed and either fixed (by re-structuring logic) or formally waived with a written justification.</div>
+    </details>
+    <details>
+      <summary>How do you inject metastability in SystemVerilog simulation?</summary>
+      <div class="ans">The standard approach inserts a random-delay model on every CDC crossing signal. In the testbench, declare a real-valued delay per crossing bit sampled from <code>$urandom_range(0, MAX_DELAY_PS)</code> picoseconds and apply it via <code>#delay</code> on the signal assignment before the second flop samples it. A complementary technique is X-injection: force the crossing wire to <code>'X</code> for one simulation time step after the source flop changes, then resolve to 0 or 1 randomly. The design must never propagate an X downstream — any downstream X on a primary output or memory write is flagged as a metastability escape. Run at least 100 seeds to gain statistical confidence.</div>
+    </details>
+    <details>
+      <summary>How do you assert that a gray code pointer changes only 1 bit per step?</summary>
+      <div class="ans">Use a SystemVerilog assertion that XORs consecutive pointer values and checks that exactly one bit is set: <code>assert property (@(posedge clk) $onehot(ptr ^ $past(ptr)))</code>. The <code>$onehot()</code> system function returns 1 only when exactly one bit in its argument is set. Combining XOR with <code>$past</code> gives the bit-difference between the current and previous pointer value. This assertion fires if two or more bits change simultaneously, which would indicate either a binary-to-gray encoding bug or a pointer reset/wrap that skips a gray step. It should be bound to both the write-domain pointer and the read-domain pointer independently.</div>
+    </details>
+  </div>
+
+  <!-- Key Takeaways -->
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 23</h3>
+    <ul>
+      <li>Static CDC analysis catches structural violations (missing syncs, SRFF, unprotected multi-bit buses) without simulation</li>
+      <li>Dynamic metastability injection validates functional correctness that static analysis cannot see</li>
+      <li>Run SpyGlass/Questa CDC in three phases: lint, structural CDC, functional CDC — each produces a waiver-able report</li>
+      <li>SRFF violations require schematic review before waiver — at least 20% are genuine in practice</li>
+      <li>Metastability injection uses random sub-cycle delay or X-injection on crossing signals; always run 100+ seeds</li>
+      <li>SVA: <code>$changed(data_d) |=&gt; $stable(data_d)</code> catches back-to-back synchroniser output changes</li>
+      <li>SVA: <code>$onehot(ptr ^ $past(ptr))</code> verifies the gray code 1-bit-change property on every pointer step</li>
+      <li>Every CDC waiver needs signal path, rule, reviewer name, date, and one-sentence justification</li>
+      <li>Gate-level CDC re-run is mandatory after synthesis to detect synchronisers removed by optimisation</li>
+      <li>Add <code>set_dont_touch</code> constraints to every synchroniser instance in the synthesis script</li>
+    </ul>
+  </div>
+
+  <!-- Prev / Next navigation -->
+  <div class="prev-next">
+    <a href="/verification/22-fifo-verification/" class="pn-card prev-card">
+      <div class="pn-label">&#8592; Previous</div>
+      <div class="pn-title">Day 22 — FIFO Verification</div>
+      <div class="pn-desc">SVA assertions, reference model, functional coverage, corner cases</div>
+    </a>
+    <a href="/verification/24-low-power-verification/" class="pn-card next-card">
+      <div>
+        <div class="pn-label">Next &#8594;</div>
+        <div class="pn-title">Day 24 — Low-Power Verification</div>
+        <div class="pn-desc">UPF, power-aware simulation, isolation cell checking, retention strategies</div>
+      </div>
+      <div class="next-arrow">&#8594;</div>
+    </a>
+  </div>
+
+</div><!-- /body -->
+
+<button class="scroll-top" id="scrollTop" title="Back to top">&#8679;</button>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>VLSI &amp; Verification learning — free, depth-first, engineer-written.</p>
+  <p style="margin-top:.5rem">
+    <a href="/legal/privacy.html" style="color:var(--sky);margin:0 .5rem">Privacy</a>
+    <a href="/legal/terms.html" style="color:var(--sky);margin:0 .5rem">Terms</a>
+    <a href="/verification/" style="color:var(--sky);margin:0 .5rem">Verification Series</a>
+    <a href="/about/" style="color:var(--sky);margin:0 .5rem">About</a>
+  </p>
+  <p style="margin-top:.5rem;font-size:.78rem">&copy; 2026 EcrioniX &middot; ecrionix.org</p>
+</footer>
+
+<script>
+// Hamburger menu
+document.getElementById('hamburger').addEventListener('click', function() {
+  document.getElementById('mobileMenu').classList.toggle('open');
+});
+
+// Copy buttons
+function copyCode(btn) {
+  var pre = btn.nextElementSibling;
+  navigator.clipboard.writeText(pre.innerText).then(function() {
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 1800);
+  });
+}
+
+// Back to top
+var st = document.getElementById('scrollTop');
+window.addEventListener('scroll', function() {
+  st.classList.toggle('visible', window.scrollY > 400);
+});
+st.addEventListener('click', function() {
+  window.scrollTo({top: 0, behavior: 'smooth'});
+});
+</script>
+</body>
+</html>

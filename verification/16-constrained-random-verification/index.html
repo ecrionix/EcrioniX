@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Constrained Random Verification — Day 16 | EcrioniX Verification Series</title>
+  <meta name="description" content="Constrained random verification in SystemVerilog: rand/randc, constraint blocks, soft constraints, dist, inside, implication (->), solve-before, randomize() with inline constraints, and debugging over-constrained failures.">
+  <meta name="keywords" content="constrained random verification, SystemVerilog rand randc, constraint blocks, soft constraints, dist constraint, inside operator, implication constraint, solve-before, randomize() inline, over-constrained debug, CRV tutorial">
+  <link rel="canonical" href="https://ecrionix.org/verification/16-constrained-random-verification/">
+  <meta property="og:title" content="Constrained Random Verification — Day 16 | EcrioniX Verification Series">
+  <meta property="og:description" content="Master constrained random verification in SystemVerilog: rand/randc, constraint blocks, dist, inside, implication (->), soft constraints, solve-before, and debugging over-constrained failures.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/16-constrained-random-verification/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"Constrained Random Verification","description":"Constrained random verification in SystemVerilog: rand/randc, constraint blocks, soft constraints, dist, inside, implication, solve-before, inline randomize(), and over-constrained debug.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"publisher":{"@type":"Organization","name":"EcrioniX"},"url":"https://ecrionix.org/verification/16-constrained-random-verification/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 16 — Constrained Random Verification","item":"https://ecrionix.org/verification/16-constrained-random-verification/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between rand and randc in SystemVerilog?","acceptedAnswer":{"@type":"Answer","text":"rand variables are randomized independently each time randomize() is called, with the solver free to repeat any value. randc (random cyclic) guarantees that every legal value is generated exactly once before any value repeats — similar to shuffling a deck of cards. randc is useful for ensuring complete coverage without explicit bins, but it only applies to integer variables and the cycle resets whenever constraints change."}},
+      {"@type":"Question","name":"Why does randomize() return 0 even though my constraints look correct?","acceptedAnswer":{"@type":"Answer","text":"A return value of 0 from randomize() means the solver could not find a valid solution — the constraints are over-constrained. Common causes include: contradictory range constraints (e.g., a > 100 and a < 50 together), an implication constraint that creates an unsatisfiable dependency, a dist block whose weights sum to zero after other constraints filter the domain, or a solve-before ordering that makes the leading variable's range empty. Enable the constraint solver debug output with +UVM_VERBOSITY=UVM_DEBUG or $system(\"vcs -cm\") to print the failing constraint set, and use constraint_mode(0) to disable constraints one by one until randomize() succeeds."}},
+      {"@type":"Question","name":"When should I use soft constraints instead of regular constraints?","acceptedAnswer":{"@type":"Answer","text":"Use soft constraints when you want a preferred default value but need sub-classes or inline with{} blocks to be able to override it without causing a conflict. Hard constraints always participate in the AND of all active constraints and cannot be overridden — they simply make the problem infeasible if contradicted. Soft constraints are discarded silently when they conflict with a hard constraint or a higher-priority soft constraint. A typical pattern is to put soft constraints in a base transaction class as sensible defaults and override them in specific test scenarios using inline constraints."}},
+      {"@type":"Question","name":"What does the solve-before constraint do and when is it needed?","acceptedAnswer":{"@type":"Answer","text":"solve a before b tells the constraint solver to pick a value for variable a first, then solve for b given that value. Without solve-before, the solver is free to optimise the joint distribution, which often collapses biased distributions. The classic example: if a is 1-bit (50% chance of 0 or 1) and b is constrained to {0} when a==0 and {0,1,...,255} when a==1, you want a true 50/50 split on a. Without solve-before, the solver might pick values that statistically favour a==1 because there are 256 solutions in that branch vs 1 in the a==0 branch. Adding solve a before b forces the 50/50 split before the solver enumerates b's range."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:#1e293b;color:var(--muted);border:1px solid var(--border)}.dnbtn-prev:hover{color:#fff}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(167,139,250,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--violet);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted);transition:color .15s}.toc li a:hover{color:var(--sky)}
+    .diagram{background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin:1.5rem 0;overflow-x:auto;text-align:center}
+    .diagram svg{max-width:100%;height:auto}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .nav-cards{display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap}
+    .nav-card{flex:1;min-width:200px;background:rgba(15,23,42,.7);border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.2rem 1.5rem;text-decoration:none;color:inherit;transition:all .2s}
+    .nav-card:hover{border-color:var(--violet);transform:translateY(-2px)}
+    .nav-card-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .nav-card-title{font-size:.95rem;font-weight:700;color:#f1f5f9}
+    .nav-card.next{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04))}
+    .faq{margin:2rem 0}
+    details{background:rgba(15,23,42,.6);border:1px solid var(--border);border-radius:10px;margin-bottom:.8rem;padding:0}
+    summary{padding:1rem 1.2rem;cursor:pointer;font-size:.9rem;font-weight:600;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    summary::-webkit-details-marker{display:none}
+    summary::after{content:'›';font-size:1.3rem;color:var(--violet);transition:transform .2s}
+    details[open] summary::after{transform:rotate(90deg)}
+    .faq-body{padding:.2rem 1.2rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem;margin-top:auto}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+    @media(max-width:600px){.two-col{grid-template-columns:1fr}}
+    .mini-card{background:rgba(15,23,42,.8);border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem}
+    .mini-card h4{font-size:.82rem;font-weight:700;color:var(--sky);margin-bottom:.4rem}
+    .mini-card p{font-size:.8rem;margin-bottom:0}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/verification/">Verification</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 16 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/15-uvm-coverage/" class="dnbtn dnbtn-prev">← Day 15</a>
+    <a href="/verification/17-coverage-closure/" class="dnbtn dnbtn-next">Day 17 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 16 — Constrained Random Verification</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 4 — Verification Techniques</div>
+  <h1>Constrained Random Verification</h1>
+  <div style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated Jun 22, 2026</span></div>
+  <p class="hero-sub">Directed tests are slow to write and miss edge cases. Constrained random verification (CRV) lets the solver generate thousands of legal stimuli automatically — you write the rules once, the solver does the rest. Master <code style="background:#0f172a;padding:.1rem .4rem;border-radius:4px;font-size:.85em">rand</code>, <code style="background:#0f172a;padding:.1rem .4rem;border-radius:4px;font-size:.85em">randc</code>, constraint blocks, distributions, implications, soft constraints, solve‑before, and inline overrides in one deep session.</p>
+  <div class="hero-meta">
+    <span>⏱ 22 min read</span>
+    <span>📖 Day 16 of 25</span>
+    <span>🎯 CRV · SystemVerilog</span>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- DIAGRAM: directed vs random -->
+  <div class="diagram">
+    <svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" style="max-width:740px">
+      <defs>
+        <marker id="arr" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#a78bfa"/></marker>
+        <marker id="arr2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#38bdf8"/></marker>
+      </defs>
+      <!-- Directed side -->
+      <rect x="10" y="10" width="340" height="180" rx="10" fill="rgba(167,139,250,.05)" stroke="rgba(167,139,250,.2)" stroke-width="1"/>
+      <text x="180" y="32" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700">DIRECTED TESTING</text>
+      <rect x="30" y="44" width="140" height="24" rx="5" fill="rgba(167,139,250,.12)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="100" y="61" text-anchor="middle" fill="#e2e8f0" font-size="9">Test A: addr=0x00, len=4</text>
+      <rect x="30" y="76" width="140" height="24" rx="5" fill="rgba(167,139,250,.10)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="100" y="93" text-anchor="middle" fill="#e2e8f0" font-size="9">Test B: addr=0xFF, len=1</text>
+      <rect x="30" y="108" width="140" height="24" rx="5" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="100" y="125" text-anchor="middle" fill="#e2e8f0" font-size="9">Test C: addr=0x80, len=8</text>
+      <text x="100" y="158" text-anchor="middle" fill="#64748b" font-size="8">each case hand-coded</text>
+      <text x="100" y="172" text-anchor="middle" fill="#64748b" font-size="8">misses 4B-address × 256-len corner cases</text>
+      <!-- arrow right -->
+      <line x1="196" y1="70" x2="296" y2="70" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arr)"/>
+      <rect x="208" y="57" width="78" height="14" rx="4" fill="#020617"/>
+      <text x="247" y="68" text-anchor="middle" fill="#64748b" font-size="8">manual effort</text>
+      <!-- DUT box -->
+      <rect x="296" y="54" width="44" height="32" rx="6" fill="rgba(56,189,248,.1)" stroke="var(--sky)" stroke-width="1.2"/>
+      <text x="318" y="74" text-anchor="middle" fill="var(--sky)" font-size="9" font-weight="700">DUT</text>
+      <!-- CRV side -->
+      <rect x="380" y="10" width="370" height="180" rx="10" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="565" y="32" text-anchor="middle" fill="var(--sky)" font-size="11" font-weight="700">CONSTRAINED RANDOM TESTING</text>
+      <rect x="398" y="44" width="150" height="36" rx="6" fill="rgba(56,189,248,.1)" stroke="var(--sky)" stroke-width="1.2"/>
+      <text x="473" y="58" text-anchor="middle" fill="#e2e8f0" font-size="9" font-weight="700">Constraint Block</text>
+      <text x="473" y="72" text-anchor="middle" fill="#94a3b8" font-size="8">addr inside {[0:32'hFFFF_FFFF]}</text>
+      <!-- solver -->
+      <rect x="398" y="88" width="150" height="26" rx="6" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1"/>
+      <text x="473" y="105" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">Constraint Solver</text>
+      <!-- generated stimuli -->
+      <rect x="560" y="50" width="110" height="14" rx="4" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.3)" stroke-width=".8"/>
+      <text x="615" y="61" text-anchor="middle" fill="#e2e8f0" font-size="8">addr=0x3A7C len=63</text>
+      <rect x="560" y="70" width="110" height="14" rx="4" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.3)" stroke-width=".8"/>
+      <text x="615" y="81" text-anchor="middle" fill="#e2e8f0" font-size="8">addr=0x0001 len=255</text>
+      <rect x="560" y="90" width="110" height="14" rx="4" fill="rgba(56,189,248,.1)" stroke="rgba(56,189,248,.3)" stroke-width=".8"/>
+      <text x="615" y="101" text-anchor="middle" fill="#e2e8f0" font-size="8">addr=0xDEAD len=1</text>
+      <text x="615" y="118" text-anchor="middle" fill="#64748b" font-size="8">1000s of legal stimuli</text>
+      <text x="615" y="130" text-anchor="middle" fill="#64748b" font-size="8">from one constraint block</text>
+      <line x1="553" y1="101" x2="548" y2="101" stroke="rgba(56,189,248,.4)" stroke-width="1"/>
+      <line x1="548" y1="80" x2="553" y2="80" stroke="rgba(56,189,248,.0)" stroke-width="0"/>
+      <!-- arrow from solver to stimuli -->
+      <line x1="549" y1="101" x2="558" y2="77" stroke="#38bdf8" stroke-width="1" marker-end="url(#arr2)" stroke-dasharray="3,2"/>
+    </svg>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#directed-vs-random">Directed Tests vs Constrained Random</a></li>
+      <li><a href="#rand-randc">rand vs randc — The Key Difference</a></li>
+      <li><a href="#constraint-blocks">Constraint Blocks — Syntax &amp; AND-ing</a></li>
+      <li><a href="#dist">Distribution Constraints — dist</a></li>
+      <li><a href="#inside">The inside Operator</a></li>
+      <li><a href="#implication">Implication Constraints (a -&gt; b)</a></li>
+      <li><a href="#soft">Soft Constraints</a></li>
+      <li><a href="#solve-before">solve-before Ordering</a></li>
+      <li><a href="#inline">Inline Constraints — randomize() with &#123;&#125;</a></li>
+      <li><a href="#transaction">Complete Transaction Class</a></li>
+      <li><a href="#debug">Debugging Over-Constrained Failures</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- SECTION 1 -->
+  <h2 id="directed-vs-random">1. Directed Tests vs Constrained Random</h2>
+  <p>A <strong>directed test</strong> hard-codes every stimulus field. An engineer who knows the bug can write the perfect reproducer in minutes. But for exploring a 64-bit address space combined with a 256-value burst-length field, the number of combinations is astronomically large — writing one directed test per corner case is not feasible.</p>
+  <p><strong>Constrained random verification (CRV)</strong> inverts the process: you describe the legal space of stimuli as a set of constraints, and the simulator's built-in constraint solver generates a new legal stimulus every time you call <code>randomize()</code>. Run the same test 10 000 times with different seeds and you cover the entire legal space probabilistically.</p>
+
+  <table>
+    <thead><tr><th>Aspect</th><th>Directed Testing</th><th>Constrained Random</th></tr></thead>
+    <tbody>
+      <tr><td>Setup cost</td><td>Low per bug, high for full coverage</td><td>Higher upfront (constraint authoring)</td></tr>
+      <tr><td>Coverage growth</td><td>Linear — one test, one scenario</td><td>Exponential — one run, many scenarios</td></tr>
+      <tr><td>Corner-case reach</td><td>Only what engineer anticipates</td><td>Solver finds unexpected combinations</td></tr>
+      <tr><td>Reproducibility</td><td>Deterministic by definition</td><td>Seed-controlled: same seed = same run</td></tr>
+      <tr><td>Maintenance</td><td>Fragile — changes in DUT require new tests</td><td>Constraints adapt naturally to spec changes</td></tr>
+      <tr><td>Typical use</td><td>Bug regression, protocol smoke</td><td>Regression campaigns, coverage closure</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info"><strong>Rule of thumb:</strong> Use directed tests to verify specific bug fixes and protocol corner cases that the random solver is unlikely to stumble upon. Use CRV for everything else — it scales.</div>
+
+  <!-- SECTION 2 -->
+  <h2 id="rand-randc">2. rand vs randc — The Key Difference</h2>
+  <p>SystemVerilog provides two randomisation qualifiers for class members. Both require the <code>rand</code> or <code>randc</code> keyword in the class declaration and become active when <code>randomize()</code> is called on the object.</p>
+
+  <table>
+    <thead><tr><th>Qualifier</th><th>Distribution behaviour</th><th>Repetition</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><code>rand</code></td><td>Uniform random over legal domain, independent each call</td><td>Any value may repeat immediately</td><td>Most stimulus fields</td></tr>
+      <tr><td><code>randc</code></td><td>Cyclic — cycles through all legal values before repeating</td><td>No repeats within one cycle</td><td>Opcodes, transaction IDs, small enums where full coverage is needed</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">Packet</span>;
+  <span class="cm">// rand — each randomize() picks independently from the legal domain</span>
+  <span class="kw">rand</span>  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="kw">rand</span>  <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]  burst_len;
+
+  <span class="cm">// randc — cycles through all 4 values before repeating</span>
+  <span class="kw">randc</span> <span class="ty">bit</span>   [<span class="num">1</span>:<span class="num">0</span>]  cmd;   <span class="cm">// values 0,1,2,3 appear once per cycle</span>
+<span class="kw">endclass</span>
+
+<span class="kw">module</span> <span class="ty">tb</span>;
+  <span class="ty">Packet</span> pkt;
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    pkt = <span class="kw">new</span>();
+    <span class="kw">repeat</span>(<span class="num">8</span>) <span class="kw">begin</span>
+      <span class="kw">void</span>'(pkt.randomize());
+      <span class="cm">// cmd will visit 0,1,2,3 then 0,1,2,3 — never 0,0,1,...</span>
+      $<span class="fn">display</span>(<span class="str">"addr=%0h cmd=%0d len=%0d"</span>, pkt.addr, pkt.cmd, pkt.burst_len);
+    <span class="kw">end</span>
+  <span class="kw">end</span>
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>randc limitation:</strong> <code>randc</code> only works on integral types with a small domain. The solver must enumerate all legal values to build the cycle. Large bit-widths (e.g., 32-bit randc) are illegal and will cause a compile error. Keep <code>randc</code> to enums or small integer fields.</div>
+
+  <!-- SECTION 3 -->
+  <h2 id="constraint-blocks">3. Constraint Blocks — Syntax &amp; AND-ing</h2>
+  <p>A <strong>constraint block</strong> is a named block inside a class containing one or more constraint expressions. The solver AND's every active constraint in the object together before solving. All constraints must be simultaneously satisfiable.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">BusTxn</span>;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]  len;
+  <span class="kw">rand</span> <span class="ty">bit</span>          write;
+
+  <span class="cm">// Constraint block 1 — address alignment</span>
+  <span class="kw">constraint</span> c_addr_align {
+    addr[<span class="num">1</span>:<span class="num">0</span>] == <span class="num">2'b00</span>;          <span class="cm">// always 4-byte aligned</span>
+    addr &lt; <span class="num">32'h1000_0000</span>;        <span class="cm">// within mapped region</span>
+  }
+
+  <span class="cm">// Constraint block 2 — burst length</span>
+  <span class="kw">constraint</span> c_len {
+    len inside {<span class="num">1</span>, <span class="num">2</span>, <span class="num">4</span>, <span class="num">8</span>, <span class="num">16</span>}; <span class="cm">// only valid AXI burst lengths</span>
+  }
+
+  <span class="cm">// Constraint block 3 — write transactions are short</span>
+  <span class="kw">constraint</span> c_write_short {
+    write <span class="op">-></span> len &lt;= <span class="num">8</span>;           <span class="cm">// implication: if write then len ≤ 8</span>
+  }
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>All three blocks are active simultaneously. The solver must find <code>addr</code>, <code>len</code>, and <code>write</code> that satisfy every expression at once. Individual constraints within a block are separated by semicolons; you may also use multiple expressions in a single block — they are treated identically to expressions across multiple named blocks.</p>
+
+  <h3>Enabling / Disabling Constraint Blocks</h3>
+  <p>Call <code>constraint_mode(0)</code> to deactivate a block at runtime. This is useful in tests that need a special stimulus outside the normal constraint envelope, without permanently modifying the class.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="ty">BusTxn</span> txn = <span class="kw">new</span>();
+
+<span class="cm">// Temporarily disable the length constraint</span>
+txn.c_len.constraint_mode(<span class="num">0</span>);
+<span class="kw">void</span>'(txn.randomize());          <span class="cm">// len is now fully unconstrained (0–255)</span>
+txn.c_len.constraint_mode(<span class="num">1</span>);   <span class="cm">// re-enable</span></pre>
+  </div>
+
+  <!-- SECTION 4 -->
+  <h2 id="dist">4. Distribution Constraints — dist</h2>
+  <p>By default the solver assigns uniform probability across the legal domain. <strong><code>dist</code></strong> lets you bias that distribution by attaching weights to individual values or ranges. Two operators control how weights apply:</p>
+
+  <table>
+    <thead><tr><th>Operator</th><th>Meaning</th><th>Example weight behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><code>:=</code></td><td>Each item in range gets the stated weight individually</td><td><code>[0:3] := 10</code> — values 0,1,2,3 each have weight 10 (total 40)</td></tr>
+      <tr><td><code>:/</code></td><td>Weight is divided equally among all items in range</td><td><code>[0:3] :/ 10</code> — values 0,1,2,3 each have weight 2.5 (total 10)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">PktType</span>;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] opcode;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] priority_lvl;
+
+  <span class="cm">// opcode distribution: READ 70%, WRITE 20%, NOP 10%</span>
+  <span class="kw">constraint</span> c_opcode_dist {
+    opcode dist {
+      <span class="num">8'h01</span> := <span class="num">70</span>,    <span class="cm">// READ</span>
+      <span class="num">8'h02</span> := <span class="num">20</span>,    <span class="cm">// WRITE</span>
+      <span class="num">8'h00</span> := <span class="num">10</span>     <span class="cm">// NOP</span>
+    };
+  }
+
+  <span class="cm">// priority: low (0–63) gets half the weight, high (192–255) gets other half</span>
+  <span class="kw">constraint</span> c_priority_dist {
+    priority_lvl dist {
+      [<span class="num">0</span>:<span class="num">63</span>]   :/ <span class="num">50</span>,   <span class="cm">// 50 total weight shared among 64 values</span>
+      [<span class="num">192</span>:<span class="num">255</span>] :/ <span class="num">50</span>    <span class="cm">// 50 total weight shared among 64 values</span>
+    };
+  }
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Coverage tip:</strong> Model your <code>dist</code> weights to mirror real traffic profiles — e.g., reads are typically 3x more frequent than writes on most buses. This ensures coverage points accumulate at the same rate as real use.</div>
+
+  <!-- SECTION 5 -->
+  <h2 id="inside">5. The inside Operator</h2>
+  <p>The <code>inside</code> operator is the cleanest way to constrain a variable to a set or range of values. It expands to a chain of equality checks under the hood, but reads much more naturally than a long chain of <code>||</code> conditions.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">MemAccess</span>;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">3</span>:<span class="num">0</span>]  be;       <span class="cm">// byte-enable</span>
+  <span class="kw">rand</span> <span class="ty">bit</span>           secure;
+
+  <span class="cm">// addr must fall within one of the two valid memory windows</span>
+  <span class="kw">constraint</span> c_addr_range {
+    addr inside {
+      [<span class="num">32'h0000_0000</span> : <span class="num">32'h0FFF_FFFF</span>],   <span class="cm">// ROM window</span>
+      [<span class="num">32'h2000_0000</span> : <span class="num">32'h3FFF_FFFF</span>]    <span class="cm">// DRAM window</span>
+    };
+  }
+
+  <span class="cm">// byte enables: only single-byte or full-word valid</span>
+  <span class="kw">constraint</span> c_be {
+    be inside {<span class="num">4'b0001</span>, <span class="num">4'b0010</span>, <span class="num">4'b0100</span>, <span class="num">4'b1000</span>, <span class="num">4'b1111</span>};
+  }
+
+  <span class="cm">// secure access only allowed in ROM region</span>
+  <span class="kw">constraint</span> c_secure_range {
+    secure <span class="op">-></span> addr inside {[<span class="num">32'h0000_0000</span> : <span class="num">32'h0FFF_FFFF</span>]};
+  }
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>You can negate <code>inside</code> with the <code>!</code> operator: <code>!(addr inside {forbidden_range})</code> excludes that range entirely from the solution space.</p>
+
+  <!-- SECTION 6 -->
+  <h2 id="implication">6. Implication Constraints — the <code>-&gt;</code> Operator</h2>
+  <p>Implication (<code>a -&gt; b</code>) means "if a is true, then b must also be true." When <code>a</code> is false, the constraint places no restriction on <code>b</code>. This is the go-to tool for modelling conditional protocol rules without hard-coding separate constraint blocks for each mode.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">AXITxn</span>;
+  <span class="kw">rand</span> <span class="ty">bit</span>          write;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]  burst_len;
+  <span class="kw">rand</span> <span class="ty">bit</span>   [<span class="num">1</span>:<span class="num">0</span>]  burst_type;  <span class="cm">// 0=FIXED 1=INCR 2=WRAP</span>
+  <span class="kw">rand</span> <span class="ty">bit</span>   [<span class="num">3</span>:<span class="num">0</span>]  id;
+  <span class="kw">rand</span> <span class="ty">bit</span>          lock;
+
+  <span class="cm">// WRAP bursts require power-of-2 length: 2,4,8,16</span>
+  <span class="kw">constraint</span> c_wrap_len {
+    (burst_type == <span class="num">2'b10</span>) <span class="op">-></span> burst_len inside {<span class="num">1</span>, <span class="num">3</span>, <span class="num">7</span>, <span class="num">15</span>};
+    <span class="cm">// AWLEN is len-1 encoding so beat counts 2,4,8,16 → values 1,3,7,15</span>
+  }
+
+  <span class="cm">// Locked transactions must be INCR and single beat</span>
+  <span class="kw">constraint</span> c_lock {
+    lock <span class="op">-></span> (burst_type == <span class="num">2'b01</span> &amp;&amp; burst_len == <span class="num">0</span>);
+  }
+
+  <span class="cm">// Write-only IDs are in upper nibble range</span>
+  <span class="kw">constraint</span> c_id {
+    write <span class="op">-></span> id inside {[<span class="num">8</span>:<span class="num">15</span>]};
+  }
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>Under the hood, <code>a -&gt; b</code> is equivalent to <code>(!a || b)</code>. The solver satisfies this by either making <code>a</code> false (no restriction on <code>b</code>) or making both <code>a</code> and <code>b</code> true simultaneously. Both paths are legal and will appear in the random solution space.</p>
+
+  <!-- SECTION 7 -->
+  <h2 id="soft">7. Soft Constraints</h2>
+  <p>A <strong>soft constraint</strong> expresses a preference, not a requirement. If a hard constraint or a higher-priority soft constraint contradicts it, the soft constraint is silently dropped rather than causing an infeasibility. This makes base-class constraints much more reusable because sub-classes can override them without causing solve failures.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">BaseTxn</span>;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] len;
+  <span class="kw">rand</span> <span class="ty">bit</span>          write;
+
+  <span class="cm">// Default preference: short bursts, reads</span>
+  <span class="kw">constraint</span> c_soft_defaults {
+    <span class="kw">soft</span> len    inside {[<span class="num">1</span>:<span class="num">16</span>]};
+    <span class="kw">soft</span> write == <span class="num">1'b0</span>;
+  }
+<span class="kw">endclass</span>
+
+<span class="cm">// Sub-class scenario: long write bursts — overrides both soft defaults</span>
+<span class="kw">class</span> <span class="ty">LongWriteTxn</span> <span class="kw">extends</span> <span class="ty">BaseTxn</span>;
+  <span class="kw">constraint</span> c_long_write {
+    len   inside {[<span class="num">64</span>:<span class="num">255</span>]};   <span class="cm">// hard — overrides soft len</span>
+    write == <span class="num">1'b1</span>;             <span class="cm">// hard — overrides soft write</span>
+  }
+<span class="kw">endclass</span>
+
+<span class="cm">// Inline override via randomize() with {} — also overrides soft defaults</span>
+<span class="ty">BaseTxn</span> txn = <span class="kw">new</span>();
+<span class="kw">void</span>'(txn.randomize() <span class="kw">with</span> { write == <span class="num">1'b1</span>; len inside {[<span class="num">32</span>:<span class="num">64</span>]}; });</pre>
+  </div>
+
+  <div class="callout info"><strong>Priority:</strong> hard constraints in inline <code>with{}</code> blocks &gt; hard constraints in the class &gt; soft constraints in <code>with{}</code> blocks &gt; soft constraints in the class. When two soft constraints at the same priority level conflict, the solver picks one arbitrarily.</div>
+
+  <!-- SECTION 8 -->
+  <h2 id="solve-before">8. solve-before Ordering</h2>
+  <p>The constraint solver is free to pick the order in which it assigns values to variables. In most cases this makes no difference, but it becomes critical when one variable controls the legal domain of another and you want a specific statistical distribution rather than letting the solver collapse probabilities.</p>
+
+  <h3>The classic solve-before problem</h3>
+  <p>Suppose <code>mode</code> is a 1-bit variable (50% chance of 0 or 1) and <code>data</code> is an 8-bit variable that is unconstrained when <code>mode == 1</code> but must be 0 when <code>mode == 0</code>. Without <code>solve-before</code>, the solver sees 257 total solutions — 1 for <code>mode==0</code> and 256 for <code>mode==1</code>. It picks uniformly, giving <code>mode==0</code> only a 1/257 ≈ 0.4% probability instead of 50%.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">BiasedPkt</span>;
+  <span class="kw">rand</span> <span class="ty">bit</span>          mode;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]  data;
+
+  <span class="cm">// mode=0 → data must be 0; mode=1 → data can be anything</span>
+  <span class="kw">constraint</span> c_data {
+    !mode <span class="op">-></span> data == <span class="num">8'h00</span>;
+  }
+
+  <span class="cm">// Without this: mode==0 has probability 1/257 ≈ 0.4%</span>
+  <span class="cm">// With this: mode first (50/50), then data conditioned on mode</span>
+  <span class="kw">constraint</span> c_order {
+    <span class="kw">solve</span> mode <span class="kw">before</span> data;
+  }
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>With <code>solve mode before data</code>, the solver first picks <code>mode</code> with a fair 50/50 distribution, then independently solves for <code>data</code> given the chosen <code>mode</code> value. The result is the expected 50% probability on each mode.</p>
+
+  <div class="callout warn"><strong>Performance note:</strong> <code>solve-before</code> forces the solver into a two-phase approach and can be slower on complex constraint graphs. Use it only when you observe statistical skew and need to correct it.</div>
+
+  <!-- SECTION 9 -->
+  <h2 id="inline">9. Inline Constraints — randomize() with &#123;&#125;</h2>
+  <p>Inline constraints let a test scenario impose additional restrictions on a single <code>randomize()</code> call without modifying the class. They are hard constraints, they are AND'd with all class constraints, and they are discarded after the call returns.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="ty">BusTxn</span> txn = <span class="kw">new</span>();
+
+<span class="cm">// Scenario A: force a write transaction with a specific address window</span>
+<span class="kw">if</span> (!txn.randomize() <span class="kw">with</span> {
+    write == <span class="num">1'b1</span>;
+    addr inside {[<span class="num">32'h8000_0000</span> : <span class="num">32'h8FFF_FFFF</span>]};
+    len inside {<span class="num">4</span>, <span class="num">8</span>};
+}) `uvm_fatal(<span class="str">"RAND"</span>, <span class="str">"Randomize failed"</span>)
+
+<span class="cm">// Scenario B: read from page-boundary addresses only</span>
+<span class="kw">if</span> (!txn.randomize() <span class="kw">with</span> {
+    write == <span class="num">1'b0</span>;
+    addr[<span class="num">11</span>:<span class="num">0</span>] == <span class="num">12'h000</span>;    <span class="cm">// 4 KB page boundary</span>
+}) `uvm_fatal(<span class="str">"RAND"</span>, <span class="str">"Randomize failed"</span>)
+
+<span class="cm">// Note: inline constraints use the calling scope for variable references</span>
+<span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] base_addr = <span class="num">32'hC000_0000</span>;
+<span class="kw">void</span>'(txn.randomize() <span class="kw">with</span> { addr == base_addr; });</pre>
+  </div>
+
+  <p>The body of the <code>with{}</code> block runs in a <em>mixed scope</em> — names refer first to the randomized object's variables, then fall back to the calling scope. This lets you pass parameters from the test environment directly into the inline constraint.</p>
+
+  <!-- SECTION 10 -->
+  <h2 id="transaction">10. Complete Transaction Class</h2>
+  <p>The following class integrates all the features covered above into a realistic AXI4 transaction. It demonstrates how constraint blocks compose, how soft defaults interact with sub-class overrides, and how <code>dist</code> weights model real traffic.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="kw">class</span> <span class="ty">AXI4Transaction</span>;
+
+  <span class="cm">// ── Randomizable fields ─────────────────────────────────────</span>
+  <span class="kw">rand</span>  <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>]  addr;
+  <span class="kw">rand</span>  <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>]   burst_len;   <span class="cm">// AWLEN/ARLEN encoding (beats - 1)</span>
+  <span class="kw">rand</span>  <span class="ty">bit</span>   [<span class="num">2</span>:<span class="num">0</span>]   burst_size;  <span class="cm">// bytes per beat: 2^burst_size</span>
+  <span class="kw">rand</span>  <span class="ty">bit</span>   [<span class="num">1</span>:<span class="num">0</span>]   burst_type;  <span class="cm">// FIXED=0 INCR=1 WRAP=2</span>
+  <span class="kw">rand</span>  <span class="ty">bit</span>           write;
+  <span class="kw">rand</span>  <span class="ty">bit</span>   [<span class="num">3</span>:<span class="num">0</span>]   id;
+  <span class="kw">rand</span>  <span class="ty">bit</span>           lock;        <span class="cm">// exclusive access</span>
+  <span class="kw">rand</span>  <span class="ty">bit</span>   [<span class="num">3</span>:<span class="num">0</span>]   prot;
+  <span class="kw">randc</span> <span class="ty">bit</span>   [<span class="num">1</span>:<span class="num">0</span>]   cache;       <span class="cm">// cyclic: covers all 4 values evenly</span>
+
+  <span class="cm">// ── 1. Address: aligned, within mapped windows ───────────────</span>
+  <span class="kw">constraint</span> c_addr {
+    addr inside {
+      [<span class="num">32'h0000_0000</span> : <span class="num">32'h0FFF_FFFF</span>],  <span class="cm">// ROM</span>
+      [<span class="num">32'h2000_0000</span> : <span class="num">32'h3FFF_FFFF</span>],  <span class="cm">// SRAM</span>
+      [<span class="num">32'h8000_0000</span> : <span class="num">32'hBFFF_FFFF</span>]   <span class="cm">// DRAM</span>
+    };
+    addr[<span class="num">1</span>:<span class="num">0</span>] == <span class="num">2'b00</span>;  <span class="cm">// always 4-byte aligned</span>
+  }
+
+  <span class="cm">// ── 2. Traffic distribution — reads are 3× more common ──────</span>
+  <span class="kw">constraint</span> c_rw_dist {
+    write dist { <span class="num">1'b1</span> := <span class="num">25</span>, <span class="num">1'b0</span> := <span class="num">75</span> };
+  }
+
+  <span class="cm">// ── 3. Burst length: weighted toward short transfers ─────────</span>
+  <span class="kw">constraint</span> c_len {
+    burst_len dist {
+      <span class="num">8'd0</span>             := <span class="num">30</span>,   <span class="cm">// 1 beat</span>
+      [<span class="num">8'd1</span>:<span class="num">8'd3</span>]      := <span class="num">40</span>,   <span class="cm">// 2–4 beats</span>
+      [<span class="num">8'd4</span>:<span class="num">8'd15</span>]     := <span class="num">20</span>,   <span class="cm">// 5–16 beats</span>
+      [<span class="num">8'd16</span>:<span class="num">8'd255</span>]   := <span class="num">10</span>    <span class="cm">// 17–256 beats</span>
+    };
+  }
+
+  <span class="cm">// ── 4. Burst size: 4B or 8B transfers most common ───────────</span>
+  <span class="kw">constraint</span> c_size {
+    burst_size inside {<span class="num">3'b010</span>, <span class="num">3'b011</span>};  <span class="cm">// 4B or 8B</span>
+  }
+
+  <span class="cm">// ── 5. WRAP burst requires power-of-2 beat count ────────────</span>
+  <span class="kw">constraint</span> c_wrap {
+    (burst_type == <span class="num">2'b10</span>) <span class="op">-></span>
+        burst_len inside {<span class="num">8'd1</span>, <span class="num">8'd3</span>, <span class="num">8'd7</span>, <span class="num">8'd15</span>};
+  }
+
+  <span class="cm">// ── 6. Lock: only INCR single beat allowed ──────────────────</span>
+  <span class="kw">constraint</span> c_lock {
+    lock <span class="op">-></span> (burst_type == <span class="num">2'b01</span> &amp;&amp; burst_len == <span class="num">8'd0</span>);
+    lock dist { <span class="num">1'b1</span> := <span class="num">5</span>, <span class="num">1'b0</span> := <span class="num">95</span> }; <span class="cm">// rare but present</span>
+  }
+
+  <span class="cm">// ── 7. ROM window is read-only ───────────────────────────────</span>
+  <span class="kw">constraint</span> c_rom_readonly {
+    (addr inside {[<span class="num">32'h0000_0000</span> : <span class="num">32'h0FFF_FFFF</span>]}) <span class="op">-></span> !write;
+  }
+
+  <span class="cm">// ── 8. Solve write before burst_len for correct probability ──</span>
+  <span class="kw">constraint</span> c_order {
+    <span class="kw">solve</span> write <span class="kw">before</span> burst_len;
+    <span class="kw">solve</span> burst_type <span class="kw">before</span> burst_len;
+  }
+
+  <span class="cm">// ── 9. Soft defaults (overridable in tests) ──────────────────</span>
+  <span class="kw">constraint</span> c_defaults {
+    <span class="kw">soft</span> prot == <span class="num">4'b0010</span>;  <span class="cm">// non-secure, non-privileged data</span>
+  }
+
+  <span class="cm">// ── Helper: print summary ────────────────────────────────────</span>
+  <span class="kw">function</span> <span class="ty">void</span> <span class="fn">print</span>();
+    $<span class="fn">display</span>(<span class="str">"[AXI4] %s addr=%0h len=%0d size=%0dB type=%0d id=%0d lock=%0d"</span>,
+      write ? <span class="str">"WR"</span> : <span class="str">"RD"</span>, addr, burst_len+<span class="num">1</span>,
+      (<span class="num">1</span> &lt;&lt; burst_size), burst_type, id, lock);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <!-- SECTION 11 -->
+  <h2 id="debug">11. Debugging Over-Constrained Failures</h2>
+  <p><code>randomize()</code> returns <code>0</code> (logic false) when the solver cannot find any solution. This is called an <strong>over-constrained</strong> condition. It does NOT throw a fatal error by default — which means silent failures if you do not check the return value.</p>
+
+  <div class="callout warn"><strong>Always check the return value.</strong> Never call <code>txn.randomize()</code> and ignore the result. Use <code>if (!txn.randomize()) `uvm_fatal(...)</code> or <code>assert(txn.randomize())</code> at minimum.</div>
+
+  <h3>Step-by-step debug workflow</h3>
+  <ol>
+    <li><strong>Check the return value</strong> — add <code>`uvm_fatal</code> or <code>$fatal</code> on failure so it is immediately visible.</li>
+    <li><strong>Print active constraints</strong> — call <code>txn.print_constraints()</code> (VCS/Xcelium extension) to list all active constraint expressions and their current bindings.</li>
+    <li><strong>Bisect with constraint_mode(0)</strong> — disable half the constraint blocks, re-run. If it now solves, the problem is in the disabled half. Repeat until the offending block is isolated.</li>
+    <li><strong>Check implication directions</strong> — a common bug is reversing an implication: <code>b -&gt; a</code> instead of <code>a -&gt; b</code>, which constrains the wrong variable.</li>
+    <li><strong>Check dist weights</strong> — if other constraints filter the domain so that a <code>dist</code> block references values that can no longer be reached, the solver fails.</li>
+    <li><strong>Use randomize() with {} to narrow</strong> — add inline constraints that pin suspected variables to specific values to confirm which combination is infeasible.</li>
+  </ol>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="ty">AXI4Transaction</span> txn = <span class="kw">new</span>();
+
+<span class="cm">// WRONG — silent failure if over-constrained</span>
+txn.randomize();
+
+<span class="cm">// CORRECT — fatal on failure</span>
+<span class="kw">if</span> (!txn.randomize())
+  `uvm_fatal(<span class="str">"RAND_FAIL"</span>, <span class="str">"randomize() returned 0 — check constraints"</span>)
+
+<span class="cm">// Debug: disable blocks one by one</span>
+txn.c_wrap.constraint_mode(<span class="num">0</span>);
+<span class="kw">if</span> (txn.randomize()) begin
+  $<span class="fn">display</span>(<span class="str">"c_wrap was the problem — check WRAP burst length rules"</span>);
+<span class="kw">end</span>
+txn.c_wrap.constraint_mode(<span class="num">1</span>);
+
+<span class="cm">// Debug: pin a variable to check one slice</span>
+<span class="kw">if</span> (!txn.randomize() <span class="kw">with</span> { burst_type == <span class="num">2'b10</span>; burst_len == <span class="num">8'd5</span>; })
+  $<span class="fn">display</span>(<span class="str">"WRAP with len=5 is over-constrained (must be 1,3,7,15)"</span>);</pre>
+  </div>
+
+  <h3>Common over-constrained patterns</h3>
+  <table>
+    <thead><tr><th>Root cause</th><th>Example</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Contradictory ranges</td><td><code>a &gt; 100; a &lt; 50</code></td><td>Reconcile range bounds</td></tr>
+      <tr><td>dist references unreachable values</td><td><code>x dist {255 := 10}; x &lt; 10</code></td><td>Align dist set with range</td></tr>
+      <tr><td>Implication chain deadlocks</td><td><code>a -&gt; b; b -&gt; !a</code></td><td>Break circular dependency</td></tr>
+      <tr><td>randc exhausted domain</td><td>All values of randc variable filtered out</td><td>Widen constraints on randc variable</td></tr>
+      <tr><td>solve-before creates empty domain</td><td>Leading variable has only one value that makes second infeasible</td><td>Broaden leading variable domain</td></tr>
+    </tbody>
+  </table>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 16</h3>
+    <ul>
+      <li><strong>rand</strong> picks independently each call; <strong>randc</strong> cycles through all values before repeating — use randc for small enums.</li>
+      <li>All active constraint blocks are <strong>AND'd together</strong>; they must be simultaneously satisfiable.</li>
+      <li><strong>dist</strong> with <code>:=</code> gives each item a weight; <code>:/</code> divides the weight across the range — use it to model realistic traffic profiles.</li>
+      <li><strong>inside</strong> is the cleanest range/set constraint; negate with <code>!</code> to exclude values.</li>
+      <li>Implication <code>a -&gt; b</code> means "if a then b" — when a is false, b is unconstrained.</li>
+      <li><strong>Soft constraints</strong> are preferences; they yield silently to hard constraints, making base classes reusable.</li>
+      <li><strong>solve-before</strong> fixes probability collapse when one variable controls another's legal domain.</li>
+      <li>Inline <code>randomize() with{}</code> overrides apply for one call only — ideal for scenario-specific constraints in test sequences.</li>
+      <li><strong>Always check <code>randomize()</code> return value</strong>; use <code>constraint_mode(0)</code> to bisect over-constrained failures.</li>
+    </ul>
+  </div>
+
+  <!-- FAQ -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is the difference between rand and randc in SystemVerilog?</summary>
+      <div class="faq-body">
+        <p><code>rand</code> variables are randomized independently each time <code>randomize()</code> is called, with the solver free to repeat any value. <code>randc</code> (random cyclic) guarantees that every legal value is generated exactly once before any value repeats — similar to shuffling a deck of cards. <code>randc</code> is useful for ensuring complete coverage without explicit bins, but it only applies to integer variables and the cycle resets whenever constraints change.</p>
+      </div>
+    </details>
+    <details>
+      <summary>Why does randomize() return 0 even though my constraints look correct?</summary>
+      <div class="faq-body">
+        <p>A return value of 0 means the solver could not find a valid solution — the constraints are over-constrained. Common causes include: contradictory range constraints (e.g., <code>a &gt; 100</code> and <code>a &lt; 50</code> together), an implication constraint that creates an unsatisfiable dependency, a <code>dist</code> block whose weights sum to zero after other constraints filter the domain, or a solve-before ordering that makes the leading variable's range empty. Use <code>constraint_mode(0)</code> to disable constraints one by one until <code>randomize()</code> succeeds, then re-enable them to isolate the conflict.</p>
+      </div>
+    </details>
+    <details>
+      <summary>When should I use soft constraints instead of regular constraints?</summary>
+      <div class="faq-body">
+        <p>Use soft constraints when you want a preferred default value but need sub-classes or inline <code>with{}</code> blocks to be able to override it without causing a conflict. Hard constraints always participate in the AND of all active constraints and cannot be overridden — they simply make the problem infeasible if contradicted. Soft constraints are discarded silently when they conflict with a hard constraint or a higher-priority soft constraint. A typical pattern is to put soft constraints in a base transaction class as sensible defaults and override them in specific test scenarios using inline constraints.</p>
+      </div>
+    </details>
+    <details>
+      <summary>What does solve-before do and when is it needed?</summary>
+      <div class="faq-body">
+        <p><code>solve a before b</code> tells the constraint solver to pick a value for variable <code>a</code> first, then solve for <code>b</code> given that value. Without solve-before, the solver is free to optimise the joint distribution, which often collapses biased distributions. The classic example: if <code>mode</code> is 1-bit (50% chance of 0 or 1) and <code>data</code> is constrained to {0} when <code>mode==0</code> and {0..255} when <code>mode==1</code>, you want a true 50/50 split on <code>mode</code>. Without solve-before, the solver might pick values that statistically favour <code>mode==1</code> because there are 256 solutions in that branch vs 1 in the <code>mode==0</code> branch. Adding <code>solve mode before data</code> forces the 50/50 split before the solver enumerates <code>data</code>'s range.</p>
+      </div>
+    </details>
+  </div>
+
+  <!-- Navigation cards -->
+  <div class="nav-cards">
+    <a href="/verification/15-uvm-coverage/" class="nav-card">
+      <div class="nav-card-label">← Previous</div>
+      <div class="nav-card-title">Day 15 — UVM Coverage</div>
+    </a>
+    <a href="/verification/17-coverage-closure/" class="nav-card next">
+      <div class="nav-card-label">Next →</div>
+      <div class="nav-card-title">Day 17 — Coverage Closure</div>
+    </a>
+  </div>
+
+</div><!-- /body -->
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>By EcrioniX &middot; Updated Jun 22, 2026</p>
+  <p style="margin-top:.5rem">
+    <a href="/legal/privacy.html" style="color:var(--sky)">Privacy Policy</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/legal/terms.html" style="color:var(--sky)">Terms of Use</a>
+  </p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+
+<script>
+  // Hamburger menu
+  const ham = document.getElementById('hamburger');
+  const menu = document.getElementById('mobileMenu');
+  ham.addEventListener('click', () => menu.classList.toggle('open'));
+
+  // Back to top
+  const btn = document.getElementById('scrollTop');
+  window.addEventListener('scroll', () => {
+    btn.classList.toggle('visible', window.scrollY > 400);
+  });
+  btn.addEventListener('click', () => window.scrollTo({top:0,behavior:'smooth'}));
+
+  // Copy buttons
+  function copyCode(el) {
+    const pre = el.closest('.code-wrap').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      el.textContent = 'Copied!';
+      setTimeout(() => el.textContent = 'Copy', 1800);
+    });
+  }
+</script>
+</body>
+</html>

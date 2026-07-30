@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Scoreboard &mdash; Day 10 | EcrioniX Verification Series</title>
+  <meta name="description" content="Build a UVM scoreboard from scratch: uvm_scoreboard, analysis_imp, write() callbacks, reference model, expected vs actual comparison, error counting, and complete FIFO scoreboard example.">
+  <meta name="keywords" content="UVM scoreboard, uvm_scoreboard, analysis_imp, write callback, reference model, expected vs actual, check_phase, uvm_analysis_imp_decl, FIFO scoreboard, UVM verification">
+  <link rel="canonical" href="https://ecrionix.org/verification/10-uvm-scoreboard/">
+  <meta property="og:title" content="UVM Scoreboard &mdash; Day 10 | EcrioniX Verification Series">
+  <meta property="og:description" content="uvm_scoreboard, analysis_imp, write() callbacks, reference model queues, expected vs actual comparison, and a complete FIFO scoreboard &mdash; Day 10 of 25.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/10-uvm-scoreboard/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"UVM Scoreboard","description":"Build a UVM scoreboard from scratch: uvm_scoreboard base class, analysis_imp and write() callbacks, queue-based reference model, expected vs actual comparison, check_phase error counting, multiple analysis ports with uvm_analysis_imp_decl, and a complete FIFO scoreboard example.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/10-uvm-scoreboard/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 10 — UVM Scoreboard","item":"https://ecrionix.org/verification/10-uvm-scoreboard/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a UVM scoreboard?","acceptedAnswer":{"@type":"Answer","text":"A UVM scoreboard is a component that checks the DUT's output correctness by comparing what the DUT actually produced against what a reference model predicted. It extends uvm_scoreboard, connects to monitors via uvm_analysis_imp, receives observed transactions through write() callbacks, and uses check_phase to report final pass/fail counts. The scoreboard is the single source of truth for functional correctness in a UVM testbench."}},
+      {"@type":"Question","name":"What is uvm_analysis_imp and how does it differ from uvm_analysis_port?","acceptedAnswer":{"@type":"Answer","text":"uvm_analysis_imp is the subscriber end of a UVM analysis connection. When a monitor calls analysis_port.write(item), UVM routes that call to the write() method of every connected uvm_analysis_imp. The uvm_analysis_port is the producer (monitor side); uvm_analysis_imp is the consumer (scoreboard/coverage side). The scoreboard declares one uvm_analysis_imp per incoming data stream and implements a matching write() method for each."}},
+      {"@type":"Question","name":"How do you handle multiple monitors feeding one scoreboard?","acceptedAnswer":{"@type":"Answer","text":"Use the `uvm_analysis_imp_decl macro to declare uniquely named analysis imp types. For example, `uvm_analysis_imp_decl(_expected) and `uvm_analysis_imp_decl(_actual) create two distinct imp classes. The scoreboard then declares one instance of each type and implements both write_expected() and write_actual() methods. UVM routes each analysis_port.write() call to the correct method based on the imp type it is connected to."}},
+      {"@type":"Question","name":"When should scoreboard checks happen — write() or check_phase?","acceptedAnswer":{"@type":"Answer","text":"Both patterns are valid and commonly combined. Immediate checking in write() catches errors as they occur and provides precise error context (cycle number, transaction values). The check_phase is used for final summary reporting: checking that queues are empty (no missing responses), printing total error counts, and calling `uvm_error if the test should fail. Avoid calling `uvm_fatal in write() because it aborts the test immediately and you lose later error data."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .arch-svg{display:block;max-width:720px;width:100%;margin:1.5rem auto}
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 10 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/09-uvm-driver-monitor/" class="dnbtn dnbtn-prev">&#8592; Day 09</a>
+    <a href="/verification/11-uvm-ral/" class="dnbtn dnbtn-next">Day 11 &#8594;</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>&#8250;</span><a href="/verification/">Verification</a><span>&#8250;</span>Day 10 &#8212; UVM Scoreboard</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 &#8212; UVM Core</div>
+  <h1>UVM Scoreboard</h1>
+  <div style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated Jun 22, 2026</span></div>
+  <p class="hero-sub">The scoreboard is the intelligence of your testbench &#8212; it compares what the DUT actually produces against what a reference model says it should produce. Master <code>uvm_scoreboard</code>, <code>analysis_imp</code>, the <code>write()</code> callback mechanism, queue-based reference models, and error reporting across an entire test run.</p>
+  <div class="hero-meta"><span>&#9200; 28 min read</span><span>&#128214; Day 10 of 25</span><span>&#127919; Scoreboard &middot; analysis_imp &middot; Reference Model</span></div>
+</div>
+
+<div class="body">
+
+  <!-- Architecture diagram -->
+  <svg class="arch-svg" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="UVM scoreboard data flow: monitor writes to scoreboard via analysis_imp">
+    <rect width="720" height="220" rx="12" fill="#0f172a"/>
+    <rect x="20" y="80" width="110" height="44" rx="8" fill="#1e293b" stroke="#a78bfa" stroke-width="1.2"/>
+    <text x="75" y="107" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="12" font-weight="600">Sequencer</text>
+    <rect x="160" y="80" width="110" height="44" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
+    <text x="215" y="107" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="12" font-weight="600">Driver</text>
+    <rect x="305" y="65" width="110" height="72" rx="8" fill="#0d1117" stroke="#4ade80" stroke-width="1.8"/>
+    <text x="360" y="105" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="13" font-weight="700">DUT</text>
+    <rect x="450" y="80" width="110" height="44" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
+    <text x="505" y="107" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="12" font-weight="600">Monitor</text>
+    <rect x="590" y="55" width="115" height="90" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="1.8"/>
+    <text x="647" y="84" text-anchor="middle" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="11" font-weight="700">Scoreboard</text>
+    <text x="647" y="101" text-anchor="middle" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="9">analysis_imp</text>
+    <text x="647" y="116" text-anchor="middle" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="9">write()</text>
+    <text x="647" y="133" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="9">ref model queue</text>
+    <line x1="130" y1="102" x2="158" y2="102" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a1)"/>
+    <line x1="270" y1="102" x2="303" y2="102" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#a2)"/>
+    <line x1="415" y1="102" x2="448" y2="102" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a3)"/>
+    <line x1="560" y1="102" x2="588" y2="102" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#a4)"/>
+    <text x="132" y="97" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="8">seq_item</text>
+    <text x="274" y="97" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="8">pin drive</text>
+    <text x="416" y="97" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="8">observe</text>
+    <text x="560" y="97" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="8">ap.write()</text>
+    <defs>
+      <marker id="a1" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 Z" fill="#a78bfa"/></marker>
+      <marker id="a2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 Z" fill="#38bdf8"/></marker>
+      <marker id="a3" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 Z" fill="#4ade80"/></marker>
+      <marker id="a4" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 Z" fill="#38bdf8"/></marker>
+    </defs>
+  </svg>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#what-is-scoreboard">What Is a Scoreboard?</a></li>
+      <li><a href="#uvm-scoreboard-class">uvm_scoreboard Base Class</a></li>
+      <li><a href="#analysis-imp">analysis_imp and the write() Callback</a></li>
+      <li><a href="#reference-model">Reference Model &#8212; Queue-Based Pattern</a></li>
+      <li><a href="#expected-vs-actual">Expected vs Actual Comparison</a></li>
+      <li><a href="#check-phase">Error Counting in check_phase</a></li>
+      <li><a href="#multiple-ports">Multiple Analysis Ports with uvm_analysis_imp_decl</a></li>
+      <li><a href="#fifo-scoreboard">Complete FIFO Scoreboard Example</a></li>
+      <li><a href="#pitfalls">Common Pitfalls</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- 1 -->
+  <h2 id="what-is-scoreboard">1. What Is a Scoreboard?</h2>
+  <p>In every functional verification environment, someone has to answer the question: <strong>did the DUT produce the right output?</strong> That job belongs to the scoreboard. The scoreboard sits at the end of the analysis network &#8212; it receives fully reconstructed transactions from one or more monitors, feeds them through an internal reference model to compute what the answer <em>should</em> be, then compares that prediction against what the DUT <em>actually</em> produced.</p>
+  <p>The scoreboard is completely passive from the DUT's perspective. It never drives any signals. It is purely a checking component. This means it can be enabled or disabled without changing DUT behavior, and it can be reused across different tests that exercise the same protocol.</p>
+
+  <table>
+    <tr><th>Role</th><th>Who performs it</th><th>Phase</th></tr>
+    <tr><td>Generate stimulus</td><td>Sequence + Sequencer</td><td>run_phase</td></tr>
+    <tr><td>Drive DUT pins</td><td>Driver</td><td>run_phase</td></tr>
+    <tr><td>Observe DUT outputs</td><td>Monitor</td><td>run_phase</td></tr>
+    <tr><td>Check correctness</td><td><strong>Scoreboard</strong></td><td>run_phase + check_phase</td></tr>
+    <tr><td>Measure coverage</td><td>Coverage collector</td><td>run_phase + report_phase</td></tr>
+  </table>
+
+  <p>A well-designed scoreboard has three internal layers: a <strong>reference model</strong> that computes expected outputs, a <strong>comparison engine</strong> that matches expected against actual, and an <strong>error tracker</strong> that accumulates and reports mismatches. This page builds each layer from first principles.</p>
+
+  <!-- 2 -->
+  <h2 id="uvm-scoreboard-class">2. uvm_scoreboard Base Class</h2>
+  <p><code>uvm_scoreboard</code> is a thin base class that extends <code>uvm_component</code>. It adds no new methods &#8212; its value is purely semantic. By inheriting from it instead of directly from <code>uvm_component</code>, your class is clearly identified as a scoreboard in the UVM component hierarchy, and tools like coverage dashboards and linting checkers can find and instrument it automatically.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Minimal scoreboard skeleton</span>
+<span class="kw">class</span> <span class="fn">fifo_scoreboard</span> <span class="kw">extends</span> uvm_scoreboard;
+  <span class="fn">`uvm_component_utils</span>(fifo_scoreboard)
+
+  <span class="cm">// Analysis imp -- monitor connects here to deliver observed items</span>
+  uvm_analysis_imp #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) ap;
+
+  <span class="cm">// Internal counters</span>
+  <span class="kw">int</span> transactions_checked = <span class="num">0</span>;
+  <span class="kw">int</span> error_count          = <span class="num">0</span>;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);   <span class="cm">// instantiate the analysis imp</span>
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// write() is called automatically whenever monitor calls ap.write(item)</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write</span>(<span class="ty">fifo_seq_item</span> item);
+    <span class="cm">// compare item against reference model</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">check_phase</span>(uvm_phase phase);
+    <span class="kw">if</span> (error_count > <span class="num">0</span>)
+      <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+        $sformatf(<span class="str">"%0d errors detected out of %0d transactions"</span>,
+                  error_count, transactions_checked))
+    <span class="kw">else</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"SCOREBOARD"</span>,
+        $sformatf(<span class="str">"PASS -- all %0d transactions matched"</span>, transactions_checked),
+        UVM_LOW)
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <p>The key insight: <code>uvm_analysis_imp</code> is parameterized with both the <strong>transaction type</strong> and the <strong>scoreboard type</strong>. UVM uses the scoreboard type parameter to know which class implements the <code>write()</code> method it will call. This is a static binding through parameterization, not runtime polymorphism.</p>
+
+  <!-- 3 -->
+  <h2 id="analysis-imp">3. analysis_imp and the write() Callback</h2>
+  <p>The <code>uvm_analysis_imp</code> is UVM's subscriber port. When a monitor holds a <code>uvm_analysis_port</code> and calls <code>port.write(item)</code>, UVM automatically invokes the <code>write(item)</code> method on every component that has connected a <code>uvm_analysis_imp</code> to that port. The scoreboard does not need to poll, wait, or use threads for this &#8212; the call arrives synchronously in simulation time.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// In the monitor (producer side)</span>
+<span class="kw">class</span> <span class="fn">fifo_monitor</span> <span class="kw">extends</span> uvm_monitor;
+  <span class="fn">`uvm_component_utils</span>(fifo_monitor)
+
+  uvm_analysis_port #(<span class="ty">fifo_seq_item</span>) ap;   <span class="cm">// analysis PORT (output)</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">fifo_seq_item</span> item;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      collect_item(item);   <span class="cm">// sample DUT outputs</span>
+      ap.write(item);       <span class="cm">// broadcast to all subscribers</span>
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// In the environment -- connect monitor's port to scoreboard's imp</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+  mon.ap.connect(sb.ap);   <span class="cm">// one line wires the entire data path</span>
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <div class="callout info"><strong>write() is a function, not a task:</strong> The analysis <code>write()</code> method must be declared as a <code>function</code>, never a <code>task</code>. This is because <code>uvm_analysis_port.write()</code> is itself a function, and functions cannot call tasks in SystemVerilog. All processing inside <code>write()</code> must be zero-time.</div>
+
+  <p>The connection happens in <code>connect_phase</code> of the environment, which always runs after <code>build_phase</code>. UVM guarantees that all components are built before any connections are made, so you can safely call <code>.connect()</code> without worrying about null pointer dereferences on either side.</p>
+
+  <table>
+    <tr><th>Concept</th><th>Producer side (Monitor)</th><th>Consumer side (Scoreboard)</th></tr>
+    <tr><td>Port type</td><td><code>uvm_analysis_port</code></td><td><code>uvm_analysis_imp</code></td></tr>
+    <tr><td>Method</td><td><code>port.write(item)</code> &#8212; broadcasts</td><td><code>write(item)</code> &#8212; receives</td></tr>
+    <tr><td>Blocking?</td><td>No &#8212; returns immediately</td><td>No &#8212; must be zero-time function</td></tr>
+    <tr><td>Subscribers</td><td>Many (broadcast)</td><td>One write() per imp</td></tr>
+    <tr><td>Phase created</td><td>build_phase</td><td>build_phase</td></tr>
+    <tr><td>Connected</td><td colspan="2">connect_phase in parent environment</td></tr>
+  </table>
+
+  <!-- 4 -->
+  <h2 id="reference-model">4. Reference Model &#8212; Queue-Based Pattern</h2>
+  <p>The reference model is the software replica of the DUT's intended behavior. It receives the same stimulus as the DUT (either by observing the input monitor or by computing from the sequence item itself) and predicts what the DUT output should be. The most common and robust implementation uses a <strong>SystemVerilog queue</strong> as a FIFO of expected values.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Single-imp scoreboard pattern where the transaction carries a direction field</span>
+<span class="kw">class</span> <span class="fn">fifo_scoreboard</span> <span class="kw">extends</span> uvm_scoreboard;
+  <span class="fn">`uvm_component_utils</span>(fifo_scoreboard)
+
+  <span class="cm">// Queue that holds predicted output data in order of arrival</span>
+  <span class="ty">fifo_seq_item</span> exp_q[$];   <span class="cm">// expected-output queue</span>
+
+  uvm_analysis_imp #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) ap;
+
+  <span class="kw">int</span> checked = <span class="num">0</span>, errors = <span class="num">0</span>;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    ap = <span class="kw">new</span>(<span class="str">"ap"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Reference model -- given input item, predict the DUT output</span>
+  <span class="kw">function</span> <span class="ty">fifo_seq_item</span> <span class="fn">predict_output</span>(<span class="ty">fifo_seq_item</span> in_item);
+    <span class="ty">fifo_seq_item</span> pred;
+    pred = <span class="ty">fifo_seq_item</span>::type_id::create(<span class="str">"pred"</span>);
+    <span class="cm">// A FIFO passes data unchanged -- only ordering is verified</span>
+    pred.data  = in_item.data;
+    pred.valid = <span class="num">1</span>;
+    <span class="kw">return</span> pred;
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write</span>(<span class="ty">fifo_seq_item</span> item);
+    <span class="ty">fifo_seq_item</span> expected;
+    <span class="kw">if</span> (item.direction == WRITE) <span class="kw">begin</span>
+      <span class="cm">// Input side: push a prediction onto the expected queue</span>
+      expected = predict_output(item);
+      exp_q.push_back(expected);
+    <span class="kw">end</span> <span class="kw">else</span> <span class="kw">begin</span>
+      <span class="cm">// Output side: pop prediction and compare</span>
+      compare_item(item);
+    <span class="kw">end</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Clone before queuing:</strong> Always call <code>$cast(clone, item.clone())</code> before pushing an item onto the expected queue. The monitor reuses the same object handle across cycles. If you store the raw handle, the queue will contain multiple references to the same (now overwritten) object &#8212; one of the most common scoreboard bugs.</div>
+
+  <h3>Why a queue instead of a single variable?</h3>
+  <p>Real DUTs have pipeline latency. The DUT may accept input on cycle 5 and produce output on cycle 8 (three cycles of pipeline delay). If you store only one expected value, you will overwrite it when the next input arrives on cycle 6 before cycle 8's output is compared. A queue naturally models any pipeline depth: inputs push to the back, outputs pop from the front. The queue length at any moment equals the number of in-flight transactions.</p>
+
+  <!-- 5 -->
+  <h2 id="expected-vs-actual">5. Expected vs Actual Comparison</h2>
+  <p>The comparison function receives an observed output item from the monitor and a predicted item from the front of the expected queue, then field-by-field checks whether they match. Using <code>`uvm_error</code> (not <code>`uvm_fatal</code>) allows the test to continue after a mismatch and accumulate the total error count for the entire run.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Compare an actual DUT output item against the expected prediction</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">compare_item</span>(<span class="ty">fifo_seq_item</span> actual);
+  <span class="ty">fifo_seq_item</span> expected;
+
+  <span class="cm">// Guard: if queue is empty, we got more outputs than inputs</span>
+  <span class="kw">if</span> (exp_q.size() == <span class="num">0</span>) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"Unexpected output: data=0x%0h -- expected queue is empty"</span>,
+                actual.data))
+    errors++;
+    <span class="kw">return</span>;
+  <span class="kw">end</span>
+
+  expected = exp_q.pop_front();   <span class="cm">// FIFO order -- oldest prediction first</span>
+  checked++;
+
+  <span class="cm">// Use !== (4-state) not != (2-state) to catch X values</span>
+  <span class="kw">if</span> (actual.data !== expected.data) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"DATA MISMATCH: expected=0x%0h  actual=0x%0h"</span>,
+                expected.data, actual.data))
+    errors++;
+  <span class="kw">end</span>
+
+  <span class="kw">if</span> (actual.valid !== expected.valid) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"VALID MISMATCH: expected=%0b  actual=%0b"</span>,
+                expected.valid, actual.valid))
+    errors++;
+  <span class="kw">end</span>
+
+  <span class="kw">if</span> (errors == <span class="num">0</span>)
+    <span class="fn">`uvm_info</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"[%0d] MATCH: data=0x%0h"</span>, checked, actual.data),
+      UVM_HIGH)
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>Use !== not != for 4-state comparison:</strong> In SystemVerilog, <code>!=</code> returns X if either operand contains X or Z bits. This can silently pass a check when the DUT produces X (uninitialized) output. Always use <code>!==</code> (case inequality) in scoreboard comparisons so that X values are treated as mismatches, not matches.</div>
+
+  <p>For complex sequence items with many fields, leverage the <code>do_compare()</code> method if your item inherits from <code>uvm_object</code> and you have implemented the field macros. You can call <code>expected.compare(actual)</code> which uses the registered field list automatically. This is cleaner for large transaction types but gives less granular error messages per field.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Using uvm_object built-in compare() -- requires field macros in seq item</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">compare_item</span>(<span class="ty">fifo_seq_item</span> actual);
+  <span class="ty">fifo_seq_item</span> expected;
+  <span class="kw">if</span> (exp_q.size() == <span class="num">0</span>) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>, <span class="str">"Output with empty expected queue"</span>); errors++; <span class="kw">return</span>;
+  <span class="kw">end</span>
+  expected = exp_q.pop_front(); checked++;
+
+  <span class="kw">if</span> (!expected.compare(actual)) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>,
+      $sformatf(<span class="str">"Transaction %0d mismatch:\nExpected: %s\nActual:   %s"</span>,
+                checked, expected.sprint(), actual.sprint()))
+    errors++;
+  <span class="kw">end</span>
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <!-- 6 -->
+  <h2 id="check-phase">6. Error Counting in check_phase</h2>
+  <p>The <code>check_phase</code> runs after <code>run_phase</code> drains. By this time all stimulus has been sent and all DUT responses should have been observed. The scoreboard uses <code>check_phase</code> for two things: reporting cumulative error counts, and checking for <em>missing responses</em> &#8212; transactions that entered the DUT but never came out.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">function</span> <span class="kw">void</span> <span class="fn">check_phase</span>(uvm_phase phase);
+  <span class="cm">// 1. Check for leftover items in the expected queue (missing DUT outputs)</span>
+  <span class="kw">if</span> (exp_q.size() > <span class="num">0</span>) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"%0d expected outputs were never observed from DUT"</span>,
+                exp_q.size()))
+    errors += exp_q.size();
+  <span class="kw">end</span>
+
+  <span class="cm">// 2. Guard: nothing checked at all (likely a connect_phase wiring bug)</span>
+  <span class="kw">if</span> (checked == <span class="num">0</span>) <span class="kw">begin</span>
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      <span class="str">"No transactions checked -- scoreboard may be disconnected"</span>)
+  <span class="kw">end</span>
+
+  <span class="cm">// 3. Final pass/fail summary</span>
+  <span class="kw">if</span> (errors > <span class="num">0</span>)
+    <span class="fn">`uvm_error</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"*** TEST FAILED: %0d/%0d transactions had errors ***"</span>,
+                errors, checked))
+  <span class="kw">else</span>
+    <span class="fn">`uvm_info</span>(<span class="str">"SCOREBOARD"</span>,
+      $sformatf(<span class="str">"*** TEST PASSED: all %0d transactions matched ***"</span>, checked),
+      UVM_NONE)
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <p>The <code>check_phase</code> call to <code>`uvm_error</code> (not <code>`uvm_fatal</code>) is deliberate. <code>`uvm_fatal</code> immediately terminates the simulation. If you call it in <code>check_phase</code> and there are multiple failures, you only see the first one. Using <code>`uvm_error</code> lets all failure messages print, and the UVM test infrastructure will mark the test as FAILED if any <code>`uvm_error</code> was triggered during the run.</p>
+
+  <table>
+    <tr><th>Macro</th><th>Severity</th><th>Simulation continues?</th><th>Best used in</th></tr>
+    <tr><td><code>`uvm_info</code></td><td>Informational</td><td>Yes</td><td>Successful match messages</td></tr>
+    <tr><td><code>`uvm_warning</code></td><td>Warning (non-fatal)</td><td>Yes</td><td>Unexpected but recoverable conditions</td></tr>
+    <tr><td><code>`uvm_error</code></td><td>Error (increments error count)</td><td>Yes (by default)</td><td>Mismatches, missing responses</td></tr>
+    <tr><td><code>`uvm_fatal</code></td><td>Fatal (stops simulation)</td><td>No</td><td>Configuration failures in build_phase</td></tr>
+  </table>
+
+  <!-- 7 -->
+  <h2 id="multiple-ports">7. Multiple Analysis Ports with uvm_analysis_imp_decl</h2>
+  <p>A real design often has separate monitors for the input interface and the output interface. The scoreboard needs to receive from both &#8212; input monitor observations go to the reference model, output monitor observations go to the comparator. A single <code>uvm_analysis_imp</code> cannot be instantiated twice in the same class because both would require a <code>write()</code> method, and SystemVerilog does not allow method overloading.</p>
+  <p>The solution is the <strong><code>`uvm_analysis_imp_decl</code> macro</strong>. It generates a new imp class with a custom suffix, and UVM routes calls to the correspondingly suffixed method in your scoreboard:</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Step 1: Declare two new imp types at package scope (NOT inside a class)</span>
+<span class="fn">`uvm_analysis_imp_decl</span>(_expected)   <span class="cm">// creates uvm_analysis_imp_expected</span>
+<span class="fn">`uvm_analysis_imp_decl</span>(_actual)     <span class="cm">// creates uvm_analysis_imp_actual</span>
+
+<span class="kw">class</span> <span class="fn">fifo_scoreboard</span> <span class="kw">extends</span> uvm_scoreboard;
+  <span class="fn">`uvm_component_utils</span>(fifo_scoreboard)
+
+  <span class="cm">// Step 2: Declare one instance of each imp type</span>
+  uvm_analysis_imp_expected #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) expected_ap;
+  uvm_analysis_imp_actual   #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) actual_ap;
+
+  <span class="ty">fifo_seq_item</span> exp_q[$];
+  <span class="kw">int</span> checked = <span class="num">0</span>, errors = <span class="num">0</span>;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    expected_ap = <span class="kw">new</span>(<span class="str">"expected_ap"</span>, <span class="kw">this</span>);
+    actual_ap   = <span class="kw">new</span>(<span class="str">"actual_ap"</span>,   <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Step 3: Implement write_expected() -- called when input monitor writes</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write_expected</span>(<span class="ty">fifo_seq_item</span> item);
+    <span class="ty">fifo_seq_item</span> clone;
+    $cast(clone, item.clone());   <span class="cm">// always clone before storing</span>
+    exp_q.push_back(clone);
+    <span class="fn">`uvm_info</span>(<span class="str">"SB"</span>, $sformatf(<span class="str">"Queued expected: data=0x%0h"</span>, clone.data), UVM_HIGH)
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Step 4: Implement write_actual() -- called when output monitor writes</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write_actual</span>(<span class="ty">fifo_seq_item</span> item);
+    compare_item(item);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">compare_item</span>(<span class="ty">fifo_seq_item</span> actual);
+    <span class="ty">fifo_seq_item</span> expected;
+    <span class="kw">if</span> (exp_q.size() == <span class="num">0</span>) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>, <span class="str">"Actual output with no expected item in queue"</span>)
+      errors++; <span class="kw">return</span>;
+    <span class="kw">end</span>
+    expected = exp_q.pop_front(); checked++;
+    <span class="kw">if</span> (actual.data !== expected.data) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>,
+        $sformatf(<span class="str">"[%0d] MISMATCH exp=0x%0h got=0x%0h"</span>,
+                  checked, expected.data, actual.data))
+      errors++;
+    <span class="kw">end</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">check_phase</span>(uvm_phase phase);
+    <span class="kw">if</span> (exp_q.size() > <span class="num">0</span>) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>, $sformatf(<span class="str">"%0d expected outputs never seen"</span>, exp_q.size()))
+      errors += exp_q.size();
+    <span class="kw">end</span>
+    <span class="kw">if</span> (errors > <span class="num">0</span>)
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>, $sformatf(<span class="str">"FAIL: %0d errors in %0d checks"</span>, errors, checked))
+    <span class="kw">else</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"SB"</span>, $sformatf(<span class="str">"PASS: %0d checks all matched"</span>, checked), UVM_NONE)
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// In environment connect_phase -- wire both monitors to the scoreboard</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+  in_mon.ap.connect(sb.expected_ap);   <span class="cm">// input monitor -> expected queue</span>
+  out_mon.ap.connect(sb.actual_ap);    <span class="cm">// output monitor -> comparator</span>
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <div class="callout info"><strong>Macro scope matters:</strong> The <code>`uvm_analysis_imp_decl</code> macro must appear <em>outside</em> any class or module body &#8212; at package or file scope. Placing it inside the class will cause a compile error because it tries to define a new class, which is not legal inside another class definition.</div>
+
+  <!-- 8 -->
+  <h2 id="fifo-scoreboard">8. Complete FIFO Scoreboard Example</h2>
+  <p>This section brings everything together into a self-contained FIFO scoreboard. The DUT is a synchronous FIFO. The input monitor observes push operations; the output monitor observes pop operations. The scoreboard uses the dual-imp pattern and a reference queue to verify that data comes out in exactly the order it went in.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// ============================================================</span>
+<span class="cm">// fifo_seq_item -- transaction object</span>
+<span class="cm">// ============================================================</span>
+<span class="kw">class</span> <span class="fn">fifo_seq_item</span> <span class="kw">extends</span> uvm_sequence_item;
+  <span class="fn">`uvm_object_utils_begin</span>(fifo_seq_item)
+    <span class="fn">`uvm_field_int</span>(data,  UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(valid, UVM_ALL_ON)
+  <span class="fn">`uvm_object_utils_end</span>
+
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] data;
+  <span class="ty">logic</span>            valid;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"fifo_seq_item"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="ty">string</span> <span class="fn">convert2string</span>();
+    <span class="kw">return</span> $sformatf(<span class="str">"data=0x%02h valid=%0b"</span>, data, valid);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// ============================================================</span>
+<span class="cm">// Imp declarations -- must be at package scope</span>
+<span class="cm">// ============================================================</span>
+<span class="fn">`uvm_analysis_imp_decl</span>(_push)
+<span class="fn">`uvm_analysis_imp_decl</span>(_pop)
+
+<span class="cm">// ============================================================</span>
+<span class="cm">// fifo_scoreboard</span>
+<span class="cm">// ============================================================</span>
+<span class="kw">class</span> <span class="fn">fifo_scoreboard</span> <span class="kw">extends</span> uvm_scoreboard;
+  <span class="fn">`uvm_component_utils</span>(fifo_scoreboard)
+
+  uvm_analysis_imp_push #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) push_imp;
+  uvm_analysis_imp_pop  #(<span class="ty">fifo_seq_item</span>, fifo_scoreboard) pop_imp;
+
+  <span class="cm">// Reference model -- holds data values in push order</span>
+  <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] ref_q[$];
+
+  <span class="kw">int</span> push_count = <span class="num">0</span>;
+  <span class="kw">int</span> pop_count  = <span class="num">0</span>;
+  <span class="kw">int</span> errors     = <span class="num">0</span>;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    push_imp = <span class="kw">new</span>(<span class="str">"push_imp"</span>, <span class="kw">this</span>);
+    pop_imp  = <span class="kw">new</span>(<span class="str">"pop_imp"</span>,  <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Called by input monitor each time data is pushed into FIFO</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write_push</span>(<span class="ty">fifo_seq_item</span> item);
+    ref_q.push_back(item.data);
+    push_count++;
+    <span class="fn">`uvm_info</span>(<span class="str">"SB_PUSH"</span>,
+      $sformatf(<span class="str">"[%0d] PUSH  data=0x%02h  q_depth=%0d"</span>,
+                push_count, item.data, ref_q.size()),
+      UVM_HIGH)
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Called by output monitor each time data is popped from FIFO</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write_pop</span>(<span class="ty">fifo_seq_item</span> item);
+    <span class="ty">logic</span> [<span class="num">7</span>:<span class="num">0</span>] exp_data;
+    pop_count++;
+
+    <span class="kw">if</span> (ref_q.size() == <span class="num">0</span>) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB_POP"</span>,
+        $sformatf(<span class="str">"[%0d] POP with empty reference queue! data=0x%02h"</span>,
+                  pop_count, item.data))
+      errors++; <span class="kw">return</span>;
+    <span class="kw">end</span>
+
+    exp_data = ref_q.pop_front();
+
+    <span class="kw">if</span> (item.data !== exp_data) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB_POP"</span>,
+        $sformatf(<span class="str">"[%0d] MISMATCH  expected=0x%02h  actual=0x%02h"</span>,
+                  pop_count, exp_data, item.data))
+      errors++;
+    <span class="kw">end</span> <span class="kw">else</span> <span class="kw">begin</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"SB_POP"</span>,
+        $sformatf(<span class="str">"[%0d] MATCH     data=0x%02h"</span>, pop_count, item.data),
+        UVM_HIGH)
+    <span class="kw">end</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">check_phase</span>(uvm_phase phase);
+    <span class="kw">if</span> (ref_q.size() > <span class="num">0</span>) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>,
+        $sformatf(<span class="str">"%0d items pushed but never popped (FIFO stuck?)"</span>,
+                  ref_q.size()))
+      errors += ref_q.size();
+    <span class="kw">end</span>
+    <span class="kw">if</span> (push_count !== pop_count) <span class="kw">begin</span>
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>,
+        $sformatf(<span class="str">"Push count (%0d) != Pop count (%0d)"</span>,
+                  push_count, pop_count))
+      errors++;
+    <span class="kw">end</span>
+    <span class="kw">if</span> (errors > <span class="num">0</span>)
+      <span class="fn">`uvm_error</span>(<span class="str">"SB"</span>,
+        $sformatf(<span class="str">"FAIL: %0d errors | push=%0d pop=%0d"</span>,
+                  errors, push_count, pop_count))
+    <span class="kw">else</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"SB"</span>,
+        $sformatf(<span class="str">"PASS: %0d push/pop pairs all matched"</span>, pop_count),
+        UVM_NONE)
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// ============================================================</span>
+<span class="cm">// Environment -- wiring scoreboard into the testbench</span>
+<span class="cm">// ============================================================</span>
+<span class="kw">class</span> <span class="fn">fifo_env</span> <span class="kw">extends</span> uvm_env;
+  <span class="fn">`uvm_component_utils</span>(fifo_env)
+
+  fifo_agent      agent;
+  fifo_scoreboard sb;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    agent = fifo_agent::type_id::create(<span class="str">"agent"</span>, <span class="kw">this</span>);
+    sb    = fifo_scoreboard::type_id::create(<span class="str">"sb"</span>,  <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+    agent.push_mon.ap.connect(sb.push_imp);   <span class="cm">// input monitor -> push_imp</span>
+    agent.pop_mon.ap.connect(sb.pop_imp);     <span class="cm">// output monitor -> pop_imp</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <!-- 9 -->
+  <h2 id="pitfalls">9. Common Pitfalls</h2>
+
+  <h3>Pitfall 1: Not cloning items before queuing</h3>
+  <p>The most common scoreboard bug. The monitor calls <code>ap.write(item)</code> where <code>item</code> is the same object handle reused every cycle. If the scoreboard stores <code>item</code> directly, all queue entries point to the same object and will reflect the last observed values, not the values at the time of capture.</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// WRONG -- stores handle to monitor's reused object</span>
+exp_q.push_back(item);
+
+<span class="cm">// CORRECT -- stores an independent copy of the item at this moment</span>
+<span class="ty">fifo_seq_item</span> cloned;
+$cast(cloned, item.clone());
+exp_q.push_back(cloned);</pre>
+  </div>
+
+  <h3>Pitfall 2: Using `uvm_fatal for mismatches</h3>
+  <p>Using <code>`uvm_fatal</code> inside <code>write()</code> stops the simulation at the first mismatch. You miss all subsequent errors. Use <code>`uvm_error</code> to count mismatches and let the test run to completion. Reserve <code>`uvm_fatal</code> for infrastructure failures in <code>build_phase</code> (missing virtual interfaces, config_db failures).</p>
+
+  <h3>Pitfall 3: Scoreboard not connected (silent false pass)</h3>
+  <p>If the <code>connect_phase</code> wiring is wrong &#8212; wrong port name, wrong component handle &#8212; the scoreboard's <code>write()</code> is never called, <code>checked</code> stays at zero, and the test shows a false pass. Always add the zero-check guard in <code>check_phase</code>: if <code>checked == 0</code>, raise an error.</p>
+
+  <h3>Pitfall 4: Wrong comparison operator (== vs ===)</h3>
+  <p>Using <code>!=</code> instead of <code>!==</code> can produce X results instead of 1/0 when DUT outputs contain X. An X result from <code>!=</code> evaluates as false in an <code>if</code> statement, meaning the mismatch goes undetected. Always use <code>!==</code> for 4-state correctness in verification code.</p>
+
+  <h3>Pitfall 5: Phase ordering &#8212; checks in report_phase instead of check_phase</h3>
+  <p>The UVM convention is that <code>check_phase</code> is specifically for correctness checks and <code>report_phase</code> is for printing statistics. The UVM infrastructure watches error counts set during <code>check_phase</code> to determine the final test status. Checks done only in <code>report_phase</code> may not affect the pass/fail result depending on the simulator's UVM library version.</p>
+
+  <div class="takeaways">
+    <h3>Day 10 Key Takeaways</h3>
+    <ul>
+      <li><code>uvm_scoreboard</code> extends <code>uvm_component</code> &#8212; it adds no new API, just a semantic classification</li>
+      <li><code>uvm_analysis_imp</code> is the subscriber port; implement a <code>write()</code> function in the scoreboard class</li>
+      <li>Use a queue as the reference model to handle pipeline latency between input and output observations</li>
+      <li>Always clone items before storing in the expected queue &#8212; monitors reuse handles</li>
+      <li>Use <code>!==</code> not <code>!=</code> to catch X values as real mismatches in 4-state simulation</li>
+      <li><code>`uvm_analysis_imp_decl(_suffix)</code> creates uniquely named imp types for multi-monitor setups</li>
+      <li>Use <code>`uvm_error</code> in <code>write()</code> to accumulate errors; use <code>check_phase</code> for the final summary</li>
+      <li>Add a zero-check guard in <code>check_phase</code> to detect disconnected (silently passing) scoreboards</li>
+    </ul>
+  </div>
+
+  <!-- 10 FAQ -->
+  <h2 id="faq">10. FAQ</h2>
+
+  <h3>What is a UVM scoreboard?</h3>
+  <p>A UVM scoreboard is a component that checks the DUT's output correctness by comparing what the DUT actually produced against what a <strong>reference model</strong> predicted. It extends <code>uvm_scoreboard</code>, connects to monitors via <code>uvm_analysis_imp</code>, receives observed transactions through <code>write()</code> callbacks, and uses <code>check_phase</code> to report final pass/fail counts. The scoreboard is the single source of truth for functional correctness in a UVM testbench.</p>
+
+  <h3>What is uvm_analysis_imp and how does it differ from uvm_analysis_port?</h3>
+  <p><code>uvm_analysis_imp</code> is the <strong>subscriber end</strong> of a UVM analysis connection. When a monitor calls <code>analysis_port.write(item)</code>, UVM routes that call to the <code>write()</code> method of every connected <code>uvm_analysis_imp</code>. The <code>uvm_analysis_port</code> is the producer (monitor side); <code>uvm_analysis_imp</code> is the consumer (scoreboard/coverage side). The scoreboard declares one <code>uvm_analysis_imp</code> per incoming data stream and implements a matching <code>write()</code> method for each.</p>
+
+  <h3>How do you handle multiple monitors feeding one scoreboard?</h3>
+  <p>Use the <code>`uvm_analysis_imp_decl</code> macro to declare uniquely named analysis imp types. For example, <code>`uvm_analysis_imp_decl(_expected)</code> and <code>`uvm_analysis_imp_decl(_actual)</code> create two distinct imp classes. The scoreboard then declares one instance of each type and implements both <code>write_expected()</code> and <code>write_actual()</code> methods. UVM routes each <code>analysis_port.write()</code> call to the correct method based on the imp type it is connected to.</p>
+
+  <h3>When should scoreboard checks happen &#8212; write() or check_phase?</h3>
+  <p>Both patterns are valid and commonly combined. <strong>Immediate checking in <code>write()</code></strong> catches errors as they occur and provides precise error context (cycle number, transaction values). <strong><code>check_phase</code></strong> is used for final summary reporting: checking that queues are empty (no missing responses), printing total error counts, and calling <code>`uvm_error</code> if the test should fail. Avoid calling <code>`uvm_fatal</code> in <code>write()</code> because it aborts the test immediately and you lose later error data.</p>
+
+  <a href="/verification/11-uvm-ral/" class="next-card">
+    <div>
+      <div class="next-label">Next Up &#8212; Day 11</div>
+      <div class="next-title">UVM RAL (Register Abstraction Layer)</div>
+      <div class="next-desc">uvm_reg, uvm_reg_block, reg_adapter, frontdoor vs backdoor access, and a complete register file verification example.</div>
+    </div>
+    <div class="next-arrow">&#8594;</div>
+  </a>
+
+</div><!-- /body -->
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p style="margin-bottom:.6rem">VLSI &middot; Verification &middot; RTL Design &middot; Protocols</p>
+  <p><a href="/legal/privacy.html" style="color:var(--sky)">Privacy Policy</a> &nbsp;&middot;&nbsp; <a href="/legal/terms.html" style="color:var(--sky)">Terms of Use</a> &nbsp;&middot;&nbsp; <a href="/about/" style="color:var(--sky)">About</a></p>
+  <p style="margin-top:.6rem;font-size:.75rem">&#169; 2026 EcrioniX &#8212; All rights reserved</p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">&#8679;</button>
+
+<script>
+  document.getElementById('hamburger').addEventListener('click', function() {
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+  var st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', function() {
+    st.classList.toggle('visible', window.scrollY > 400);
+  });
+  st.addEventListener('click', function() {
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  });
+  document.querySelectorAll('.copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 1800);
+      });
+    });
+  });
+</script>
+</body>
+</html>

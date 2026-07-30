@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM RAL — Register Abstraction Layer — Day 11 | EcrioniX Verification Series</title>
+  <meta name="description" content="Master the UVM Register Abstraction Layer (RAL): uvm_reg, uvm_reg_block, uvm_reg_adapter, frontdoor vs backdoor access, register map, mirror vs desired value, and built-in register sequences.">
+  <meta name="keywords" content="UVM RAL, uvm_reg, uvm_reg_block, uvm_reg_adapter, frontdoor backdoor, register abstraction layer, uvm_reg_map, mirror value desired value, uvm_reg_hw_reset_seq">
+  <link rel="canonical" href="https://ecrionix.org/verification/11-uvm-ral/">
+  <meta property="og:title" content="UVM RAL — Register Abstraction Layer — Day 11 | EcrioniX Verification Series">
+  <meta property="og:description" content="Master UVM RAL: uvm_reg, uvm_reg_block, adapter, frontdoor vs backdoor access, mirror vs desired, and built-in register sequences.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/11-uvm-ral/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-03","dateModified":"2026-06-22","headline":"UVM RAL — Register Abstraction Layer","description":"Master the UVM Register Abstraction Layer: uvm_reg, uvm_reg_block, uvm_reg_adapter, frontdoor vs backdoor access, mirror vs desired value, and built-in register sequences.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/11-uvm-ral/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 11 — UVM RAL","item":"https://ecrionix.org/verification/11-uvm-ral/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the UVM Register Abstraction Layer?","acceptedAnswer":{"@type":"Answer","text":"The UVM Register Abstraction Layer (RAL) is a standardised model for describing and accessing DUT registers in a testbench. Instead of writing raw bus transactions to specific addresses, you interact with named register objects (e.g., ctrl_reg.write(status, value)) and the RAL automatically translates these into the correct bus protocol transactions via a register adapter. This makes testbenches protocol-independent and reusable."}},
+      {"@type":"Question","name":"What is the difference between frontdoor and backdoor register access?","acceptedAnswer":{"@type":"Answer","text":"Frontdoor access uses the actual bus protocol (APB, AXI, etc.) to write or read a register — it goes through the driver, interface, and DUT bus port, consuming real simulation time. Backdoor access uses DPI or VPI to directly read/write the RTL register variable at zero simulation time. Frontdoor tests the actual bus interface. Backdoor is used for fast register initialisation and golden-value checking without spending simulation cycles."}},
+      {"@type":"Question","name":"What are mirror and desired values in UVM RAL?","acceptedAnswer":{"@type":"Answer","text":"Every UVM register field has two software-side copies: the desired value (what you want the register to contain — set by write()) and the mirror value (what the RAL believes the hardware currently contains — updated by read() or explicit mirror() calls). They can diverge if the hardware changes a register field autonomously (e.g., status bits). Call reg.mirror() to issue a read and synchronise the mirror, or reg.predict() to update it without a bus access."}},
+      {"@type":"Question","name":"What does a uvm_reg_adapter do?","acceptedAnswer":{"@type":"Answer","text":"The uvm_reg_adapter translates the generic uvm_reg_bus_op (a struct with addr, data, kind, n_bits) that the RAL produces into a protocol-specific sequence item your existing driver understands, and vice versa. You write one adapter per bus protocol. This keeps the register model protocol-agnostic — the same register block can be reused with an APB agent or an AXI agent by simply swapping adapters."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 11 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/10-uvm-scoreboard/" class="dnbtn dnbtn-prev">← Day 10</a>
+    <a href="/verification/12-uvm-factory/" class="dnbtn dnbtn-next">Day 12 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 11 — UVM RAL</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM Core</div>
+  <h1>UVM RAL — Register Abstraction Layer</h1>
+  <div class="byline" style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub">RAL replaces brittle address-constant writes with a named, self-documenting register model. Once you build the model and hook up an adapter, every test interacts with registers by name — and the RAL handles all bus-protocol mechanics transparently.</p>
+  <div class="hero-meta"><span>⏱ 30 min read</span><span>📖 Day 11 of 25</span><span>🎯 RAL · uvm_reg · Frontdoor · Backdoor</span></div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#why-ral">Why RAL</a></li>
+      <li><a href="#uvm-reg">uvm_reg — Field Declaration &amp; Access Policies</a></li>
+      <li><a href="#uvm-reg-block">uvm_reg_block — Grouping Registers</a></li>
+      <li><a href="#uvm-reg-adapter">uvm_reg_adapter — Protocol Translation</a></li>
+      <li><a href="#frontdoor">Frontdoor Access</a></li>
+      <li><a href="#backdoor">Backdoor Access</a></li>
+      <li><a href="#mirror-desired">Mirror vs Desired Value</a></li>
+      <li><a href="#builtin-seq">Built-in Register Sequences</a></li>
+      <li><a href="#complete-example">Complete Register Block Example</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <h2 id="why-ral">1. Why RAL</h2>
+  <p>Without RAL, testbenches write registers by constructing raw bus transactions with hardcoded addresses and bit masks:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Without RAL — fragile, unreadable, not reusable</span>
+apb_trans t = apb_trans::type_id::create(<span class="str">"t"</span>);
+t.addr  = <span class="num">32'h4000_0008</span>;   <span class="cm">// magic address — what register?</span>
+t.data  = <span class="num">32'h0000_0003</span>;   <span class="cm">// magic value — which field?</span>
+t.write = <span class="num">1</span>;
+start_item(t); finish_item(t);</pre>
+  </div>
+  <p>This breaks whenever the register map changes, is illegible, and cannot be reused across protocols. With RAL:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// With RAL — readable, portable, self-documenting</span>
+regmodel.ctrl.write(status, <span class="num">32'h3</span>, UVM_FRONTDOOR);
+regmodel.ctrl.read(status,  data,  UVM_FRONTDOOR);</pre>
+  </div>
+  <p>The RAL also tracks <strong>register state</strong> (mirror/desired values), provides <strong>built-in test sequences</strong>, and supports both frontdoor and backdoor access seamlessly.</p>
+
+  <h2 id="uvm-reg">2. uvm_reg — Field Declaration &amp; Access Policies</h2>
+  <p>Each RTL register maps to a class that extends <code>uvm_reg</code>. Inside, you declare fields with <code>uvm_reg_field</code> objects and configure them with access policies and reset values:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// A 32-bit control register with three fields</span>
+<span class="kw">class</span> <span class="fn">ctrl_reg</span> <span class="kw">extends</span> uvm_reg;
+  <span class="fn">`uvm_object_utils</span>(ctrl_reg)
+
+  <span class="cm">// Field handles — public for direct access in tests</span>
+  uvm_reg_field enable;    <span class="cm">// bit [0]</span>
+  uvm_reg_field mode;      <span class="cm">// bits [2:1]</span>
+  uvm_reg_field irq_mask;  <span class="cm">// bit [3]</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"ctrl_reg"</span>);
+    <span class="kw">super</span>.new(name, <span class="num">32</span>, UVM_NO_COVERAGE);  <span class="cm">// 32 bits wide</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build</span>();
+    enable   = uvm_reg_field::type_id::create(<span class="str">"enable"</span>);
+    mode     = uvm_reg_field::type_id::create(<span class="str">"mode"</span>);
+    irq_mask = uvm_reg_field::type_id::create(<span class="str">"irq_mask"</span>);
+
+    <span class="cm">// configure(parent, size, lsb_pos, access, volatile, reset, has_reset, is_rand, individually_accessible)</span>
+    enable.configure  (<span class="kw">this</span>, <span class="num">1</span>, <span class="num">0</span>,  <span class="str">"RW"</span>,  <span class="num">0</span>, <span class="num">8'h0</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>);
+    mode.configure    (<span class="kw">this</span>, <span class="num">2</span>, <span class="num">1</span>,  <span class="str">"RW"</span>,  <span class="num">0</span>, <span class="num">8'h0</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>);
+    irq_mask.configure(<span class="kw">this</span>, <span class="num">1</span>, <span class="num">3</span>,  <span class="str">"RW"</span>,  <span class="num">0</span>, <span class="num">8'h0</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="num">1</span>);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+  <p>Common field access policies and their meanings:</p>
+  <table>
+    <tr><th>Policy</th><th>Read</th><th>Write</th><th>Typical use</th></tr>
+    <tr><td><code>RW</code></td><td>Returns current value</td><td>Sets field</td><td>Configuration registers</td></tr>
+    <tr><td><code>RO</code></td><td>Returns current value</td><td>No effect</td><td>Status/ID registers</td></tr>
+    <tr><td><code>WO</code></td><td>Returns 0</td><td>Sets field</td><td>Command registers</td></tr>
+    <tr><td><code>W1C</code></td><td>Returns current value</td><td>Writing 1 clears bit</td><td>Interrupt status registers</td></tr>
+    <tr><td><code>W1S</code></td><td>Returns current value</td><td>Writing 1 sets bit</td><td>Set-only control bits</td></tr>
+    <tr><td><code>RC</code></td><td>Returns value then clears</td><td>No effect</td><td>Clear-on-read status</td></tr>
+  </table>
+
+  <h2 id="uvm-reg-block">3. uvm_reg_block — Grouping Registers</h2>
+  <p>The register block groups all registers and creates the <strong>address map</strong> that maps each register to its bus address offset:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">my_reg_block</span> <span class="kw">extends</span> uvm_reg_block;
+  <span class="fn">`uvm_object_utils</span>(my_reg_block)
+
+  <span class="cm">// Register handles</span>
+  <span class="ty">ctrl_reg</span>   ctrl;
+  <span class="ty">status_reg</span> status;
+  <span class="ty">irq_reg</span>    irq;
+
+  <span class="cm">// Register map (address map)</span>
+  uvm_reg_map apb_map;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"my_reg_block"</span>);
+    <span class="kw">super</span>.new(name, UVM_NO_COVERAGE);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build</span>();
+    <span class="cm">// Create and build register instances</span>
+    ctrl   = ctrl_reg::type_id::create(<span class="str">"ctrl"</span>);
+    status = status_reg::type_id::create(<span class="str">"status"</span>);
+    irq    = irq_reg::type_id::create(<span class="str">"irq"</span>);
+    ctrl.build();   status.build();   irq.build();
+
+    <span class="cm">// Create address map: base_addr=0x4000_0000, n_bytes=4, endian=UVM_LITTLE_ENDIAN</span>
+    apb_map = create_map(<span class="str">"apb_map"</span>, <span class="num">32'h4000_0000</span>, <span class="num">4</span>, UVM_LITTLE_ENDIAN);
+
+    <span class="cm">// Add registers to the map with their offsets</span>
+    apb_map.add_reg(ctrl,   <span class="num">32'h00</span>, <span class="str">"RW"</span>);  <span class="cm">// @ 0x4000_0000</span>
+    apb_map.add_reg(status, <span class="num">32'h04</span>, <span class="str">"RO"</span>);  <span class="cm">// @ 0x4000_0004</span>
+    apb_map.add_reg(irq,    <span class="num">32'h08</span>, <span class="str">"RW"</span>);  <span class="cm">// @ 0x4000_0008</span>
+
+    lock_model();  <span class="cm">// freeze the model after build</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="uvm-reg-adapter">4. uvm_reg_adapter — Protocol Translation</h2>
+  <p>The adapter is the bridge between the RAL's generic bus operation struct and your protocol-specific sequence item. You implement two functions: <code>reg2bus()</code> and <code>bus2reg()</code>:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">class</span> <span class="fn">apb_reg_adapter</span> <span class="kw">extends</span> uvm_reg_adapter;
+  <span class="fn">`uvm_object_utils</span>(apb_reg_adapter)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"apb_reg_adapter"</span>);
+    <span class="kw">super</span>.new(name);
+    supports_byte_enable = <span class="num">0</span>;   <span class="cm">// APB does not support byte enables</span>
+    provides_responses   = <span class="num">0</span>;   <span class="cm">// read data comes back via bus2reg, not rsp</span>
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// RAL → bus: convert uvm_reg_bus_op into protocol sequence item</span>
+  <span class="kw">function</span> uvm_sequence_item <span class="fn">reg2bus</span>(<span class="kw">const ref</span> uvm_reg_bus_op rw);
+    <span class="ty">apb_trans</span> t = apb_trans::type_id::create(<span class="str">"t"</span>);
+    t.addr  = rw.addr;
+    t.data  = rw.data;
+    t.write = (rw.kind == UVM_WRITE);
+    <span class="kw">return</span> t;
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// bus → RAL: copy bus response data back into the bus_op struct</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">bus2reg</span>(uvm_sequence_item bus_item, <span class="kw">ref</span> uvm_reg_bus_op rw);
+    <span class="ty">apb_trans</span> t;
+    <span class="kw">if</span> (!$cast(t, bus_item))
+      <span class="fn">`uvm_fatal</span>(<span class="str">"ADAPT"</span>, <span class="str">"bus_item is not apb_trans"</span>)
+    rw.kind   = t.write ? UVM_WRITE : UVM_READ;
+    rw.addr   = t.addr;
+    rw.data   = t.data;
+    rw.status = UVM_IS_OK;
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="frontdoor">5. Frontdoor Access</h2>
+  <p><strong>Frontdoor</strong> access issues real bus transactions through your driver and physical interface. It fully exercises the bus protocol, takes simulation time, and exercises the DUT's bus interface logic. This is the default access mode:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// In a test sequence — frontdoor write and read</span>
+<span class="kw">task</span> <span class="fn">body</span>();
+  uvm_status_e status;
+  uvm_reg_data_t rdata;
+
+  <span class="cm">// Write to ctrl register — goes through APB driver</span>
+  regmodel.ctrl.write(status, <span class="num">32'h5</span>, UVM_FRONTDOOR);
+  <span class="kw">if</span> (status != UVM_IS_OK)
+    <span class="fn">`uvm_error</span>(<span class="str">"REG"</span>, <span class="str">"ctrl write failed"</span>)
+
+  <span class="cm">// Read back — issues real APB read transaction</span>
+  regmodel.ctrl.read(status, rdata, UVM_FRONTDOOR);
+  <span class="fn">`uvm_info</span>(<span class="str">"REG"</span>,
+    $sformatf(<span class="str">"ctrl readback = 0x%08h"</span>, rdata), UVM_MEDIUM)
+
+  <span class="cm">// Access individual field</span>
+  regmodel.ctrl.enable.set(<span class="num">1</span>);     <span class="cm">// set desired value</span>
+  regmodel.ctrl.update(status, UVM_FRONTDOOR);  <span class="cm">// write only changed fields</span>
+<span class="kw">endtask</span>
+
+<span class="cm">// Integration: set map's sequencer and adapter in env connect_phase</span>
+<span class="kw">function</span> <span class="kw">void</span> <span class="fn">connect_phase</span>(uvm_phase phase);
+  regmodel.apb_map.set_sequencer(apb_agent.sequencer, adapter);
+  regmodel.apb_map.set_base_addr(<span class="num">32'h4000_0000</span>);
+<span class="kw">endfunction</span></pre>
+  </div>
+
+  <h2 id="backdoor">6. Backdoor Access</h2>
+  <p><strong>Backdoor</strong> access directly reads or writes RTL memory variables using DPI-C or VPI, consuming <em>zero simulation time</em>. It is ideal for test setup (pre-loading registers without driving bus protocol) and fast golden-value checking:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Backdoor write — no bus activity, zero sim time</span>
+regmodel.ctrl.write(status, <span class="num">32'hFF</span>, UVM_BACKDOOR);
+
+<span class="cm">// Backdoor read — reads directly from RTL hierarchy</span>
+regmodel.ctrl.read(status, rdata, UVM_BACKDOOR);
+
+<span class="cm">// HDL path must be registered in the reg block</span>
+<span class="cm">// In uvm_reg_block.build():</span>
+add_hdl_path(<span class="str">"tb_top.dut"</span>);   <span class="cm">// DUT HDL scope prefix</span>
+
+<span class="cm">// In ctrl_reg.build(), register the RTL register path:</span>
+add_hdl_path_slice(<span class="str">"ctrl_reg_rtl"</span>, <span class="num">0</span>, <span class="num">32</span>);  <span class="cm">// signal, offset, size</span>
+
+<span class="cm">// Example: check post-reset state instantly (zero time)</span>
+<span class="kw">task</span> <span class="fn">body</span>();
+  uvm_status_e status;
+  uvm_reg_data_t rdata;
+  regmodel.ctrl.read(status, rdata, UVM_BACKDOOR);
+  <span class="kw">if</span> (rdata !== regmodel.ctrl.get_reset())
+    <span class="fn">`uvm_error</span>(<span class="str">"RST"</span>, <span class="str">"ctrl reset value mismatch"</span>)
+<span class="kw">endtask</span></pre>
+  </div>
+  <table>
+    <tr><th>Feature</th><th>Frontdoor</th><th>Backdoor</th></tr>
+    <tr><td>Simulation time</td><td>Yes — real bus cycles</td><td>Zero</td></tr>
+    <tr><td>Tests bus interface</td><td>Yes</td><td>No</td></tr>
+    <tr><td>Requires adapter</td><td>Yes</td><td>No</td></tr>
+    <tr><td>Requires HDL path</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Use for</td><td>Protocol testing, functional tests</td><td>Fast init, reset check, debug</td></tr>
+  </table>
+
+  <h2 id="mirror-desired">7. Mirror vs Desired Value</h2>
+  <p>Every UVM register field has two software-side copies maintained by the RAL:</p>
+  <ul>
+    <li><strong>Desired value</strong> — what the test wants the register to contain. Updated when you call <code>set()</code> or <code>write()</code>.</li>
+    <li><strong>Mirror value</strong> — what the RAL believes the hardware currently contains. Updated when a <code>read()</code> or explicit <code>mirror()</code> call returns data from the DUT.</li>
+  </ul>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// set() updates desired only — no bus activity</span>
+regmodel.ctrl.enable.set(<span class="num">1</span>);
+<span class="fn">`uvm_info</span>(<span class="str">"RAL"</span>,
+  $sformatf(<span class="str">"Desired=0x%h  Mirror=0x%h"</span>,
+            regmodel.ctrl.get(),              <span class="cm">// desired</span>
+            regmodel.ctrl.get_mirrored_value() <span class="cm">// mirror</span>
+            ), UVM_MEDIUM)
+
+<span class="cm">// update() writes only the fields whose desired != mirror</span>
+regmodel.ctrl.update(status, UVM_FRONTDOOR);
+
+<span class="cm">// mirror() reads hardware and updates the mirror value</span>
+<span class="cm">// check=UVM_CHECK also compares against the current mirror</span>
+regmodel.ctrl.mirror(status, UVM_CHECK, UVM_FRONTDOOR);
+
+<span class="cm">// predict() updates mirror without bus access (for HW-driven changes)</span>
+regmodel.ctrl.predict(<span class="num">32'h3</span>);   <span class="cm">// tell RAL what HW changed it to</span></pre>
+  </div>
+  <div class="callout info"><strong>When mirror diverges from desired:</strong> If the RTL autonomously changes a register (e.g., a status bit sets itself after an event), the mirror becomes stale. Call <code>reg.mirror(status, UVM_CHECK)</code> to read hardware and check against the RAL's expectation, or <code>reg.predict()</code> to update the mirror to the new hardware value.</div>
+
+  <h2 id="builtin-seq">8. Built-in Register Sequences</h2>
+  <p>UVM ships with standard register test sequences that run automatically against your entire register model. They are a fast sanity check before writing protocol-specific tests:</p>
+  <table>
+    <tr><th>Sequence</th><th>What it tests</th></tr>
+    <tr><td><code>uvm_reg_hw_reset_seq</code></td><td>Reads every register after reset and compares to the declared reset value</td></tr>
+    <tr><td><code>uvm_reg_bit_bash_seq</code></td><td>Walks a 1-bit through every writable field (checks field width and access)</td></tr>
+    <tr><td><code>uvm_reg_access_seq</code></td><td>Writes a pattern to every register and reads it back to verify bus connectivity</td></tr>
+    <tr><td><code>uvm_mem_walk_seq</code></td><td>Walks through every address in a memory, checking write-read integrity</td></tr>
+  </table>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Running built-in sequences in a test</span>
+<span class="kw">task</span> <span class="fn">body</span>();
+  uvm_reg_hw_reset_seq rst_seq;
+  uvm_reg_bit_bash_seq bash_seq;
+
+  <span class="cm">// Reset check — verify all resets match declared reset values</span>
+  rst_seq = uvm_reg_hw_reset_seq::type_id::create(<span class="str">"rst_seq"</span>);
+  rst_seq.model = regmodel;
+  rst_seq.start(<span class="kw">null</span>);
+
+  <span class="cm">// Bit-bash — walk a 1 through every writable bit</span>
+  bash_seq = uvm_reg_bit_bash_seq::type_id::create(<span class="str">"bash_seq"</span>);
+  bash_seq.model = regmodel;
+  bash_seq.start(<span class="kw">null</span>);
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <h2 id="complete-example">9. Complete Register Block Example</h2>
+  <p>A minimal but complete three-register block (control, status, interrupt) with adapter and testbench integration:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// --- status_reg: read-only, hardware writes bits ---</span>
+<span class="kw">class</span> <span class="fn">status_reg</span> <span class="kw">extends</span> uvm_reg;
+  <span class="fn">`uvm_object_utils</span>(status_reg)
+  uvm_reg_field busy;
+  uvm_reg_field err_code;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name=<span class="str">"status_reg"</span>); <span class="kw">super</span>.new(name,<span class="num">32</span>,UVM_NO_COVERAGE); <span class="kw">endfunction</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build</span>();
+    busy     = uvm_reg_field::type_id::create(<span class="str">"busy"</span>);
+    err_code = uvm_reg_field::type_id::create(<span class="str">"err_code"</span>);
+    busy.configure    (<span class="kw">this</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="str">"RO"</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>);
+    err_code.configure(<span class="kw">this</span>, <span class="num">4</span>, <span class="num">4</span>, <span class="str">"RO"</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// --- irq_reg: W1C interrupt status ---</span>
+<span class="kw">class</span> <span class="fn">irq_reg</span> <span class="kw">extends</span> uvm_reg;
+  <span class="fn">`uvm_object_utils</span>(irq_reg)
+  uvm_reg_field overflow;
+  uvm_reg_field underflow;
+  uvm_reg_field done;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name=<span class="str">"irq_reg"</span>); <span class="kw">super</span>.new(name,<span class="num">32</span>,UVM_NO_COVERAGE); <span class="kw">endfunction</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build</span>();
+    overflow  = uvm_reg_field::type_id::create(<span class="str">"overflow"</span>);
+    underflow = uvm_reg_field::type_id::create(<span class="str">"underflow"</span>);
+    done      = uvm_reg_field::type_id::create(<span class="str">"done"</span>);
+    overflow.configure (<span class="kw">this</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="str">"W1C"</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>);
+    underflow.configure(<span class="kw">this</span>, <span class="num">1</span>, <span class="num">1</span>, <span class="str">"W1C"</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>);
+    done.configure     (<span class="kw">this</span>, <span class="num">1</span>, <span class="num">2</span>, <span class="str">"W1C"</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>, <span class="num">0</span>, <span class="num">1</span>);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// --- Register block ---</span>
+<span class="kw">class</span> <span class="fn">my_reg_block</span> <span class="kw">extends</span> uvm_reg_block;
+  <span class="fn">`uvm_object_utils</span>(my_reg_block)
+  <span class="ty">ctrl_reg</span>   ctrl;
+  <span class="ty">status_reg</span> status;
+  <span class="ty">irq_reg</span>    irq;
+  uvm_reg_map apb_map;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name=<span class="str">"my_reg_block"</span>); <span class="kw">super</span>.new(name,UVM_NO_COVERAGE); <span class="kw">endfunction</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build</span>();
+    ctrl   = ctrl_reg::type_id::create(<span class="str">"ctrl"</span>);   ctrl.build();
+    status = status_reg::type_id::create(<span class="str">"status"</span>); status.build();
+    irq    = irq_reg::type_id::create(<span class="str">"irq"</span>);     irq.build();
+    apb_map = create_map(<span class="str">"apb_map"</span>, <span class="num">32'h4000_0000</span>, <span class="num">4</span>, UVM_LITTLE_ENDIAN);
+    apb_map.add_reg(ctrl,   <span class="num">32'h00</span>, <span class="str">"RW"</span>);
+    apb_map.add_reg(status, <span class="num">32'h04</span>, <span class="str">"RO"</span>);
+    apb_map.add_reg(irq,    <span class="num">32'h08</span>, <span class="str">"RW"</span>);
+    lock_model();
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// --- Test using the register model ---</span>
+<span class="kw">task</span> <span class="fn">body</span>();
+  uvm_status_e   status;
+  uvm_reg_data_t rdata;
+
+  <span class="cm">// Enable the DUT and set mode=2</span>
+  regmodel.ctrl.write(status, <span class="num">32'h5</span>, UVM_FRONTDOOR);
+  regmodel.status.read(status, rdata, UVM_FRONTDOOR);
+  <span class="fn">`uvm_info</span>(<span class="str">"TEST"</span>, $sformatf(<span class="str">"Status = 0x%08h"</span>, rdata), UVM_MEDIUM)
+
+  <span class="cm">// Clear all interrupt flags</span>
+  regmodel.irq.write(status, <span class="num">32'h7</span>, UVM_FRONTDOOR);   <span class="cm">// W1C — write 1 to clear</span>
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 11</h3>
+    <ul>
+      <li><strong>RAL</strong> replaces magic-address bus writes with named register accesses — scalable and readable</li>
+      <li><strong>uvm_reg</strong> models one register; fields are uvm_reg_field with access policy, size, lsb, reset value</li>
+      <li><strong>uvm_reg_block</strong> groups registers, creates the address map, assigns address offsets</li>
+      <li><strong>uvm_reg_adapter</strong> translates generic uvm_reg_bus_op to/from your protocol sequence item</li>
+      <li><strong>Frontdoor</strong> = real bus transactions, takes sim time; <strong>Backdoor</strong> = RTL direct access, zero time</li>
+      <li><strong>Desired</strong> = what you want; <strong>Mirror</strong> = what RAL thinks hardware has; call mirror() to sync</li>
+      <li><strong>Built-in sequences</strong> (hw_reset_seq, bit_bash_seq) provide instant sanity tests for any register model</li>
+    </ul>
+  </div>
+
+  <div class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details>
+      <summary>What is the UVM Register Abstraction Layer?</summary>
+      <div class="ans">The UVM Register Abstraction Layer (RAL) is a standardised model for describing and accessing DUT registers in a testbench. Instead of writing raw bus transactions to specific addresses, you interact with named register objects and the RAL automatically translates these into the correct bus protocol transactions via a register adapter. This makes testbenches protocol-independent and reusable.</div>
+    </details>
+    <details>
+      <summary>What is the difference between frontdoor and backdoor register access?</summary>
+      <div class="ans">Frontdoor access uses the actual bus protocol (APB, AXI, etc.) to write or read a register — it goes through the driver, interface, and DUT bus port, consuming real simulation time. Backdoor access uses DPI or VPI to directly read/write the RTL register variable at zero simulation time. Frontdoor tests the actual bus interface. Backdoor is used for fast register initialisation and golden-value checking without spending simulation cycles.</div>
+    </details>
+    <details>
+      <summary>What are mirror and desired values in UVM RAL?</summary>
+      <div class="ans">Every UVM register field has two software-side copies: the desired value (what you want the register to contain — set by write()) and the mirror value (what the RAL believes the hardware currently contains — updated by read() or explicit mirror() calls). They can diverge if the hardware changes a register field autonomously. Call reg.mirror() to issue a read and synchronise the mirror, or reg.predict() to update it without a bus access.</div>
+    </details>
+    <details>
+      <summary>What does a uvm_reg_adapter do?</summary>
+      <div class="ans">The uvm_reg_adapter translates the generic uvm_reg_bus_op struct that the RAL produces into a protocol-specific sequence item your existing driver understands, and vice versa. You write one adapter per bus protocol. This keeps the register model protocol-agnostic — the same register block can be reused with an APB agent or an AXI agent by simply swapping adapters.</div>
+    </details>
+  </div>
+
+  <a href="/verification/12-uvm-factory/" class="next-card">
+    <div>
+      <div class="next-label">Next → Day 12</div>
+      <div class="next-title">UVM Factory</div>
+      <div class="next-desc">type_id::create(), factory overrides (type and instance), debug with factory.print(), and override-based reuse patterns.</div>
+    </div>
+    <div class="next-arrow">→</div>
+  </a>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+  <div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85">
+    <a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot;
+    <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot;
+    <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot;
+    <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a>
+  </div>
+  <p style="margin-top:.5rem">By EcrioniX · Updated June 2026</p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

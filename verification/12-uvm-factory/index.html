@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UVM Factory — Day 12 | EcrioniX Verification Series</title>
+  <meta name="description" content="UVM factory deep dive: type_id::create(), uvm_component_utils, uvm_object_utils, factory overrides (type override, instance override), debug with print_topology() and factory.print(), and reuse patterns.">
+  <meta name="keywords" content="UVM factory, type_id create, uvm_component_utils, uvm_object_utils, factory override, type override, instance override, factory.print, UVM reuse">
+  <link rel="canonical" href="https://ecrionix.org/verification/12-uvm-factory/">
+  <meta property="og:title" content="UVM Factory — Day 12 | EcrioniX Verification Series">
+  <meta property="og:description" content="UVM factory deep dive: type_id::create(), registration macros, type and instance overrides, factory debug, and override-based reuse patterns.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/12-uvm-factory/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-05","dateModified":"2026-06-22","headline":"UVM Factory","description":"UVM factory deep dive: type_id::create(), uvm_component_utils, uvm_object_utils, factory overrides (type override, instance override), debug with print_topology() and factory.print(), and reuse patterns.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/12-uvm-factory/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 12 — UVM Factory","item":"https://ecrionix.org/verification/12-uvm-factory/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"Why should I never use new() directly in UVM?","acceptedAnswer":{"@type":"Answer","text":"Using new() directly bypasses the UVM factory, which means factory overrides have no effect on that object. If a test tries to replace your driver with an error-injection driver using a factory override, but the driver was created with new() instead of type_id::create(), the override is silently ignored. Always use MyClass::type_id::create(name, parent) so the factory can intercept the creation and return the overriding type if one has been registered."}},
+      {"@type":"Question","name":"What is the difference between type override and instance override?","acceptedAnswer":{"@type":"Answer","text":"A type override (set_type_override_by_type) replaces every instance of a class throughout the entire testbench hierarchy with the specified override class. An instance override (set_inst_override_by_type) replaces only the instance at a specific hierarchical path. Instance overrides take precedence over type overrides. Use type override to globally swap all agents to error-injection mode; use instance override when you only want one specific driver or agent to behave differently."}},
+      {"@type":"Question","name":"What does uvm_component_utils do?","acceptedAnswer":{"@type":"Answer","text":"The `uvm_component_utils macro registers the class with the UVM factory under its own type name, generates a type_id nested class that supports create() and override, and adds common utilities like get_type_name(), create(), and field automation (if `uvm_component_utils_begin is used). Without this macro, the class cannot be created via type_id::create() and cannot be overridden by the factory."}},
+      {"@type":"Question","name":"How do I debug UVM factory overrides?","acceptedAnswer":{"@type":"Answer","text":"Use uvm_factory::get().print() to print all registered types and active overrides to the log. Also add +UVM_FACTORY_PRINT_OVERRIDE_INFO to the simulator command line to get a message every time an override is applied during object creation. Use uvm_top.print_topology() after the build_phase to see the full component hierarchy and verify which types were actually instantiated."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 12 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/11-uvm-ral/" class="dnbtn dnbtn-prev">← Day 11</a>
+    <a href="/verification/13-uvm-config-db/" class="dnbtn dnbtn-next">Day 13 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 12 — UVM Factory</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 2 — UVM Core</div>
+  <h1>UVM Factory</h1>
+  <div class="byline" style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub">The UVM factory is the mechanism that makes testbench reuse possible without editing source code. It intercepts every object and component creation request, checks for registered overrides, and returns the right type — all transparently. Tests can swap entire drivers, sequences, or scoreboards without touching the original agent code.</p>
+  <div class="hero-meta"><span>⏱ 26 min read</span><span>📖 Day 12 of 25</span><span>🎯 Factory · Overrides · Registration</span></div>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#why-factory">Why the Factory</a></li>
+      <li><a href="#registration">Registration Macros</a></li>
+      <li><a href="#type-id-create">type_id::create() — How it Works</a></li>
+      <li><a href="#type-override">Type Override</a></li>
+      <li><a href="#instance-override">Instance Override</a></li>
+      <li><a href="#factory-debug">Factory Debug</a></li>
+      <li><a href="#override-use-cases">Override Use Cases</a></li>
+      <li><a href="#component-vs-object">Component vs Object</a></li>
+      <li><a href="#complete-example">Complete Override Example</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <h2 id="why-factory">1. Why the Factory</h2>
+  <p>Without the factory, swapping a component requires editing the environment source code — changing <code>new my_driver()</code> to <code>new err_driver()</code> everywhere the original appears. This is fragile and means you cannot run both a clean test and an error-injection test from the same environment without forking the code.</p>
+  <p>With the factory, the environment always creates <code>my_driver</code> via <code>my_driver::type_id::create()</code>. A test registers an override <em>before build_phase</em> and the factory silently substitutes <code>err_driver</code> at creation time. The environment never needs to know:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Without factory — must edit environment source</span>
+driver = <span class="kw">new</span> err_driver(<span class="str">"driver"</span>, <span class="kw">this</span>);   <span class="cm">// ← fragile, need to edit agent</span>
+
+<span class="cm">// With factory — test registers override, environment unchanged</span>
+<span class="cm">// In the environment (never changes):</span>
+driver = my_driver::type_id::create(<span class="str">"driver"</span>, <span class="kw">this</span>);
+
+<span class="cm">// In error-injection test (override registered before build):</span>
+my_driver::type_id::set_type_override(err_driver::get_type());
+<span class="cm">// Now every create("driver",...) of my_driver returns an err_driver</span></pre>
+  </div>
+
+  <h2 id="registration">2. Registration Macros</h2>
+  <p>Every class that participates in the factory must register itself using one of the following macros. These macros generate the boilerplate <code>type_id</code> class and static registration hooks:</p>
+  <table>
+    <tr><th>Macro</th><th>Use for</th><th>Notes</th></tr>
+    <tr><td><code>`uvm_component_utils(T)</code></td><td>Components (driver, monitor, agent, env, scoreboard)</td><td>Includes parent arg in create()</td></tr>
+    <tr><td><code>`uvm_object_utils(T)</code></td><td>Objects (seq_item, sequence, transaction)</td><td>No parent arg needed</td></tr>
+    <tr><td><code>`uvm_component_utils_begin(T) ... `uvm_component_utils_end</code></td><td>Component with field automation</td><td>Add `uvm_field_* macros inside</td></tr>
+    <tr><td><code>`uvm_object_utils_begin(T) ... `uvm_object_utils_end</code></td><td>Object with field automation</td><td>Enables copy/compare/print/pack</td></tr>
+    <tr><td><code>`uvm_component_param_utils(T#(P))</code></td><td>Parameterised components</td><td>One registration per parameter set</td></tr>
+  </table>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Component registration</span>
+<span class="kw">class</span> <span class="fn">my_driver</span> <span class="kw">extends</span> uvm_driver #(<span class="ty">my_trans</span>);
+  <span class="fn">`uvm_component_utils</span>(my_driver)   <span class="cm">// registers with factory</span>
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+  <span class="cm">// ... tasks and functions</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// Object registration with field automation</span>
+<span class="kw">class</span> <span class="fn">my_trans</span> <span class="kw">extends</span> uvm_sequence_item;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] addr;
+  <span class="kw">rand</span> <span class="ty">logic</span> [<span class="num">31</span>:<span class="num">0</span>] data;
+  <span class="kw">rand</span> <span class="ty">logic</span>        write;
+
+  <span class="fn">`uvm_object_utils_begin</span>(my_trans)
+    <span class="fn">`uvm_field_int</span>(addr,  UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(data,  UVM_ALL_ON)
+    <span class="fn">`uvm_field_int</span>(write, UVM_ALL_ON)
+  <span class="fn">`uvm_object_utils_end</span>
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name = <span class="str">"my_trans"</span>);
+    <span class="kw">super</span>.new(name);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="type-id-create">3. type_id::create() — How It Works Internally</h2>
+  <p>When you call <code>my_driver::type_id::create("driver", this)</code>, the factory:</p>
+  <ol>
+    <li>Looks up <code>my_driver</code> in its type registry by string name and/or type handle</li>
+    <li>Checks if any type or instance override is registered for <code>my_driver</code> at the requested hierarchical path</li>
+    <li>If an override exists, instantiates the override class instead</li>
+    <li>Returns the created object (cast is implicit for components; requires <code>$cast</code> for objects)</li>
+  </ol>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// CORRECT — always use type_id::create()</span>
+my_driver drv = my_driver::type_id::create(<span class="str">"drv"</span>, <span class="kw">this</span>);
+
+<span class="cm">// WRONG — bypasses factory, overrides never apply</span>
+my_driver drv = <span class="kw">new</span>(<span class="str">"drv"</span>, <span class="kw">this</span>);   <span class="cm">// ← never do this in UVM</span>
+
+<span class="cm">// For objects (seq items, sequences) — no parent arg</span>
+my_trans t = my_trans::type_id::create(<span class="str">"t"</span>);
+
+<span class="cm">// For sequences started inside a task</span>
+my_seq seq = my_seq::type_id::create(<span class="str">"seq"</span>);
+seq.start(sequencer);</pre>
+  </div>
+  <div class="callout warn"><strong>Never use new() in UVM:</strong> The only place <code>new()</code> is acceptable is inside the constructor itself (<code>super.new(name, parent)</code>). All other instantiation must go through <code>type_id::create()</code>. Even in simple throw-away code, the habit of using <code>new()</code> directly will eventually cause a hard-to-debug override that silently fails.</div>
+
+  <h2 id="type-override">4. Type Override</h2>
+  <p>A type override replaces <em>every</em> instance of a base class anywhere in the testbench hierarchy with the override class. The override must be registered <strong>before</strong> <code>build_phase</code> runs — typically in the test's <code>build_phase</code> before calling <code>super.build_phase(phase)</code>:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Method 1: via the base class type_id (recommended)</span>
+my_driver::type_id::set_type_override(err_driver::get_type());
+
+<span class="cm">// Method 2: via factory singleton (equivalent)</span>
+uvm_factory::get().set_type_override_by_type(
+  my_driver::get_type(),
+  err_driver::get_type()
+);
+
+<span class="cm">// Method 3: by string name (avoid — error-prone typos)</span>
+factory.set_type_override_by_name(<span class="str">"my_driver"</span>, <span class="str">"err_driver"</span>);
+
+<span class="cm">// In an error-injection test</span>
+<span class="kw">class</span> <span class="fn">err_test</span> <span class="kw">extends</span> base_test;
+  <span class="fn">`uvm_component_utils</span>(err_test)
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="cm">// Register override BEFORE super.build_phase() triggers environment build</span>
+    my_driver::type_id::set_type_override(err_driver::get_type());
+    <span class="kw">super</span>.build_phase(phase);   <span class="cm">// now builds err_driver, not my_driver</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <h2 id="instance-override">5. Instance Override</h2>
+  <p>An instance override applies only to a component at a specific hierarchical path. This is more targeted than a type override and takes precedence over it:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Replace only the driver at this specific path</span>
+my_driver::type_id::set_inst_override(
+  err_driver::get_type(),
+  <span class="str">"uvm_test_top.env.agent.driver"</span>   <span class="cm">// exact hierarchical path</span>
+);
+
+<span class="cm">// Wildcards are supported — replace all drivers under any agent</span>
+my_driver::type_id::set_inst_override(
+  err_driver::get_type(),
+  <span class="str">"uvm_test_top.env.*.driver"</span>
+);
+
+<span class="cm">// Via factory singleton</span>
+uvm_factory::get().set_inst_override_by_type(
+  my_driver::get_type(),
+  err_driver::get_type(),
+  <span class="str">"uvm_test_top.env.agent.driver"</span>
+);</pre>
+  </div>
+  <table>
+    <tr><th>Override type</th><th>Scope</th><th>Precedence</th><th>Use when</th></tr>
+    <tr><td>Type override</td><td>Entire testbench</td><td>Lower</td><td>Globally replacing all instances of a class</td></tr>
+    <tr><td>Instance override</td><td>Specific path only</td><td>Higher — wins over type override</td><td>Replacing one specific component in a multi-agent env</td></tr>
+  </table>
+
+  <h2 id="factory-debug">6. Factory Debug</h2>
+  <p>When overrides don't seem to take effect, use the factory's built-in debug tools:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Print all registered factory types and active overrides</span>
+uvm_factory::get().print(<span class="num">1</span>);   <span class="cm">// 1 = print all; 0 = overrides only</span>
+
+<span class="cm">// Print the full component topology after build_phase</span>
+uvm_top.print_topology();
+
+<span class="cm">// Plusarg: shows each override application at creation time</span>
+<span class="cm">// Add to simulator command line:</span>
+<span class="cm">// +UVM_FACTORY_PRINT_OVERRIDE_INFO</span>
+
+<span class="cm">// Check what type the factory will create for a given context</span>
+<span class="kw">begin</span>
+  uvm_object_wrapper w;
+  w = uvm_factory::get().find_override_by_type(
+        my_driver::get_type(),
+        <span class="str">"uvm_test_top.env.agent.driver"</span>);
+  <span class="fn">`uvm_info</span>(<span class="str">"FAC"</span>,
+    $sformatf(<span class="str">"Factory will create: %s"</span>, w.get_type_name()),
+    UVM_NONE)
+<span class="kw">end</span></pre>
+  </div>
+  <div class="callout tip"><strong>Most common mistake:</strong> Registering the override <em>after</em> <code>super.build_phase(phase)</code> — by that time all components are already built. Always call overrides as the very first statements in the test's build_phase, before the super call.</div>
+
+  <h2 id="override-use-cases">7. Override Use Cases</h2>
+  <p>Factory overrides enable a library of reuse patterns without touching source code:</p>
+  <ul>
+    <li><strong>Error injection:</strong> Replace the base driver with an error-injecting variant that corrupts data, inserts protocol violations, or generates timeouts</li>
+    <li><strong>Slow/fast model swap:</strong> Replace a cycle-accurate driver with a TLM/abstract driver for faster regression runs</li>
+    <li><strong>Scoreboard enhancement:</strong> Replace a basic scoreboard with a coverage-collecting scoreboard in specific test classes</li>
+    <li><strong>Sequence override:</strong> Replace the default random sequence with a directed sequence targeting corner cases</li>
+    <li><strong>Protocol variant:</strong> Replace an APB driver with an AHB driver when the same IP block is connected to a different bus</li>
+  </ul>
+
+  <h2 id="component-vs-object">8. Component vs Object</h2>
+  <p>The factory handles both UVM components and UVM objects, but they differ in how they are created and where they live:</p>
+  <table>
+    <tr><th>Feature</th><th>uvm_component</th><th>uvm_object</th></tr>
+    <tr><td>Base class</td><td>uvm_component</td><td>uvm_object / uvm_sequence_item</td></tr>
+    <tr><td>Lifecycle</td><td>Exists for entire simulation</td><td>Created and garbage-collected per transaction</td></tr>
+    <tr><td>Parent</td><td>Has hierarchical parent</td><td>No parent (standalone)</td></tr>
+    <tr><td>Registration</td><td>`uvm_component_utils</td><td>`uvm_object_utils</td></tr>
+    <tr><td>create() signature</td><td><code>T::type_id::create("name", parent)</code></td><td><code>T::type_id::create("name")</code></td></tr>
+    <tr><td>Phase execution</td><td>Participates in UVM phases</td><td>No phases</td></tr>
+    <tr><td>Examples</td><td>driver, monitor, agent, env, test</td><td>seq_item, sequence, config_object</td></tr>
+  </table>
+
+  <h2 id="complete-example">9. Complete Override Example: Error-Injection Driver</h2>
+  <p>A full example showing base driver, error-injection derived driver, and a test that swaps them via factory:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// --- Base driver (in the agent package) ---</span>
+<span class="kw">class</span> <span class="fn">apb_driver</span> <span class="kw">extends</span> uvm_driver #(<span class="ty">apb_trans</span>);
+  <span class="fn">`uvm_component_utils</span>(apb_driver)
+  <span class="kw">virtual</span> <span class="ty">apb_if</span> vif;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent); <span class="kw">super</span>.new(name,parent); <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="kw">super</span>.build_phase(phase);
+    <span class="kw">if</span>(!uvm_config_db#(<span class="kw">virtual</span> <span class="ty">apb_if</span>)::get(<span class="kw">this</span>,<span class="str">""</span>,<span class="str">"vif"</span>,vif))
+      <span class="fn">`uvm_fatal</span>(<span class="str">"VIF"</span>,<span class="str">"No APB vif"</span>)
+  <span class="kw">endfunction</span>
+
+  <span class="kw">task</span> <span class="fn">run_phase</span>(uvm_phase phase);
+    <span class="ty">apb_trans</span> req;
+    <span class="kw">forever</span> <span class="kw">begin</span>
+      seq_item_port.get_next_item(req);
+      drive_normal(req);             <span class="cm">// normal APB transfer</span>
+      seq_item_port.item_done();
+    <span class="kw">end</span>
+  <span class="kw">endtask</span>
+
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">drive_normal</span>(<span class="ty">apb_trans</span> req);
+    @(vif.master_cb);
+    vif.master_cb.paddr  <= req.addr;
+    vif.master_cb.pwdata <= req.data;
+    vif.master_cb.pwrite <= req.write;
+    vif.master_cb.psel   <= <span class="num">1</span>;
+    @(vif.master_cb);
+    vif.master_cb.penable <= <span class="num">1</span>;
+    @(vif.master_cb iff vif.master_cb.pready);
+    vif.master_cb.psel    <= <span class="num">0</span>;
+    vif.master_cb.penable <= <span class="num">0</span>;
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// --- Error-injection driver (in test package) ---</span>
+<span class="kw">class</span> <span class="fn">apb_err_driver</span> <span class="kw">extends</span> apb_driver;
+  <span class="fn">`uvm_component_utils</span>(apb_err_driver)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent); <span class="kw">super</span>.new(name,parent); <span class="kw">endfunction</span>
+
+  <span class="cm">// Override drive_normal to inject a SLVERR on every other transaction</span>
+  <span class="ty">int</span> txn_count = <span class="num">0</span>;
+  <span class="kw">virtual</span> <span class="kw">task</span> <span class="fn">drive_normal</span>(<span class="ty">apb_trans</span> req);
+    txn_count++;
+    <span class="kw">if</span> (txn_count % <span class="num">2</span> == <span class="num">0</span>) <span class="kw">begin</span>
+      <span class="fn">`uvm_info</span>(<span class="str">"ERR_DRV"</span>, <span class="str">"Injecting SLVERR"</span>, UVM_MEDIUM)
+      @(vif.master_cb);
+      vif.master_cb.psel    <= <span class="num">1</span>;
+      vif.master_cb.paddr   <= req.addr ^ <span class="num">32'hDEAD</span>; <span class="cm">// corrupted addr</span>
+      vif.master_cb.penable <= <span class="num">1</span>;
+      @(vif.master_cb);
+      vif.master_cb.psel    <= <span class="num">0</span>;
+      vif.master_cb.penable <= <span class="num">0</span>;
+    <span class="kw">end</span> <span class="kw">else</span>
+      <span class="kw">super</span>.drive_normal(req);   <span class="cm">// normal path for odd transactions</span>
+  <span class="kw">endtask</span>
+<span class="kw">endclass</span>
+
+<span class="cm">// --- Error-injection test ---</span>
+<span class="kw">class</span> <span class="fn">err_inject_test</span> <span class="kw">extends</span> base_test;
+  <span class="fn">`uvm_component_utils</span>(err_inject_test)
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent); <span class="kw">super</span>.new(name,parent); <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    <span class="cm">// Override BEFORE super.build_phase — factory checks at creation time</span>
+    apb_driver::type_id::set_type_override(apb_err_driver::get_type());
+    <span class="fn">`uvm_info</span>(<span class="str">"TEST"</span>, <span class="str">"Factory override: apb_driver → apb_err_driver"</span>, UVM_NONE)
+    <span class="kw">super</span>.build_phase(phase);   <span class="cm">// environment builds — err_driver is created</span>
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span></pre>
+  </div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 12</h3>
+    <ul>
+      <li><strong>Factory</strong> is UVM's object creation registry — it intercepts create() calls and applies overrides</li>
+      <li><strong>`uvm_component_utils</strong> / <strong>`uvm_object_utils</strong> register a class with the factory</li>
+      <li><strong>Always use type_id::create()</strong> — never new() — so overrides can take effect</li>
+      <li><strong>Type override</strong> replaces all instances globally; <strong>instance override</strong> replaces a specific path only</li>
+      <li>Register overrides <strong>before super.build_phase()</strong> in the test — not after</li>
+      <li><strong>factory.print()</strong> and <strong>+UVM_FACTORY_PRINT_OVERRIDE_INFO</strong> are your debug tools</li>
+      <li>Instance overrides have <strong>higher precedence</strong> than type overrides</li>
+      <li>The factory enables driver swap, scoreboard swap, and sequence swap with zero source edits</li>
+    </ul>
+  </div>
+
+  <div class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details>
+      <summary>Why should I never use new() directly in UVM?</summary>
+      <div class="ans">Using new() directly bypasses the UVM factory, which means factory overrides have no effect on that object. If a test tries to replace your driver with an error-injection driver using a factory override, but the driver was created with new() instead of type_id::create(), the override is silently ignored. Always use MyClass::type_id::create(name, parent) so the factory can intercept the creation and return the overriding type if one has been registered.</div>
+    </details>
+    <details>
+      <summary>What is the difference between type override and instance override?</summary>
+      <div class="ans">A type override (set_type_override_by_type) replaces every instance of a class throughout the entire testbench hierarchy with the specified override class. An instance override (set_inst_override_by_type) replaces only the instance at a specific hierarchical path. Instance overrides take precedence over type overrides. Use type override to globally swap all agents to error-injection mode; use instance override when you only want one specific driver or agent to behave differently.</div>
+    </details>
+    <details>
+      <summary>What does uvm_component_utils do?</summary>
+      <div class="ans">The `uvm_component_utils macro registers the class with the UVM factory under its own type name, generates a type_id nested class that supports create() and override, and adds common utilities like get_type_name() and create(). Without this macro, the class cannot be created via type_id::create() and cannot be overridden by the factory.</div>
+    </details>
+    <details>
+      <summary>How do I debug UVM factory overrides?</summary>
+      <div class="ans">Use uvm_factory::get().print() to print all registered types and active overrides to the log. Also add +UVM_FACTORY_PRINT_OVERRIDE_INFO to the simulator command line to get a message every time an override is applied during object creation. Use uvm_top.print_topology() after the build_phase to see the full component hierarchy and verify which types were actually instantiated.</div>
+    </details>
+  </div>
+
+  <a href="/verification/13-uvm-config-db/" class="next-card">
+    <div>
+      <div class="next-label">Next → Day 13</div>
+      <div class="next-title">UVM Config DB</div>
+      <div class="next-desc">set() and get() API, virtual interface passing, configuration objects, path wildcards, precedence rules, and +UVM_CONFIG_DB_TRACE debug.</div>
+    </div>
+    <div class="next-arrow">→</div>
+  </a>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+  <div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85">
+    <a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot;
+    <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot;
+    <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot;
+    <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a>
+  </div>
+  <p style="margin-top:.5rem">By EcrioniX · Updated June 2026</p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>

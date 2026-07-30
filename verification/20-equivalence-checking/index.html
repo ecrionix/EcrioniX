@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Equivalence Checking — Day 20 | EcrioniX Verification Series</title>
+  <meta name="description" content="Logic equivalence checking (LEC): RTL-to-netlist, sequential vs combinational LEC, Synopsys Formality and Cadence Conformal workflow, key points, debugging non-equivalent points, and common non-equivalence causes.">
+  <meta name="keywords" content="equivalence checking, logic equivalence checking, LEC, Synopsys Formality, Cadence Conformal, RTL to netlist, combinational LEC, sequential LEC, non-equivalent points, formal equivalence, key points verification">
+  <link rel="canonical" href="https://ecrionix.org/verification/20-equivalence-checking/">
+  <meta property="og:title" content="Equivalence Checking — Day 20 | EcrioniX Verification Series">
+  <meta property="og:description" content="Logic equivalence checking (LEC): RTL-to-netlist, sequential vs combinational LEC, Synopsys Formality and Cadence Conformal workflow, key points, debugging NE points, and common non-equivalence causes.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/20-equivalence-checking/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Equivalence Checking — Day 20 | EcrioniX Verification Series">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"Equivalence Checking — Day 20","description":"Logic equivalence checking (LEC): RTL-to-netlist, sequential vs combinational LEC, Synopsys Formality and Cadence Conformal workflow, key points, debugging NE points, and common non-equivalence causes.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/20-equivalence-checking/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 20 — Equivalence Checking","item":"https://ecrionix.org/verification/20-equivalence-checking/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the difference between LEC and formal verification?","acceptedAnswer":{"@type":"Answer","text":"LEC (Logic Equivalence Checking) proves that two representations of the same design — e.g., RTL and post-synthesis netlist — compute identical functions, without proving anything about the specification. Formal verification (model checking / property checking) proves that a single design satisfies a temporal property or SVA assertion written against the specification. LEC answers 'did the tool transform the design correctly?' while formal verification answers 'does the design behave as specified?'"}},
+      {"@type":"Question","name":"Why are registers used as key points in combinational LEC?","acceptedAnswer":{"@type":"Answer","text":"Registers (flip-flops and latches) are natural partitioning points because they separate combinational cones. By treating register outputs as primary inputs and register inputs as primary outputs, the entire sequential circuit is decomposed into a set of purely combinational cones. Each cone can then be independently verified using BDD or SAT-based methods, which are highly efficient for combinational logic. This makes LEC tractable even for designs with millions of gates."}},
+      {"@type":"Question","name":"What are the most common causes of non-equivalence after synthesis?","acceptedAnswer":{"@type":"Answer","text":"The four most frequent sources of NE points after synthesis are: (1) Reset handling differences — RTL uses synchronous reset but the tool maps it as asynchronous, or vice versa; (2) Clock gating — the synthesis tool inserts or restructures ICG cells that the LEC tool does not automatically model as equivalences; (3) Scan insertion — DFT scan mux changes the netlist topology in a way that LEC sees as a functional difference unless told to ignore scan mode; (4) Retiming — moving registers across combinational logic to improve timing creates a structurally different but functionally equivalent netlist that requires sequential LEC rather than combinational LEC."}},
+      {"@type":"Question","name":"How do Formality and Conformal handle unverified key points?","acceptedAnswer":{"@type":"Answer","text":"Both tools mark key point pairs as 'VERIFIED', 'NON-EQUIVALENT', or 'UNVERIFIED'. Unverified points occur when the tool cannot determine equivalence within its resource limits (time-out, memory), or when the key point mapping is ambiguous. Formality provides the 'analyze_datapath -effort high' command to push harder on unverified points. Conformal offers 'set effort level ultimate' and 'analyze datapath'. If a key point remains unverified after increased effort, engineers must manually review the RTL-to-netlist mapping and potentially add user-defined key points or exclude the path with a waiver."}},
+      {"@type":"Question","name":"Can LEC catch bugs introduced by ECO (engineering change order) patches?","acceptedAnswer":{"@type":"Answer","text":"Yes — gate-to-gate LEC is the primary technique for verifying ECO correctness. After an ECO is applied to the netlist, a gate-to-gate LEC run compares the pre-ECO netlist (golden) against the post-ECO netlist (revised). If only the intended logic changed, all other key points should verify equivalently, and only the patched cones will show differences that the engineer reviews. This is much faster and more reliable than re-running full simulation regression after a late-stage ECO."}},
+      {"@type":"Question","name":"What is sequential LEC and when is it needed?","acceptedAnswer":{"@type":"Answer","text":"Sequential LEC extends combinational LEC by unrolling the circuit over multiple time steps (bounded model checking style) or by using liveness / invariant analysis. It is needed when register retiming is applied (registers move across combinational cones), when sequential optimizations like state-machine re-encoding or pipeline merging are performed, or when flip-flop-to-flip-flop mapping cannot be established on a one-to-one basis. Sequential LEC is significantly slower than combinational LEC and is usually applied only to blocks where the tool reports mapping failures in combinational mode."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:660px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .footer-links{display:flex;justify-content:center;gap:1.5rem;margin-top:.6rem;flex-wrap:wrap}
+    .footer-links a{color:var(--dim);font-size:.8rem;transition:color .2s}.footer-links a:hover{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .diagram{background:rgba(15,23,42,.8);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.5rem;margin:1.2rem 0;overflow-x:auto}
+    .diagram svg{display:block;max-width:100%;height:auto}
+    .prev-card{background:linear-gradient(135deg,rgba(56,189,248,.06),rgba(15,23,42,.04));border:1px solid rgba(56,189,248,.2);border-radius:14px;padding:1.2rem 1.5rem;margin-top:1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .prev-card:hover{border-color:var(--sky);transform:translateX(-3px)}
+    .nav-pair{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.5rem}
+    @media(max-width:600px){.nav-pair{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ NAV ═══════════════════════════════ -->
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/verification/">Verification</a></li>
+      <li><a href="/vlsi/">VLSI</a></li>
+      <li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a>
+    <a href="/verification/">Verification Series</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════ DAY NAV ═══════════════════════════════ -->
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 20 of 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/19-formal-verification/" class="dnbtn dnbtn-prev">&#8592; Day 19</a>
+    <a href="/verification/21-axi4-verification/" class="dnbtn dnbtn-next">Day 21 &#8594;</a>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ BREADCRUMB ═══════════════════════════════ -->
+<div class="bc">
+  <a href="/">Home</a><span>&#8250;</span><a href="/verification/">Verification Series</a><span>&#8250;</span>Day 20 &mdash; Equivalence Checking
+</div>
+
+<!-- ═══════════════════════════════ HERO ═══════════════════════════════ -->
+<div class="hero">
+  <div class="hero-tag">&#9654; Verification Series &mdash; Day 20</div>
+  <h1>Equivalence Checking</h1>
+  <p class="hero-sub">Logic Equivalence Checking (LEC) mathematically proves that two design representations compute identical Boolean functions — catching synthesis, optimization, and ECO bugs that simulation can never find. Learn how key points partition circuits, master Synopsys Formality and Cadence Conformal flows, and confidently debug non-equivalent (NE) points in production designs.</p>
+  <div class="hero-meta">
+    <span>&#128337; 22 min read</span>
+    <span>&#128187; Tcl + SV examples</span>
+    <span>By EcrioniX &middot; Updated 22 Jun 2026</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ BODY ═══════════════════════════════ -->
+<div class="body">
+
+  <!-- SVG DIAGRAM -->
+  <div class="diagram">
+    <svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif" font-size="13">
+      <!-- Golden (RTL) box -->
+      <rect x="20" y="60" width="170" height="80" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="105" y="95" text-anchor="middle" fill="#38bdf8" font-weight="700" font-size="14">GOLDEN</text>
+      <text x="105" y="115" text-anchor="middle" fill="#94a3b8" font-size="11">RTL / pre-synthesis</text>
+
+      <!-- Arrow to LEC engine -->
+      <line x1="190" y1="100" x2="290" y2="100" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- LEC engine -->
+      <rect x="290" y="45" width="180" height="110" rx="12" fill="#0f172a" stroke="#a78bfa" stroke-width="2"/>
+      <text x="380" y="85" text-anchor="middle" fill="#a78bfa" font-weight="700" font-size="15">LEC ENGINE</text>
+      <text x="380" y="105" text-anchor="middle" fill="#94a3b8" font-size="11">BDD / SAT solver</text>
+      <text x="380" y="122" text-anchor="middle" fill="#94a3b8" font-size="11">key-point matching</text>
+
+      <!-- Arrow from revised -->
+      <line x1="570" y1="100" x2="470" y2="100" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Revised (netlist) box -->
+      <rect x="570" y="60" width="170" height="80" rx="10" fill="#0f172a" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="655" y="95" text-anchor="middle" fill="#4ade80" font-weight="700" font-size="14">REVISED</text>
+      <text x="655" y="115" text-anchor="middle" fill="#94a3b8" font-size="11">netlist / post-ECO</text>
+
+      <!-- Result arrow down -->
+      <line x1="380" y1="155" x2="380" y2="185" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="380" y="198" text-anchor="middle" fill="#f8fafc" font-size="12">VERIFIED / NE / UNVERIFIED</text>
+
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#334155"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+      <li><a href="#what-lec-proves">What LEC Proves</a></li>
+      <li><a href="#use-cases">RTL-to-Gate vs Gate-to-Gate Use Cases</a></li>
+      <li><a href="#combinational-vs-sequential">Combinational vs Sequential LEC</a></li>
+      <li><a href="#key-points">Key Points: The Partitioning Concept</a></li>
+      <li><a href="#formality-flow">Synopsys Formality Workflow</a></li>
+      <li><a href="#conformal-flow">Cadence Conformal Workflow</a></li>
+      <li><a href="#debugging-ne">Debugging Non-Equivalent Points</a></li>
+      <li><a href="#ne-causes">Common Non-Equivalence Causes</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- ═══ SECTION 1 ═══ -->
+  <h2 id="what-lec-proves">1. What LEC Proves</h2>
+  <p>Logic Equivalence Checking is a formal method that takes two circuit representations — called the <strong>golden</strong> and the <strong>revised</strong> — and mathematically proves they implement the exact same Boolean function at every output point. It is not simulation: no test vectors are applied. Instead, the tool constructs a mathematical proof using Binary Decision Diagrams (BDDs), SAT solvers, or a combination of both.</p>
+  <p>The critical distinction: LEC verifies <em>structural transformation correctness</em>, not <em>specification compliance</em>. Given an RTL that correctly implements a FIFO, LEC can prove that the post-synthesis netlist is functionally identical to that RTL. But it cannot tell you whether the RTL's FIFO depth was the right choice — that is the domain of functional verification and formal property checking.</p>
+
+  <div class="callout info"><strong>Why simulation alone is insufficient:</strong> Synthesis tools perform hundreds of transformations — technology mapping, logic optimization, constant propagation, retiming. A subtle tool bug or constraint error can silently corrupt the netlist. Exhaustive simulation would require 2<sup>N</sup> input combinations for N inputs. LEC provides a <em>complete, exhaustive proof</em> at the cost of a few CPU hours, regardless of input count.</div>
+
+  <p>LEC produces one of three verdicts per output (key point):</p>
+  <table>
+    <tr><th>Verdict</th><th>Meaning</th><th>Action Required</th></tr>
+    <tr><td><strong style="color:#4ade80">VERIFIED</strong></td><td>Golden and revised compute identical functions at this point</td><td>None — move on</td></tr>
+    <tr><td><strong style="color:#f87171">NON-EQUIVALENT (NE)</strong></td><td>A counterexample exists — different output for some input combination</td><td>Investigate root cause; may be true bug or mapping issue</td></tr>
+    <tr><td><strong style="color:#fbbf24">UNVERIFIED</strong></td><td>Tool timed out or encountered resource limits without finding proof or counterexample</td><td>Increase effort; add constraints; review manually</td></tr>
+  </table>
+
+  <!-- ═══ SECTION 2 ═══ -->
+  <h2 id="use-cases">2. RTL-to-Gate vs Gate-to-Gate Use Cases</h2>
+  <p>LEC is applied at multiple stages of the ASIC flow, with different golden/revised pairs at each stage. Understanding the right pair to compare at each step is essential for building a robust sign-off flow.</p>
+
+  <table>
+    <tr><th>LEC Run</th><th>Golden</th><th>Revised</th><th>What It Catches</th></tr>
+    <tr><td>RTL-to-gate (post-synthesis)</td><td>RTL source</td><td>Post-synthesis netlist</td><td>Synthesis tool bugs, incorrect constraints, missing dont_touch attributes</td></tr>
+    <tr><td>Gate-to-gate (post-layout)</td><td>Post-synthesis netlist</td><td>Post-layout netlist</td><td>Physical optimization errors, filler cell corruption, ECO application bugs</td></tr>
+    <tr><td>Gate-to-gate (post-ECO)</td><td>Pre-ECO netlist</td><td>Post-ECO netlist</td><td>ECO correctness — verifies only intended cones changed</td></tr>
+    <tr><td>Gate-to-gate (post-DFT)</td><td>Pre-DFT netlist</td><td>Post-scan-insertion netlist</td><td>Scan mux insertion correctness, test mode vs functional mode equivalence</td></tr>
+  </table>
+
+  <p>The RTL-to-gate run is the most critical and runs immediately after synthesis. The gate-to-gate run after layout catches late-stage tool bugs. Both are mandatory for tapeout sign-off in any serious ASIC methodology.</p>
+
+  <div class="callout warn"><strong>ECO LEC is especially valuable:</strong> After a late-stage ECO, re-running full simulation regression takes days. Gate-to-gate LEC verifies the ECO in minutes by confirming that all unchanged points still verify and only the patched cones differ.</div>
+
+  <!-- ═══ SECTION 3 ═══ -->
+  <h2 id="combinational-vs-sequential">3. Combinational vs Sequential LEC</h2>
+  <p>LEC comes in two fundamentally different modes, each appropriate for different circuit transformations.</p>
+
+  <h3>Combinational LEC</h3>
+  <p>Combinational LEC treats every register (flip-flop and latch) as a <em>cut-point</em>: register outputs become pseudo primary inputs (PPIs) and register inputs become pseudo primary outputs (PPOs). The entire sequential circuit is thus decomposed into a set of purely combinational logic cones, each of which is verified independently.</p>
+  <p>This approach is extremely fast — modern BDD and SAT engines can verify millions of cones per hour. It works correctly as long as there is a one-to-one correspondence between registers in the golden and revised designs: the same register in both designs is assigned the same initial state, and the synthesis tool did not move logic across register boundaries.</p>
+
+  <div class="callout tip"><strong>When combinational LEC works:</strong> Standard logic synthesis (without retiming), ECO patches that do not cross register boundaries, scan insertion, and power gating where the tool preserves register structure.</div>
+
+  <h3>Sequential LEC</h3>
+  <p>Sequential LEC is required when register-to-register correspondence cannot be established — most commonly after <strong>register retiming</strong>. Retiming is a synthesis optimization that moves registers forward or backward across combinational logic to balance pipeline stages and improve timing. After retiming, a register in the revised design may correspond to no single register in the golden design; it may represent the combination of state from multiple old registers.</p>
+  <p>Sequential LEC handles this by <strong>bounded unrolling</strong>: it unrolls the circuit over K time steps and proves that for any input sequence of length K, both designs produce identical output sequences. The value of K is set high enough to cover the state-machine depth. This is exponentially more expensive than combinational LEC and is applied selectively to blocks where combinational LEC fails to establish register mapping.</p>
+
+  <table>
+    <tr><th>Property</th><th>Combinational LEC</th><th>Sequential LEC</th></tr>
+    <tr><td>Register handling</td><td>Cut-points (PPIs/PPOs)</td><td>Bounded unrolling over K cycles</td></tr>
+    <tr><td>Speed</td><td>Fast — millions of cones/hour</td><td>Slow — exponential in K and state depth</td></tr>
+    <tr><td>Use case</td><td>Standard synthesis, ECOs, DFT</td><td>Retiming, pipeline restructuring</td></tr>
+    <tr><td>Register mapping needed?</td><td>Yes — one-to-one</td><td>No — handles structural changes</td></tr>
+    <tr><td>Tool support</td><td>Formality, Conformal, all tools</td><td>Formality with sequential mode, Conformal UPF</td></tr>
+  </table>
+
+  <!-- ═══ SECTION 4 ═══ -->
+  <h2 id="key-points">4. Key Points: The Partitioning Concept</h2>
+  <p>The <strong>key point</strong> is the foundational concept of LEC. A key point is any circuit node that divides the design into independent combinational cones for equivalence checking. The tool verifies one cone at a time: it proves that the function computed at the revised key point is identical to the function computed at the corresponding golden key point, given the same values at all upstream key points.</p>
+
+  <h3>What Qualifies as a Key Point?</h3>
+  <ul>
+    <li><strong>Registers (flip-flops and latches):</strong> The most important class. Every register in the design becomes a key point automatically. Its output is a PPI (pseudo primary input) and its input is a PPO (pseudo primary output).</li>
+    <li><strong>Primary inputs (PIs):</strong> Top-level input ports of the design — treated as primary inputs in both golden and revised.</li>
+    <li><strong>Primary outputs (POs):</strong> Top-level output ports — the ultimate verification targets.</li>
+    <li><strong>Black boxes:</strong> When a sub-block is marked as a black box (IP core, memory macro), its output pins become PPIs. The tool assumes both golden and revised black boxes are functionally identical and verifies only the logic surrounding them.</li>
+    <li><strong>User-defined cut-points:</strong> Engineers can manually add cut-points to help the tool handle complex logic cones that are causing UNVERIFIED results due to resource limits.</li>
+  </ul>
+
+  <div class="callout info"><strong>Key insight:</strong> The quality of key point mapping directly determines LEC success. If the tool maps register <code>flop_A</code> in the RTL to the wrong register in the netlist, every cone fed by that register will report NE — even if the design is functionally correct. This is why the mapping step is carefully reported and reviewed before accepting any NE result.</div>
+
+  <h3>How Mapping Works</h3>
+  <p>The tool performs name-based matching first: it looks for registers with the same hierarchical name in both golden and revised. Synthesis tools may rename registers during optimization; to help the tool, designers use <code>dont_rename</code> or <code>set_dont_rename</code> constraints, or the tool uses structural/functional heuristics to match renamed points. When automatic matching fails for a register, the tool marks it UNMATCHED, which cascades into UNVERIFIED results for all cones involving that register.</p>
+
+  <!-- ═══ SECTION 5 ═══ -->
+  <h2 id="formality-flow">5. Synopsys Formality Workflow</h2>
+  <p>Synopsys Formality is the industry-standard LEC tool at most semiconductor companies. It is invoked via Tcl scripts, typically called from a Makefile target or an automation framework after each synthesis step.</p>
+
+  <h3>Basic RTL-to-Gate Formality Script</h3>
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## formality_rtl2gate.tcl</span>
+<span class="cm">## Run: fm_shell -f formality_rtl2gate.tcl | tee formality.log</span>
+
+<span class="cm">## ── 1. Set up the run ──────────────────────────────────────</span>
+<span class="kw">set_svf</span> ../synth/design.svf              <span class="cm">; # Synopsys Verification File from DC</span>
+<span class="fn">set</span> search_path [<span class="fn">list</span> ../rtl /libs/std_cell/db]
+
+<span class="cm">## ── 2. Read the golden (RTL) ───────────────────────────────</span>
+<span class="kw">read_verilog</span> -golden -sva {
+  ../rtl/alu.sv
+  ../rtl/ctrl.sv
+  ../rtl/top.sv
+}
+<span class="kw">set_top</span> golden {r:/WORK/top}
+
+<span class="cm">## ── 3. Read the revised (netlist) ──────────────────────────</span>
+<span class="kw">read_verilog</span> -revised {
+  ../synth/output/top_netlist.v
+}
+<span class="kw">read_db</span> -revised /libs/std_cell/saed14.db
+<span class="kw">set_top</span> revised {i:/WORK/top}
+
+<span class="cm">## ── 4. Match and verify ─────────────────────────────────────</span>
+<span class="kw">match</span>
+<span class="kw">verify</span>
+
+<span class="cm">## ── 5. Report ───────────────────────────────────────────────</span>
+<span class="kw">report_passing_points</span>  <span class="cm">&gt; reports/passing.rpt</span>
+<span class="kw">report_failing_points</span>  <span class="cm">&gt; reports/failing.rpt</span>
+<span class="kw">report_aborted_points</span>  <span class="cm">&gt; reports/aborted.rpt</span>
+
+<span class="kw">if</span> {[<span class="fn">get_status</span>] == <span class="str">"SUCCEEDED"</span>} {
+  <span class="fn">puts</span> <span class="str">"LEC CLEAN: All points verified"</span>
+} <span class="kw">else</span> {
+  <span class="fn">puts</span> <span class="str">"LEC FAILED: See failing.rpt"</span>
+  <span class="kw">exit</span> <span class="num">1</span>
+}</pre>
+  </div>
+
+  <h3>Key Formality Commands Reference</h3>
+  <table>
+    <tr><th>Command</th><th>Purpose</th></tr>
+    <tr><td><code>set_svf</code></td><td>Load the SVF file generated by Design Compiler — contains synthesis directives that help Formality reproduce the correct mapping</td></tr>
+    <tr><td><code>match</code></td><td>Perform key point matching between golden and revised; reports unmatched points</td></tr>
+    <tr><td><code>verify</code></td><td>Run the formal equivalence proof on all matched key point pairs</td></tr>
+    <tr><td><code>analyze_datapath</code></td><td>Apply advanced datapath analysis to reduce UNVERIFIED arithmetic cones</td></tr>
+    <tr><td><code>set_constant</code></td><td>Constrain a signal to a fixed value (e.g., scan_en=0 during functional mode verification)</td></tr>
+    <tr><td><code>set_user_match</code></td><td>Manually specify a golden-to-revised register mapping when automatic matching fails</td></tr>
+    <tr><td><code>report_ne_points</code></td><td>List all non-equivalent points with counterexample witness vectors</td></tr>
+  </table>
+
+  <h3>SVF (Synopsys Verification File)</h3>
+  <p>When Design Compiler synthesizes the design, it generates an SVF file that records every name change, constant folding, and structural decision the tool made. Formality reads this file via <code>set_svf</code> and uses it to guide key point matching. <strong>Always use the SVF</strong> — without it, Formality falls back to purely name-based matching, which frequently fails on optimized netlists and produces spurious NE results.</p>
+
+  <!-- ═══ SECTION 6 ═══ -->
+  <h2 id="conformal-flow">6. Cadence Conformal Workflow</h2>
+  <p>Cadence Conformal (also called Conformal LEC or LEC) is the primary alternative to Formality and is dominant at companies using the Cadence synthesis flow (Genus). The command language differs from Formality but the underlying concepts are identical.</p>
+
+  <h3>Basic RTL-to-Gate Conformal Script</h3>
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## conformal_rtl2gate.do</span>
+<span class="cm">## Run: lec -dofile conformal_rtl2gate.do -xl -nogui | tee conformal.log</span>
+
+<span class="cm">// ── 1. Read the golden (RTL) ────────────────────────────────</span>
+read design -golden -sv        \
+  ../rtl/alu.sv                \
+  ../rtl/ctrl.sv               \
+  ../rtl/top.sv
+set root module top -golden
+
+<span class="cm">// ── 2. Read the revised (netlist + libraries) ───────────────</span>
+read library -revised /libs/tsmc28/tsmc28.lib
+read design -revised -verilog  \
+  ../synth/output/top_netlist.v
+set root module top -revised
+
+<span class="cm">// ── 3. Set functional mode (ignore scan) ────────────────────</span>
+add pin constraints 0 scan_en -both
+add pin constraints 0 test_mode -both
+
+<span class="cm">// ── 4. Flatten hierarchy for matching ───────────────────────</span>
+set flatten model -both
+
+<span class="cm">// ── 5. Match and verify ─────────────────────────────────────</span>
+map key points
+set system mode lec
+
+<span class="cm">// ── 6. Compare and report ───────────────────────────────────</span>
+add compare point -all
+compare
+report compare results -summary
+report compare results -non_equivalent -file ne_points.rpt</pre>
+  </div>
+
+  <h3>Key Conformal Commands</h3>
+  <table>
+    <tr><th>Command</th><th>Purpose</th></tr>
+    <tr><td><code>map key points</code></td><td>Establish key point correspondence between golden and revised</td></tr>
+    <tr><td><code>set system mode lec</code></td><td>Switch to LEC verification mode (as opposed to setup mode)</td></tr>
+    <tr><td><code>add compare point -all</code></td><td>Add all key point pairs as comparison targets</td></tr>
+    <tr><td><code>compare</code></td><td>Run the equivalence proof</td></tr>
+    <tr><td><code>add pin constraints</code></td><td>Fix input pins to constant values for the comparison</td></tr>
+    <tr><td><code>set effort level ultimate</code></td><td>Max compute effort for UNVERIFIED points</td></tr>
+    <tr><td><code>add key point</code></td><td>Manually add a user-defined cut-point</td></tr>
+    <tr><td><code>report unmapped points</code></td><td>List registers that could not be matched</td></tr>
+  </table>
+
+  <div class="callout tip"><strong>Conformal tip — set_flatten_model:</strong> Conformal flattens hierarchy by default during mapping. For designs with deeply nested modules or IP wrappers, use <code>set flatten model -seq_constant -latch_off</code> to control how sequential elements are treated during flattening. Aggressive flattening can improve matching rates for renamed registers.</div>
+
+  <!-- ═══ SECTION 7 ═══ -->
+  <h2 id="debugging-ne">7. Debugging Non-Equivalent Points</h2>
+  <p>When Formality or Conformal reports NE points, the next step is to determine whether this is a <strong>true bug</strong> (the synthesis tool introduced a functional difference) or a <strong>false negative</strong> (a tool limitation, mapping error, or missing constraint that caused a false alarm).</p>
+
+  <h3>Step 1 — Read the Counterexample</h3>
+  <p>Every NE point comes with a <em>counterexample</em>: a set of input values for which golden and revised produce different outputs. This is not a simulation waveform — it is an algebraic witness generated by the SAT solver. In Formality use <code>report_failing_points -verbose</code>; in Conformal use <code>report compare data -ne</code>.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## Formality — examine an NE point interactively</span>
+<span class="kw">start_gui</span>                         <span class="cm">; # launch the Formality GUI</span>
+
+<span class="cm">## Or from script:</span>
+<span class="kw">set</span> ne_pts [<span class="kw">get_failing_points</span>]
+<span class="kw">foreach</span> pt $ne_pts {
+  <span class="fn">puts</span> <span class="str">"NE point: $pt"</span>
+  <span class="kw">report_failing_points</span> -verbose $pt
+  <span class="cm">; # shows counterexample input vector + expected/actual output</span>
+}</pre>
+  </div>
+
+  <h3>Step 2 — Classify the NE Point</h3>
+  <p>Apply the following decision tree to each NE point:</p>
+  <ol>
+    <li><strong>Is the counterexample reachable?</strong> — If the input combination is physically impossible (e.g., requires two one-hot signals high simultaneously), the NE is a false negative. Add a constraint to exclude it: <code>set_constant</code> in Formality or <code>add pin constraints</code> in Conformal.</li>
+    <li><strong>Is the key point mapping correct?</strong> — Run <code>report_matching_points</code> and verify that the register in the golden is matched to the logically correct register in the revised. A mis-match will cause all downstream cones to appear NE even when the design is correct. Use <code>set_user_match</code> (Formality) or <code>add key point -mapping</code> (Conformal) to correct the mapping.</li>
+    <li><strong>Is there a missing SVF/ECO directive?</strong> — Some synthesis operations (e.g., constant propagation that eliminates logic) require the SVF to guide the tool. A missing or stale SVF can cause legitimate optimizations to appear as bugs.</li>
+    <li><strong>Is this a true functional difference?</strong> — If the counterexample is reachable, the mapping is correct, and constraints are applied, the NE represents a real synthesis bug. File a CAR (Corrective Action Request) with the EDA vendor or adjust synthesis constraints to prevent the optimization.</li>
+  </ol>
+
+  <h3>Waivers and Sign-Off</h3>
+  <p>Any NE or UNVERIFIED point that is accepted at sign-off must have a written waiver explaining:</p>
+  <ul>
+    <li>Why the point is not a functional concern (unreachable input, known tool limitation, intentional difference)</li>
+    <li>What alternative verification was done to gain confidence (simulation, formal property check)</li>
+    <li>Who approved the waiver (sign-off requires engineering manager + verification lead)</li>
+  </ul>
+
+  <div class="callout warn"><strong>Never waive an NE point without understanding it.</strong> An NE point at a critical control register — e.g., the reset enable, clock select, or power management state machine — is a potential silicon bug. The cost of a re-spin far exceeds the cost of a thorough investigation.</div>
+
+  <!-- ═══ SECTION 8 ═══ -->
+  <h2 id="ne-causes">8. Common Non-Equivalence Causes</h2>
+  <p>Experience across many ASIC projects reveals four recurring root causes of LEC failures. Understanding them helps you resolve NE points quickly and set up flows that avoid them in the first place.</p>
+
+  <h3>1. Reset Handling Differences</h3>
+  <p>RTL typically uses synchronous reset (reset applied only on the clock edge) or asynchronous reset (reset applied immediately, independent of the clock). Synthesis tools sometimes infer the wrong reset type, or the standard-cell library has flip-flops with only one type of reset that the tool maps to. If the golden RTL has <code>always_ff @(posedge clk) if (rst) q &lt;= 0;</code> but the netlist uses a flip-flop with an asynchronous reset pin, Formality will see a functional difference because the reset sensitivity differs.</p>
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// RTL: synchronous reset — LEC golden</span>
+<span class="kw">always_ff</span> @(<span class="kw">posedge</span> clk) <span class="kw">begin</span>
+  <span class="kw">if</span> (rst_n == <span class="num">1'b0</span>)
+    q &lt;= <span class="num">8'h00</span>;
+  <span class="kw">else</span>
+    q &lt;= d;
+<span class="kw">end</span>
+
+<span class="cm">// Formality workaround: constrain rst_n=1 to eliminate reset path from</span>
+<span class="cm">// the functional comparison (verify only the data path)</span>
+<span class="kw">set_constant</span> r:/WORK/top/rst_n <span class="num">1</span></pre>
+  </div>
+
+  <h3>2. Clock Gating (ICG Cells)</h3>
+  <p>Power-aware synthesis inserts Integrated Clock Gating (ICG) cells. An ICG cell is a latch-based gate that generates a glitch-free gated clock. From the LEC tool's perspective, the ICG output is a new "clock" signal that was not present in the RTL — the registers driven by it have a different clock sensitivity in the netlist than in the RTL. Most tools have built-in ICG awareness: Formality's <code>analyze_clocks</code> and Conformal's <code>set clock</code> commands identify ICG cells and handle them correctly, but the tool must be told the ICG cell name so it can match the gating function.</p>
+
+  <h3>3. Scan Insertion</h3>
+  <p>DFT scan insertion replaces each regular flip-flop with a scan flip-flop that has an additional scan-in (SI) input and scan-enable (SE) input. In functional mode (SE=0), the flip-flop behaves identically to the original. LEC must be run with SE constrained to 0 to perform a functional-mode comparison. Failing to constrain SE will cause every scan flop to appear NE because the tool sees an extra input that doesn't exist in the RTL.</p>
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## Formality: constrain scan_enable=0 for functional LEC</span>
+<span class="kw">set_constant</span> i:/WORK/top/scan_en <span class="num">0</span>
+
+<span class="cm">## Conformal: same effect</span>
+add pin constraints 0 scan_en -revised</pre>
+  </div>
+
+  <h3>4. Register Retiming</h3>
+  <p>When the synthesis tool applies retiming to balance pipeline stages, it physically moves flip-flops across combinational logic. The number of registers may change, register names change, and the functional behavior at any single cycle boundary changes — even though the end-to-end latency and throughput of the pipeline are preserved. Combinational LEC will report massive NE because it cannot establish register mapping. The solution is to either disable retiming for blocks that must pass combinational LEC, or run sequential LEC on those blocks. Most teams disable retiming by default and enable it selectively with <code>set_dont_retime</code> constraints.</p>
+
+  <table>
+    <tr><th>NE Cause</th><th>Detection Signal</th><th>Resolution</th></tr>
+    <tr><td>Reset type mismatch</td><td>NE on all outputs of a reset-controlled register</td><td>Constrain reset to inactive; review synthesis reset inversion settings</td></tr>
+    <tr><td>ICG cell handling</td><td>NE on registers under gated clocks</td><td>Use <code>analyze_clocks</code>; add ICG cell type to tool library</td></tr>
+    <tr><td>Scan insertion</td><td>Widespread NE on all scan flop outputs</td><td>Constrain scan_enable=0 before running LEC</td></tr>
+    <tr><td>Retiming</td><td>UNMATCHED registers, mass NE</td><td>Use sequential LEC or disable retiming on affected modules</td></tr>
+    <tr><td>Constant propagation</td><td>NE on logic that RTL has but netlist optimized away</td><td>Ensure SVF is current; verify synthesis constraints are correct</td></tr>
+    <tr><td>Multi-driver resolution</td><td>NE on bus signals</td><td>Review synthesis resolution rules; add explicit <code>dont_merge</code></td></tr>
+  </table>
+
+  <!-- ═══ TAKEAWAYS ═══ -->
+  <div class="takeaways">
+    <h3>&#10003; Key Takeaways — Day 20</h3>
+    <ul>
+      <li>LEC proves that two design representations compute identical Boolean functions — it is exhaustive, unlike simulation.</li>
+      <li>Registers are the primary key points: their outputs become PPIs and their inputs become PPOs, decomposing the circuit into independent combinational cones.</li>
+      <li>Combinational LEC is fast and handles standard synthesis, ECOs, and DFT; sequential LEC is needed when retiming crosses register boundaries.</li>
+      <li>Synopsys Formality reads the SVF file from Design Compiler to guide key point mapping — always generate and use the SVF.</li>
+      <li>Cadence Conformal uses <code>map key points</code> followed by <code>compare</code> — constrain scan_enable=0 before comparing DFT netlists.</li>
+      <li>NE points are either true synthesis bugs or false negatives from mapping errors, unreachable inputs, or missing constraints — investigate each one before waiving.</li>
+      <li>The four most common NE causes are: reset type mismatch, ICG cell handling, scan insertion, and retiming.</li>
+    </ul>
+  </div>
+
+  <!-- ═══ FAQ ═══ -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is the difference between LEC and formal verification?</summary>
+      <div class="ans">LEC (Logic Equivalence Checking) proves that two representations of the same design — e.g., RTL and post-synthesis netlist — compute identical functions, without proving anything about the specification. Formal verification (model checking / property checking) proves that a single design satisfies a temporal property or SVA assertion written against the specification. LEC answers "did the tool transform the design correctly?" while formal verification answers "does the design behave as specified?"</div>
+    </details>
+    <details>
+      <summary>Why are registers used as key points in combinational LEC?</summary>
+      <div class="ans">Registers (flip-flops and latches) are natural partitioning points because they separate combinational cones. By treating register outputs as primary inputs and register inputs as primary outputs, the entire sequential circuit is decomposed into a set of purely combinational cones. Each cone can then be independently verified using BDD or SAT-based methods, which are highly efficient for combinational logic. This makes LEC tractable even for designs with millions of gates.</div>
+    </details>
+    <details>
+      <summary>What are the most common causes of non-equivalence after synthesis?</summary>
+      <div class="ans">The four most frequent sources of NE points after synthesis are: (1) Reset handling differences — RTL uses synchronous reset but the tool maps it as asynchronous, or vice versa; (2) Clock gating — the synthesis tool inserts or restructures ICG cells that the LEC tool does not automatically model as equivalences; (3) Scan insertion — DFT scan mux changes the netlist topology in a way that LEC sees as a functional difference unless told to ignore scan mode; (4) Retiming — moving registers across combinational logic to improve timing creates a structurally different but functionally equivalent netlist that requires sequential LEC rather than combinational LEC.</div>
+    </details>
+    <details>
+      <summary>How do Formality and Conformal handle unverified key points?</summary>
+      <div class="ans">Both tools mark key point pairs as VERIFIED, NON-EQUIVALENT, or UNVERIFIED. Unverified points occur when the tool cannot determine equivalence within its resource limits (time-out, memory), or when the key point mapping is ambiguous. Formality provides the <code>analyze_datapath -effort high</code> command to push harder on unverified points. Conformal offers <code>set effort level ultimate</code> and <code>analyze datapath</code>. If a key point remains unverified after increased effort, engineers must manually review the RTL-to-netlist mapping and potentially add user-defined key points or exclude the path with a waiver.</div>
+    </details>
+  </div>
+
+  <!-- ═══ PREV / NEXT ═══ -->
+  <div class="nav-pair">
+    <a href="/verification/19-formal-verification/" class="prev-card">
+      <div>
+        <div class="next-label">&#8592; Previous</div>
+        <div class="next-title">Formal Verification</div>
+        <div class="next-desc">Model checking, SVA property proving, and bounded proof depth</div>
+      </div>
+    </a>
+    <a href="/verification/21-axi4-verification/" class="next-card">
+      <div>
+        <div class="next-label">Next &#8594;</div>
+        <div class="next-title">AXI4 Verification</div>
+        <div class="next-desc">Protocol-aware UVM VIP for AXI4, AXI4-Lite, and AXI4-Stream</div>
+      </div>
+      <div class="next-arrow">&#8250;</div>
+    </a>
+  </div>
+
+</div><!-- /body -->
+
+<!-- ═══════════════════════════════ FOOTER ═══════════════════════════════ -->
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>VLSI &middot; Verification &middot; RTL Design — Structured learning for chip engineers.</p>
+  <p style="margin-top:.35rem">By EcrioniX &middot; Updated 22 Jun 2026</p>
+  <div class="footer-links">
+    <a href="/legal/privacy.html">Privacy Policy</a>
+    <a href="/legal/terms.html">Terms of Use</a>
+    <a href="/verification/">Verification Series</a>
+    <a href="/vlsi/">VLSI</a>
+    <a href="/">Home</a>
+  </div>
+</footer>
+
+<!-- ═══ BACK TO TOP ═══ -->
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">&#8593;</button>
+
+<script>
+  // hamburger
+  document.getElementById('hamburger').addEventListener('click', function(){
+    document.getElementById('mobileMenu').classList.toggle('open');
+  });
+
+  // scroll top
+  const st = document.getElementById('scrollTop');
+  window.addEventListener('scroll', () => {
+    st.classList.toggle('visible', window.scrollY > 400);
+  });
+  st.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
+
+  // copy buttons
+  function copyCode(btn) {
+    const pre = btn.nextElementSibling;
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1800);
+    });
+  }
+</script>
+</body>
+</html>

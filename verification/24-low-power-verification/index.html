@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Low Power Verification — Day 24 | EcrioniX Verification Series</title>
+  <meta name="description" content="Low power verification with UPF/IEEE 1801: power domain checking, isolation cell verification, retention register save/restore, power state table coverage, X-propagation, and Questa Power Aware simulation flow.">
+  <meta name="keywords" content="low power verification, UPF verification, IEEE 1801, isolation cell verification, retention register verification, power state table, X-propagation, Questa Power Aware, power domain checking, CPF verification">
+  <link rel="canonical" href="https://ecrionix.org/verification/24-low-power-verification/">
+  <meta property="og:title" content="Low Power Verification — Day 24 | EcrioniX Verification Series">
+  <meta property="og:description" content="Low power verification with UPF/IEEE 1801: power domain checking, isolation cell verification, retention register save/restore, power state table coverage, X-propagation, and Questa Power Aware simulation flow.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/24-low-power-verification/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"Low Power Verification — Day 24","description":"Low power verification with UPF/IEEE 1801: power domain checking, isolation cell verification, retention register save/restore, power state table coverage, X-propagation, and Questa Power Aware simulation flow.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/24-low-power-verification/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 24 — Low Power Verification","item":"https://ecrionix.org/verification/24-low-power-verification/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is the purpose of an isolation cell in low power design?","acceptedAnswer":{"@type":"Answer","text":"An isolation cell clamps the output of a powered-off domain to a safe, known logic value (0 or 1) so that logic in an always-on domain that receives those outputs does not see spurious transitions or X values. Without isolation, a powered-off driver floats and the receiving gate can oscillate, causing incorrect state changes or short-circuit current. In UPF you specify the safe value with create_isolation_rule -isolation_sense low|high, and verification checks that the isolation enable arrives before power is removed and that the clamped value matches the UPF intent."}},
+      {"@type":"Question","name":"What bugs are caught by power state table (PST) coverage?","acceptedAnswer":{"@type":"Answer","text":"A power state table enumerates all legal combinations of supply states across every power domain. PST coverage checks that every row in that table is actually exercised during simulation. Bugs caught include: (1) missing isolation — a domain is powered off but the isolation enable was never asserted; (2) unreachable states — a supply rail has no test sequence that drives it to off; (3) illegal transitions — the design enters a power combination not listed in the PST, which UPF tools flag as a violation; (4) restore-before-power — the retention restore command fires before VDD has stabilised, corrupting register contents."}},
+      {"@type":"Question","name":"Why do X values appear during low power simulation and how are they contained?","acceptedAnswer":{"@type":"Answer","text":"When a power domain is turned off, all flip-flop outputs in that domain become X because the supply is no longer driving them. These Xs propagate through combinational logic into always-on domains if no isolation cell is present or if the isolation enable is asserted too late. They are contained by: (1) correct isolation cell insertion — the cell output is forced to the safe value before power drops; (2) retention registers — state is saved before power-off so the restore value is valid, not X; (3) power-aware (PA) simulation with X-pessimism reduction — Questa PA uses UPF supply semantics to drive 0/1 instead of X on domain crossings that have valid isolation."}},
+      {"@type":"Question","name":"What is the correct sequence for retention register save and restore in UPF?","acceptedAnswer":{"@type":"Answer","text":"The IEEE 1801 mandated sequence for save is: (1) assert retention enable (SAVE command in UPF) while the supply is still fully on; (2) hold enable asserted for at least one clock edge so the shadow latch captures data; (3) power down the primary supply. For restore: (1) power up the primary supply and wait for it to stabilise (PG rail reaches full voltage); (2) assert the restore enable (RESTORE command); (3) hold for at least one clock edge so the master latch loads the shadow value; (4) de-assert restore enable before normal clocking resumes. Verifying wrong polarity of the retention enable or swapped save/restore ordering are the two most common bugs caught by UPF-aware simulation."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .prev-next{display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap}
+    .prev-card{background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.02));border:1px solid rgba(167,139,250,.15);border-radius:14px;padding:1.2rem 1.5rem;flex:1;min-width:200px;text-decoration:none;color:inherit;transition:all .2s}
+    .prev-card:hover{border-color:var(--violet)}
+    .prev-label{font-size:.7rem;font-weight:700;color:var(--dim);text-transform:uppercase;margin-bottom:.3rem}
+    .prev-title{font-size:.95rem;font-weight:700;color:#f1f5f9}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .badge-row{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0 1.2rem}
+    .badge{display:inline-block;padding:.2rem .65rem;border-radius:100px;font-size:.72rem;font-weight:700}
+    .badge-sky{background:rgba(56,189,248,.1);color:var(--sky);border:1px solid rgba(56,189,248,.2)}
+    .badge-violet{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+    .badge-amber{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.2)}
+    .badge-green{background:rgba(74,222,128,.1);color:var(--green);border:1px solid rgba(74,222,128,.2)}
+    .domain-box{border-radius:12px;padding:1rem 1.2rem;margin:1rem 0}
+    .domain-ao{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2)}
+    .domain-pd{background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2)}
+    .steps{counter-reset:step;list-style:none;padding:0}
+    .steps li{counter-increment:step;display:flex;gap:.8rem;align-items:flex-start;padding:.6rem 0;border-bottom:1px solid rgba(148,163,184,.06);font-size:.88rem;color:var(--muted)}
+    .steps li::before{content:counter(step);min-width:24px;height:24px;border-radius:50%;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:var(--violet);font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 24 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/23-cdc-verification/" class="dnbtn dnbtn-prev">← Day 23</a>
+    <a href="/verification/25-dv-interview-questions/" class="dnbtn dnbtn-next">Day 25 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 24 — Low Power Verification</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 6 — Advanced Verification Topics</div>
+  <h1>Low Power Verification</h1>
+  <div style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub">Battery life and thermal budgets make low power verification one of the highest-stakes disciplines in modern SoC sign-off. UPF (IEEE 1801) encodes the power intent — domains, rails, isolation rules, retention strategies — and power-aware simulation checks that the RTL plus the power network behaves correctly across every supply state. A single missing isolation cell or wrong retention polarity can corrupt data when power is toggled, producing a silicon bug that only shows up at runtime.</p>
+  <div class="hero-meta"><span>⏱ 38 min read</span><span>📖 Day 24 of 25</span><span>🎯 UPF · Isolation · Retention · PST · Questa PA</span></div>
+</div>
+
+<!-- SVG diagram: Power domain overview -->
+<div style="max-width:860px;margin:0 auto;padding:0 1.25rem">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;display:block;margin:0 auto 1.5rem;border-radius:12px">
+  <rect width="720" height="200" fill="#0f172a" rx="12"/>
+  <!-- Always-on domain -->
+  <rect x="20" y="30" width="200" height="140" rx="8" fill="rgba(56,189,248,0.06)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="0"/>
+  <text x="120" y="52" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="11" font-weight="700">Always-ON Domain</text>
+  <text x="120" y="70" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">VDD_AO = 1.0V (constant)</text>
+  <rect x="50" y="85" width="140" height="38" rx="6" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="1"/>
+  <text x="120" y="108" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="10">PMU / PCU</text>
+  <rect x="50" y="133" width="140" height="28" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1"/>
+  <text x="120" y="151" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">Boot ROM / Retention Ctrl</text>
+
+  <!-- Isolation cells -->
+  <text x="265" y="90" text-anchor="middle" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="9" font-weight="700">ISO</text>
+  <rect x="248" y="72" width="34" height="20" rx="4" fill="rgba(251,191,36,.12)" stroke="#fbbf24" stroke-width="1"/>
+  <text x="265" y="128" text-anchor="middle" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="9" font-weight="700">ISO</text>
+  <rect x="248" y="110" width="34" height="20" rx="4" fill="rgba(251,191,36,.12)" stroke="#fbbf24" stroke-width="1"/>
+  <!-- arrows -->
+  <line x1="190" y1="82" x2="248" y2="82" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <line x1="282" y1="82" x2="315" y2="82" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <line x1="190" y1="120" x2="248" y2="120" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <line x1="282" y1="120" x2="315" y2="120" stroke="#64748b" stroke-width="1" marker-end="url(#arr)"/>
+  <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker></defs>
+
+  <!-- Power-down domain -->
+  <rect x="315" y="30" width="200" height="140" rx="8" fill="rgba(167,139,250,0.06)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="415" y="52" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="11" font-weight="700">Power-Down Domain</text>
+  <text x="415" y="70" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">VDD_PD = 0.9V / OFF</text>
+  <rect x="345" y="85" width="140" height="38" rx="6" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="415" y="108" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="10">DSP Core / AI Accelerator</text>
+  <rect x="345" y="133" width="140" height="28" rx="6" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="415" y="151" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">Retention Registers (RET)</text>
+
+  <!-- Retention rail -->
+  <text x="555" y="60" text-anchor="start" fill="#4ade80" font-family="Outfit,sans-serif" font-size="9" font-weight="700">VDD_RET</text>
+  <text x="555" y="74" text-anchor="start" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">(always on,</text>
+  <text x="555" y="86" text-anchor="start" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">shadow latch)</text>
+  <line x1="515" y1="147" x2="554" y2="147" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="4,2"/>
+  <rect x="554" y="137" width="60" height="20" rx="4" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1"/>
+  <text x="584" y="150" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="9">Shadow</text>
+
+  <!-- Labels -->
+  <text x="360" y="190" text-anchor="middle" fill="#334155" font-family="Outfit,sans-serif" font-size="9">UPF Power Domain Architecture — AO + PD with Isolation &amp; Retention</text>
+</svg>
+</div>
+
+<div class="body">
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#upf-basics">UPF Power Intent Basics</a></li>
+      <li><a href="#isolation">Isolation Cell Insertion &amp; Verification</a></li>
+      <li><a href="#retention">Retention Register Save / Restore</a></li>
+      <li><a href="#pst">Power State Table (PST) Coverage</a></li>
+      <li><a href="#xprop">X-Propagation from Ungated Domains</a></li>
+      <li><a href="#questa-pa">Questa Power Aware Simulation Flow</a></li>
+      <li><a href="#common-bugs">Common Low Power Bugs</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <!-- ===== SECTION 1 ===== -->
+  <h2 id="upf-basics">1. UPF Power Intent Basics</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-sky">IEEE 1801</span>
+    <span class="badge badge-violet">create_power_domain</span>
+    <span class="badge badge-amber">add_port_state</span>
+    <span class="badge badge-green">supply network</span>
+  </div>
+
+  <p>Unified Power Format (UPF), standardised as IEEE 1801, is a Tcl-based language that annotates RTL with the power intent the design team intends to implement. The simulator reads the UPF alongside the RTL so it knows which domains can be switched off, what supply voltage each domain nominally receives, and what structural elements (isolation cells, level shifters, retention registers) must be present at the domain crossings.</p>
+
+  <p>The four foundational UPF commands engineers encounter first are <strong>create_power_domain</strong>, <strong>create_supply_port / create_supply_net</strong>, <strong>connect_supply_net</strong>, and <strong>add_port_state</strong>. Understanding exactly what each one declares removes most of the confusion beginners face when reading UPF files.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## upf/top.upf  — Minimal UPF for a two-domain SoC</span>
+
+<span class="cm"># ---- Supply network for Always-On (AO) domain ----</span>
+<span class="fn">create_supply_port</span>  VDD_AO     <span class="op">-direction</span> in
+<span class="fn">create_supply_port</span>  VSS        <span class="op">-direction</span> in
+<span class="fn">create_supply_net</span>   VDD_AO_net <span class="op">-domain</span> AO_domain
+<span class="fn">connect_supply_net</span>  VDD_AO_net <span class="op">-ports</span> VDD_AO
+
+<span class="cm"># ---- Always-On domain covers the PMU and boot logic ----</span>
+<span class="fn">create_power_domain</span> AO_domain  <span class="op">-elements</span> {u_pmu u_boot_rom}
+<span class="fn">create_pst</span>          top_pst    <span class="op">-supply_nets</span> {VDD_AO_net VDD_PD_net}
+
+<span class="cm"># ---- Switchable domain for DSP core ----</span>
+<span class="fn">create_supply_port</span>  VDD_PD     <span class="op">-direction</span> in
+<span class="fn">create_supply_net</span>   VDD_PD_net <span class="op">-domain</span> PD_domain
+<span class="fn">connect_supply_net</span>  VDD_PD_net <span class="op">-ports</span> VDD_PD
+
+<span class="fn">create_power_domain</span> PD_domain  <span class="op">-elements</span> {u_dsp}
+
+<span class="cm"># ---- Power State Table rows ----</span>
+<span class="cm"># Each row names the state of every supply net in order</span>
+<span class="fn">add_pst_state</span>       NORMAL     <span class="op">-pst</span> top_pst  \
+    <span class="op">-state</span> {VDD_AO_net <span class="str">FULL_ON</span>  VDD_PD_net <span class="str">FULL_ON</span>}
+
+<span class="fn">add_pst_state</span>       DSP_OFF    <span class="op">-pst</span> top_pst  \
+    <span class="op">-state</span> {VDD_AO_net <span class="str">FULL_ON</span>  VDD_PD_net <span class="str">OFF</span>}
+
+<span class="cm"># ---- Port states control what value each supply takes ----</span>
+<span class="fn">add_port_state</span>      VDD_PD \
+    <span class="op">-state</span> {<span class="str">FULL_ON</span>  <span class="num">0.9</span>} \
+    <span class="op">-state</span> {<span class="str">OFF</span>      <span class="num">0.0</span>}</pre>
+  </div>
+
+  <div class="callout info"><strong>What add_port_state does:</strong> it binds a named logical state (FULL_ON, OFF, PARTIAL) to a concrete voltage. The PST then references these logical names so verification tools know exactly when a domain is live versus powered down.</div>
+
+  <h3>UPF Structural Hierarchy</h3>
+  <p>UPF supports hierarchical power intent: a top-level UPF file declares global supply ports and PSTs, then <code>load_upf</code> references sub-block UPF files. During simulation the tool merges all layers. The rule is that child domain UPF rules cannot widen the parent domain — they can only narrow or specialise.</p>
+
+  <table>
+    <tr><th>UPF Construct</th><th>Purpose</th><th>Key Argument</th></tr>
+    <tr><td>create_power_domain</td><td>Group RTL elements into a domain</td><td>-elements {}</td></tr>
+    <tr><td>create_supply_net</td><td>Declare a logical wire for a supply rail</td><td>-domain</td></tr>
+    <tr><td>create_pst</td><td>Power State Table declaration</td><td>-supply_nets {}</td></tr>
+    <tr><td>add_pst_state</td><td>Enumerate legal supply state combos</td><td>-state {net state}</td></tr>
+    <tr><td>create_isolation_rule</td><td>Require isolation at crossing</td><td>-isolation_sense</td></tr>
+    <tr><td>create_retention_rule</td><td>Require retention on flip-flops</td><td>-target_domain</td></tr>
+    <tr><td>map_retention_cell</td><td>Bind rule to a library cell</td><td>-lib_cell</td></tr>
+  </table>
+
+  <!-- ===== SECTION 2 ===== -->
+  <h2 id="isolation">2. Isolation Cell Insertion &amp; Verification</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-amber">create_isolation_rule</span>
+    <span class="badge badge-sky">isolation_sense</span>
+    <span class="badge badge-violet">SVA check</span>
+  </div>
+
+  <p>Every signal that crosses from a switchable domain into an always-on domain is a <strong>domain crossing</strong>. When the switchable domain is powered off, that signal floats. An isolation cell sits at the boundary and clamps the output to a safe constant (0 or 1) whenever the isolation enable is asserted. The enable must arrive <em>before</em> the supply rail drops.</p>
+
+  <div class="domain-box domain-pd">
+    <strong style="color:var(--violet)">Isolation Cell Requirements:</strong>
+    <ul style="margin-top:.5rem">
+      <li>Enable polarity must match UPF <code>-isolation_sense high|low</code></li>
+      <li>Clamp value must match UPF <code>-clamp_value 0|1|Z</code></li>
+      <li>Enable must be driven from the always-on domain (never from PD_domain)</li>
+      <li>Cell must be placed in the always-on domain power rail</li>
+    </ul>
+  </div>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## UPF isolation rule declaration</span>
+<span class="fn">create_isolation_rule</span> iso_dsp_to_ao \
+    <span class="op">-from</span>          PD_domain \
+    <span class="op">-to</span>            AO_domain \
+    <span class="op">-isolation_sense</span> <span class="str">high</span> \       <span class="cm"># enable=1 → isolate</span>
+    <span class="op">-clamp_value</span>   <span class="num">0</span> \             <span class="cm"># outputs held LOW when isolated</span>
+    <span class="op">-isolation_signal</span> u_pmu.iso_en \
+    <span class="op">-location</span>      parent          <span class="cm"># cell placed in AO_domain</span>
+
+<span class="cm">## Map to a real library isolation cell</span>
+<span class="fn">map_isolation_cell</span> iso_dsp_to_ao \
+    <span class="op">-domain</span>   PD_domain \
+    <span class="op">-lib_cell</span> ISO_AND_X2       <span class="cm"># output = IN & ~ISO_EN (sense=high, clamp=0)</span></pre>
+  </div>
+
+  <h3>SVA Assertion: Output Clamped to Safe Value</h3>
+  <p>The cleanest way to verify isolation in simulation is an SVA concurrent assertion that fires on every clock cycle when the domain is off and checks every output from PD_domain that feeds AO_domain.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// File: tb/isolation_checks.sv</span>
+<span class="cm">// Bind into the DUT top so $root hierarchy is accessible</span>
+
+<span class="kw">module</span> isolation_checks #(<span class="kw">parameter</span> <span class="ty">int</span> NPORTS = <span class="num">8</span>) (
+  <span class="kw">input</span>  <span class="kw">logic</span>              clk,
+  <span class="kw">input</span>  <span class="kw">logic</span>              vdd_pd_on,   <span class="cm">// 1 = domain powered, 0 = off</span>
+  <span class="kw">input</span>  <span class="kw">logic</span>              iso_en,      <span class="cm">// 1 = isolation active</span>
+  <span class="kw">input</span>  <span class="kw">logic</span> [NPORTS-<span class="num">1</span>:<span class="num">0</span>] dsp_out,     <span class="cm">// signals crossing from PD→AO</span>
+  <span class="kw">input</span>  <span class="kw">logic</span> [NPORTS-<span class="num">1</span>:<span class="num">0</span>] iso_cell_out <span class="cm">// post-isolation values</span>
+);
+
+  <span class="cm">// When domain is off, iso_en must be asserted</span>
+  ISO_ENABLE_WHEN_OFF: <span class="kw">assert property</span> (
+    @(<span class="kw">posedge</span> clk)
+    !vdd_pd_on |-> iso_en
+  ) <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[ISOLATION] Domain off but iso_en=0 — X propagation risk"</span>);
+
+  <span class="cm">// When isolated, each output must be clamped to 0 (clamp_value=0)</span>
+  ISO_CLAMP_VALUE: <span class="kw">assert property</span> (
+    @(<span class="kw">posedge</span> clk)
+    iso_en |-> (iso_cell_out === <span class="num">{NPORTS{1'b0}}</span>)
+  ) <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[ISOLATION] Clamp value mismatch — expected all-0 when iso_en=1"</span>);
+
+  <span class="cm">// iso_en must be asserted BEFORE power drops (1 cycle lead)</span>
+  ISO_LEAD_TIME: <span class="kw">assert property</span> (
+    @(<span class="kw">posedge</span> clk)
+    $<span class="fn">fell</span>(vdd_pd_on) |-> $<span class="fn">past</span>(iso_en, <span class="num">1</span>)
+  ) <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[ISOLATION] iso_en not asserted before vdd_pd_on fell"</span>);
+
+  <span class="cm">// Cover: domain powers off at least once (completeness)</span>
+  ISO_COV_POWEROFF: <span class="kw">cover property</span> (
+    @(<span class="kw">posedge</span> clk) $<span class="fn">fell</span>(vdd_pd_on)
+  );
+
+<span class="kw">endmodule</span></pre>
+  </div>
+
+  <div class="callout tip"><strong>Bind it in:</strong> use <code>bind u_top isolation_checks #(.NPORTS(8)) iso_chk_i (...)</code> in the testbench. This keeps the assertion module out of the RTL while still observing internal signals.</div>
+
+  <!-- ===== SECTION 3 ===== -->
+  <h2 id="retention">3. Retention Register Save / Restore</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-violet">save / restore</span>
+    <span class="badge badge-sky">shadow latch</span>
+    <span class="badge badge-green">sequence check</span>
+  </div>
+
+  <p>Retention registers contain a primary flip-flop (powered by VDD_PD) plus a shadow latch powered by a separate always-on retention supply (VDD_RET). The shadow latch is tiny and leaks almost nothing, so it can remain live while the primary supply is cut. The save/restore sequence must be strictly ordered — any deviation produces corrupted data on restoration.</p>
+
+  <div class="steps">
+    <li><strong>SAVE sequence:</strong> Assert retention enable (<code>ret_en = 1</code>) while VDD_PD is still at full voltage. The shadow latch captures the primary FF state on the next clock edge.</li>
+    <li>Hold <code>ret_en = 1</code> for at least 1 full clock period to guarantee setup/hold on the shadow latch.</li>
+    <li>De-assert the main clock (or gate it) and then drop VDD_PD. The primary FF is now X but shadow latch holds the value.</li>
+    <li><strong>RESTORE sequence:</strong> Bring VDD_PD back up. Wait for the power-good strobe (PG asserted).</li>
+    <li>Assert restore enable (<code>ret_restore = 1</code>). The shadow value loads back into the primary FF on the next clock edge.</li>
+    <li>De-assert <code>ret_restore</code> and resume normal clocked operation. Primary FF now holds the saved value.</li>
+  </div>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## UPF retention rule</span>
+<span class="fn">create_retention_rule</span> ret_dsp \
+    <span class="op">-domain</span>          PD_domain \
+    <span class="op">-retention_power_net</span>  VDD_RET_net \
+    <span class="op">-save_signal</span>    {u_pmu.ret_save   <span class="str">high</span>} \
+    <span class="op">-restore_signal</span> {u_pmu.ret_restore <span class="str">high</span>}
+
+<span class="fn">map_retention_cell</span> ret_dsp \
+    <span class="op">-domain</span>   PD_domain \
+    <span class="op">-lib_cell</span> DFFR_X2        <span class="cm"># retention FF from std-cell library</span></pre>
+  </div>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Retention sequence verification — SVA</span>
+<span class="cm">// Check that restore fires only AFTER power-good is stable</span>
+
+ISO_RET_RESTORE_AFTER_PG: <span class="kw">assert property</span> (
+  @(<span class="kw">posedge</span> clk)
+  $<span class="fn">rose</span>(ret_restore) |-> $<span class="fn">past</span>(pg_vdd_pd, <span class="num">2</span>)
+) <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[RETENTION] restore asserted before power-good stabilised"</span>);
+
+<span class="cm">// Check that save fires while domain supply is still ON</span>
+RET_SAVE_WHILE_ON: <span class="kw">assert property</span> (
+  @(<span class="kw">posedge</span> clk)
+  $<span class="fn">rose</span>(ret_save) |-> vdd_pd_on
+) <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[RETENTION] save asserted after domain power dropped"</span>);
+
+<span class="cm">// Functional check: data survives a save-poweroff-restore cycle</span>
+<span class="cm">// (done in the UVM scoreboard)</span>
+<span class="kw">task automatic</span> <span class="fn">check_retention_cycle</span>(
+  <span class="kw">input logic</span> [<span class="num">31</span>:<span class="num">0</span>] expected_val
+);
+  <span class="cm">// 1. sample DUT register value before save</span>
+  <span class="kw">logic</span> [<span class="num">31</span>:<span class="num">0</span>] pre_save = dut.u_dsp.cfg_reg;
+  <span class="kw">assert</span>(pre_save === expected_val) <span class="kw">else</span>
+    $<span class="fn">error</span>(<span class="str">"pre-save mismatch: got %0h exp %0h"</span>, pre_save, expected_val);
+
+  <span class="cm">// 2. drive save sequence</span>
+  @(<span class="kw">posedge</span> clk); ret_save = <span class="num">1</span>;
+  @(<span class="kw">posedge</span> clk); ret_save = <span class="num">0</span>;
+
+  <span class="cm">// 3. power down</span>
+  vdd_pd_force = <span class="num">0.0</span>;
+  #<span class="num">100ns</span>;
+
+  <span class="cm">// 4. power up, wait PG, then restore</span>
+  vdd_pd_force = <span class="num">0.9</span>;
+  @(<span class="kw">posedge</span> pg_vdd_pd);
+  repeat(<span class="num">2</span>) @(<span class="kw">posedge</span> clk);
+  ret_restore = <span class="num">1</span>;
+  @(<span class="kw">posedge</span> clk); ret_restore = <span class="num">0</span>;
+
+  <span class="cm">// 5. verify restored value</span>
+  @(<span class="kw">posedge</span> clk);
+  <span class="kw">logic</span> [<span class="num">31</span>:<span class="num">0</span>] post_restore = dut.u_dsp.cfg_reg;
+  <span class="kw">assert</span>(post_restore === expected_val) <span class="kw">else</span>
+    $<span class="fn">error</span>(<span class="str">"[RETENTION] data corrupted: got %0h exp %0h"</span>, post_restore, expected_val);
+<span class="kw">endtask</span></pre>
+  </div>
+
+  <div class="callout warn"><strong>Wrong polarity is the #1 retention bug:</strong> if UPF says <code>-save_signal {ret_save high}</code> but the RTL latches on the falling edge, the shadow never captures. The net effect is that every restore produces an X or stale value. Always cross-check RTL polarity against the UPF <code>-save_signal</code> attribute.</div>
+
+  <!-- ===== SECTION 4 ===== -->
+  <h2 id="pst">4. Power State Table (PST) Coverage</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-sky">PST rows</span>
+    <span class="badge badge-violet">covergroup</span>
+    <span class="badge badge-amber">illegal transitions</span>
+  </div>
+
+  <p>The Power State Table is the exhaustive truth table of every legal combination of supply states across all domains. If the design has 3 power domains, each with 2 supply states (ON / OFF), there are up to 8 combinations — but typically only 3–4 are legal. The UPF PST declares exactly which rows are legal. Verification must prove that every legal row is reached and that no illegal row is ever entered.</p>
+
+  <table>
+    <tr><th>PST State Name</th><th>VDD_AO</th><th>VDD_PD (DSP)</th><th>VDD_MEM</th><th>Description</th></tr>
+    <tr><td>NORMAL</td><td>FULL_ON</td><td>FULL_ON</td><td>FULL_ON</td><td>All domains active</td></tr>
+    <tr><td>DSP_SLEEP</td><td>FULL_ON</td><td>OFF</td><td>FULL_ON</td><td>DSP powered down, memory live</td></tr>
+    <tr><td>MEM_RETAIN</td><td>FULL_ON</td><td>OFF</td><td>MEM_ON (retention)</td><td>DSP off, memory in self-refresh</td></tr>
+    <tr><td>DEEP_SLEEP</td><td>FULL_ON</td><td>OFF</td><td>OFF</td><td>Only PMU active</td></tr>
+  </table>
+
+  <p>A SystemVerilog functional covergroup for PST coverage should track both the current power state and the transitions between states. Transition coverage catches bugs where the design jumps from NORMAL directly to DEEP_SLEEP, bypassing retention save — a sequencing error that destroys memory contents.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Power State Table functional coverage</span>
+<span class="kw">typedef enum logic</span> [<span class="num">1</span>:<span class="num">0</span>] {
+  NORMAL      = <span class="num">2'b00</span>,
+  DSP_SLEEP   = <span class="num">2'b01</span>,
+  MEM_RETAIN  = <span class="num">2'b10</span>,
+  DEEP_SLEEP  = <span class="num">2'b11</span>
+} pst_state_t;
+
+<span class="kw">covergroup</span> <span class="fn">pst_coverage</span> @(<span class="kw">posedge</span> clk);
+  <span class="cm">// Every legal PST state must be hit</span>
+  cp_state: <span class="kw">coverpoint</span> current_pst {
+    bins normal_op  = {NORMAL};
+    bins dsp_off    = {DSP_SLEEP};
+    bins mem_retain = {MEM_RETAIN};
+    bins deep_sleep = {DEEP_SLEEP};
+  }
+
+  <span class="cm">// All legal transitions must be exercised</span>
+  cp_transition: <span class="kw">coverpoint</span> current_pst {
+    bins to_dsp_sleep[]  = (NORMAL     => DSP_SLEEP);
+    bins to_mem_retain[] = (DSP_SLEEP  => MEM_RETAIN);
+    bins to_deep_sleep[] = (MEM_RETAIN => DEEP_SLEEP);
+    bins wakeup_fast[]   = (DSP_SLEEP  => NORMAL);
+    bins full_wakeup[]   = (DEEP_SLEEP => MEM_RETAIN => DSP_SLEEP => NORMAL);
+
+    <span class="cm">// Illegal: skip retention save — must NEVER be covered</span>
+    illegal_bins skip_retention = (NORMAL => DEEP_SLEEP);
+    illegal_bins mem_skip       = (DSP_SLEEP => DEEP_SLEEP);
+  }
+
+  <span class="cm">// Cross: ensure both DSP and memory domains reach OFF state</span>
+  cx_domain_off: <span class="kw">cross</span> vdd_pd_on, vdd_mem_on;
+<span class="kw">endgroup</span>
+
+<span class="cm">// Instantiate and sample</span>
+pst_coverage pst_cov_i = <span class="kw">new</span>();
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk) pst_cov_i.<span class="fn">sample</span>();</pre>
+  </div>
+
+  <div class="callout info"><strong>illegal_bins:</strong> any transition that hits an <code>illegal_bins</code> entry causes the simulator to flag a violation at runtime, not just a coverage hole. This is the correct way to make illegal power sequences self-detecting.</div>
+
+  <!-- ===== SECTION 5 ===== -->
+  <h2 id="xprop">5. X-Propagation from Ungated Domains</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-amber">X-pessimism</span>
+    <span class="badge badge-sky">PA simulation</span>
+    <span class="badge badge-violet">X-optimism risk</span>
+  </div>
+
+  <p>When a power domain is switched off, every flip-flop in that domain whose primary supply has dropped will present an X on its Q output — the simulator models the unknown voltage as an indeterminate logic value. Without isolation, this X floods through the combinational logic in the receiving always-on domain. A single X on a critical select line can corrupt all downstream registers in one clock cycle.</p>
+
+  <p>There are two failure modes: <strong>X-pessimism</strong> (simulation shows X but silicon would resolve to 0 or 1 because of physical contention) and <strong>X-optimism</strong> (simulation resolves X to 0 because of Verilog semantics but silicon would actually corrupt). X-optimism is the dangerous one. Classic example: <code>if (sel == 1'b0) out = data;</code> — when <code>sel</code> is X, Verilog evaluates the comparison as false and takes the else branch rather than X-propagating. Silicon has no such immunity.</p>
+
+  <h3>Containment Strategy</h3>
+  <ul>
+    <li><strong>Correct isolation cell timing:</strong> assert <code>iso_en</code> at least 1 clock before the supply falls. The isolation cell output becomes 0 (or 1) before the domain actually de-energises, so Xs never escape.</li>
+    <li><strong>Power-aware (PA) simulation:</strong> Questa PA replaces the standard 4-state logic model with supply-aware semantics. It knows that a powered-off domain produces X at the physical level, not just at the Verilog abstraction level, and propagates accordingly.</li>
+    <li><strong>X-propagation reporting:</strong> use <code>+xprop</code> / <code>-xprop</code> simulator flags to enable extended X-propagation models that reduce X-optimism. Questa uses <code>-xprop {xprop.cfg}</code>.</li>
+    <li><strong>Formal X-propagation:</strong> JasperGold XPROP app traces every X source back to its domain crossing and proves the isolation either contains or does not contain it.</li>
+  </ul>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// X-propagation containment check — assert no X escapes the isolation boundary</span>
+<span class="kw">property</span> p_no_x_on_ao_input;
+  @(<span class="kw">posedge</span> clk)
+  !$<span class="fn">isunknown</span>(ao_input_bus);  <span class="cm">// ao_input_bus = post-isolation signals</span>
+<span class="kw">endproperty</span>
+
+NO_X_CROSSING: <span class="kw">assert property</span>(p_no_x_on_ao_input)
+  <span class="kw">else</span> $<span class="fn">error</span>(<span class="str">"[XPROP] X value detected on AO domain input — isolation cell failure"</span>);
+
+<span class="cm">// Complementary: when domain IS powered and NOT isolated,</span>
+<span class="cm">// signal must NOT be stuck at the clamp value</span>
+<span class="kw">property</span> p_not_stuck_clamped;
+  @(<span class="kw">posedge</span> clk)
+  (vdd_pd_on && !iso_en) |-> !$<span class="fn">stable</span>(ao_input_bus);  <span class="cm">// data should toggle</span>
+<span class="kw">endproperty</span>
+<span class="cm">// (Use cover, not assert, for this — it is a coverage goal)</span>
+COVER_DATA_TOGGLING: <span class="kw">cover property</span>(p_not_stuck_clamped);</pre>
+  </div>
+
+  <!-- ===== SECTION 6 ===== -->
+  <h2 id="questa-pa">6. Questa Power Aware Simulation Flow</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-sky">vlog</span>
+    <span class="badge badge-violet">vopt</span>
+    <span class="badge badge-green">vsim -pa</span>
+    <span class="badge badge-amber">upf_mode</span>
+  </div>
+
+  <p>Questa Power Aware (PA) is the industry-standard flow for UPF-driven simulation. The key difference from a plain RTL simulation is that the elaboration step reads both the RTL and the UPF together to build a supply-aware netlist model. PA checks run concurrently with functional simulation — you get both functional correctness and structural power intent checking in one run.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">## Questa PA simulation Makefile recipe</span>
+
+<span class="cm"># Step 1 — Compile RTL (SystemVerilog + UPF simultaneously)</span>
+vlog  <span class="op">-sv</span> \
+      <span class="op">-work</span>    work \
+      rtl/top.sv rtl/pmu.sv rtl/dsp_core.sv \
+      tb/top_tb.sv tb/isolation_checks.sv
+
+<span class="cm"># Step 2 — Elaborate with UPF loaded</span>
+vopt  work.top_tb \
+      <span class="op">-upf</span>         upf/top.upf \
+      <span class="op">-upf_mode</span>    abstract \     <span class="cm"># or 'full' for gate-level</span>
+      <span class="op">-pa_upf_analyze</span> \          <span class="cm"># structural check during elab</span>
+      <span class="op">-access</span>      rw+/acc=rn \
+      <span class="op">-o</span>           top_tb_opt
+
+<span class="cm"># Step 3 — Simulate with PA checks enabled</span>
+vsim  top_tb_opt \
+      <span class="op">-upf</span>         upf/top.upf \
+      <span class="op">-pa</span> \                       <span class="cm"># enable Power Aware mode</span>
+      <span class="op">-pa_upf_check</span> on \         <span class="cm"># runtime UPF rule checking</span>
+      <span class="op">-sv_seed</span>     random \
+      <span class="op">-xprop</span>       xprop.cfg \   <span class="cm"># extended X propagation</span>
+      <span class="op">+UVM_TESTNAME</span>=low_power_test \
+      <span class="op">-do</span>          "run -all; quit -f"
+
+<span class="cm"># xprop.cfg — tell Questa which X-propagation mode to use</span>
+<span class="cm"># File: xprop.cfg</span>
+<span class="cm">#   xprop_mode  = fuzzy</span>
+<span class="cm">#   latch_mode  = X</span>
+<span class="cm">#   enable_x_check = 1</span></pre>
+  </div>
+
+  <h3>PA Checks Performed During Simulation</h3>
+  <table>
+    <tr><th>PA Check Category</th><th>What It Detects</th><th>Severity</th></tr>
+    <tr><td>Domain crossing without isolation</td><td>Signal crosses power boundary with no isolation rule</td><td>Error</td></tr>
+    <tr><td>Isolation enable from wrong domain</td><td>iso_en driven by PD_domain (powered off = X)</td><td>Error</td></tr>
+    <tr><td>Retention enable polarity mismatch</td><td>RTL activates on opposite edge vs. UPF intent</td><td>Error</td></tr>
+    <tr><td>Level shifter missing</td><td>Signal crosses between different voltage domains without LS</td><td>Warning</td></tr>
+    <tr><td>PST illegal state entered</td><td>Supply combo not listed in any add_pst_state row</td><td>Error</td></tr>
+    <tr><td>Retention restore before PG</td><td>restore_en asserted before power-good settles</td><td>Error</td></tr>
+    <tr><td>Clamp value mismatch</td><td>Isolation cell drives value different from UPF -clamp_value</td><td>Error</td></tr>
+  </table>
+
+  <div class="callout tip"><strong>Coverage closure with PA:</strong> use <code>vcover merge</code> on multiple PA seed runs and then check that both the PST covergroup and the <code>$coverage_off</code>/<code>$coverage_on</code> regions inside power-down sequences reach 100 %. Many teams target 95 % functional + 100 % PST state coverage at signoff.</div>
+
+  <!-- ===== SECTION 7 ===== -->
+  <h2 id="common-bugs">7. Common Low Power Bugs</h2>
+
+  <div class="badge-row">
+    <span class="badge badge-amber">missing isolation</span>
+    <span class="badge badge-violet">wrong polarity</span>
+    <span class="badge badge-sky">restore timing</span>
+  </div>
+
+  <p>Low power bugs are notoriously difficult to find in RTL simulation because the power switching sequences are often long, asynchronous, and not covered by the standard directed test plan. The three bugs below account for the vast majority of silicon re-spins traced to low power issues.</p>
+
+  <h3>Bug 1: Missing Isolation Cell</h3>
+  <p>The UPF declares a crossing from PD_domain to AO_domain but the RTL structural netlist (post-synthesis) either has no isolation cell or the cell is in the wrong power domain. During PA elaboration Questa emits <em>UPF-016: no isolation cell found for crossing</em>. In simulation without PA the X escapes silently.</p>
+
+  <div class="callout warn"><strong>How it hides:</strong> in pure RTL simulation a missing isolation cell only surfaces if the testbench actually switches the domain off AND a consuming always-on register captures the X. Many teams never trigger this because they never drop the domain supply in simulation. PA elaboration catches it structurally — no simulation required.</div>
+
+  <h3>Bug 2: Wrong Retention Enable Polarity</h3>
+  <p>The RTL designer implements the retention FF with active-low save enable (<code>ret_save_n</code>) but the UPF rule says <code>-save_signal {ret_save high}</code>. The shadow latch therefore saves continuously when it should be idle, and the intended save pulse has no effect. The restored value after power-up is whatever was captured during the last idle period, not the value at the explicit save command.</p>
+
+  <div class="code-wrap">
+    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    <pre><span class="cm">// Bug example: polarity inversion in RTL vs UPF</span>
+
+<span class="cm">// RTL (DFF_RET behavioural model — active LOW save)</span>
+<span class="kw">always</span> @(<span class="kw">posedge</span> clk <span class="kw">or negedge</span> rst_n) <span class="kw">begin</span>
+  <span class="kw">if</span> (!rst_n)       Q   <= <span class="num">0</span>;
+  <span class="kw">else if</span> (!save_n) shadow <= D;   <span class="cm">// saves when save_n=0 (ACTIVE LOW)</span>
+  <span class="kw">else</span>              Q   <= D;
+<span class="kw">end</span>
+
+<span class="cm">// UPF (incorrectly written as active HIGH)</span>
+<span class="cm">// create_retention_rule ret_r -save_signal {pmu.ret_save HIGH}</span>
+<span class="cm">//                                                        ^^^^</span>
+<span class="cm">// UPF thinks save occurs when ret_save=1</span>
+<span class="cm">// RTL saves when ret_save=0 → save never happens at right time</span>
+
+<span class="cm">// FIX: match UPF to RTL polarity</span>
+<span class="cm">// create_retention_rule ret_r -save_signal {pmu.ret_save LOW}</span></pre>
+  </div>
+
+  <h3>Bug 3: Incorrect Restore Timing</h3>
+  <p>The restore sequence fires the <code>ret_restore</code> pulse one clock cycle before the power-good (PG) signal has asserted. VDD_PD is still ramping — the supply has not reached the minimum operating voltage yet. The shadow value may load correctly into a flip-flop that is running at a marginal voltage, but the subsequent clock edge captures a metastable value. This is the most insidious of the three bugs: it passes simulation (because simulators model ideal supply rails) but fails in silicon at certain temperatures.</p>
+
+  <div class="callout info"><strong>Verification technique:</strong> model PG assertion as a configurable number of cycles after VDD ramp. Run directed tests with PG delay = 1, 2, 4, and 10 cycles. Assert that <code>ret_restore</code> never precedes PG regardless of the delay value. This catches the hardcoded timing assumption before tapeout.</div>
+
+  <h3>Summary Bug Table</h3>
+  <table>
+    <tr><th>Bug</th><th>Symptom in Sim</th><th>Caught By</th></tr>
+    <tr><td>Missing isolation cell</td><td>X on AO domain input after PD off</td><td>PA elaboration / ISO_ENABLE SVA</td></tr>
+    <tr><td>Wrong retention polarity</td><td>Restored value is stale or X</td><td>check_retention_cycle task / PA runtime</td></tr>
+    <tr><td>Restore before PG</td><td>Metastability — passes sim, fails silicon</td><td>RET_RESTORE_AFTER_PG SVA with PG delay sweep</td></tr>
+    <tr><td>iso_en from wrong domain</td><td>iso_en becomes X when PD off → X propagates</td><td>PA check UPF-017</td></tr>
+    <tr><td>PST illegal transition</td><td>Runtime PA error, potential data loss</td><td>PST covergroup illegal_bins</td></tr>
+    <tr><td>Level shifter missing</td><td>Logic errors at domain boundary</td><td>PA elaboration UPF-019</td></tr>
+  </table>
+
+  <!-- ===== TAKEAWAYS ===== -->
+  <div class="takeaways">
+    <h3>Day 24 Key Takeaways</h3>
+    <ul>
+      <li>UPF/IEEE 1801 encodes power intent — domains, supply rails, isolation rules, and retention strategies — as Tcl commands read alongside RTL</li>
+      <li>Isolation cells must be placed in the always-on domain, enabled before the supply drops, and clamped to the UPF-specified safe value</li>
+      <li>Retention save must occur while VDD is still fully on; restore must wait for power-good to stabilise — wrong ordering corrupts data</li>
+      <li>PST coverage proves every legal supply state combination is reached; <code>illegal_bins</code> flags forbidden transitions at runtime</li>
+      <li>X-propagation from unpowered domains is contained by correct isolation cell timing; PA simulation with <code>+xprop</code> reduces dangerous X-optimism</li>
+      <li>Questa PA elaboration catches structural low power bugs (missing cells, wrong domain placement) before any simulation run</li>
+      <li>The three most common silicon re-spin bugs are: missing isolation, wrong retention polarity, and restore-before-power-good</li>
+    </ul>
+  </div>
+
+  <!-- ===== FAQ ===== -->
+  <h2 id="faq">FAQ</h2>
+  <div class="faq">
+    <details>
+      <summary>What is the purpose of an isolation cell in low power design?</summary>
+      <div class="ans">An isolation cell clamps the output of a powered-off domain to a safe, known logic value (0 or 1) so that logic in an always-on domain that receives those outputs does not see spurious transitions or X values. Without isolation, a powered-off driver floats and the receiving gate can oscillate, causing incorrect state changes or short-circuit current. In UPF you specify the safe value with <code>create_isolation_rule -isolation_sense low|high</code>, and verification checks that the isolation enable arrives before power is removed and that the clamped value matches the UPF intent.</div>
+    </details>
+    <details>
+      <summary>What bugs are caught by power state table (PST) coverage?</summary>
+      <div class="ans">A power state table enumerates all legal combinations of supply states across every power domain. PST coverage checks that every row in that table is actually exercised during simulation. Bugs caught include: (1) missing isolation — a domain is powered off but the isolation enable was never asserted; (2) unreachable states — a supply rail has no test sequence that drives it to off; (3) illegal transitions — the design enters a power combination not listed in the PST, which UPF tools flag as a violation; (4) restore-before-power — the retention restore command fires before VDD has stabilised, corrupting register contents.</div>
+    </details>
+    <details>
+      <summary>Why do X values appear during low power simulation and how are they contained?</summary>
+      <div class="ans">When a power domain is turned off, all flip-flop outputs in that domain become X because the supply is no longer driving them. These Xs propagate through combinational logic into always-on domains if no isolation cell is present or if the isolation enable is asserted too late. They are contained by: (1) correct isolation cell insertion — the cell output is forced to the safe value before power drops; (2) retention registers — state is saved before power-off so the restore value is valid, not X; (3) power-aware (PA) simulation with X-pessimism reduction — Questa PA uses UPF supply semantics to drive 0/1 instead of X on domain crossings that have valid isolation.</div>
+    </details>
+    <details>
+      <summary>What is the correct sequence for retention register save and restore in UPF?</summary>
+      <div class="ans">The IEEE 1801 mandated sequence for save is: (1) assert retention enable (SAVE command in UPF) while the supply is still fully on; (2) hold enable asserted for at least one clock edge so the shadow latch captures data; (3) power down the primary supply. For restore: (1) power up the primary supply and wait for it to stabilise (PG rail reaches full voltage); (2) assert the restore enable (RESTORE command); (3) hold for at least one clock edge so the master latch loads the shadow value; (4) de-assert restore enable before normal clocking resumes. Verifying wrong polarity of the retention enable or swapped save/restore ordering are the two most common bugs caught by UPF-aware simulation.</div>
+    </details>
+  </div>
+
+  <!-- ===== PREV / NEXT ===== -->
+  <div class="prev-next">
+    <a href="/verification/23-cdc-verification/" class="prev-card">
+      <div class="prev-label">← Previous</div>
+      <div class="prev-title">Day 23 — CDC Verification</div>
+    </a>
+    <a href="/verification/25-dv-interview-questions/" class="prev-card" style="background:linear-gradient(135deg,rgba(56,189,248,.06),rgba(167,139,250,.02));border-color:rgba(56,189,248,.15)">
+      <div class="prev-label" style="color:var(--sky)">Next →</div>
+      <div class="prev-title">Day 25 — DV Interview Questions</div>
+    </a>
+  </div>
+
+</div><!-- /body -->
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>Deep-dive VLSI &amp; Verification tutorials for working engineers.</p>
+  <p style="margin-top:.5rem">
+    <a href="/legal/privacy.html" style="color:var(--sky);margin:0 .5rem">Privacy Policy</a>
+    <a href="/legal/terms.html"   style="color:var(--sky);margin:0 .5rem">Terms of Use</a>
+    <a href="/about/"             style="color:var(--sky);margin:0 .5rem">About</a>
+  </p>
+  <p style="margin-top:.5rem;font-size:.78rem">© 2026 EcrioniX · ecrionix.org</p>
+</footer>
+
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+
+<script>
+// Hamburger menu
+document.getElementById('hamburger').addEventListener('click', function(){
+  document.getElementById('mobileMenu').classList.toggle('open');
+});
+
+// Back to top
+const st = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  st.classList.toggle('visible', window.scrollY > 300);
+});
+st.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
+
+// Copy buttons
+function copyCode(btn){
+  const pre = btn.nextElementSibling;
+  const text = pre.innerText || pre.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.color = '#4ade80';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1800);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIFO Verification — Day 22 | EcrioniX Verification Series</title>
+  <meta name="description" content="Complete FIFO verification: sync and async FIFO testbench, SVA assertions (full/empty flags, no overflow/underflow), functional coverage (fill level bins, simultaneous push/pop), scoreboard with reference model, and corner case tests.">
+  <meta name="keywords" content="FIFO verification, SVA assertions FIFO, FIFO testbench SystemVerilog, async FIFO verification, FIFO coverage, overflow underflow assertions, UVM FIFO, functional coverage FIFO">
+  <link rel="canonical" href="https://ecrionix.org/verification/22-fifo-verification/">
+  <meta property="og:title" content="FIFO Verification — Day 22 | EcrioniX Verification Series">
+  <meta property="og:description" content="Complete FIFO verification: SVA assertions for full/empty flags, functional coverage bins, scoreboard with queue-based reference model, and corner cases.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://ecrionix.org/verification/22-fifo-verification/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-06-22","dateModified":"2026-06-22","headline":"FIFO Verification — Day 22","description":"Complete FIFO verification: sync and async FIFO testbench, SVA assertions (full/empty flags, no overflow/underflow), functional coverage, scoreboard with reference model, and corner case tests.","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"url":"https://ecrionix.org/verification/22-fifo-verification/","isPartOf":{"@type":"Course","name":"25-Day Verification Tutorial Series","url":"https://ecrionix.org/verification/"}},
+    {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"Verification Series","item":"https://ecrionix.org/verification/"},{"@type":"ListItem","position":3,"name":"Day 22 — FIFO Verification","item":"https://ecrionix.org/verification/22-fifo-verification/"}]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What SVA assertions are essential for FIFO verification?","acceptedAnswer":{"@type":"Answer","text":"The four essential FIFO SVA assertions are: (1) no push when full — assert that wr_en is never high when full is high; (2) no pop when empty — assert that rd_en is never high when empty is high; (3) full flag accuracy — if wr_ptr - rd_ptr == DEPTH then full must be asserted within 1 clock; (4) empty flag accuracy — if wr_ptr == rd_ptr then empty must be asserted. These catch the most common FIFO bugs: flag timing, overflow, and underflow."}},
+      {"@type":"Question","name":"What is a queue-based reference model for FIFO verification?","acceptedAnswer":{"@type":"Answer","text":"A queue-based FIFO reference model uses a SystemVerilog queue (dynamic array with push_back/pop_front) to mirror the expected FIFO contents. On every observed push (wr_en && !full), the reference model calls ref_q.push_back(data_in). On every observed pop (rd_en && !empty), it calls expected = ref_q.pop_front() and compares expected against the DUT's data_out. This gives exact cycle-accurate checking without implementing any FIFO RTL in the testbench."}},
+      {"@type":"Question","name":"How do you verify an asynchronous FIFO?","acceptedAnswer":{"@type":"Answer","text":"Async FIFO verification requires two separate clock domains in the testbench. Key checks are: (1) gray code pointer crossing — ensure only 1 bit changes per pointer increment; (2) no metastability propagation — inject random delays (0–3 ns) on the synchronised pointers; (3) full/empty flag timing — flags may be pessimistic (assert early) but must never be optimistic; (4) boundary conditions — fill to N-1, check full not yet asserted, then add one more. SVA clock domains must be declared on the correct edge of each respective clock."}},
+      {"@type":"Question","name":"What functional coverage bins are needed for FIFO verification?","acceptedAnswer":{"@type":"Answer","text":"A complete FIFO covergroup should include bins for: empty state (count==0), single entry (count==1), half-full (count==DEPTH/2), nearly full (count==DEPTH-1), full (count==DEPTH), simultaneous push and pop (wr_en && rd_en), push only, pop only, and reset during operation. The simultaneous push/pop bin is especially important because it exercises the pass-through path and exposes pointer arithmetic bugs that only manifest at threshold boundaries."}}
+    ]}
+  ]}
+  </script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#020617;--bg2:#0f172a;--border:rgba(148,163,184,0.1);--sky:#38bdf8;--violet:#a78bfa;--green:#4ade80;--amber:#fbbf24;--text:#f8fafc;--muted:#94a3b8;--dim:#64748b}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    nav{position:sticky;top:0;z-index:100;background:rgba(2,6,23,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .nav-inner{max-width:1100px;margin:0 auto;padding:0 1.25rem;height:58px;display:flex;align-items:center;justify-content:space-between}
+    .logo{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:#fff}.logo span{color:var(--sky)}
+    .nav-links{display:flex;gap:1.5rem;list-style:none}.nav-links a{color:#818cf8;font-size:.85rem;font-weight:500;transition:color .2s}.nav-links a:hover{color:#fff}
+    .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px}
+    .mobile-menu{display:none;flex-direction:column;background:var(--bg2);border-top:1px solid var(--border);padding:.9rem 1.25rem;gap:.2rem}
+    .mobile-menu.open{display:flex}.mobile-menu a{color:#818cf8;font-size:.9rem;padding:.55rem 0;border-bottom:1px solid var(--border)}
+    @media(max-width:768px){.nav-links{display:none}.hamburger{display:flex}}
+    .day-nav{background:rgba(15,23,42,.7);border-bottom:1px solid var(--border);padding:.6rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.6rem}
+    .day-nav-info{display:flex;align-items:center;gap:.7rem}
+    .day-badge{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:100px;padding:.25rem .9rem;font-size:.72rem;font-weight:700;color:var(--violet)}
+    .day-dots{display:flex;gap:3px}
+    .dot{width:7px;height:7px;border-radius:50%;background:rgba(148,163,184,.15)}
+    .dot.done{background:var(--violet)}.dot.active{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+    .day-nav-btns{display:flex;gap:.5rem}
+    .dnbtn{padding:.35rem .9rem;border-radius:8px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .15s}
+    .dnbtn-prev{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.25)}.dnbtn-prev:hover{background:rgba(167,139,250,.2)}
+    .dnbtn-next{background:var(--violet);color:#0f172a}.dnbtn-next:hover{background:#9a7be8}
+    .bc{background:rgba(15,23,42,.4);border-bottom:1px solid var(--border);padding:.5rem 1.25rem;font-size:.78rem;color:var(--dim)}
+    .bc a{color:var(--sky)}.bc span{margin:0 .35rem}
+    .hero{padding:2.5rem 1.25rem 2rem;max-width:860px;margin:0 auto}
+    .hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:100px;padding:.25rem .85rem;font-size:.72rem;font-weight:700;color:var(--sky);margin-bottom:1rem}
+    h1{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:700;background:linear-gradient(135deg,#fff 30%,var(--sky) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.75rem;line-height:1.2}
+    .hero-sub{color:var(--muted);font-size:.92rem;max-width:640px;line-height:1.75}
+    .hero-meta{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.9rem;font-size:.78rem;color:var(--dim)}
+    .body{max-width:860px;margin:0 auto;padding:0 1.25rem 4rem}
+    .toc{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.15);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:2rem}
+    .toc-title{font-size:.72rem;font-weight:700;color:var(--sky);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.7rem}
+    .toc ol{padding-left:1.1rem}.toc li{font-size:.85rem;color:var(--muted);margin-bottom:.35rem}.toc li a{color:var(--muted)}.toc li a:hover{color:var(--sky)}
+    h2{font-size:1.2rem;font-weight:700;color:#f1f5f9;margin:2.2rem 0 .75rem;padding-top:.5rem;border-bottom:1px solid rgba(56,189,248,.1);padding-bottom:.6rem}
+    h3{font-size:1rem;font-weight:700;color:#e2e8f0;margin:1.4rem 0 .5rem}
+    p{color:var(--muted);font-size:.91rem;line-height:1.8;margin-bottom:.9rem}
+    strong{color:#e2e8f0}
+    ul,ol{padding-left:1.2rem;margin-bottom:.9rem}
+    li{color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:.3rem}
+    .callout{border-radius:10px;padding:1rem 1.2rem;margin:1.2rem 0;font-size:.88rem;line-height:1.75}
+    .info{background:rgba(56,189,248,.06);border-left:3px solid var(--sky);color:var(--muted)}.info strong{color:var(--sky)}
+    .warn{background:rgba(251,191,36,.06);border-left:3px solid var(--amber);color:var(--muted)}.warn strong{color:var(--amber)}
+    .tip{background:rgba(74,222,128,.06);border-left:3px solid var(--green);color:var(--muted)}.tip strong{color:var(--green)}
+    table{width:100%;border-collapse:collapse;margin:.8rem 0 1.5rem;font-size:.84rem}
+    th{background:#0f172a;padding:.7rem 1rem;text-align:left;font-weight:700;color:#f1f5f9;border-bottom:2px solid #1e293b}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1a2332;color:var(--muted)}
+    tr:hover td{background:rgba(56,189,248,.03)}
+    .code-wrap{position:relative;margin:1rem 0 1.5rem}
+    pre{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:1.2rem 1.4rem;overflow-x:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.82rem;line-height:1.7;font-variant-ligatures:none}
+    .copy-btn{position:absolute;top:9px;right:9px;background:#1e293b;border:1px solid #334155;color:var(--muted);border-radius:6px;padding:.25rem .7rem;font-size:.72rem;cursor:pointer;transition:all .15s}
+    .copy-btn:hover{background:#334155;color:#e2e8f0}
+    .kw{color:#c792ea}.ty{color:#82aaff}.cm{color:#546e7a;font-style:italic}.str{color:#c3e88d}.num{color:#f78c6c}.op{color:#89ddff}.fn{color:#82aaff}
+    .takeaways{background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.18);border-radius:12px;padding:1.2rem 1.4rem;margin:2rem 0}
+    .takeaways h3{color:var(--green);font-size:.88rem;margin-bottom:.7rem}
+    .takeaways li{color:#86efac;font-size:.86rem;margin-bottom:.3rem}
+    .next-card{background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(56,189,248,.04));border:1px solid rgba(167,139,250,.2);border-radius:14px;padding:1.5rem 1.75rem;margin-top:2.5rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-decoration:none;color:inherit;transition:all .2s}
+    .next-card:hover{border-color:var(--violet);transform:translateX(3px)}
+    .next-label{font-size:.7rem;font-weight:700;color:var(--violet);text-transform:uppercase;margin-bottom:.3rem}
+    .next-title{font-size:1.05rem;font-weight:700;color:#f1f5f9}
+    .next-desc{font-size:.8rem;color:var(--dim);margin-top:.25rem}
+    .next-arrow{font-size:1.6rem;color:var(--violet);flex-shrink:0}
+    footer{background:var(--bg2);border-top:1px solid var(--border);color:var(--dim);text-align:center;padding:1.75rem;font-size:.83rem}
+    .fl{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:#fff;margin-bottom:.35rem}.fl span{color:var(--sky)}
+    .scroll-top{position:fixed;bottom:22px;right:22px;width:40px;height:40px;border-radius:50%;background:var(--bg2);border:1px solid var(--sky);color:var(--sky);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:200;font-size:1rem;transition:all .2s}
+    .scroll-top.visible{display:flex}.scroll-top:hover{background:var(--sky);color:#0f172a}
+    .faq details{border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+    .faq summary{padding:.85rem 1.1rem;font-weight:600;font-size:.9rem;cursor:pointer;color:#e2e8f0;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    .faq summary::after{content:'＋';color:var(--sky);font-size:1rem;flex-shrink:0}
+    .faq details[open] summary::after{content:'－'}
+    .faq details[open] summary{color:var(--sky)}
+    .faq .ans{padding:.75rem 1.1rem 1rem;color:var(--muted);font-size:.88rem;line-height:1.75;border-top:1px solid var(--border)}
+    .prev-next{display:flex;gap:1rem;margin-top:2.5rem;flex-wrap:wrap}
+    .prev-card{background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.02));border:1px solid rgba(167,139,250,.15);border-radius:14px;padding:1.2rem 1.5rem;flex:1;min-width:200px;text-decoration:none;color:inherit;transition:all .2s}
+    .prev-card:hover{border-color:var(--violet)}
+    .prev-label{font-size:.7rem;font-weight:700;color:var(--dim);text-transform:uppercase;margin-bottom:.3rem}
+    .prev-title{font-size:.95rem;font-weight:700;color:#f1f5f9}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">Ecrioni<span>X</span></a>
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li><li><a href="/verification/">Verification</a></li><li><a href="/vlsi/">VLSI</a></li><li><a href="/protocols/">Protocols</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="/">Home</a><a href="/verification/">Verification Series</a><a href="/vlsi/">VLSI</a><a href="/protocols/">Protocols</a>
+  </div>
+</nav>
+
+<div class="day-nav">
+  <div class="day-nav-info">
+    <span class="day-badge">Day 22 / 25</span>
+    <div class="day-dots">
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span>
+      <span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </div>
+  <div class="day-nav-btns">
+    <a href="/verification/21-axi4-verification/" class="dnbtn dnbtn-prev">← Day 21</a>
+    <a href="/verification/23-cdc-verification/" class="dnbtn dnbtn-next">Day 23 →</a>
+  </div>
+</div>
+
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/verification/">Verification</a><span>›</span>Day 22 — FIFO Verification</div>
+
+<div class="hero">
+  <div class="hero-tag">Track 5 — Protocol & IP Verification</div>
+  <h1>FIFO Verification</h1>
+  <div class="byline" style="font-size:.82rem;color:#64748b;margin:.35rem 0 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">By <a href="/about/" style="color:#38bdf8;text-decoration:none;font-weight:600">EcrioniX</a> <span style="opacity:.5">&middot;</span> <span>Updated June 2026</span></div>
+  <p class="hero-sub">FIFOs are among the most verification-intensive modules in SoC design — deceptively simple in spec but rich in corner cases. A complete FIFO verification plan covers SVA assertions for flag accuracy, a queue-based reference model, functional coverage of all fill levels, and targeted corner-case tests for simultaneous push/pop, reset during operation, and back-to-back full conditions.</p>
+  <div class="hero-meta"><span>⏱ 32 min read</span><span>📖 Day 22 of 25</span><span>🎯 SVA · Coverage · Reference Model · Corner Cases</span></div>
+</div>
+
+<!-- SVG diagram -->
+<div style="max-width:860px;margin:0 auto;padding:0 1.25rem">
+<svg viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:700px;display:block;margin:0 auto 1.5rem">
+  <rect width="700" height="170" fill="#0f172a" rx="12"/>
+  <!-- Writer side -->
+  <rect x="20" y="55" width="110" height="60" rx="8" fill="none" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="75" y="80" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="11">Writer</text>
+  <text x="75" y="96" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">wr_en / data_in</text>
+  <!-- FIFO -->
+  <rect x="180" y="30" width="340" height="110" rx="8" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="350" y="55" text-anchor="middle" fill="#a78bfa" font-family="Outfit,sans-serif" font-size="12" font-weight="700">Synchronous FIFO</text>
+  <rect x="200" y="65" width="40" height="55" rx="4" fill="rgba(56,189,248,.08)" stroke="#38bdf8" stroke-width="1"/>
+  <rect x="248" y="65" width="40" height="55" rx="4" fill="rgba(56,189,248,.12)" stroke="#38bdf8" stroke-width="1"/>
+  <rect x="296" y="65" width="40" height="55" rx="4" fill="rgba(56,189,248,.16)" stroke="#38bdf8" stroke-width="1"/>
+  <rect x="344" y="65" width="40" height="55" rx="4" fill="rgba(56,189,248,.20)" stroke="#38bdf8" stroke-width="1"/>
+  <rect x="392" y="65" width="40" height="55" rx="4" fill="rgba(74,222,128,.12)" stroke="#4ade80" stroke-width="1"/>
+  <text x="432" y="97" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="9">FULL</text>
+  <text x="220" y="97" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="8">0</text>
+  <text x="268" y="97" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="8">1</text>
+  <text x="316" y="97" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="8">2</text>
+  <text x="364" y="97" text-anchor="middle" fill="#38bdf8" font-family="Outfit,sans-serif" font-size="8">3</text>
+  <!-- Reader side -->
+  <rect x="570" y="55" width="110" height="60" rx="8" fill="none" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="625" y="80" text-anchor="middle" fill="#4ade80" font-family="Outfit,sans-serif" font-size="11">Reader</text>
+  <text x="625" y="96" text-anchor="middle" fill="#64748b" font-family="Outfit,sans-serif" font-size="9">rd_en / data_out</text>
+  <!-- Arrows -->
+  <line x1="130" y1="85" x2="178" y2="85" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="522" y1="85" x2="568" y2="85" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a2)"/>
+  <!-- Flag labels -->
+  <text x="210" y="148" fill="#94a3b8" font-family="Outfit,sans-serif" font-size="9">empty</text>
+  <text x="345" y="148" fill="#fbbf24" font-family="Outfit,sans-serif" font-size="9">nearly full</text>
+  <text x="430" y="148" fill="#4ade80" font-family="Outfit,sans-serif" font-size="9">full</text>
+  <defs>
+    <marker id="a1" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0,7 3.5,0 7" fill="#38bdf8"/></marker>
+    <marker id="a2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0,7 3.5,0 7" fill="#4ade80"/></marker>
+  </defs>
+</svg>
+</div>
+
+<div class="body">
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#fifo-spec">FIFO Specification and Signal Interface</a></li>
+      <li><a href="#sva-assertions">SVA Assertions — Overflow, Underflow, Flag Accuracy</a></li>
+      <li><a href="#reference-model">Queue-Based Reference Model</a></li>
+      <li><a href="#functional-coverage">Functional Coverage — Fill Level Bins</a></li>
+      <li><a href="#full-testbench">Full SV Testbench with Tasks</a></li>
+      <li><a href="#async-fifo">Asynchronous FIFO Verification</a></li>
+      <li><a href="#corner-cases">Corner Cases</a></li>
+      <li><a href="#debug-tips">Debug Tips</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+  </div>
+
+  <h2 id="fifo-spec">1. FIFO Specification and Signal Interface</h2>
+  <p>A synchronous FIFO with parameterised depth <strong>N</strong> and width <strong>W</strong> exposes these signals. Every verification plan begins with a precise signal table — ambiguity in flag semantics causes more FIFO bugs than any RTL error:</p>
+  <table>
+    <tr><th>Signal</th><th>Direction</th><th>Width</th><th>Description</th></tr>
+    <tr><td><code>clk</code></td><td>Input</td><td>1</td><td>System clock — all sampling on rising edge</td></tr>
+    <tr><td><code>rst_n</code></td><td>Input</td><td>1</td><td>Active-low synchronous reset — empties FIFO</td></tr>
+    <tr><td><code>wr_en</code></td><td>Input</td><td>1</td><td>Write enable — push data_in when high and !full</td></tr>
+    <tr><td><code>rd_en</code></td><td>Input</td><td>1</td><td>Read enable — pop and present data_out when high and !empty</td></tr>
+    <tr><td><code>data_in</code></td><td>Input</td><td>W</td><td>Data to push into FIFO</td></tr>
+    <tr><td><code>data_out</code></td><td>Output</td><td>W</td><td>Data popped from FIFO (registered — valid 1 cycle after rd_en)</td></tr>
+    <tr><td><code>full</code></td><td>Output</td><td>1</td><td>High when FIFO contains N entries — push ignored when full</td></tr>
+    <tr><td><code>empty</code></td><td>Output</td><td>1</td><td>High when FIFO contains 0 entries — pop ignored when empty</td></tr>
+    <tr><td><code>count</code></td><td>Output</td><td>log2(N)+1</td><td>Current number of entries in the FIFO (optional diagnostic)</td></tr>
+  </table>
+  <div class="callout info"><strong>Flag semantics matter:</strong> Some FIFO implementations assert <code>full</code> after the last write (count reaches N), others assert it one cycle before. Verify flag timing against spec before writing any assertions — mismatched timing assumptions are the #1 false failure in FIFO verification.</div>
+
+  <h2 id="sva-assertions">2. SVA Assertions — Overflow, Underflow, Flag Accuracy</h2>
+  <p>Four SVA properties form the safety net for any FIFO. These assertions should live in a bind file so they can be attached to any FIFO instance without modifying RTL:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// fifo_assertions.sv — bind to DUT at elaboration</span>
+<span class="kw">module</span> <span class="fn">fifo_sva</span> #(<span class="kw">parameter</span> <span class="ty">int</span> DEPTH = <span class="num">16</span>, WIDTH = <span class="num">8</span>) (
+  <span class="kw">input</span> clk, rst_n, wr_en, rd_en,
+  <span class="kw">input</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] data_in, data_out,
+  <span class="kw">input</span> full, empty,
+  <span class="kw">input</span> [$clog2(DEPTH):<span class="num">0</span>] count
+);
+  <span class="kw">default clocking</span> cb @(<span class="kw">posedge</span> clk); <span class="kw">endclocking</span>
+  <span class="kw">default disable iff</span> (!rst_n);
+
+  <span class="cm">// P1: No push when full (overflow prevention)</span>
+  <span class="kw">property</span> <span class="fn">no_overflow</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (wr_en && full) |-> <span class="num">0</span>;  <span class="cm">// must never occur</span>
+  <span class="kw">endproperty</span>
+  NO_OVERFLOW: <span class="kw">assert property</span>(no_overflow)
+    <span class="kw">else</span> <span class="fn">`uvm_error</span>(<span class="str">"FIFO_SVA"</span>, <span class="str">"Overflow: wr_en high when FIFO is full"</span>);
+
+  <span class="cm">// P2: No pop when empty (underflow prevention)</span>
+  <span class="kw">property</span> <span class="fn">no_underflow</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (rd_en && empty) |-> <span class="num">0</span>;
+  <span class="kw">endproperty</span>
+  NO_UNDERFLOW: <span class="kw">assert property</span>(no_underflow)
+    <span class="kw">else</span> <span class="fn">`uvm_error</span>(<span class="str">"FIFO_SVA"</span>, <span class="str">"Underflow: rd_en high when FIFO is empty"</span>);
+
+  <span class="cm">// P3: full flag accuracy — count==DEPTH implies full asserted</span>
+  <span class="kw">property</span> <span class="fn">full_flag_acc</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (count == DEPTH) |-> full;
+  <span class="kw">endproperty</span>
+  FULL_FLAG: <span class="kw">assert property</span>(full_flag_acc)
+    <span class="kw">else</span> <span class="fn">`uvm_error</span>(<span class="str">"FIFO_SVA"</span>, <span class="str">"full not asserted when count==DEPTH"</span>);
+
+  <span class="cm">// P4: empty flag accuracy — count==0 implies empty asserted</span>
+  <span class="kw">property</span> <span class="fn">empty_flag_acc</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (count == <span class="num">0</span>) |-> empty;
+  <span class="kw">endproperty</span>
+  EMPTY_FLAG: <span class="kw">assert property</span>(empty_flag_acc)
+    <span class="kw">else</span> <span class="fn">`uvm_error</span>(<span class="str">"FIFO_SVA"</span>, <span class="str">"empty not asserted when count==0"</span>);
+
+  <span class="cm">// P5: count stability on simultaneous push+pop</span>
+  <span class="kw">property</span> <span class="fn">count_stable_on_sim_push_pop</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (wr_en && rd_en && !full && !empty)
+    |=> (count == $past(count));  <span class="cm">// net count unchanged</span>
+  <span class="kw">endproperty</span>
+  SIM_PUSH_POP: <span class="kw">assert property</span>(count_stable_on_sim_push_pop)
+    <span class="kw">else</span> <span class="fn">`uvm_error</span>(<span class="str">"FIFO_SVA"</span>, <span class="str">"count changed on simultaneous push+pop"</span>);
+
+  <span class="cm">// P6: count increments by 1 on pure push</span>
+  <span class="kw">property</span> <span class="fn">count_inc_on_push</span>;
+    <span class="op">@</span>(<span class="kw">posedge</span> clk) <span class="kw">disable iff</span>(!rst_n)
+    (wr_en && !rd_en && !full)
+    |=> (count == $past(count) + <span class="num">1</span>);
+  <span class="kw">endproperty</span>
+  COUNT_INC: <span class="kw">assert property</span>(count_inc_on_push);
+
+  <span class="cm">// Cover: FIFO reaches full</span>
+  COV_FULL:  <span class="kw">cover property</span>(@(<span class="kw">posedge</span> clk) full);
+  <span class="cm">// Cover: FIFO reaches empty after being non-empty</span>
+  COV_EMPTY: <span class="kw">cover property</span>(@(<span class="kw">posedge</span> clk) !empty ##1 empty);
+<span class="kw">endmodule</span>
+
+<span class="cm">// Bind statement in tb_top.sv</span>
+<span class="kw">bind</span> sync_fifo fifo_sva #(.DEPTH(<span class="num">16</span>),.WIDTH(<span class="num">8</span>)) u_sva (.*);
+</pre>
+  </div>
+
+  <h2 id="reference-model">3. Queue-Based Reference Model</h2>
+  <p>The reference model mirrors the FIFO's behaviour using a SystemVerilog queue. It is the <strong>golden truth</strong> — every push enqueues to <code>ref_q</code>, every pop dequeues from <code>ref_q</code>, and the scoreboard compares <code>ref_q.pop_front()</code> against the DUT's <code>data_out</code>:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// fifo_ref_model.sv — standalone reference model class</span>
+<span class="kw">class</span> <span class="fn">fifo_ref_model</span> <span class="kw">extends</span> uvm_component;
+  <span class="fn">`uvm_component_utils</span>(fifo_ref_model)
+
+  <span class="kw">parameter int</span> DEPTH = <span class="num">16</span>;
+  <span class="kw">parameter int</span> WIDTH = <span class="num">8</span>;
+
+  <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] ref_q[$]; <span class="cm">// golden storage</span>
+  <span class="ty">int</span> error_count = <span class="num">0</span>;
+
+  uvm_analysis_imp #(<span class="ty">fifo_trans</span>, <span class="ty">fifo_ref_model</span>) analysis_export;
+
+  <span class="kw">function</span> <span class="kw">new</span>(<span class="ty">string</span> name, uvm_component parent);
+    <span class="kw">super</span>.new(name, parent);
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">build_phase</span>(uvm_phase phase);
+    analysis_export = <span class="kw">new</span>(<span class="str">"analysis_export"</span>, <span class="kw">this</span>);
+  <span class="kw">endfunction</span>
+
+  <span class="cm">// Called on every observed DUT transaction</span>
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">write</span>(<span class="ty">fifo_trans</span> t);
+    <span class="kw">case</span> (t.op)
+      PUSH: <span class="kw">begin</span>
+        <span class="kw">if</span> (ref_q.size() < DEPTH)
+          ref_q.push_back(t.data_in);
+        <span class="kw">else</span>
+          <span class="fn">`uvm_error</span>(<span class="str">"REF"</span>, <span class="str">"Push when model full — overflow!"</span>);
+      <span class="kw">end</span>
+      POP: <span class="kw">begin</span>
+        <span class="kw">if</span> (ref_q.size() == <span class="num">0</span>) <span class="kw">begin</span>
+          <span class="fn">`uvm_error</span>(<span class="str">"REF"</span>, <span class="str">"Pop when model empty — underflow!"</span>);
+          <span class="kw">return</span>;
+        <span class="kw">end</span>
+        <span class="kw">begin</span>
+          <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] expected_data = ref_q.pop_front();
+          <span class="kw">if</span> (expected_data !== t.data_out) <span class="kw">begin</span>
+            error_count++;
+            <span class="fn">`uvm_error</span>(<span class="str">"REF_MISMATCH"</span>,
+              $sformatf(<span class="str">"data_out mismatch: expected=0x%02h got=0x%02h"</span>,
+                        expected_data, t.data_out));
+          <span class="kw">end</span> <span class="kw">else</span>
+            <span class="fn">`uvm_info</span>(<span class="str">"REF_MATCH"</span>,
+              $sformatf(<span class="str">"MATCH 0x%02h"</span>, t.data_out), UVM_HIGH);
+        <span class="kw">end</span>
+      <span class="kw">end</span>
+      SIM_PUSH_POP: <span class="kw">begin</span>  <span class="cm">// simultaneous push+pop</span>
+        <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] expected_data = ref_q.pop_front();
+        ref_q.push_back(t.data_in); <span class="cm">// push after pop to keep order</span>
+        <span class="kw">if</span> (expected_data !== t.data_out) <span class="kw">begin</span>
+          error_count++;
+          <span class="fn">`uvm_error</span>(<span class="str">"REF_SIM"</span>,
+            $sformatf(<span class="str">"Sim push/pop mismatch: exp=0x%02h got=0x%02h"</span>,
+                      expected_data, t.data_out));
+        <span class="kw">end</span>
+      <span class="kw">end</span>
+    <span class="kw">endcase</span>
+  <span class="kw">endfunction</span>
+
+  <span class="kw">function</span> <span class="kw">void</span> <span class="fn">report_phase</span>(uvm_phase phase);
+    <span class="fn">`uvm_info</span>(<span class="str">"REF"</span>,
+      $sformatf(<span class="str">"FIFO Reference Model: %0d errors | queue depth at end: %0d"</span>,
+                error_count, ref_q.size()), UVM_NONE);
+  <span class="kw">endfunction</span>
+<span class="kw">endclass</span>
+</pre>
+  </div>
+
+  <h2 id="functional-coverage">4. Functional Coverage — Fill Level Bins</h2>
+  <p>Coverage drives test closure. The FIFO covergroup must capture <strong>every structurally distinct fill state</strong> and all important stimulus combinations. Without bins for the threshold boundaries, constrained-random rarely hits them without bias:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">covergroup</span> <span class="fn">fifo_cg</span> @(<span class="kw">posedge</span> clk);
+  <span class="kw">option</span>.name       = <span class="str">"fifo_cg"</span>;
+  <span class="kw">option</span>.comment    = <span class="str">"FIFO fill level and stimulus coverage"</span>;
+  <span class="kw">option</span>.per_instance = <span class="num">1</span>;
+
+  <span class="cm">// Fill level bins: 0, 1, mid, N-1, N</span>
+  CP_FILL: <span class="kw">coverpoint</span> count {
+    <span class="kw">bins</span> empty        = {<span class="num">0</span>};
+    <span class="kw">bins</span> single        = {<span class="num">1</span>};
+    <span class="kw">bins</span> low           = {[<span class="num">2</span>:DEPTH/<span class="num">4</span>-<span class="num">1</span>]};
+    <span class="kw">bins</span> mid           = {[DEPTH/<span class="num">4</span>:DEPTH*<span class="num">3</span>/<span class="num">4</span>]};
+    <span class="kw">bins</span> high          = {[DEPTH*<span class="num">3</span>/<span class="num">4</span>+<span class="num">1</span>:DEPTH-<span class="num">2</span>]};
+    <span class="kw">bins</span> nearly_full   = {DEPTH-<span class="num">1</span>};
+    <span class="kw">bins</span> full_state    = {DEPTH};
+  }
+
+  <span class="cm">// Operation type: push, pop, simultaneous, idle</span>
+  CP_OP: <span class="kw">coverpoint</span> {wr_en, rd_en} {
+    <span class="kw">bins</span> idle    = {<span class="num">2'b00</span>};
+    <span class="kw">bins</span> push    = {<span class="num">2'b10</span>};
+    <span class="kw">bins</span> pop     = {<span class="num">2'b01</span>};
+    <span class="kw">bins</span> sim_op  = {<span class="num">2'b11</span>};
+  }
+
+  <span class="cm">// Cross: what operation at what fill level?</span>
+  <span class="cm">// Critical: push at nearly_full, pop at single</span>
+  CX_FILL_OP: <span class="kw">cross</span> CP_FILL, CP_OP {
+    <span class="cm">// Illegal: push at full, pop at empty</span>
+    <span class="kw">illegal_bins</span> overflow   = binsof(CP_FILL.full_state) && binsof(CP_OP.push);
+    <span class="kw">illegal_bins</span> underflow  = binsof(CP_FILL.empty) && binsof(CP_OP.pop);
+  }
+
+  <span class="cm">// Reset during operation</span>
+  CP_RESET: <span class="kw">coverpoint</span> rst_n {
+    <span class="kw">bins</span> in_reset    = {<span class="num">0</span>};
+    <span class="kw">bins</span> out_of_reset = {<span class="num">1</span>};
+  }
+
+  <span class="cm">// Transition: back-to-back pushes until full</span>
+  CP_FULL_SEQ: <span class="kw">coverpoint</span> full {
+    <span class="kw">bins</span> rise = (<span class="num">0</span> => <span class="num">1</span>);  <span class="cm">// transition 0→1 (FIFO became full)</span>
+    <span class="kw">bins</span> fall = (<span class="num">1</span> => <span class="num">0</span>);  <span class="cm">// transition 1→0 (first read after full)</span>
+  }
+<span class="kw">endgroup</span>
+</pre>
+  </div>
+  <div class="callout tip"><strong>Coverage closure tip:</strong> The <code>mid</code> bin is usually hit early; the hard bins are <code>nearly_full</code> (count==N-1) and <code>single</code> (count==1). Add a directed test that fills to N-1 then checks full is not yet asserted before biasing random to hit these bins.</div>
+
+  <h2 id="full-testbench">5. Full SV Testbench with Tasks</h2>
+  <p>A self-contained SystemVerilog testbench wraps the reference model, assertions, and coverage into tasks. This structure also works as the DUT-level testbench before the full UVM environment is built:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="kw">module</span> <span class="fn">tb_fifo</span>;
+  <span class="kw">parameter int</span> DEPTH = <span class="num">16</span>;
+  <span class="kw">parameter int</span> WIDTH = <span class="num">8</span>;
+
+  <span class="ty">logic</span>              clk = <span class="num">0</span>, rst_n;
+  <span class="ty">logic</span>              wr_en, rd_en;
+  <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] data_in;
+  <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] data_out;
+  <span class="ty">logic</span>              full, empty;
+  <span class="ty">logic</span> [$clog2(DEPTH):<span class="num">0</span>] count;
+
+  <span class="kw">always</span> #<span class="num">5</span> clk = ~clk;   <span class="cm">// 100 MHz</span>
+
+  sync_fifo #(.DEPTH(DEPTH),.WIDTH(WIDTH)) dut (.*);
+
+  <span class="cm">// Reference queue (golden model)</span>
+  <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] ref_q[$];
+  <span class="ty">int</span> errors = <span class="num">0</span>, checks = <span class="num">0</span>;
+
+  <span class="kw">task automatic</span> <span class="fn">reset_dut</span>();
+    rst_n = <span class="num">0</span>; wr_en = <span class="num">0</span>; rd_en = <span class="num">0</span>; data_in = <span class="num">0</span>;
+    ref_q = {};
+    repeat(<span class="num">4</span>) @(<span class="kw">posedge</span> clk);
+    rst_n = <span class="num">1</span>; @(<span class="kw">posedge</span> clk);
+    $display(<span class="str">"[TB] Reset complete"</span>);
+  <span class="kw">endtask</span>
+
+  <span class="kw">task automatic</span> <span class="fn">push</span>(<span class="kw">input</span> <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] d);
+    <span class="kw">if</span> (full) <span class="kw">begin</span>
+      $display(<span class="str">"[TB] Push skipped — FIFO full"</span>);
+      <span class="kw">return</span>;
+    <span class="kw">end</span>
+    @(<span class="kw">negedge</span> clk);
+    wr_en = <span class="num">1</span>; data_in = d;
+    @(<span class="kw">posedge</span> clk);
+    ref_q.push_back(d);
+    @(<span class="kw">negedge</span> clk); wr_en = <span class="num">0</span>;
+  <span class="kw">endtask</span>
+
+  <span class="kw">task automatic</span> <span class="fn">pop</span>();
+    <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] exp;
+    <span class="kw">if</span> (empty) <span class="kw">begin</span>
+      $display(<span class="str">"[TB] Pop skipped — FIFO empty"</span>);
+      <span class="kw">return</span>;
+    <span class="kw">end</span>
+    @(<span class="kw">negedge</span> clk); rd_en = <span class="num">1</span>;
+    @(<span class="kw">posedge</span> clk); <span class="cm">// data latches</span>
+    @(<span class="kw">posedge</span> clk); <span class="cm">// registered output valid</span>
+    exp = ref_q.pop_front();
+    checks++;
+    <span class="kw">if</span> (data_out !== exp) <span class="kw">begin</span>
+      errors++;
+      $error(<span class="str">"[TB] POP mismatch: exp=0x%02h got=0x%02h"</span>, exp, data_out);
+    <span class="kw">end</span>
+    @(<span class="kw">negedge</span> clk); rd_en = <span class="num">0</span>;
+  <span class="kw">endtask</span>
+
+  <span class="kw">task automatic</span> <span class="fn">fill_to_full</span>();
+    <span class="ty">int</span> i;
+    <span class="kw">for</span> (i = <span class="num">0</span>; i < DEPTH && !full; i++)
+      push($urandom_range(<span class="num">0</span>,<span class="num">255</span>));
+    $display(<span class="str">"[TB] Filled to full. count=%0d"</span>, count);
+  <span class="kw">endtask</span>
+
+  <span class="kw">task automatic</span> <span class="fn">drain_to_empty</span>();
+    <span class="kw">while</span> (!empty) pop();
+    $display(<span class="str">"[TB] Drained to empty"</span>);
+  <span class="kw">endtask</span>
+
+  <span class="cm">// Corner case: simultaneous push+pop at various fill levels</span>
+  <span class="kw">task automatic</span> <span class="fn">sim_push_pop</span>(<span class="kw">input</span> <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] d);
+    <span class="ty">logic</span> [WIDTH<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] exp;
+    <span class="kw">if</span> (empty || full) <span class="kw">return</span>;
+    exp = ref_q.pop_front();
+    @(<span class="kw">negedge</span> clk);
+    wr_en = <span class="num">1</span>; rd_en = <span class="num">1</span>; data_in = d;
+    @(<span class="kw">posedge</span> clk);
+    ref_q.push_back(d);
+    @(<span class="kw">posedge</span> clk); <span class="cm">// registered output valid</span>
+    checks++;
+    <span class="kw">if</span> (data_out !== exp) <span class="kw">begin</span>
+      errors++;
+      $error(<span class="str">"[TB] SIM_PUSH_POP mismatch: exp=0x%02h got=0x%02h"</span>, exp, data_out);
+    <span class="kw">end</span>
+    @(<span class="kw">negedge</span> clk); wr_en = <span class="num">0</span>; rd_en = <span class="num">0</span>;
+  <span class="kw">endtask</span>
+
+  <span class="kw">initial</span> <span class="kw">begin</span>
+    $dumpfile(<span class="str">"fifo_tb.vcd"</span>); $dumpvars(<span class="num">0</span>, tb_fifo);
+
+    <span class="cm">// Test 1: Basic fill and drain</span>
+    reset_dut();
+    fill_to_full();
+    drain_to_empty();
+
+    <span class="cm">// Test 2: Random push/pop sequence</span>
+    reset_dut();
+    repeat(<span class="num">200</span>) <span class="kw">begin</span>
+      <span class="kw">if</span> ($urandom_range(<span class="num">0</span>,<span class="num">1</span>)) push($urandom_range(<span class="num">0</span>,<span class="num">255</span>));
+      <span class="kw">else</span> pop();
+    <span class="kw">end</span>
+
+    <span class="cm">// Test 3: Simultaneous push/pop</span>
+    reset_dut();
+    repeat(<span class="num">4</span>) push($urandom); <span class="cm">// fill to count=4</span>
+    repeat(<span class="num">50</span>) sim_push_pop($urandom);
+
+    <span class="cm">// Test 4: Reset during operation</span>
+    reset_dut();
+    push(<span class="num">8'hAA</span>); push(<span class="num">8'hBB</span>);
+    @(<span class="kw">negedge</span> clk); rst_n = <span class="num">0</span>;
+    repeat(<span class="num">2</span>) @(<span class="kw">posedge</span> clk);
+    rst_n = <span class="num">1</span>; ref_q = {};
+    @(<span class="kw">posedge</span> clk);
+    <span class="kw">if</span> (!empty) $error(<span class="str">"[TB] FIFO not empty after reset!"</span>);
+
+    $display(<span class="str">"\n[TB] =============================="</span>);
+    $display(<span class="str">"[TB] Total checks : %0d"</span>, checks);
+    $display(<span class="str">"[TB] Total errors : %0d"</span>, errors);
+    <span class="kw">if</span> (errors == <span class="num">0</span>) $display(<span class="str">"[TB] *** FIFO TEST PASSED ***"</span>);
+    $display(<span class="str">"[TB] =============================="</span>);
+    $finish;
+  <span class="kw">end</span>
+<span class="kw">endmodule</span>
+</pre>
+  </div>
+
+  <h2 id="async-fifo">6. Asynchronous FIFO Verification</h2>
+  <p>Asynchronous FIFOs cross clock domains — the write side runs on <code>wr_clk</code> and the read side on <code>rd_clk</code>. Verification must handle three unique challenges not present in sync FIFOs:</p>
+  <h3>6.1 Gray Code Pointer Verification</h3>
+  <p>Write and read pointers are sent across the clock domain crossing in <strong>Gray code</strong> to ensure only 1 bit changes per increment, preventing metastability from multi-bit transitions. An SVA can verify this property:</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Gray code property: only 1 bit may change per cycle</span>
+<span class="kw">function automatic</span> <span class="ty">int</span> <span class="fn">popcount</span>(<span class="ty">logic</span> [ADDR_W:<span class="num">0</span>] v);
+  <span class="ty">int</span> c = <span class="num">0</span>;
+  <span class="kw">for</span> (<span class="ty">int</span> i = <span class="num">0</span>; i <= ADDR_W; i++) c += v[i];
+  <span class="kw">return</span> c;
+<span class="kw">endfunction</span>
+
+<span class="kw">property</span> <span class="fn">gray_wr_ptr</span>;
+  <span class="op">@</span>(<span class="kw">posedge</span> wr_clk) <span class="kw">disable iff</span>(!rst_n)
+  (wr_en && !full) |=>
+    (popcount(wr_ptr_gray ^ $past(wr_ptr_gray)) == <span class="num">1</span>);
+<span class="kw">endproperty</span>
+GRAY_WR: <span class="kw">assert property</span>(gray_wr_ptr)
+  <span class="kw">else</span> $error(<span class="str">"Gray code violation on write pointer!"</span>);
+
+<span class="kw">property</span> <span class="fn">gray_rd_ptr</span>;
+  <span class="op">@</span>(<span class="kw">posedge</span> rd_clk) <span class="kw">disable iff</span>(!rst_n)
+  (rd_en && !empty) |=>
+    (popcount(rd_ptr_gray ^ $past(rd_ptr_gray)) == <span class="num">1</span>);
+<span class="kw">endproperty</span>
+GRAY_RD: <span class="kw">assert property</span>(gray_rd_ptr);
+</pre>
+  </div>
+  <h3>6.2 Metastability Injection</h3>
+  <p>Inject random <strong>0 to 3 ns</strong> delays on the synchronised pointer to stress flag timing without simulating actual metastability (which has no deterministic simulation model):</p>
+  <div class="code-wrap">
+    <button class="copy-btn">Copy</button>
+    <pre><span class="cm">// Metastability injection model for async FIFO</span>
+<span class="kw">module</span> <span class="fn">meta_inject</span> #(<span class="kw">parameter</span> <span class="ty">int</span> W = <span class="num">5</span>) (
+  <span class="kw">input</span>  <span class="ty">logic</span> [W<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] ptr_in,
+  <span class="kw">output</span> <span class="ty">logic</span> [W<span class="op">-</span><span class="num">1</span>:<span class="num">0</span>] ptr_out
+);
+  <span class="kw">real</span> delay_ns;
+  <span class="kw">always</span> @(ptr_in) <span class="kw">begin</span>
+    delay_ns = $urandom_range(<span class="num">0</span>,<span class="num">300</span>) / <span class="num">100.0</span>; <span class="cm">// 0–3 ns</span>
+    #(delay_ns) ptr_out = ptr_in;
+  <span class="kw">end</span>
+<span class="kw">endmodule</span>
+</pre>
+  </div>
+
+  <h2 id="corner-cases">7. Corner Cases</h2>
+  <table>
+    <tr><th>Corner Case</th><th>Description</th><th>Expected Behaviour</th><th>How to Test</th></tr>
+    <tr><td>Simultaneous push+pop at threshold</td><td>wr_en && rd_en when count == N-1</td><td>count stays at N-1; full never asserts</td><td>Directed test: fill to N-1, apply sim push+pop for 10 cycles</td></tr>
+    <tr><td>Simultaneous push+pop when count==1</td><td>wr_en && rd_en when count == 1</td><td>count stays at 1; empty never asserts</td><td>Fill to 1, apply sim push+pop for 10 cycles</td></tr>
+    <tr><td>Back-to-back pushes until full</td><td>wr_en held high for N consecutive cycles</td><td>full asserts on cycle N; write N+1 ignored</td><td>Drive wr_en=1 for N+2 cycles, check full timing and count</td></tr>
+    <tr><td>Reset during write</td><td>rst_n deasserts mid-push</td><td>FIFO empties; push data discarded</td><td>Assert rst_n=0 in middle of wr_en=1 sequence</td></tr>
+    <tr><td>Read after reset</td><td>rd_en immediately after reset deassertion</td><td>data_out undefined; empty asserted; DUT ignores rd_en</td><td>Deassert reset, immediately apply rd_en</td></tr>
+    <tr><td>Pointer wrap-around</td><td>Write pointer wraps from N-1 to 0</td><td>count and flags correct after wrap; no data corruption</td><td>Fill/drain 3x DEPTH writes total</td></tr>
+    <tr><td>Single-cycle full recovery</td><td>Pop while full, then immediately push</td><td>full deasserts, new push accepted within 1 cycle</td><td>Fill, pop, push within same clock window</td></tr>
+  </table>
+
+  <h2 id="debug-tips">8. Debug Tips</h2>
+  <div class="callout warn"><strong>Bug: full asserts one cycle late.</strong> The most common FIFO bug. Write count==N data words but full asserts on cycle N+1. Fix: check whether full is registered (should be combinational off count) or check the pointer comparison logic for off-by-one.</div>
+  <div class="callout warn"><strong>Bug: data_out shows stale value.</strong> If data_out doesn't update after rd_en, check whether the DUT uses a registered or combinational output. A registered output is valid on the clock edge <em>after</em> rd_en — testbench must sample 1 cycle later.</div>
+  <div class="callout tip"><strong>Waveform checklist:</strong> When a mismatch fires, check (1) write pointer, (2) read pointer, (3) count, (4) full/empty flags — all on the same failing cycle. Most FIFO bugs are visible in the pointer difference vs count value.</div>
+  <div class="callout info"><strong>Formal verification:</strong> FIFO safety properties (no overflow, no underflow, full ↔ count==N, empty ↔ count==0) are excellent targets for bounded model checking. Run them with a depth of 2×DEPTH cycles to prove pointer wrap-around is correct.</div>
+
+  <div class="takeaways">
+    <h3>Key Takeaways — Day 22</h3>
+    <ul>
+      <li><strong>Four essential SVA assertions:</strong> no overflow, no underflow, full flag accuracy, empty flag accuracy</li>
+      <li><strong>Queue-based reference model</strong> mirrors FIFO with push_back/pop_front — zero RTL in testbench</li>
+      <li><strong>Coverage bins</strong> must include all fill boundaries: 0, 1, mid, N-1, N plus simultaneous push/pop</li>
+      <li><strong>Simultaneous push+pop</strong> is the hardest corner case — exercises pass-through and pointer arithmetic together</li>
+      <li><strong>Async FIFO</strong> needs gray code pointer SVA plus metastability injection with random 0–3 ns delays</li>
+      <li><strong>count stability assertion</strong> on sim push/pop catches the most subtle FIFO pointer arithmetic bugs</li>
+      <li><strong>Pointer wrap-around</strong> must be exercised: fill and drain 3× DEPTH writes to cross the wrap boundary</li>
+    </ul>
+  </div>
+
+  <div class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details>
+      <summary>What SVA assertions are essential for FIFO verification?</summary>
+      <div class="ans">The four essential FIFO SVA assertions are: (1) no push when full — assert that wr_en is never high when full is high; (2) no pop when empty — assert that rd_en is never high when empty is high; (3) full flag accuracy — if count reaches DEPTH then full must be asserted; (4) empty flag accuracy — if count is 0 then empty must be asserted. These catch the most common FIFO bugs: flag timing, overflow, and underflow.</div>
+    </details>
+    <details>
+      <summary>What is a queue-based reference model for FIFO verification?</summary>
+      <div class="ans">A queue-based FIFO reference model uses a SystemVerilog queue (dynamic array with push_back/pop_front) to mirror the expected FIFO contents. On every observed push (wr_en && !full), the reference model calls ref_q.push_back(data_in). On every observed pop (rd_en && !empty), it calls expected = ref_q.pop_front() and compares expected against the DUT's data_out. This gives exact cycle-accurate checking without implementing any FIFO RTL in the testbench.</div>
+    </details>
+    <details>
+      <summary>How do you verify an asynchronous FIFO?</summary>
+      <div class="ans">Async FIFO verification requires two separate clock domains in the testbench. Key checks are: (1) gray code pointer crossing — ensure only 1 bit changes per pointer increment using an SVA popcount property; (2) metastability injection — inject random delays (0–3 ns) on the synchronised pointers; (3) full/empty flag timing — flags may be pessimistic (assert early) but must never be optimistic; (4) boundary conditions — fill to N-1, check full not yet asserted, then add one more. SVA clock domains must be declared on the correct edge of each respective clock.</div>
+    </details>
+    <details>
+      <summary>What functional coverage bins are needed for FIFO verification?</summary>
+      <div class="ans">A complete FIFO covergroup should include bins for: empty state (count==0), single entry (count==1), half-full (count==DEPTH/2), nearly full (count==DEPTH-1), full (count==DEPTH), simultaneous push and pop (wr_en && rd_en), push only, pop only, and reset during operation. The simultaneous push/pop bin is especially important because it exercises the pass-through path and exposes pointer arithmetic bugs that only manifest at threshold boundaries.</div>
+    </details>
+  </div>
+
+  <div class="prev-next">
+    <a href="/verification/21-axi4-verification/" class="prev-card">
+      <div class="prev-label">← Day 21</div>
+      <div class="prev-title">AXI4 Verification</div>
+    </a>
+    <a href="/verification/23-cdc-verification/" class="next-card" style="margin-top:0">
+      <div>
+        <div class="next-label">Next → Day 23</div>
+        <div class="next-title">CDC Verification</div>
+        <div class="next-desc">Static CDC analysis, metastability injection, gray code pointer SVA, and CDC sign-off methodology.</div>
+      </div>
+      <div class="next-arrow">→</div>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <div class="fl">Ecrioni<span>X</span></div>
+  <p>25-Day Verification Series · <a href="/verification/" style="color:var(--sky)">All Days</a></p>
+  <div class="trust-links" style="margin-top:.9rem;font-size:.78rem;line-height:1.9;opacity:.85">
+    <a href="/about/" style="color:#94a3b8;text-decoration:none">About</a> &middot;
+    <a href="/contact/" style="color:#94a3b8;text-decoration:none">Contact</a> &middot;
+    <a href="/legal/privacy.html" style="color:#94a3b8;text-decoration:none">Privacy Policy</a> &middot;
+    <a href="/legal/terms.html" style="color:#94a3b8;text-decoration:none">Terms</a>
+  </div>
+  <p style="margin-top:.5rem">By EcrioniX · Updated June 2026</p>
+</footer>
+<button class="scroll-top" id="scrollTop" aria-label="Back to top">↑</button>
+<script>
+  document.getElementById('hamburger').addEventListener('click',()=>document.getElementById('mobileMenu').classList.toggle('open'));
+  const st=document.getElementById('scrollTop');
+  window.addEventListener('scroll',()=>st.classList.toggle('visible',window.scrollY>300));
+  st.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.nextElementSibling.innerText);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1800);});
+  });
+</script>
+<script defer src="/assets/ecrionix-bot.js"></script>
+</body>
+</html>
