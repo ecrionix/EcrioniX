@@ -79,6 +79,21 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
   <div class="container">
     <h1>Premium Access Management</h1>
 
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin:2rem 0">
+      <div class="card" style="text-align:center;padding:1.5rem">
+        <h3 style="font-size:2.5rem;color:var(--blue);margin-bottom:0.5rem" id="totalUsers">-</h3>
+        <p style="color:var(--sl)">Total Users</p>
+      </div>
+      <div class="card" style="text-align:center;padding:1.5rem">
+        <h3 style="font-size:2.5rem;color:#fbbf24;margin-bottom:0.5rem" id="pendingCount">-</h3>
+        <p style="color:var(--sl)">Pending Requests</p>
+      </div>
+      <div class="card" style="text-align:center;padding:1.5rem">
+        <h3 style="font-size:2.5rem;color:#4ade80;margin-bottom:0.5rem" id="approvedCount">-</h3>
+        <p style="color:var(--sl)">Approved Users</p>
+      </div>
+    </div>
+
     <div class="card">
       <h2>📋 Pending Payment Requests</h2>
       <div id="requestsList"></div>
@@ -87,6 +102,11 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     <div class="card">
       <h2>✅ Approved Users</h2>
       <div id="approvedList"></div>
+    </div>
+
+    <div class="card">
+      <h2>👥 All Logged-In Users</h2>
+      <div id="allUsersList"></div>
     </div>
   </div>
 </div>
@@ -106,8 +126,34 @@ function showAccessDenied() {
 
 async function loadDashboard(user) {
   document.getElementById('dashboard').style.display = 'block';
+  await loadStats();
   await loadPendingRequests();
   await loadApprovedUsers();
+  await loadAllUsers();
+}
+
+async function loadStats() {
+  try {
+    const db = firebase.firestore();
+
+    // Total users
+    const usersSnapshot = await db.collection('users').get();
+    document.getElementById('totalUsers').innerText = usersSnapshot.size;
+
+    // Pending requests
+    const pendingSnapshot = await db.collection('paymentRequests')
+      .where('status', '==', 'pending')
+      .get();
+    document.getElementById('pendingCount').innerText = pendingSnapshot.size;
+
+    // Approved users
+    const approvedSnapshot = await db.collection('users')
+      .where('approvedCourses', '!=', [])
+      .get();
+    document.getElementById('approvedCount').innerText = approvedSnapshot.size;
+  } catch (error) {
+    console.error("Error loading stats:", error);
+  }
 }
 
 async function loadPendingRequests() {
@@ -245,6 +291,39 @@ async function revokeAccess(userId, courseId) {
     await loadApprovedUsers();
   } catch (error) {
     alert('Error: ' + error.message);
+  }
+}
+
+async function loadAllUsers() {
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('users').orderBy('grantedAt', 'desc').get();
+
+    const list = document.getElementById('allUsersList');
+
+    if (snapshot.empty) {
+      list.innerHTML = '<p style="color:var(--sl)">No users yet</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    snapshot.forEach(doc => {
+      const user = doc.data();
+      const status = user.approvedCourses?.length > 0 ? '✅ Approved' : '⏳ No Access';
+      const html = `
+        <div class="request-row">
+          <h3>${user.name || 'Unknown'}</h3>
+          <p><b>Email:</b> ${user.email || 'N/A'}</p>
+          <p><b>Status:</b> ${status}</p>
+          <p><b>Courses:</b> ${(user.approvedCourses || []).length > 0 ? user.approvedCourses.join(', ') : 'None'}</p>
+          <p style="color:var(--sl);font-size:0.85rem"><b>Registered:</b> ${user.grantedAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
+        </div>
+      `;
+      list.innerHTML += html;
+    });
+  } catch (error) {
+    console.error("Error loading users:", error);
+    document.getElementById('allUsersList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
   }
 }
 </script>
