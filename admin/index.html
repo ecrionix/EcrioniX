@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard — Premium Access Management</title>
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHK2QbFqXJqCOeQRNVOG2';
+
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-demo/';
+  } else if (user.uid !== ADMIN_UID) {
+    showAccessDenied();
+  } else {
+    loadDashboard(user);
+  }
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.btn{padding:0.6rem 1.2rem;border-radius:6px;border:none;cursor:pointer;font-size:0.9rem;font-weight:600;transition:all 0.2s}
+.btn-primary{background:var(--blue);color:#fff}.btn-primary:hover{opacity:0.9}
+.btn-danger{background:#f87171;color:#fff}.btn-danger:hover{opacity:0.9}
+.btn-success{background:#4ade80;color:#000}.btn-success:hover{opacity:0.9}
+.container{max-width:1200px;margin:0 auto;padding:2rem}
+.card{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:2rem;margin:2rem 0}
+.status{padding:1rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem}
+.status.error{background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.status.success{background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
+.status.warning{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+h1{font-size:2rem;margin-bottom:1rem;color:#f8fafc}
+h2{font-size:1.3rem;margin:1.5rem 0 0.5rem;color:#f8fafc;border-bottom:2px solid rgba(56,189,248,.15);padding-bottom:0.5rem}
+.request-row{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:1.5rem;margin:1rem 0}
+.request-row h3{color:var(--blue);margin-bottom:0.5rem}
+.request-row p{color:var(--sl);margin:0.5rem 0}
+.request-actions{display:flex;gap:0.8rem;margin-top:1rem}
+.access-denied{text-align:center;padding:4rem 2rem}
+.access-denied h1{color:#f87171;margin-bottom:2rem}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="navbar-logo">🔐 Admin Dashboard</div>
+  <button class="btn btn-danger" onclick="logout()">Logout</button>
+</div>
+
+<div id="accessDenied" class="access-denied" style="display:none;">
+  <h1>❌ Access Denied</h1>
+  <p>You don't have permission to access this page.</p>
+  <button class="btn btn-primary" onclick="logout()">Go Back</button>
+</div>
+
+<div id="dashboard" style="display:none;">
+  <div class="container">
+    <h1>Premium Access Management</h1>
+
+    <div class="card">
+      <h2>📋 Pending Payment Requests</h2>
+      <div id="requestsList"></div>
+    </div>
+
+    <div class="card">
+      <h2>✅ Approved Users</h2>
+      <div id="approvedList"></div>
+    </div>
+  </div>
+</div>
+
+<footer>Admin Dashboard — Authorized access only</footer>
+
+<script>
+function logout() {
+  firebase.auth().signOut().then(() => {
+    window.location.href = '/premium-demo/';
+  });
+}
+
+function showAccessDenied() {
+  document.getElementById('accessDenied').style.display = 'block';
+}
+
+async function loadDashboard(user) {
+  document.getElementById('dashboard').style.display = 'block';
+  await loadPendingRequests();
+  await loadApprovedUsers();
+}
+
+async function loadPendingRequests() {
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('paymentRequests')
+      .where('status', '==', 'pending')
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const list = document.getElementById('requestsList');
+
+    if (snapshot.empty) {
+      list.innerHTML = '<p style="color:var(--sl)">No pending requests</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    snapshot.forEach(doc => {
+      const req = doc.data();
+      const html = `
+        <div class="request-row">
+          <h3>${req.name}</h3>
+          <p><b>Email:</b> ${req.email}</p>
+          <p><b>Course:</b> ${req.courseId}</p>
+          <p><b>Payment Method:</b> ${req.paymentMethod}</p>
+          <p><b>Payment ID:</b> <code style="background:var(--bg);padding:0.3rem 0.6rem;border-radius:4px">${req.paymentId}</code></p>
+          <p><b>Notes:</b> ${req.notes || 'N/A'}</p>
+          <p style="color:var(--sl);font-size:0.85rem"><b>Date:</b> ${req.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
+
+          <div class="request-actions">
+            <button class="btn btn-success" onclick="approveRequest('${doc.id}', '${req.userId}', '${req.courseId}')">✅ Approve</button>
+            <button class="btn btn-danger" onclick="rejectRequest('${doc.id}')">❌ Reject</button>
+          </div>
+        </div>
+      `;
+      list.innerHTML += html;
+    });
+  } catch (error) {
+    console.error("Error loading requests:", error);
+    document.getElementById('requestsList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+  }
+}
+
+async function loadApprovedUsers() {
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('users')
+      .where('approvedCourses', '!=', [])
+      .get();
+
+    const list = document.getElementById('approvedList');
+
+    if (snapshot.empty) {
+      list.innerHTML = '<p style="color:var(--sl)">No approved users yet</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+    snapshot.forEach(doc => {
+      const user = doc.data();
+      const html = `
+        <div class="request-row">
+          <h3>${user.name || 'Unknown'}</h3>
+          <p><b>Email:</b> ${user.email || 'N/A'}</p>
+          <p><b>Approved Courses:</b> ${(user.approvedCourses || []).join(', ')}</p>
+          <p style="color:var(--sl);font-size:0.85rem"><b>Granted:</b> ${user.grantedAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
+
+          <div class="request-actions">
+            <button class="btn btn-danger" onclick="revokeAccess('${doc.id}', '${(user.approvedCourses || [])[0]}')">🚫 Revoke Access</button>
+          </div>
+        </div>
+      `;
+      list.innerHTML += html;
+    });
+  } catch (error) {
+    console.error("Error loading approved users:", error);
+    document.getElementById('approvedList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+  }
+}
+
+async function approveRequest(requestId, userId, courseId) {
+  if (!confirm(`Approve access to "${courseId}" for this user?`)) return;
+
+  try {
+    const db = firebase.firestore();
+
+    // Add course to user's approved courses
+    await db.collection('users').doc(userId).set({
+      approvedCourses: firebase.firestore.FieldValue.arrayUnion(courseId),
+      grantedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Mark request as approved
+    await db.collection('paymentRequests').doc(requestId).update({
+      status: 'approved',
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    alert('✅ Request approved!');
+    await loadPendingRequests();
+    await loadApprovedUsers();
+  } catch (error) {
+    alert('Error: ' + error.message);
+  }
+}
+
+async function rejectRequest(requestId) {
+  if (!confirm('Reject this request?')) return;
+
+  try {
+    const db = firebase.firestore();
+    await db.collection('paymentRequests').doc(requestId).update({
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    alert('❌ Request rejected');
+    await loadPendingRequests();
+  } catch (error) {
+    alert('Error: ' + error.message);
+  }
+}
+
+async function revokeAccess(userId, courseId) {
+  if (!confirm(`Revoke access to "${courseId}"?`)) return;
+
+  try {
+    const db = firebase.firestore();
+    await db.collection('users').doc(userId).update({
+      approvedCourses: firebase.firestore.FieldValue.arrayRemove(courseId),
+    });
+
+    alert('🚫 Access revoked');
+    await loadApprovedUsers();
+  } catch (error) {
+    alert('Error: ' + error.message);
+  }
+}
+</script>
+
+</body>
+</html>
