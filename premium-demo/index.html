@@ -7,11 +7,10 @@
 <title>Premium Demo — Testing Page (Not Indexed)</title>
 <link rel="icon" href="/favicon1.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
-import { getFirestore, collection, query, where, getDocs, setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
-
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
 const firebaseConfig = {
   apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
   authDomain: "ecrionix.firebaseapp.com",
@@ -21,28 +20,14 @@ const firebaseConfig = {
   appId: "1:859295895664:web:893f744ee8ad871f9464b5"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-window.auth = auth;
-window.db = db;
-window.signInWithPopup = signInWithPopup;
-window.GoogleAuthProvider = GoogleAuthProvider;
-window.onAuthStateChanged = onAuthStateChanged;
-window.signOut = signOut;
-window.collection = collection;
-window.query = query;
-window.where = where;
-window.getDocs = getDocs;
-window.setDoc = setDoc;
-window.doc = doc;
-window.deleteDoc = deleteDoc;
-
-onAuthStateChanged(auth, async (user) => {
+firebase.auth().onAuthStateChanged(user => {
   if (user) {
     showLoggedIn(user);
-    await checkPremiumStatus(user);
+    checkPremiumStatus(user);
   } else {
     showLoggedOut();
   }
@@ -128,13 +113,12 @@ input:focus{outline:none;border-color:var(--blue)}
   <!-- Request Access Form -->
   <div class="card" id="requestFormSection" style="display:none;">
     <h2>Step 3: Request Premium Access</h2>
-    <p>Submit payment proof to request access:</p>
+    <p>Select a course and submit payment proof:</p>
 
     <div class="form-group">
-      <label>Select Plan:</label>
-      <select id="planSelect" style="width:100%;padding:0.6rem;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--text)">
-        <option value="basic">Basic Plan ($4.99/month)</option>
-        <option value="pro">Pro Plan ($14.99/month)</option>
+      <label>Select Course:</label>
+      <select id="courseSelect" style="width:100%;padding:0.6rem;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--text)">
+        <option value="cdc">Clock Domain Crossing (CDC) — Advanced</option>
       </select>
     </div>
 
@@ -233,8 +217,8 @@ input:focus{outline:none;border-color:var(--blue)}
 <script>
 
 function loginWithGoogle() {
-  const provider = new GoogleAuthProvider();
-  signInWithPopup(auth, provider)
+  const provider = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(provider)
     .then(result => {
       console.log("Logged in:", result.user);
     })
@@ -244,7 +228,7 @@ function loginWithGoogle() {
 }
 
 function logout() {
-  signOut(auth).then(() => {
+  firebase.auth().signOut().then(() => {
     showLoggedOut();
   });
 }
@@ -282,36 +266,18 @@ function showLoggedOut() {
 
 async function checkPremiumStatus(user) {
   try {
-    const userDocRef = doc(db, 'users', user.uid);
-    const docSnap = await getDocs(query(collection(db, 'users'), where('__name__', '==', user.uid)));
+    const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const userData = userDoc.data();
 
-    if (!docSnap.empty) {
-      const userData = docSnap.docs[0].data();
-      if (userData?.isPremium) {
-        const expiresAt = userData.premiumExpiresAt?.toDate?.() || new Date();
-        const now = new Date();
-
-        if (expiresAt > now) {
-          document.getElementById('premiumStatus').className = 'status success';
-          document.getElementById('premiumStatus').innerHTML =
-            `✅ <b>Premium Active!</b> Expires: ${expiresAt.toLocaleDateString()}`;
-          document.getElementById('premiumContent').style.display = 'block';
-        } else {
-          document.getElementById('premiumStatus').className = 'status warning';
-          document.getElementById('premiumStatus').innerHTML =
-            `⏰ Premium expired on ${expiresAt.toLocaleDateString()}`;
-          document.getElementById('premiumContent').style.display = 'none';
-        }
-      } else {
-        document.getElementById('premiumStatus').className = 'status error';
-        document.getElementById('premiumStatus').innerHTML =
-          `❌ <b>No Premium Access</b> — Submit a request above`;
-        document.getElementById('premiumContent').style.display = 'none';
-      }
+    if (userData?.approvedCourses && userData.approvedCourses.length > 0) {
+      document.getElementById('premiumStatus').className = 'status success';
+      document.getElementById('premiumStatus').innerHTML =
+        `✅ <b>Access Granted!</b> Approved courses: ${userData.approvedCourses.join(', ')}`;
+      document.getElementById('premiumContent').style.display = 'block';
     } else {
       document.getElementById('premiumStatus').className = 'status error';
       document.getElementById('premiumStatus').innerHTML =
-        `❌ <b>No Premium Access</b> — Submit a request above`;
+        `❌ <b>No Course Access</b> — Submit a request above`;
       document.getElementById('premiumContent').style.display = 'none';
     }
   } catch (error) {
@@ -326,7 +292,7 @@ async function submitAccessRequest() {
     return;
   }
 
-  const plan = document.getElementById('planSelect').value;
+  const courseId = document.getElementById('courseSelect').value;
   const paymentMethod = document.getElementById('paymentMethod').value;
   const paymentId = document.getElementById('paymentId').value;
   const notes = document.getElementById('notes').value;
@@ -337,17 +303,17 @@ async function submitAccessRequest() {
   }
 
   try {
-    const docRef = doc(db, 'paymentRequests', user.uid + '_' + Date.now());
-    await setDoc(docRef, {
+    const docRef = firebase.firestore().collection('paymentRequests').doc();
+    await docRef.set({
       userId: user.uid,
       email: user.email,
       name: user.displayName,
-      plan: plan,
+      courseId: courseId,
       paymentMethod: paymentMethod,
       paymentId: paymentId,
       notes: notes,
       status: 'pending',
-      createdAt: new Date(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
     const statusDiv = document.getElementById('formStatus');
@@ -355,7 +321,7 @@ async function submitAccessRequest() {
     statusDiv.innerHTML = '✅ Request submitted! Admin will review soon.';
 
     // Clear form
-    document.getElementById('planSelect').value = 'basic';
+    document.getElementById('courseSelect').value = 'cdc';
     document.getElementById('paymentMethod').value = 'upi';
     document.getElementById('paymentId').value = '';
     document.getElementById('notes').value = '';
@@ -371,20 +337,17 @@ async function grantPremiumAccess() {
     return;
   }
 
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+  const courseId = document.getElementById('courseSelect').value;
 
   try {
-    const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, {
-      isPremium: true,
-      premiumExpiresAt: expiresAt,
-      premiumPlan: document.getElementById('planSelect').value,
-      grantedAt: new Date(),
+    const userRef = firebase.firestore().collection('users').doc(user.uid);
+    await userRef.set({
+      approvedCourses: firebase.firestore.FieldValue.arrayUnion(courseId),
+      grantedAt: firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
     document.getElementById('grantStatus').className = 'status success';
-    document.getElementById('grantStatus').innerHTML = '✅ Premium access granted for 30 days!';
+    document.getElementById('grantStatus').innerHTML = `✅ Access granted to "${courseId}"!`;
 
     await checkPremiumStatus(user);
   } catch (error) {
@@ -399,15 +362,16 @@ async function revokePremiumAccess() {
     return;
   }
 
+  const courseId = document.getElementById('courseSelect').value;
+
   try {
-    const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, {
-      isPremium: false,
-      premiumExpiresAt: null,
-    }, { merge: true });
+    const userRef = firebase.firestore().collection('users').doc(user.uid);
+    await userRef.update({
+      approvedCourses: firebase.firestore.FieldValue.arrayRemove(courseId),
+    });
 
     document.getElementById('revokeStatus').className = 'status success';
-    document.getElementById('revokeStatus').innerHTML = '✅ Premium access revoked';
+    document.getElementById('revokeStatus').innerHTML = `✅ Access revoked for "${courseId}"`;
 
     await checkPremiumStatus(user);
   } catch (error) {
@@ -423,10 +387,8 @@ async function viewUserData() {
   }
 
   try {
-    const userRef = doc(db, 'users', user.uid);
-    const docSnap = await getDocs(query(collection(db, 'users'), where('__name__', '==', user.uid)));
-
-    const userData = !docSnap.empty ? docSnap.docs[0].data() : {};
+    const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const userData = userDoc.data() || {};
 
     const display = document.getElementById('userDataDisplay');
     display.innerText = JSON.stringify(userData, null, 2);
