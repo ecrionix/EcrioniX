@@ -145,21 +145,6 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="card">
-      <h2>📋 Pending Payment Requests</h2>
-      <div id="requestsList"></div>
-    </div>
-
-    <div class="card">
-      <h2>✅ Approved Users</h2>
-      <div id="approvedList"></div>
-    </div>
-
-    <div class="card">
-      <h2>❌ Rejected Requests</h2>
-      <div id="rejectedList"></div>
-    </div>
-
-    <div class="card">
       <h2>📊 All Requests (Spreadsheet View)</h2>
       <p style="color:var(--sl);font-size:0.85rem;margin-bottom:1rem">Click a column header to sort. Use the boxes below each header to filter.</p>
       <button class="clear-filters-btn" onclick="clearTableFilters()">Clear all filters</button>
@@ -179,7 +164,21 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       <div style="margin-bottom:1.5rem">
         <input type="text" id="userSearchInput" placeholder="Search by name or email..." style="width:100%;padding:0.8rem;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--text);font-size:0.9rem">
       </div>
-      <div id="allUsersList"></div>
+      <div class="row-count" id="usersRowCount"></div>
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead>
+            <tr>
+              <th><div class="th-inner" style="cursor:default"><span>Name</span></div></th>
+              <th><div class="th-inner" style="cursor:default"><span>Email</span></div></th>
+              <th><div class="th-inner" style="cursor:default"><span>Status</span></div></th>
+              <th><div class="th-inner" style="cursor:default"><span>Courses</span></div></th>
+              <th><div class="th-inner" style="cursor:default"><span>Last Login</span></div></th>
+            </tr>
+          </thead>
+          <tbody id="allUsersList"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -347,9 +346,6 @@ function renderTableBody(rows) {
 async function loadDashboard(user) {
   document.getElementById('dashboard').style.display = 'block';
   await loadStats();
-  await loadPendingRequests();
-  await loadApprovedUsers();
-  await loadRejectedRequests();
   await loadAllRequestsHistory();
   await loadAllUsers();
 }
@@ -378,126 +374,6 @@ async function loadStats() {
   }
 }
 
-async function loadPendingRequests() {
-  try {
-    const db = firebase.firestore();
-    const snapshot = await db.collection('paymentRequests')
-      .where('status', '==', 'pending')
-      .orderBy('createdAt', 'desc')
-      .get();
-
-    const list = document.getElementById('requestsList');
-
-    if (snapshot.empty) {
-      list.innerHTML = '<p style="color:var(--sl)">No pending requests</p>';
-      return;
-    }
-
-    list.innerHTML = '';
-    snapshot.forEach(doc => {
-      const req = doc.data();
-      const html = `
-        <div class="request-row">
-          <h3>${escapeHtml(req.name)}</h3>
-          <p><b>Email:</b> ${escapeHtml(req.email)}</p>
-          <p><b>Course:</b> ${escapeHtml(req.courseId)}</p>
-          <p><b>Payment Method:</b> ${escapeHtml(req.paymentMethod)}</p>
-          <p><b>Payment ID:</b> <code style="background:var(--bg);padding:0.3rem 0.6rem;border-radius:4px">${escapeHtml(req.paymentId)}</code></p>
-          <p><b>Notes:</b> ${escapeHtml(req.notes) || 'N/A'}</p>
-          <p style="color:var(--sl);font-size:0.85rem"><b>Date:</b> ${req.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
-
-          <div class="request-actions">
-            <button class="btn btn-success" onclick="approveRequest('${doc.id}', '${req.userId}', '${req.courseId}')">✅ Approve</button>
-            <button class="btn btn-danger" onclick="rejectRequest('${doc.id}')">❌ Reject</button>
-          </div>
-        </div>
-      `;
-      list.innerHTML += html;
-    });
-  } catch (error) {
-    console.error("Error loading requests:", error);
-    document.getElementById('requestsList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
-  }
-}
-
-async function loadApprovedUsers() {
-  try {
-    const db = firebase.firestore();
-    const snapshot = await db.collection('users')
-      .where('approvedCourses', '!=', [])
-      .get();
-
-    const list = document.getElementById('approvedList');
-
-    if (snapshot.empty) {
-      list.innerHTML = '<p style="color:var(--sl)">No approved users yet</p>';
-      return;
-    }
-
-    list.innerHTML = '';
-    snapshot.forEach(doc => {
-      const user = doc.data();
-      const html = `
-        <div class="request-row">
-          <h3>${escapeHtml(user.name) || 'Unknown'}</h3>
-          <p><b>Email:</b> ${escapeHtml(user.email) || 'N/A'}</p>
-          <p><b>Approved Courses:</b> ${escapeHtml((user.approvedCourses || []).join(', '))}</p>
-          <p style="color:var(--sl);font-size:0.85rem"><b>Granted:</b> ${user.grantedAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
-
-          <div class="request-actions">
-            <button class="btn btn-danger" onclick="revokeAccess('${doc.id}', '${(user.approvedCourses || [])[0]}')">🚫 Revoke Access</button>
-          </div>
-        </div>
-      `;
-      list.innerHTML += html;
-    });
-  } catch (error) {
-    console.error("Error loading approved users:", error);
-    document.getElementById('approvedList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
-  }
-}
-
-async function loadRejectedRequests() {
-  try {
-    const db = firebase.firestore();
-    const snapshot = await db.collection('paymentRequests')
-      .where('status', '==', 'rejected')
-      .get();
-
-    const list = document.getElementById('rejectedList');
-
-    if (snapshot.empty) {
-      list.innerHTML = '<p style="color:var(--sl)">No rejected requests</p>';
-      return;
-    }
-
-    const requests = [];
-    snapshot.forEach(doc => requests.push({ id: doc.id, ...doc.data() }));
-    requests.sort((a, b) => (b.rejectedAt?.toMillis?.() || 0) - (a.rejectedAt?.toMillis?.() || 0));
-
-    list.innerHTML = '';
-    requests.forEach(req => {
-      const html = `
-        <div class="request-row">
-          <h3>${escapeHtml(req.name)}</h3>
-          <p><b>Email:</b> ${escapeHtml(req.email)}</p>
-          <p><b>Course:</b> ${escapeHtml(req.courseId)}</p>
-          <p><b>Reason:</b> ${escapeHtml(req.rejectionReason) || 'N/A'}</p>
-          <p style="color:var(--sl);font-size:0.85rem"><b>Rejected:</b> ${req.rejectedAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
-
-          <div class="request-actions">
-            <button class="btn btn-primary" onclick="reopenRequest('${req.id}')">↩️ Move Back to Pending</button>
-          </div>
-        </div>
-      `;
-      list.innerHTML += html;
-    });
-  } catch (error) {
-    console.error("Error loading rejected requests:", error);
-    document.getElementById('rejectedList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
-  }
-}
-
 async function reopenRequest(requestId) {
   if (!confirm('Move this request back to Pending for re-review?')) return;
 
@@ -508,8 +384,7 @@ async function reopenRequest(requestId) {
       rejectionReason: firebase.firestore.FieldValue.delete(),
     });
 
-    await loadPendingRequests();
-    await loadRejectedRequests();
+    await loadStats();
     await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
@@ -535,8 +410,7 @@ async function approveRequest(requestId, userId, courseId) {
     });
 
     alert('✅ Request approved!');
-    await loadPendingRequests();
-    await loadApprovedUsers();
+    await loadStats();
     await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
@@ -556,8 +430,7 @@ async function rejectRequest(requestId) {
     });
 
     alert('❌ Request rejected');
-    await loadPendingRequests();
-    await loadRejectedRequests();
+    await loadStats();
     await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
@@ -589,7 +462,7 @@ async function revokeAccess(userId, courseId) {
     await batch.commit();
 
     alert('🚫 Access revoked');
-    await loadApprovedUsers();
+    await loadStats();
     await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
@@ -604,7 +477,7 @@ async function loadAllUsers() {
     const snapshot = await db.collection('users').orderBy('lastLogin', 'desc').get();
 
     if (snapshot.empty) {
-      document.getElementById('allUsersList').innerHTML = '<p style="color:var(--sl)">No users yet</p>';
+      document.getElementById('allUsersList').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--sl)">No users yet</td></tr>';
       return;
     }
 
@@ -626,32 +499,32 @@ async function loadAllUsers() {
     });
   } catch (error) {
     console.error("Error loading users:", error);
-    document.getElementById('allUsersList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+    document.getElementById('allUsersList').innerHTML = `<tr><td colspan="5"><div class="status error">Error: ${error.message}</div></td></tr>`;
   }
 }
 
 function displayUsers(users) {
   const list = document.getElementById('allUsersList');
+  document.getElementById('usersRowCount').innerText = `Showing ${users.length} of ${allUsersData.length} user(s)`;
 
   if (users.length === 0) {
-    list.innerHTML = '<p style="color:var(--sl)">No users found</p>';
+    list.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--sl)">No users found</td></tr>';
     return;
   }
 
-  list.innerHTML = '';
-  users.forEach(user => {
+  list.innerHTML = users.map(user => {
     const status = user.approvedCourses?.length > 0 ? '✅ Approved' : '⏳ No Access';
-    const html = `
-      <div class="request-row">
-        <h3>${escapeHtml(user.name) || 'Unknown'}</h3>
-        <p><b>Email:</b> ${escapeHtml(user.email) || 'N/A'}</p>
-        <p><b>Status:</b> ${status}</p>
-        <p><b>Courses:</b> ${(user.approvedCourses || []).length > 0 ? escapeHtml(user.approvedCourses.join(', ')) : 'None'}</p>
-        <p style="color:var(--sl);font-size:0.85rem"><b>Last Login:</b> ${user.lastLogin?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
-      </div>
+    const courses = (user.approvedCourses || []).length > 0 ? escapeHtml(user.approvedCourses.join(', ')) : 'None';
+    return `
+      <tr>
+        <td class="name-cell">${escapeHtml(user.name) || 'Unknown'}</td>
+        <td>${escapeHtml(user.email) || 'N/A'}</td>
+        <td>${status}</td>
+        <td>${courses}</td>
+        <td>${user.lastLogin?.toDate?.()?.toLocaleDateString() || 'N/A'}</td>
+      </tr>
     `;
-    list.innerHTML += html;
-  });
+  }).join('');
 }
 </script>
 
