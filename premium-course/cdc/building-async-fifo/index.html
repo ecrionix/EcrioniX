@@ -780,7 +780,17 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="section">
-      <div class="section-head"><div class="section-num">7</div><h2>The flags are always safely late — and that's the design working correctly</h2></div>
+      <div class="section-head"><div class="section-num">7</div><h2>The Golden Rule of CDC: Register Before Crossing</h2></div>
+      <p>
+        If you look closely at our Verilog implementation below, you'll notice a critical detail: <code>wptr_gray</code> and <code>rptr_gray</code> are <strong>registers (flip-flops)</strong>, not just combinational wires derived from the binary pointers. We calculate the next Gray value combinationally (<code>wptr_gray_next</code>), but we clock it into a register <em>before</em> it leaves its source domain.
+      </p>
+      <div class="warnbox">
+        <p><strong>Never let a combinational signal cross a clock domain.</strong> If <code>wptr_gray</code> was just a <code>wire</code> driven by an XOR gate, any slight routing delay differences in the binary pointer bits feeding that XOR gate could cause temporary glitches (e.g., <code>010</code> briefly flashing to <code>111</code> before settling on <code>110</code>). If the receiving clock edge happens to sample the signal during that microscopic glitch, it latches garbage. A register cleans this up, ensuring only a stable, clean, single-bit transition crosses the boundary.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">8</div><h2>The flags are always safely late — and that's the design working correctly</h2></div>
       <p>
         Each flag is computed from a <em>synchronized</em> copy of the other domain's pointer, which lags the real
         value by up to two receiving-clock cycles (Lesson 3.1). That means:
@@ -872,33 +882,47 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     // ---- Shared dual-port memory ----
     reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
 
-    // ---- Write domain: N+1-bit binary pointer + Gray-coded copy ----
-    reg  [ADDR_WIDTH:0] wptr_bin;
-    wire [ADDR_WIDTH:0] wptr_gray = wptr_bin ^ (wptr_bin >> 1);
     wire wr_now = wr_en && !full;
-
-    always @(posedge clk_a or negedge rst_a_n) begin
-        if (!rst_a_n)     wptr_bin <= {(ADDR_WIDTH+1){1'b0}};
-        else if (wr_now)  wptr_bin <= wptr_bin + 1'b1;
-    end
-
     always @(posedge clk_a) begin
         if (wr_now) mem[wptr_bin[ADDR_WIDTH-1:0]] <= wr_data;
     end
 
-    // ---- Read domain: N+1-bit binary pointer + Gray-coded copy ----
-    reg  [ADDR_WIDTH:0] rptr_bin;
-    wire [ADDR_WIDTH:0] rptr_gray = rptr_bin ^ (rptr_bin >> 1);
     wire rd_now = rd_en && !empty;
-
-    always @(posedge clk_b or negedge rst_b_n) begin
-        if (!rst_b_n)     rptr_bin <= {(ADDR_WIDTH+1){1'b0}};
-        else if (rd_now)  rptr_bin <= rptr_bin + 1'b1;
-    end
-
     always @(posedge clk_b or negedge rst_b_n) begin
         if (!rst_b_n)      rd_data <= {DATA_WIDTH{1'b0}};
         else if (rd_now)   rd_data <= mem[rptr_bin[ADDR_WIDTH-1:0]];
+    end
+
+    // ---- Write domain: Binary counter & registered Gray pointer ----
+    reg  [ADDR_WIDTH:0] wptr_bin;
+    reg  [ADDR_WIDTH:0] wptr_gray;
+    wire [ADDR_WIDTH:0] wptr_bin_next  = wptr_bin + wr_now;
+    wire [ADDR_WIDTH:0] wptr_gray_next = wptr_bin_next ^ (wptr_bin_next >> 1);
+
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n) begin
+            wptr_bin  <= {(ADDR_WIDTH+1){1'b0}};
+            wptr_gray <= {(ADDR_WIDTH+1){1'b0}};
+        end else begin
+            wptr_bin  <= wptr_bin_next;
+            wptr_gray <= wptr_gray_next; // CRITICAL: Gray pointer must be registered before crossing domains to avoid combinational glitches
+        end
+    end
+
+    // ---- Read domain: Binary counter & registered Gray pointer ----
+    reg  [ADDR_WIDTH:0] rptr_bin;
+    reg  [ADDR_WIDTH:0] rptr_gray;
+    wire [ADDR_WIDTH:0] rptr_bin_next  = rptr_bin + rd_now;
+    wire [ADDR_WIDTH:0] rptr_gray_next = rptr_bin_next ^ (rptr_bin_next >> 1);
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            rptr_bin  <= {(ADDR_WIDTH+1){1'b0}};
+            rptr_gray <= {(ADDR_WIDTH+1){1'b0}};
+        end else begin
+            rptr_bin  <= rptr_bin_next;
+            rptr_gray <= rptr_gray_next; // CRITICAL: Register before crossing
+        end
     end
 
     // ---- Synchronize rptr_gray into the write domain (feeds FULL) ----
