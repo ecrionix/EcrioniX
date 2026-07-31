@@ -207,17 +207,7 @@ function drawLab(playheadT, isLive) {
     ctx.beginPath();
 
     if (row.type === 'clock') {
-      let level = 0, lastX = xFor(0);
-      ctx.moveTo(lastX, yLo);
-      let t = 0;
-      while (t <= drawT) {
-        const edgeInPeriod = t % row.period;
-        level = edgeInPeriod < row.period / 2 ? 1 : 0;
-        t += 0.5;
-      }
-      // redraw cleanly using edges
-      ctx.beginPath();
-      let cur = 0, curLevel = 0;
+      let curLevel = 0;
       ctx.moveTo(xFor(0), curLevel ? yHi : yLo);
       const halfPeriod = row.period / 2;
       let tt = 0;
@@ -271,7 +261,7 @@ function drawLab(playheadT, isLive) {
       let y = yMid;
       if (row.type === 'clock') {
         const halfPeriod = row.period / 2;
-        const level = Math.floor(drawT / halfPeriod) % 2 === 0 ? 1 : 0;
+        const level = Math.floor(drawT / halfPeriod) % 2 === 0 ? 0 : 1;
         y = level ? yHi : yLo;
       } else if (row.type === 'data') {
         y = transitionValueAt(drawT) ? yHi : yLo;
@@ -301,9 +291,9 @@ function animateDiagram(t) {
   const dataVal = transitionValueAt(t);
   const ff1Val = valueAt(labFF1, t, 0);
   const ff2Val = valueAt(labFF2, t, 0);
-  const ff1Risky = labFF1.some(e => e.t <= t && e.t > t - 0.05 && e.risky);
+  const flashWindow = Math.max(3, labClkBPeriod * 0.15);
+  const ff1Risky = labFF1.some(e => e.t <= t && e.t > t - flashWindow && e.risky);
   const ff1El = document.getElementById('diagFF1');
-  const ff2El = document.getElementById('diagFF2');
   document.getElementById('diagDataVal').textContent = dataVal;
   document.getElementById('diagFF1Val').textContent = ff1Val;
   document.getElementById('diagFF2Val').textContent = ff2Val;
@@ -633,24 +623,21 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       <pre id="code-sync2ff">module sync_2ff (
     input  wire clk_b,
     input  wire rst_b,
-    input  wire data_a,     // async input, driven by domain A
-    output reg  sync_out    // clean output, safe to use in domain B
+    input  wire data_a,                            // async input, driven by domain A
+    (* ASYNC_REG = "TRUE" *) output reg sync_out    // clean output, safe to use in domain B
 );
 
     (* ASYNC_REG = "TRUE" *) reg ff1_q;
-    (* ASYNC_REG = "TRUE" *) reg ff2_q;
 
     always @(posedge clk_b or negedge rst_b) begin
         if (!rst_b) begin
-            ff1_q <= 1'b0;
-            ff2_q <= 1'b0;
+            ff1_q    <= 1'b0;
+            sync_out <= 1'b0;
         end else begin
-            ff1_q <= data_a;   // stage 1: may go metastable
-            ff2_q <= ff1_q;    // stage 2: always samples a settled value
+            ff1_q    <= data_a;    // stage 1: may go metastable
+            sync_out <= ff1_q;     // stage 2: always samples a settled value
         end
     end
-
-    always @(*) sync_out = ff2_q;
 
 endmodule</pre>
     </div>
