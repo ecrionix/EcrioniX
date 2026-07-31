@@ -115,6 +115,31 @@ input.invalid{border-color:#f87171}
 .my-course-item .mc-expiry{font-size:0.78rem;margin-top:0.25rem}
 .my-course-item .mc-expiry.active{color:#4ade80}
 .my-course-item .mc-expiry.expired{color:#fbbf24}
+
+/* Chat support widget */
+.chat-fab{position:fixed;bottom:1.5rem;right:1.5rem;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#a78bfa);border:none;cursor:pointer;box-shadow:0 8px 24px rgba(56,189,248,.35);display:flex;align-items:center;justify-content:center;font-size:1.5rem;z-index:500;transition:transform 0.2s}
+.chat-fab:hover{transform:scale(1.08)}
+.chat-fab-badge{position:absolute;top:-4px;right:-4px;background:#f87171;color:#fff;font-size:0.68rem;font-weight:800;min-width:20px;height:20px;border-radius:10px;display:none;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--bg)}
+.chat-fab-badge.show{display:flex}
+.chat-panel{position:fixed;bottom:5.5rem;right:1.5rem;width:340px;max-width:calc(100vw - 2rem);height:460px;max-height:calc(100vh - 8rem);background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5);display:none;flex-direction:column;overflow:hidden;z-index:500}
+.chat-panel.open{display:flex}
+.chat-panel-header{background:linear-gradient(135deg,rgba(56,189,248,.15),rgba(167,139,250,.15));padding:1rem 1.2rem;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
+.chat-panel-header h3{font-size:0.95rem;color:#f8fafc;margin:0}
+.chat-panel-header p{font-size:0.72rem;color:var(--sl);margin:0}
+.chat-panel-close{background:none;border:none;color:var(--sl);font-size:1.3rem;cursor:pointer;line-height:1}
+.chat-panel-close:hover{color:var(--text)}
+.chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem}
+.chat-bubble{max-width:80%;padding:0.6rem 0.9rem;border-radius:12px;font-size:0.85rem;line-height:1.5;word-wrap:break-word}
+.chat-bubble.from-user{align-self:flex-end;background:var(--blue);color:#020617;border-bottom-right-radius:3px}
+.chat-bubble.from-admin{align-self:flex-start;background:var(--bg3);color:var(--text);border:1px solid var(--bdr);border-bottom-left-radius:3px}
+.chat-bubble-time{font-size:0.65rem;opacity:0.6;margin-top:0.2rem}
+.chat-empty{margin:auto;text-align:center;color:var(--sl);font-size:0.82rem;padding:1rem}
+.chat-input-row{display:flex;gap:0.5rem;padding:0.8rem;border-top:1px solid var(--bdr)}
+.chat-input-row input{flex:1;padding:0.6rem 0.8rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--text);font-size:0.85rem}
+.chat-input-row input:focus{outline:none;border-color:var(--blue)}
+.chat-send-btn{background:var(--blue);color:#020617;border:none;border-radius:8px;padding:0 1rem;font-weight:700;cursor:pointer;font-size:0.85rem}
+.chat-send-btn:hover{opacity:0.9}
+@media(max-width:480px){.chat-panel{right:0.75rem;left:0.75rem;width:auto}.chat-fab{right:1rem;bottom:1rem}}
 .history-course{font-weight:600;color:#f8fafc}
 .history-date{color:var(--sl);font-size:0.8rem}
 .status-badge{font-size:0.75rem;font-weight:700;padding:0.3rem 0.7rem;border-radius:20px;text-transform:uppercase}
@@ -456,6 +481,28 @@ input.invalid{border-color:#f87171}
   © 2026 EcrioniX · <a href="/">Home</a> · <a href="/about/">About</a> · <a href="/contact/">Contact</a>
 </footer>
 
+<button class="chat-fab" id="chatFab" onclick="toggleChatPanel()" style="display:none">
+  💬
+  <span class="chat-fab-badge" id="chatFabBadge"></span>
+</button>
+
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-panel-header">
+    <div>
+      <h3>Support Chat</h3>
+      <p>Chat directly with the EcrioniX team</p>
+    </div>
+    <button class="chat-panel-close" onclick="toggleChatPanel()">×</button>
+  </div>
+  <div class="chat-messages" id="chatMessages">
+    <div class="chat-empty">Send a message to start the conversation.</div>
+  </div>
+  <div class="chat-input-row">
+    <input type="text" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+    <button class="chat-send-btn" onclick="sendChatMessage()">Send</button>
+  </div>
+</div>
+
 <script>
 let cpActiveIndex = 0;
 setInterval(() => {
@@ -476,6 +523,7 @@ function showLoginModal() {
   document.getElementById('modalCloseBtn').style.display = 'none';
   document.body.classList.add('modal-open');
   updateCourseAccessBadges([]);
+  teardownChat();
   switchTab('signin');
 }
 
@@ -780,6 +828,7 @@ async function checkPremiumStatus(user) {
 
     updateCourseAccessBadges(userData);
     renderMyCourses(userData);
+    initChatForUser(user);
 
     const activeCourses = (userData?.approvedCourses || []).filter(c => isCourseActive(c, userData));
     const expiredCourses = (userData?.approvedCourses || []).filter(c => !isCourseActive(c, userData));
@@ -971,6 +1020,110 @@ async function submitAccessRequest() {
   } catch (error) {
     console.error("Error submitting request:", error);
     alert("Something went wrong submitting your request. Please try again.");
+  }
+}
+
+let chatMessagesUnsub = null;
+let chatThreadUnsub = null;
+let chatCurrentUid = null;
+let chatPanelOpen = false;
+
+function initChatForUser(user) {
+  if (chatCurrentUid === user.uid) {
+    document.getElementById('chatFab').style.display = 'flex';
+    return; // already listening for this user
+  }
+  teardownChat();
+  chatCurrentUid = user.uid;
+  document.getElementById('chatFab').style.display = 'flex';
+
+  const chatRef = firebase.firestore().collection('chats').doc(user.uid);
+
+  chatThreadUnsub = chatRef.onSnapshot(doc => {
+    const data = doc.data();
+    const badge = document.getElementById('chatFabBadge');
+    if (data?.unreadByUser && !chatPanelOpen) {
+      badge.classList.add('show');
+      badge.innerText = '';
+    } else {
+      badge.classList.remove('show');
+    }
+  }, error => console.error('Chat thread listener error:', error));
+
+  chatMessagesUnsub = chatRef.collection('messages').orderBy('createdAt', 'asc')
+    .onSnapshot(snapshot => {
+      const container = document.getElementById('chatMessages');
+      if (snapshot.empty) {
+        container.innerHTML = '<div class="chat-empty">Send a message to start the conversation.</div>';
+        return;
+      }
+      container.innerHTML = snapshot.docs.map(doc => {
+        const m = doc.data();
+        const time = m.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
+        const cls = m.senderRole === 'admin' ? 'from-admin' : 'from-user';
+        return `<div class="chat-bubble ${cls}">${escapeHtml(m.text)}<div class="chat-bubble-time">${time}</div></div>`;
+      }).join('');
+      container.scrollTop = container.scrollHeight;
+    }, error => console.error('Chat messages listener error:', error));
+}
+
+function teardownChat() {
+  if (chatMessagesUnsub) { chatMessagesUnsub(); chatMessagesUnsub = null; }
+  if (chatThreadUnsub) { chatThreadUnsub(); chatThreadUnsub = null; }
+  chatCurrentUid = null;
+  chatPanelOpen = false;
+  document.getElementById('chatFab').style.display = 'none';
+  document.getElementById('chatPanel').classList.remove('open');
+  document.getElementById('chatFabBadge').classList.remove('show');
+}
+
+function toggleChatPanel() {
+  const panel = document.getElementById('chatPanel');
+  chatPanelOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', chatPanelOpen);
+
+  if (chatPanelOpen && chatCurrentUid) {
+    document.getElementById('chatFabBadge').classList.remove('show');
+    firebase.firestore().collection('chats').doc(chatCurrentUid).set({
+      unreadByUser: false,
+    }, { merge: true }).catch(err => console.error('Error marking chat read:', err));
+    document.getElementById('chatInput').focus();
+  }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !chatCurrentUid) return;
+
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  input.value = '';
+
+  try {
+    const chatRef = firebase.firestore().collection('chats').doc(chatCurrentUid);
+
+    await chatRef.set({
+      userId: chatCurrentUid,
+      userName: user.displayName || 'User',
+      userEmail: user.email,
+      lastMessage: text,
+      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+      unreadByAdmin: true,
+      unreadByUser: false,
+    }, { merge: true });
+
+    await chatRef.collection('messages').add({
+      senderId: chatCurrentUid,
+      senderRole: 'user',
+      text: text,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error sending chat message:', error);
+    alert('Could not send message. Please try again.');
+    input.value = text;
   }
 }
 </script>
