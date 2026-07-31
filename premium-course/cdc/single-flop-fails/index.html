@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Why Single-Flop Synchronization Fails — CDC Course | EcrioniX</title>
+<meta property="og:title" content="Why Single-Flop Synchronization Fails — CDC Course | EcrioniX">
+<meta property="og:description" content="Understand why using just one synchronizer flip-flop isn't enough — and how it lets different parts of a chip disagree about the same signal.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/single-flop-fails/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: Single-Flop Failure Demo ---- */
+const LAB_WINDOW_MS = 3000;
+const LAB_DANGER_MS = 9;
+
+let labClockAPeriod = 130;
+let labClockBPeriod = 172;
+let labTransitions = [];
+let labClockBEdges = [];
+let labSyncEvents = [];
+let labPlayheadT = 0;
+let labRunning = false;
+let labAnimId = null;
+
+function onClockASlider(val) {
+  labClockAPeriod = Number(val);
+  document.getElementById('clkALabel').innerText = val + ' ms';
+  resetLab();
+}
+
+function onClockBSlider(val) {
+  labClockBPeriod = Number(val);
+  document.getElementById('clkBLabel').innerText = val + ' ms';
+  resetLab();
+}
+
+function labComputeClockEdges(period) {
+  const edges = [];
+  for (let t = period; t < LAB_WINDOW_MS; t += period) edges.push(t);
+  return edges;
+}
+
+function labClockLevel(t, period) {
+  return Math.floor(t / (period / 2)) % 2 === 0 ? 1 : 0;
+}
+
+function labGenerateTransitions() {
+  const edgesA = labComputeClockEdges(labClockAPeriod);
+  return edgesA.filter(() => Math.random() < 0.4);
+}
+
+function labIsRisky(transitionT) {
+  return labClockBEdges.some(edge => Math.abs(edge - transitionT) <= LAB_DANGER_MS);
+}
+
+function labBuildSyncEvents() {
+  const events = [];
+  let intendedLevel = 0;
+  labTransitions.forEach(transT => {
+    intendedLevel = intendedLevel ? 0 : 1;
+    let captureEdge = labClockBEdges.find(e => e >= transT);
+    if (captureEdge === undefined) captureEdge = Math.min(transT + 5, LAB_WINDOW_MS - 1);
+    const risky = labIsRisky(transT);
+
+    let settledValue, wobbleEnd, gateX, gateY;
+    if (risky) {
+      const wobbleDuration = 45 + Math.random() * 55;
+      wobbleEnd = Math.min(captureEdge + wobbleDuration, LAB_WINDOW_MS - 1);
+      settledValue = Math.random() < 0.5 ? 0 : 1;
+      gateX = Math.random() < 0.65 ? settledValue : (settledValue ? 0 : 1);
+      gateY = Math.random() < 0.65 ? settledValue : (settledValue ? 0 : 1);
+    } else {
+      wobbleEnd = captureEdge;
+      settledValue = intendedLevel;
+      gateX = intendedLevel;
+      gateY = intendedLevel;
+    }
+
+    events.push({ transT, captureEdge, risky, wobbleEnd, intendedLevel, settledValue, gateX, gateY });
+  });
+  return events;
+}
+
+function labInit() {
+  labTransitions = labGenerateTransitions();
+  labClockBEdges = labComputeClockEdges(labClockBPeriod);
+  labSyncEvents = labBuildSyncEvents();
+  labPlayheadT = 0;
+  labRunning = false;
+  if (labAnimId) cancelAnimationFrame(labAnimId);
+  document.getElementById('labCleanCount').innerText = '0';
+  document.getElementById('labDisagreeCount').innerText = '0';
+  document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
+  document.getElementById('labRunBtn').disabled = false;
+  labResetDiagram();
+  labDraw();
+}
+
+function resetLab() {
+  labInit();
+}
+
+function labResetDiagram() {
+  const ffSync = document.getElementById('ffSyncBox');
+  const gateX = document.getElementById('gateXBox');
+  const gateY = document.getElementById('gateYBox');
+  if (!ffSync) return;
+  ffSync.classList.remove('ff-flash-safe', 'ff-wobble');
+  gateX.classList.remove('ff-flash-safe', 'ff-flash-risky');
+  gateY.classList.remove('ff-flash-safe', 'ff-flash-risky');
+  document.getElementById('ffSyncQVal').textContent = 'Q=0';
+  document.getElementById('gateXVal').textContent = '?';
+  document.getElementById('gateYVal').textContent = '?';
+  document.getElementById('ffSyncStatus').textContent = '';
+}
+
+function labTimeToX(t, plotW, padL) {
+  return padL + (t / LAB_WINDOW_MS) * plotW;
+}
+
+function labSyncLevelAt(t) {
+  let level = 0;
+  for (const ev of labSyncEvents) {
+    if (t < ev.captureEdge) return level;
+    if (ev.risky && t < ev.wobbleEnd) return 'wobble';
+    level = ev.settledValue;
+  }
+  return level;
+}
+
+function labDraw() {
+  const canvas = document.getElementById('labCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const padL = 90, padR = 20;
+  const plotW = W - padL - padR;
+  const rowH = 65;
+  const rowYs = [20, 100];
+  const rowLabels = ['Clock B', 'FF_SYNC Output (Q)'];
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = 'rgba(248,113,113,0.1)';
+  labClockBEdges.forEach(edge => {
+    const x1 = labTimeToX(edge - LAB_DANGER_MS, plotW, padL);
+    const x2 = labTimeToX(edge + LAB_DANGER_MS, plotW, padL);
+    ctx.fillRect(x1, 5, x2 - x1, H - 10);
+  });
+
+  ctx.font = '11px Outfit, sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  rowLabels.forEach((label, i) => ctx.fillText(label, 4, rowYs[i] + rowH / 2 + 4));
+
+  // Clock B waveform
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const yHighB = rowYs[0] + 12, yLowB = rowYs[0] + rowH - 12;
+  const steps = 400;
+  let prevLevel = null;
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * LAB_WINDOW_MS;
+    const lvl = labClockLevel(t, labClockBPeriod);
+    const x = labTimeToX(t, plotW, padL);
+    const y = lvl ? yHighB : yLowB;
+    if (prevLevel === null) ctx.moveTo(x, y);
+    else if (lvl !== prevLevel) { ctx.lineTo(x, prevLevel ? yHighB : yLowB); ctx.lineTo(x, y); }
+    prevLevel = lvl;
+  }
+  ctx.lineTo(padL + plotW, prevLevel ? yHighB : yLowB);
+  ctx.stroke();
+
+  // FF_SYNC Q waveform (with wobble)
+  const yHighS = rowYs[1] + 12, yLowS = rowYs[1] + rowH - 12, yMidS = rowYs[1] + rowH / 2;
+  ctx.strokeStyle = '#2dd4bf';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * LAB_WINDOW_MS;
+    if (t > labPlayheadT) break;
+    const x = labTimeToX(t, plotW, padL);
+    const lvl = labSyncLevelAt(t);
+    let y;
+    if (lvl === 'wobble') {
+      y = yMidS + Math.sin(t * 1.4) * 12 + Math.sin(t * 3.1) * 6;
+      ctx.strokeStyle = '#f87171';
+    } else {
+      y = lvl ? yHighS : yLowS;
+      ctx.strokeStyle = '#2dd4bf';
+    }
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Playhead
+  if (labPlayheadT > 0) {
+    const x = labTimeToX(labPlayheadT, plotW, padL);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 5);
+    ctx.lineTo(x, H - 5);
+    ctx.stroke();
+  }
+}
+
+function labFireEvent(ev) {
+  const ffSync = document.getElementById('ffSyncBox');
+  const gateX = document.getElementById('gateXBox');
+  const gateY = document.getElementById('gateYBox');
+  const statusLabel = document.getElementById('ffSyncStatus');
+
+  gateX.classList.remove('ff-flash-safe', 'ff-flash-risky');
+  gateY.classList.remove('ff-flash-safe', 'ff-flash-risky');
+  document.getElementById('gateXVal').textContent = '?';
+  document.getElementById('gateYVal').textContent = '?';
+
+  ffSync.classList.remove('ff-flash-safe', 'ff-wobble');
+  void ffSync.offsetWidth;
+
+  if (ev.risky) {
+    ffSync.classList.add('ff-wobble');
+    statusLabel.textContent = '⚡ metastable...';
+    statusLabel.setAttribute('fill', '#f87171');
+
+    setTimeout(() => {
+      document.getElementById('ffSyncQVal').textContent = 'Q=' + ev.settledValue;
+      gateX.classList.add(ev.gateX === ev.settledValue ? 'ff-flash-safe' : 'ff-flash-risky');
+      gateY.classList.add(ev.gateY === ev.settledValue ? 'ff-flash-safe' : 'ff-flash-risky');
+      document.getElementById('gateXVal').textContent = ev.gateX;
+      document.getElementById('gateYVal').textContent = ev.gateY;
+
+      if (ev.gateX !== ev.gateY) {
+        statusLabel.textContent = '⚠ GATES DISAGREE!';
+        statusLabel.setAttribute('fill', '#f87171');
+        labDisagreeCount++;
+        document.getElementById('labDisagreeCount').innerText = labDisagreeCount;
+      } else {
+        statusLabel.textContent = 'resolved (lucky)';
+        statusLabel.setAttribute('fill', '#fbbf24');
+        labDisagreeCount++;
+        document.getElementById('labDisagreeCount').innerText = labDisagreeCount;
+      }
+      setTimeout(() => { statusLabel.textContent = ''; }, 1000);
+    }, 750);
+  } else {
+    ffSync.classList.add('ff-flash-safe');
+    document.getElementById('ffSyncQVal').textContent = 'Q=' + ev.settledValue;
+    gateX.classList.add('ff-flash-safe');
+    gateY.classList.add('ff-flash-safe');
+    document.getElementById('gateXVal').textContent = ev.gateX;
+    document.getElementById('gateYVal').textContent = ev.gateY;
+    labCleanCount++;
+    document.getElementById('labCleanCount').innerText = labCleanCount;
+  }
+}
+
+let labCleanCount = 0;
+let labDisagreeCount = 0;
+
+function runLab() {
+  if (labRunning) return;
+  labRunning = true;
+  labCleanCount = 0;
+  labDisagreeCount = 0;
+  document.getElementById('labCleanCount').innerText = '0';
+  document.getElementById('labDisagreeCount').innerText = '0';
+  document.getElementById('labRunBtn').disabled = true;
+  document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
+  labResetDiagram();
+
+  const startTime = performance.now();
+  const durationMs = 7000;
+  const firedSoFar = new Set();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    labPlayheadT = Math.min((elapsed / durationMs) * LAB_WINDOW_MS, LAB_WINDOW_MS);
+
+    labSyncEvents.forEach(ev => {
+      if (ev.captureEdge <= labPlayheadT && !firedSoFar.has(ev.captureEdge)) {
+        firedSoFar.add(ev.captureEdge);
+        labFireEvent(ev);
+      }
+    });
+
+    labDraw();
+
+    if (labPlayheadT < LAB_WINDOW_MS) {
+      labAnimId = requestAnimationFrame(step);
+    } else {
+      labRunning = false;
+      document.getElementById('labRunBtn').disabled = false;
+      const verdict = document.getElementById('labVerdict');
+      verdict.classList.add('show');
+      const riskyTotal = labSyncEvents.filter(e => e.risky).length;
+      const disagreeTotal = labSyncEvents.filter(e => e.risky && e.gateX !== e.gateY).length;
+      if (disagreeTotal > 0) {
+        verdict.classList.add('risky-verdict');
+        verdict.innerHTML = `⚠️ <b>Gate X and Gate Y disagreed ${disagreeTotal} time${disagreeTotal === 1 ? '' : 's'}.</b> That means two parts of the same chip, reading the exact same wire in the exact same cycle, computed with different values. That's corruption a single flop can't prevent — no amount of "waiting a bit" inside one flop's own cycle fixes it.`;
+      } else if (riskyTotal > 0) {
+        verdict.classList.add('safe-verdict');
+        verdict.innerHTML = `✅ <b>No disagreements this run</b> — but ${riskyTotal} crossing${riskyTotal === 1 ? '' : 's'} still went metastable. You got lucky. Click "New Random Run" — with a single flop, luck is the only thing protecting you.`;
+      } else {
+        verdict.classList.add('safe-verdict');
+        verdict.innerHTML = `No risky crossings landed this run. Try adjusting the sliders so the clocks are closer in speed, or just run it again — metastability doesn't happen every cycle, which is exactly why it's so easy to miss in testing.`;
+      }
+    }
+  }
+
+  labAnimId = requestAnimationFrame(step);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('labCanvas')) labInit();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.qa-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem 1.4rem;margin-bottom:1rem}
+.qa-q{display:flex;align-items:flex-start;gap:0.7rem;font-weight:700;color:#f8fafc;font-size:0.98rem;margin-bottom:0.6rem}
+.qa-q-mark{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:800;flex-shrink:0}
+.qa-a{display:flex;align-items:flex-start;gap:0.7rem;color:var(--sl);font-size:0.92rem}
+.qa-a-mark{background:rgba(74,222,128,.14);color:#4ade80;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;flex-shrink:0}
+.qa-a ul{margin:0.3rem 0 0 1.1rem}
+.qa-a li{margin-bottom:0.3rem}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.ffdiagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.6rem;margin-bottom:1rem}
+.ff-box{transition:stroke 0.2s}
+.ff-flash-safe{animation:ffFlashSafe 1.1s ease}
+.ff-flash-risky{animation:ffFlashRisky 1.1s ease}
+.ff-wobble{animation:ffWobble 0.75s ease}
+@keyframes ffFlashSafe{
+  0%{stroke:#4ade80;filter:drop-shadow(0 0 10px rgba(74,222,128,.7))}
+  100%{stroke:#a78bfa;filter:none}
+}
+@keyframes ffFlashRisky{
+  0%,100%{stroke:#f87171;filter:drop-shadow(0 0 10px rgba(248,113,113,.85))}
+}
+@keyframes ffWobble{
+  0%,10%,20%,30%,40%,50%,60%,70%,80%{stroke:#f87171;filter:drop-shadow(0 0 10px rgba(248,113,113,.9))}
+  5%,15%,25%,35%,45%,55%,65%,75%{stroke:#fbbf24;filter:drop-shadow(0 0 6px rgba(251,191,36,.7))}
+  100%{stroke:#a78bfa;filter:none}
+}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#labCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+.lab-legend{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:1rem;font-size:0.78rem;color:var(--sl)}
+.lab-legend span{display:inline-flex;align-items:center;gap:0.35rem}
+.lab-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
+.lab-btn{background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;border:none;border-radius:8px;padding:0.55rem 1.2rem;font-weight:700;cursor:pointer;font-size:0.85rem;transition:opacity 0.15s}
+.lab-btn:hover{opacity:0.9}
+.lab-btn:disabled{opacity:0.4;cursor:not-allowed}
+.lab-btn.secondary{background:none;border:1px solid var(--bdr);color:var(--sl)}
+.lab-btn.secondary:hover{border-color:var(--blue);color:var(--blue)}
+.lab-stats{display:flex;gap:1.2rem;margin-left:auto;flex-wrap:wrap}
+.lab-stat{text-align:center}
+.lab-stat-num{font-size:1.3rem;font-weight:800}
+.lab-stat-num.safe{color:#4ade80}
+.lab-stat-num.risky{color:#f87171}
+.lab-stat-label{font-size:0.68rem;color:var(--sl);text-transform:uppercase;letter-spacing:0.04em}
+.lab-verdict{margin-top:1rem;padding:0.9rem 1.1rem;border-radius:8px;font-size:0.85rem;display:none}
+.lab-verdict.show{display:block}
+.lab-verdict.risky-verdict{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171}
+.lab-verdict.safe-verdict{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:#4ade80}
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 1: Introduction to CDC</div>
+    <span class="lesson-tag">Lesson 1.2</span>
+    <h1>Why Single-Flop Synchronization Fails</h1>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> What does "single-flop synchronization" mean?</div>
+      <div class="qa-a"><span class="qa-a-mark">A</span> Placing just <b>one</b> flip-flop in the destination clock domain to catch the incoming async signal, then feeding its output straight into the rest of the logic — no second stage in between.</div>
+    </div>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> If metastability eventually resolves on its own, why isn't one flop enough?</div>
+      <div class="qa-a"><span class="qa-a-mark">A</span> "Eventually" has no fixed deadline. Resolution time is probabilistic, not guaranteed — it usually resolves fast, but occasionally takes much longer. A single flop gives it zero extra time before its output gets used by the next stage.</div>
+    </div>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> What actually happens if the flop's output is still settling when it gets used?</div>
+      <div class="qa-a">
+        <span class="qa-a-mark">A</span>
+        <ul>
+          <li>A metastable flop output sits at an invalid in-between voltage — not a clean 0 or clean 1.</li>
+          <li>Every downstream gate has its own individual switching threshold and noise margin.</li>
+          <li>That means different gates can interpret that <i>same</i> in-between voltage <i>differently</i>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> Wait — can two parts of the same chip really see two different values from the same wire?</div>
+      <div class="qa-a"><span class="qa-a-mark">A</span> Yes, and this is the real danger — not just "occasionally wrong data." If a still-metastable output fans out to multiple gates, one part of the logic might read a 1 while another reads a 0, from the exact same signal, in the exact same clock cycle. That's internal disagreement, not a clean bit-flip.</div>
+    </div>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> How does the standard two-flop synchronizer actually fix this?</div>
+      <div class="qa-a"><span class="qa-a-mark">A</span> The second flop doesn't stop the first flop from going metastable — nothing can prevent that. It gives the first flop's output a <b>full extra clock period</b> to settle before anything reads it. By the time the second flop samples it, the chance it's still unresolved is astronomically small — and only the second flop's clean output fans out, so every downstream gate sees the same value.</div>
+    </div>
+
+    <div class="qa-card">
+      <div class="qa-q"><span class="qa-q-mark">Q</span> Why does this bug often slip past simulation and bring-up testing?</div>
+      <div class="qa-a"><span class="qa-a-mark">A</span> RTL simulators don't model real analog metastable settling — they just pick a value quickly. So a single-flop design can pass simulation and even early lab testing, then fail unpredictably in the field months later, under specific timing conditions nobody tested for.</div>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 Key Takeaway</h3>
+      <ul>
+        <li>A single synchronizer flop gives metastability zero time to resolve before it's used.</li>
+        <li>The real risk is fan-out disagreement — different gates reading the same unsettled signal differently.</li>
+        <li>The two-flop synchronizer works by buying a full extra clock period of settling time, not by "preventing" metastability.</li>
+        <li>Single-flop bugs are dangerous precisely because they can pass simulation and testing, then fail randomly in the field.</li>
+      </ul>
+    </div>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Watch Two Gates Disagree</h2>
+      </div>
+      <p class="lab-instructions">
+        FF_SYNC is a <b>single</b> synchronizer flop. Its output fans out to two separate gates, Gate X and Gate Y.
+        Adjust the clocks and click <b>Run</b> — watch what Gate X and Gate Y each end up reading when FF_SYNC
+        goes metastable.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Clock A period: <span id="clkALabel">130 ms</span> <span class="slider-hint">(lower = faster)</span></label>
+          <input type="range" id="clkASlider" min="60" max="220" step="5" value="130" oninput="onClockASlider(this.value)">
+        </div>
+        <div class="slider-row">
+          <label>Clock B period: <span id="clkBLabel">172 ms</span> <span class="slider-hint">(lower = faster)</span></label>
+          <input type="range" id="clkBSlider" min="60" max="220" step="5" value="172" oninput="onClockBSlider(this.value)">
+        </div>
+      </div>
+
+      <div class="ffdiagram-wrap">
+        <svg id="ffDiagram" viewBox="0 0 680 180" width="100%" preserveAspectRatio="xMidYMid meet">
+          <text id="ffSyncStatus" x="240" y="30" fill="#94a3b8" font-size="12" font-weight="700" text-anchor="middle"></text>
+
+          <rect id="ffSyncBox" class="ff-box" x="60" y="65" width="100" height="60" rx="6" fill="#0c1526" stroke="#38bdf8" stroke-width="2"/>
+          <text x="110" y="90" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle">FF_SYNC</text>
+          <text x="110" y="104" fill="#64748b" font-size="9" text-anchor="middle">(single flop)</text>
+          <text id="ffSyncQVal" x="110" y="118" fill="#4ade80" font-size="11" text-anchor="middle">Q=0</text>
+
+          <line x1="160" y1="95" x2="260" y2="95" stroke="#2dd4bf" stroke-width="2"/>
+          <line x1="260" y1="95" x2="260" y2="60" stroke="#2dd4bf" stroke-width="2"/>
+          <line x1="260" y1="95" x2="260" y2="130" stroke="#2dd4bf" stroke-width="2"/>
+          <line x1="260" y1="60" x2="330" y2="60" stroke="#2dd4bf" stroke-width="2"/>
+          <line x1="260" y1="130" x2="330" y2="130" stroke="#2dd4bf" stroke-width="2"/>
+          <text x="270" y="45" fill="#64748b" font-size="9">fans out to</text>
+
+          <rect id="gateXBox" class="ff-box" x="330" y="35" width="90" height="50" rx="6" fill="#0c1526" stroke="#a78bfa" stroke-width="2"/>
+          <text x="375" y="58" fill="#e2e8f0" font-size="11" font-weight="700" text-anchor="middle">Gate X</text>
+          <text id="gateXVal" x="375" y="72" fill="#94a3b8" font-size="12" text-anchor="middle">?</text>
+
+          <rect id="gateYBox" class="ff-box" x="330" y="105" width="90" height="50" rx="6" fill="#0c1526" stroke="#a78bfa" stroke-width="2"/>
+          <text x="375" y="128" fill="#e2e8f0" font-size="11" font-weight="700" text-anchor="middle">Gate Y</text>
+          <text id="gateYVal" x="375" y="142" fill="#94a3b8" font-size="12" text-anchor="middle">?</text>
+        </svg>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="labCanvas" width="680" height="190"></canvas>
+      </div>
+
+      <div class="lab-legend">
+        <span><i style="background:#f87171"></i> Danger zone / metastable wobble</span>
+        <span><i style="background:#2dd4bf"></i> FF_SYNC clean output</span>
+        <span><i style="background:#38bdf8"></i> Playhead</span>
+      </div>
+
+      <div class="lab-controls">
+        <button class="lab-btn" id="labRunBtn" onclick="runLab()">▶ Run</button>
+        <button class="lab-btn secondary" onclick="resetLab()">↻ New Random Run</button>
+        <div class="lab-stats">
+          <div class="lab-stat"><div class="lab-stat-num safe" id="labCleanCount">0</div><div class="lab-stat-label">Clean</div></div>
+          <div class="lab-stat"><div class="lab-stat-num risky" id="labDisagreeCount">0</div><div class="lab-stat-label">Went Metastable</div></div>
+        </div>
+      </div>
+
+      <div class="lab-verdict" id="labVerdict"></div>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/">← Back to Course Index</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+</body>
+</html>
