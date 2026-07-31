@@ -130,6 +130,11 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="card">
+      <h2>❌ Rejected Requests</h2>
+      <div id="rejectedList"></div>
+    </div>
+
+    <div class="card">
       <h2>👥 All Logged-In Users</h2>
       <div style="margin-bottom:1.5rem">
         <input type="text" id="userSearchInput" placeholder="Search by name or email..." style="width:100%;padding:0.8rem;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--text);font-size:0.9rem">
@@ -157,6 +162,7 @@ async function loadDashboard(user) {
   await loadStats();
   await loadPendingRequests();
   await loadApprovedUsers();
+  await loadRejectedRequests();
   await loadAllUsers();
 }
 
@@ -263,6 +269,64 @@ async function loadApprovedUsers() {
   }
 }
 
+async function loadRejectedRequests() {
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('paymentRequests')
+      .where('status', '==', 'rejected')
+      .get();
+
+    const list = document.getElementById('rejectedList');
+
+    if (snapshot.empty) {
+      list.innerHTML = '<p style="color:var(--sl)">No rejected requests</p>';
+      return;
+    }
+
+    const requests = [];
+    snapshot.forEach(doc => requests.push({ id: doc.id, ...doc.data() }));
+    requests.sort((a, b) => (b.rejectedAt?.toMillis?.() || 0) - (a.rejectedAt?.toMillis?.() || 0));
+
+    list.innerHTML = '';
+    requests.forEach(req => {
+      const html = `
+        <div class="request-row">
+          <h3>${escapeHtml(req.name)}</h3>
+          <p><b>Email:</b> ${escapeHtml(req.email)}</p>
+          <p><b>Course:</b> ${escapeHtml(req.courseId)}</p>
+          <p><b>Reason:</b> ${escapeHtml(req.rejectionReason) || 'N/A'}</p>
+          <p style="color:var(--sl);font-size:0.85rem"><b>Rejected:</b> ${req.rejectedAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</p>
+
+          <div class="request-actions">
+            <button class="btn btn-primary" onclick="reopenRequest('${req.id}')">↩️ Move Back to Pending</button>
+          </div>
+        </div>
+      `;
+      list.innerHTML += html;
+    });
+  } catch (error) {
+    console.error("Error loading rejected requests:", error);
+    document.getElementById('rejectedList').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+  }
+}
+
+async function reopenRequest(requestId) {
+  if (!confirm('Move this request back to Pending for re-review?')) return;
+
+  try {
+    const db = firebase.firestore();
+    await db.collection('paymentRequests').doc(requestId).update({
+      status: 'pending',
+      rejectionReason: firebase.firestore.FieldValue.delete(),
+    });
+
+    await loadPendingRequests();
+    await loadRejectedRequests();
+  } catch (error) {
+    alert('Error: ' + error.message);
+  }
+}
+
 async function approveRequest(requestId, userId, courseId) {
   if (!confirm(`Approve access to "${courseId}" for this user?`)) return;
 
@@ -303,6 +367,7 @@ async function rejectRequest(requestId) {
 
     alert('❌ Request rejected');
     await loadPendingRequests();
+    await loadRejectedRequests();
   } catch (error) {
     alert('Error: ' + error.message);
   }
