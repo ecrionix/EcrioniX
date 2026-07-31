@@ -150,7 +150,7 @@ function afSimulate(clkAPeriod, clkBPeriod) {
   const readsOk = readMarks.filter(m => m.ok).length;
   const readsBlocked = readMarks.length - readsOk;
 
-  return { fullTrace, emptyTrace, occTrace, wrDataTrace, rdDataTrace, writeMarks, readMarks, writesOk, writesBlocked, readsOk, readsBlocked, overflow, underflow, finalOcc: goldenQueue.length };
+  return { fullTrace, emptyTrace, occTrace, wrDataTrace, rdDataTrace, writesOk, writesBlocked, readsOk, readsBlocked, overflow, underflow, finalOcc: goldenQueue.length, clkA: clkAPeriod, clkB: clkBPeriod };
 }
 
 function afOnSliderChange() {
@@ -171,7 +171,7 @@ function afOnSliderChange() {
     'Overflow: ' + r.overflow + '   |   Underflow: ' + r.underflow + '   (both must stay 0)';
 }
 
-function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks, markY) {
+function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.2;
   ctx.beginPath();
@@ -185,24 +185,44 @@ function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks, markY) {
   });
   ctx.lineTo(xFor(AF_WINDOW), v ? yTop : yBot);
   ctx.stroke();
+}
 
-  if (marks) {
-    marks.forEach(m => {
-      const x = xFor(m.t);
-      ctx.beginPath();
-      ctx.arc(x, markY, 3, 0, Math.PI * 2);
-      ctx.fillStyle = m.ok ? '#4ade80' : '#f87171';
-      ctx.fill();
-    });
+function afDrawClockRow(ctx, xFor, yTop, yBot, period, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), yBot);
+  for(let t = 0; t <= AF_WINDOW; t += period/2) {
+    const x = xFor(t);
+    ctx.lineTo(x, v ? yTop : yBot);
+    v = 1 - v;
+    ctx.lineTo(x, v ? yTop : yBot);
   }
+  ctx.stroke();
 }
 
 function afDrawOccRow(ctx, xFor, yTop, yBot, occTrace) {
   const yFor = (v) => yBot - (v / AF_DEPTH) * (yBot - yTop);
+  
+  ctx.fillStyle = 'rgba(56,189,248,0.15)';
+  ctx.beginPath();
+  ctx.moveTo(xFor(0), yBot);
+  let v = 0;
+  occTrace.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, yFor(v));
+    v = e.val;
+    ctx.lineTo(x, yFor(v));
+  });
+  ctx.lineTo(xFor(AF_WINDOW), yFor(v));
+  ctx.lineTo(xFor(AF_WINDOW), yBot);
+  ctx.fill();
+
   ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 2.2;
   ctx.beginPath();
-  let v = 0;
+  v = 0;
   ctx.moveTo(xFor(0), yFor(v));
   occTrace.forEach(e => {
     const x = xFor(e.t);
@@ -220,62 +240,51 @@ function afDrawOccRow(ctx, xFor, yTop, yBot, occTrace) {
   ctx.fillText('0', 2, yBot);
 }
 
-// Multi-bit data (WR_DATA / RD_DATA) is drawn as a standard bus waveform:
-// flat bands holding the decimal value, with an hourglass crossing at each
-// change -- the same technique verified in the Gray Code Fundamentals lesson.
-function afEventsToSegments(events, windowEnd) {
-  const segs = [];
-  let curVal = null, curStart = 0;
-  events.forEach(e => {
-    if (e.val === curVal) return;
-    if (curVal !== null) segs.push({ start: curStart, end: e.t, val: curVal });
-    curStart = e.t; curVal = e.val;
-  });
-  if (curVal !== null) segs.push({ start: curStart, end: windowEnd, val: curVal });
-  return segs;
+function afEventsToSegments(events, period) {
+  return events.map(e => ({ start: e.t, end: e.t + period, val: e.val }));
 }
 
 function afDrawBusRow(ctx, xFor, bandTop, bandBot, segments, color) {
+  const midY = (bandTop + bandBot) / 2;
   const crossW = 5;
-  segments.forEach((seg, i) => {
-    const x0raw = xFor(seg.start), x1raw = xFor(seg.end);
-    const isFirst = i === 0, isLast = i === segments.length - 1;
-    const x0 = x0raw + (isFirst ? 0 : crossW);
-    const x1 = x1raw - (isLast ? 0 : crossW);
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(xFor(0), midY);
+  ctx.lineTo(xFor(AF_WINDOW), midY);
+  ctx.stroke();
+
+  segments.forEach((seg) => {
+    const x0raw = xFor(seg.start);
+    const x1raw = xFor(seg.end);
+    const x0 = x0raw;
+    const x1 = x1raw;
     if (x1 <= x0) return;
 
     ctx.fillStyle = 'rgba(148,163,184,0.08)';
-    ctx.fillRect(x0, bandTop, x1 - x0, bandBot - bandTop);
+    ctx.fillRect(x0 + crossW, bandTop, x1 - x0 - crossW * 2, bandBot - bandTop);
 
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(x0, bandTop); ctx.lineTo(x1, bandTop);
-    ctx.moveTo(x0, bandBot); ctx.lineTo(x1, bandBot);
+    ctx.moveTo(x0, midY); ctx.lineTo(x0 + crossW, bandTop); ctx.lineTo(x1 - crossW, bandTop); ctx.lineTo(x1, midY);
+    ctx.moveTo(x0, midY); ctx.lineTo(x0 + crossW, bandBot); ctx.lineTo(x1 - crossW, bandBot); ctx.lineTo(x1, midY);
     ctx.stroke();
 
     if (x1 - x0 > 18) {
       ctx.font = '700 11px JetBrains Mono, monospace';
       ctx.fillStyle = '#e2e8f0';
       ctx.textAlign = 'center';
-      ctx.fillText(String(seg.val), (x0 + x1) / 2, (bandTop + bandBot) / 2 + 4);
-    }
-
-    if (!isLast) {
-      const xb = xFor(seg.end);
-      ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(xb - crossW, bandTop); ctx.lineTo(xb + crossW, bandBot);
-      ctx.moveTo(xb - crossW, bandBot); ctx.lineTo(xb + crossW, bandTop);
-      ctx.stroke();
+      ctx.fillText(String(seg.val), (x0 + x1) / 2, midY + 4);
     }
   });
+
   if (segments.length === 0) {
     ctx.font = '10px Outfit, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'center';
-    ctx.fillText('(no successful transfers in this window)', (xFor(0) + xFor(AF_WINDOW)) / 2, (bandTop + bandBot) / 2 + 4);
+    ctx.fillText('(no successful transfers)', (xFor(0) + xFor(AF_WINDOW)) / 2, midY - 6);
   }
 }
 
@@ -291,25 +300,23 @@ function afDraw(result) {
   const xFor = (t) => padL + (t / AF_WINDOW) * (W - padL - padR);
 
   const rowDefs = [
-    { label: 'WR_DATA (domain A)', type: 'bus', color: '#f472b6', segs: afEventsToSegments(result.wrDataTrace, AF_WINDOW) },
-    { label: 'FULL (domain A)', type: 'digital', color: '#f87171', trace: result.fullTrace, marks: result.writeMarks },
-    { label: 'EMPTY (domain B)', type: 'digital', color: '#4ade80', trace: result.emptyTrace, marks: result.readMarks },
-    { label: 'RD_DATA (domain B)', type: 'bus', color: '#38bdf8', segs: afEventsToSegments(result.rdDataTrace, AF_WINDOW) },
+    { label: 'CLK_A (Write)', type: 'clock', color: '#64748b', period: result.clkA },
+    { label: 'WR_DATA (domain A)', type: 'bus', color: '#f472b6', segs: afEventsToSegments(result.wrDataTrace, result.clkA) },
+    { label: 'FULL (domain A)', type: 'digital', color: '#f87171', trace: result.fullTrace },
+    { label: 'CLK_B (Read)', type: 'clock', color: '#64748b', period: result.clkB },
+    { label: 'EMPTY (domain B)', type: 'digital', color: '#4ade80', trace: result.emptyTrace },
+    { label: 'RD_DATA (domain B)', type: 'bus', color: '#38bdf8', segs: afEventsToSegments(result.rdDataTrace, result.clkB) },
     { label: 'OCCUPANCY (0-' + AF_DEPTH + ')', type: 'occ', trace: result.occTrace }
   ];
 
-  // digital rows (FULL/EMPTY) reserve a dedicated strip above the band for
-  // attempt-marker dots; bus and occupancy rows don't need one.
-  const titleH = 14, markGap = 16, bandH = 32, rowGap = 14;
-  const rowHFor = (type) => titleH + (type === 'digital' ? markGap : 6) + bandH;
+  const titleH = 14, bandH = 26, rowGap = 16;
+  const rowHFor = (type) => titleH + 6 + bandH;
 
   let cursor = 12;
   rowDefs.forEach((row) => {
     const rowH = rowHFor(row.type);
     const rowTop = cursor;
-    const gapAboveBand = row.type === 'digital' ? markGap : 6;
-    const yTop = rowTop + titleH + gapAboveBand, yBot = yTop + bandH - 6;
-    const markY = rowTop + titleH + gapAboveBand / 2;
+    const yTop = rowTop + titleH + 6, yBot = yTop + bandH;
 
     ctx.font = '600 11px Outfit, sans-serif';
     ctx.fillStyle = row.color || '#38bdf8';
@@ -317,11 +324,13 @@ function afDraw(result) {
     ctx.fillText(row.label, padL, rowTop + 10);
 
     if (row.type === 'digital') {
-      afDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color, row.marks, markY);
+      afDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color);
+    } else if (row.type === 'clock') {
+      afDrawClockRow(ctx, xFor, yTop, yBot, row.period, row.color);
     } else if (row.type === 'bus') {
       afDrawBusRow(ctx, xFor, yTop, yBot, row.segs, row.color);
     } else {
-      afDrawOccRow(ctx, xFor, yTop, yBot, row.trace);
+      afDrawOccRow(ctx, xFor, yTop, yBot + 10, row.trace);
     }
 
     cursor += rowH + rowGap;
@@ -844,11 +853,7 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </div>
 
       <div class="lab-canvas-wrap">
-        <canvas id="afCanvas" width="680" height="350"></canvas>
-      </div>
-      <div class="legend-row">
-        <span><span class="legend-dot" style="background:#4ade80"></span>attempt succeeded</span>
-        <span><span class="legend-dot" style="background:#f87171"></span>attempt blocked</span>
+        <canvas id="afCanvas" width="680" height="460"></canvas>
       </div>
     </div>
 
