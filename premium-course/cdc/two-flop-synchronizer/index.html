@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Two-Flop Synchronizer — CDC Course | EcrioniX</title>
+<meta property="og:title" content="The Two-Flop Synchronizer — CDC Course | EcrioniX">
+<meta property="og:description" content="The complete circuit, the physical placement rules real chip teams enforce, and a live lab that shows exactly when a crossing is risky — plus synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/two-flop-synchronizer/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: Two-Flop Synchronizer signal crossing ---- */
+const LAB_WINDOW_MS = 2000;   // visible window, in "ns" (labeled as ns on axis)
+const RISKY_WINDOW = 0.6;     // ns-equivalent proximity to an edge that counts as "risky"
+let labPlayheadT = 0;
+let labAnimId = null;
+let labRunning = false;
+let labClkBPeriod = 10;   // ns
+let labDataPeriod = 24;   // ns (average time between async toggles)
+let labTransitions = [];  // {t, val}
+let labClkEdges = [];     // rising edge times
+let labFF1 = [];          // {t, val, risky}
+let labFF2 = [];          // {t, val}
+
+function onClkBSlider() {
+  labClkBPeriod = Number(document.getElementById('clkBSlider').value);
+  document.getElementById('clkBLabel').innerText = (1000 / labClkBPeriod).toFixed(0) + ' MHz (period ' + labClkBPeriod + ' ns)';
+  buildLabTimeline();
+}
+function onDataSlider() {
+  labDataPeriod = Number(document.getElementById('dataSlider').value);
+  document.getElementById('dataLabel').innerText = '~1 toggle / ' + labDataPeriod + ' ns';
+  buildLabTimeline();
+}
+
+function computeClockEdges(period) {
+  const edges = [];
+  let t = period;
+  while (t <= LAB_WINDOW_MS) { edges.push(t); t += period; }
+  return edges;
+}
+
+function buildLabTimeline() {
+  labClkEdges = computeClockEdges(labClkBPeriod);
+
+  // Pseudo-random but deterministic async transitions, spaced around labDataPeriod
+  labTransitions = [];
+  let t = labDataPeriod * (0.3 + seededRand(1) * 0.7);
+  let val = 0;
+  let seed = 2;
+  while (t <= LAB_WINDOW_MS) {
+    val = val === 0 ? 1 : 0;
+    labTransitions.push({ t, val });
+    t += labDataPeriod * (0.55 + seededRand(seed++) * 0.9);
+  }
+
+  // Simulate FF1 (samples async data) and FF2 (samples FF1) on each clkB edge
+  labFF1 = [];
+  labFF2 = [];
+  let dataVal = 0, ff1Val = 0, ff2Val = 0, ti = 0;
+  labClkEdges.forEach(edgeT => {
+    while (ti < labTransitions.length && labTransitions[ti].t <= edgeT) {
+      dataVal = labTransitions[ti].val;
+      ti++;
+    }
+    // risky if the nearest transition landed within RISKY_WINDOW*period of this edge
+    let risky = false;
+    for (const tr of labTransitions) {
+      if (Math.abs(tr.t - edgeT) < RISKY_WINDOW * (labClkBPeriod / 10)) { risky = true; break; }
+    }
+    ff2Val = ff1Val;      // FF2 samples FF1's value from BEFORE this edge
+    ff1Val = dataVal;     // FF1 samples the async data at this edge
+    labFF1.push({ t: edgeT, val: ff1Val, risky });
+    labFF2.push({ t: edgeT, val: ff2Val });
+  });
+
+  if (!labRunning) drawLab(0, false);
+}
+
+function seededRand(seed) {
+  const x = Math.sin(seed * 999.7) * 10000;
+  return x - Math.floor(x);
+}
+
+function valueAt(edgeList, t, fallback) {
+  let v = fallback;
+  for (const e of edgeList) { if (e.t <= t) v = e.val; else break; }
+  return v;
+}
+function transitionValueAt(t) {
+  let v = 0;
+  for (const tr of labTransitions) { if (tr.t <= t) v = tr.val; else break; }
+  return v;
+}
+
+function runLab() {
+  if (labRunning) return;
+  labRunning = true;
+  labPlayheadT = 0;
+  document.getElementById('labPlayBtn').disabled = true;
+  document.getElementById('labResetBtn').disabled = false;
+  const speed = LAB_WINDOW_MS / 6000; // ns per ms of real time
+  const startReal = performance.now();
+
+  function step(now) {
+    const elapsedReal = now - startReal;
+    labPlayheadT = Math.min(elapsedReal * speed, LAB_WINDOW_MS);
+    drawLab(labPlayheadT, true);
+    animateDiagram(labPlayheadT);
+
+    if (labPlayheadT < LAB_WINDOW_MS) {
+      labAnimId = requestAnimationFrame(step);
+    } else {
+      labRunning = false;
+      document.getElementById('labPlayBtn').disabled = false;
+    }
+  }
+  labAnimId = requestAnimationFrame(step);
+}
+
+function resetLab() {
+  if (labAnimId) cancelAnimationFrame(labAnimId);
+  labRunning = false;
+  labPlayheadT = 0;
+  document.getElementById('labPlayBtn').disabled = false;
+  drawLab(0, false);
+  animateDiagram(0);
+}
+
+function drawLab(playheadT, isLive) {
+  const canvas = document.getElementById('labCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const drawT = isLive ? playheadT : LAB_WINDOW_MS;
+  const rows = [
+    { label: 'CLK B', color: '#a78bfa', type: 'clock', period: labClkBPeriod },
+    { label: 'ASYNC DATA', color: '#f472b6', type: 'data' },
+    { label: 'FF1_Q (risk-prone)', color: '#fbbf24', type: 'ff1' },
+    { label: 'FF2_Q (clean out)', color: '#4ade80', type: 'ff2' }
+  ];
+  const padL = 90, padR = 15, rowH = (H - 20) / rows.length;
+  const xFor = (t) => padL + (t / LAB_WINDOW_MS) * (W - padL - padR);
+
+  rows.forEach((row, i) => {
+    const yMid = 10 + rowH * i + rowH / 2;
+    const yHi = yMid - rowH * 0.28, yLo = yMid + rowH * 0.28;
+
+    ctx.font = '11px Outfit, sans-serif';
+    ctx.fillStyle = row.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 6, yMid + 4);
+
+    ctx.strokeStyle = row.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    if (row.type === 'clock') {
+      let level = 0, lastX = xFor(0);
+      ctx.moveTo(lastX, yLo);
+      let t = 0;
+      while (t <= drawT) {
+        const edgeInPeriod = t % row.period;
+        level = edgeInPeriod < row.period / 2 ? 1 : 0;
+        t += 0.5;
+      }
+      // redraw cleanly using edges
+      ctx.beginPath();
+      let cur = 0, curLevel = 0;
+      ctx.moveTo(xFor(0), curLevel ? yHi : yLo);
+      const halfPeriod = row.period / 2;
+      let tt = 0;
+      while (tt < drawT) {
+        const next = Math.min(tt + halfPeriod, drawT);
+        ctx.lineTo(xFor(next), curLevel ? yHi : yLo);
+        if (next < drawT) {
+          curLevel = curLevel ? 0 : 1;
+          ctx.lineTo(xFor(next), curLevel ? yHi : yLo);
+        }
+        tt = next;
+      }
+      ctx.stroke();
+    } else if (row.type === 'data') {
+      let v = 0, x0 = xFor(0);
+      ctx.moveTo(x0, v ? yHi : yLo);
+      for (const tr of labTransitions) {
+        if (tr.t > drawT) break;
+        const x = xFor(tr.t);
+        ctx.lineTo(x, v ? yHi : yLo);
+        v = tr.val;
+        ctx.lineTo(x, v ? yHi : yLo);
+      }
+      ctx.lineTo(xFor(drawT), v ? yHi : yLo);
+      ctx.stroke();
+    } else {
+      const list = row.type === 'ff1' ? labFF1 : labFF2;
+      let v = 0, x0 = xFor(0);
+      ctx.moveTo(x0, v ? yHi : yLo);
+      for (const e of list) {
+        if (e.t > drawT) break;
+        const x = xFor(e.t);
+        ctx.lineTo(x, v ? yHi : yLo);
+        v = e.val;
+        ctx.lineTo(x, v ? yHi : yLo);
+        if (row.type === 'ff1' && e.risky) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(248,113,113,0.9)';
+          ctx.beginPath();
+          ctx.arc(x, yMid, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      ctx.lineTo(xFor(drawT), v ? yHi : yLo);
+      ctx.stroke();
+    }
+
+    if (isLive && drawT < LAB_WINDOW_MS) {
+      const x = xFor(drawT);
+      let y = yMid;
+      if (row.type === 'clock') {
+        const halfPeriod = row.period / 2;
+        const level = Math.floor(drawT / halfPeriod) % 2 === 0 ? 1 : 0;
+        y = level ? yHi : yLo;
+      } else if (row.type === 'data') {
+        y = transitionValueAt(drawT) ? yHi : yLo;
+      } else {
+        y = valueAt(row.type === 'ff1' ? labFF1 : labFF2, drawT, 0) ? yHi : yLo;
+      }
+      ctx.save();
+      ctx.shadowColor = row.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = row.color;
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < rows.length; i++) {
+    const y = 10 + rowH * i;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+  }
+}
+
+function animateDiagram(t) {
+  const dataVal = transitionValueAt(t);
+  const ff1Val = valueAt(labFF1, t, 0);
+  const ff2Val = valueAt(labFF2, t, 0);
+  const ff1Risky = labFF1.some(e => e.t <= t && e.t > t - 0.05 && e.risky);
+  const ff1El = document.getElementById('diagFF1');
+  const ff2El = document.getElementById('diagFF2');
+  document.getElementById('diagDataVal').textContent = dataVal;
+  document.getElementById('diagFF1Val').textContent = ff1Val;
+  document.getElementById('diagFF2Val').textContent = ff2Val;
+  if (ff1El) ff1El.setAttribute('fill', ff1Risky ? 'rgba(248,113,113,0.25)' : 'rgba(56,189,248,0.08)');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('labCanvas')) {
+    buildLabTimeline();
+    animateDiagram(0);
+  }
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:780px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.lab-diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin-bottom:1rem;text-align:center}
+.lab-diagram-wrap svg{max-width:100%;height:auto}
+.diag-values{display:flex;justify-content:center;gap:1.6rem;margin-top:0.7rem;font-family:'JetBrains Mono',monospace;font-size:0.85rem}
+.diag-values span b{font-weight:800}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#labCanvas{display:block;width:100%;max-width:640px;margin:0 auto}
+
+.lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
+.lab-btn{background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;border:none;border-radius:8px;padding:0.55rem 1.2rem;font-weight:700;cursor:pointer;font-size:0.85rem;transition:opacity 0.15s}
+.lab-btn:hover{opacity:0.9}
+.lab-btn:disabled{opacity:0.4;cursor:not-allowed}
+.lab-btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--bdr)}
+.risky-note{display:flex;align-items:center;gap:0.5rem;font-size:0.78rem;color:#fca5a5;margin-top:0.8rem}
+.risky-dot{width:8px;height:8px;border-radius:50%;background:#f87171;display:inline-block}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 3: Synchronization Techniques</div>
+    <span class="lesson-tag">Lesson 3.1</span>
+    <h1>The Two-Flop Synchronizer</h1>
+
+    <p class="lede">
+      Every lesson so far has been building toward one circuit. Lesson 1.2 showed why a single flop isn't enough.
+      Lesson 2.1 showed what's actually happening inside a flop when it goes metastable. Lesson 2.2 gave you the
+      formula for how often that failure happens. Now: the actual fix — the circuit every real chip uses to cross a
+      single-bit signal safely — <span class="hl">built, wired, placed, and simulated properly.</span>
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>The complete circuit</h2></div>
+      <p>
+        It's exactly what the name says: two flip-flops, both clocked by the <em>receiving</em> clock domain, chained
+        back to back. The asynchronous signal feeds the first flop's input. The first flop's output feeds the second
+        flop's input. The second flop's output is the only thing the rest of the receiving domain is ever allowed to look at.
+      </p>
+
+      <div class="visual">
+        <svg viewBox="0 0 640 240" xmlns="http://www.w3.org/2000/svg">
+          <!-- domain divider -->
+          <line x1="150" y1="10" x2="150" y2="230" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="80" y="24" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A (async)</text>
+          <text x="400" y="24" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B (clk_b)</text>
+
+          <!-- async source -->
+          <rect x="30" y="100" width="90" height="46" rx="8" fill="#0c1526" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="75" y="128" fill="#f472b6" font-size="12" text-anchor="middle" font-family="JetBrains Mono,monospace">data_a</text>
+
+          <!-- FF1 -->
+          <g id="diagFF1">
+          <rect x="220" y="70" width="90" height="60" rx="8" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          </g>
+          <text x="265" y="95" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF1</text>
+          <text x="235" y="112" fill="#94a3b8" font-size="9" font-family="JetBrains Mono,monospace">D</text>
+          <text x="290" y="112" fill="#94a3b8" font-size="9" font-family="JetBrains Mono,monospace">Q</text>
+          <text x="265" y="124" fill="#f87171" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">(may go metastable)</text>
+
+          <!-- FF2 -->
+          <g id="diagFF2">
+          <rect x="400" y="70" width="90" height="60" rx="8" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          </g>
+          <text x="445" y="95" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF2</text>
+          <text x="415" y="112" fill="#94a3b8" font-size="9" font-family="JetBrains Mono,monospace">D</text>
+          <text x="470" y="112" fill="#94a3b8" font-size="9" font-family="JetBrains Mono,monospace">Q</text>
+          <text x="445" y="124" fill="#4ade80" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">(always clean)</text>
+
+          <!-- out -->
+          <rect x="540" y="80" width="80" height="40" rx="8" fill="#0c1526" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="580" y="104" fill="#4ade80" font-size="11" text-anchor="middle" font-family="JetBrains Mono,monospace">sync_out</text>
+
+          <!-- wires -->
+          <line x1="120" y1="123" x2="220" y2="100" stroke="#f472b6" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <line x1="310" y1="100" x2="400" y2="100" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <line x1="490" y1="100" x2="540" y2="100" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+          <!-- clk_b to both flops -->
+          <line x1="265" y1="170" x2="265" y2="130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <line x1="445" y1="170" x2="445" y2="130" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow2)"/>
+          <line x1="265" y1="170" x2="445" y2="170" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="355" y="190" fill="#a78bfa" font-size="10" text-anchor="middle" font-family="JetBrains Mono,monospace">clk_b (same clock drives both)</text>
+
+          <!-- placement note -->
+          <rect x="205" y="45" width="300" height="150" rx="10" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+          <text x="355" y="215" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">↑ placed physically adjacent, zero logic in between</text>
+
+          <defs>
+            <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+          </defs>
+        </svg>
+        <div class="visual-cap">FF1 absorbs whatever metastability the crossing causes. FF2 only ever samples FF1 <em>after</em> it's had a full clock period to settle — so by the time anything downstream reads <code>sync_out</code>, the value is clean.</div>
+      </div>
+
+      <div class="def-box">
+        <div class="def-label">Rule zero</div>
+        <p>Both flops are clocked by the <em>same</em> clock — the receiving domain's clock. Not one flop per domain. FF1 and FF2 both live inside domain B.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Walking through what actually happens</h2></div>
+      <p>Say <code>data_a</code> flips at some random instant, completely unrelated to <code>clk_b</code>'s edges:</p>
+      <ol>
+        <li><strong>Common case (no timing violation):</strong> the change lands safely outside FF1's setup/hold window. FF1 samples it cleanly on the next edge, in one cycle. FF2 samples FF1 a cycle later. Two clean cycles, no drama.</li>
+        <li><strong>Rare case (violation on FF1):</strong> the change lands right in FF1's setup/hold window. FF1 goes metastable — exactly the physics from Lesson 2.1. It has one <em>entire clock period</em> to resolve before FF2 samples it.</li>
+        <li><strong>Per Lesson 2.2's math</strong>, one clock period of resolution time is normally enough to push MTBF from "fails constantly" into "won't fail before the sun burns out." FF2 samples a resolved, clean value almost always.</li>
+      </ol>
+      <div class="warnbox">
+        <p><strong>"Almost always" is not "always."</strong> A two-flop synchronizer doesn't eliminate the possibility of failure — it makes the MTBF astronomically large. If your design needs even more margin (very high clock frequencies, very high toggle rates, safety-critical systems), teams add a <em>third</em> flop for extra resolution time. That trades one more cycle of latency for another multiplicative jump in MTBF.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>What it costs you, and what it can't do</h2></div>
+      <p>
+        This circuit is not free, and it is not universal. Both limits matter as much as the fix itself:
+      </p>
+      <div class="rules-grid">
+        <div class="rule-card">
+          <div class="rule-icon">⏱️</div>
+          <div class="rule-title">Latency: 2 clock periods</div>
+          <div class="rule-body">The signal takes two <code>clk_b</code> edges to appear at <code>sync_out</code>, even in the best case. Any logic depending on this signal must budget for that delay.</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">🚫</div>
+          <div class="rule-title">Single bit only</div>
+          <div class="rule-body">Put a multi-bit bus through independent two-flop synchronizers and different bits can resolve on different cycles — the receiver can briefly see a value that was never actually driven. That's a real bug class, and it's why buses need Gray coding or handshaking (coming up in Modules 3–4).</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">📶</div>
+          <div class="rule-title">Only works for level signals</div>
+          <div class="rule-body">If <code>data_a</code> toggles faster than <code>clk_b</code> can sample it, edges get silently swallowed. The synchronizer only guarantees the receiver eventually sees the correct <em>level</em> — not every transition.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>The physical rules real teams enforce</h2></div>
+      <p>
+        On paper, "two flip-flops in a row" sounds trivial. In an actual chip, getting this wrong is one of the most
+        common real CDC bugs — because the RTL can look perfect while the implementation silently breaks the theory.
+      </p>
+      <ul>
+        <li><strong>No combinational logic between FF1 and FF2.</strong> Even one gate adds delay that eats into FF2's setup time, shrinking the resolution window you were counting on.</li>
+        <li><strong>Place FF1 and FF2 physically close together.</strong> If place-and-route spreads them across the die, wire delay between them can approach a clock period — again eating your resolution margin. Chip teams add explicit placement constraints for synchronizer pairs.</li>
+        <li><strong>Mark them so synthesis and P&amp;R leave them alone.</strong> Tools that don't understand CDC intent might "optimize" by merging, retiming, or resizing these flops — silently destroying the synchronizer. RTL uses attributes like <code>(* ASYNC_REG = "TRUE" *)</code> (Xilinx) or <code>dont_touch</code> / <code>preserve</code> pragmas to say "leave this exactly as written."</li>
+        <li><strong>Use the highest-metastability-immunity flop your library offers</strong> for FF1 specifically — many standard-cell libraries include a dedicated synchronizer flop cell for exactly this reason.</li>
+      </ul>
+      <div class="infobox">
+        <p>This is the gap between "I understand synchronizers" and "I can implement one that survives silicon." The circuit is two flip-flops. Making sure it stays two flip-flops, physically adjacent, with nothing sneaking in between, is the actual engineering work.</p>
+      </div>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Watch it happen below — an async signal crossing into a clean domain, live. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Watch a Signal Cross Safely</h2>
+      </div>
+      <p class="lab-instructions">
+        Adjust the receiving clock's speed and how often the async signal toggles, then hit play. The red dot marks
+        an edge where the data changed dangerously close to <code>clk_b</code>'s rising edge — FF1's risk zone. Notice
+        <code>FF2_Q</code> is always a clean square wave, one cycle behind <code>FF1_Q</code>.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Receiving clock (clk_b): <span id="clkBLabel">100 MHz (period 10 ns)</span></label>
+          <input type="range" id="clkBSlider" min="4" max="40" step="1" value="10" oninput="onClkBSlider()">
+        </div>
+        <div class="slider-row">
+          <label>Async data toggle rate: <span id="dataLabel">~1 toggle / 24 ns</span> <span class="slider-hint">(completely independent of clk_b)</span></label>
+          <input type="range" id="dataSlider" min="8" max="60" step="1" value="24" oninput="onDataSlider()">
+        </div>
+      </div>
+
+      <div class="lab-diagram-wrap">
+        <svg viewBox="0 0 400 90" xmlns="http://www.w3.org/2000/svg" style="max-width:360px">
+          <rect x="10" y="20" width="60" height="40" rx="6" fill="#0c1526" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="40" y="44" fill="#f472b6" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">data_a</text>
+          <rect x="140" y="10" width="70" height="50" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="175" y="30" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF1</text>
+          <rect x="280" y="10" width="70" height="50" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="315" y="30" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF2</text>
+          <line x1="70" y1="40" x2="140" y2="35" stroke="#f472b6" stroke-width="1.3" marker-end="url(#arrow3)"/>
+          <line x1="210" y1="35" x2="280" y2="35" stroke="#38bdf8" stroke-width="1.3" marker-end="url(#arrow3)"/>
+          <defs><marker id="arrow3" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#94a3b8"/></marker></defs>
+        </svg>
+        <div class="diag-values">
+          <span>data_a = <b id="diagDataVal" style="color:#f472b6">0</b></span>
+          <span>FF1_Q = <b id="diagFF1Val" style="color:#fbbf24">0</b></span>
+          <span>FF2_Q = <b id="diagFF2Val" style="color:#4ade80">0</b></span>
+        </div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="labCanvas" width="640" height="220"></canvas>
+      </div>
+
+      <div class="lab-controls">
+        <button class="lab-btn" id="labPlayBtn" onclick="runLab()">▶ Run Simulation</button>
+        <button class="lab-btn secondary" id="labResetBtn" onclick="resetLab()">⟲ Reset</button>
+      </div>
+      <div class="risky-note"><span class="risky-dot"></span> red dot = data changed inside FF1's risk window on that edge</div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>sync_2ff.v</span><button class="copy-btn" onclick="copyLabCode('code-sync2ff', this)">📋 Copy</button></div>
+      <pre id="code-sync2ff">module sync_2ff (
+    input  wire clk_b,
+    input  wire rst_b,
+    input  wire data_a,     // async input, driven by domain A
+    output reg  sync_out    // clean output, safe to use in domain B
+);
+
+    (* ASYNC_REG = "TRUE" *) reg ff1_q;
+    (* ASYNC_REG = "TRUE" *) reg ff2_q;
+
+    always @(posedge clk_b or negedge rst_b) begin
+        if (!rst_b) begin
+            ff1_q <= 1'b0;
+            ff2_q <= 1'b0;
+        end else begin
+            ff1_q <= data_a;   // stage 1: may go metastable
+            ff2_q <= ff1_q;    // stage 2: always samples a settled value
+        end
+    end
+
+    always @(*) sync_out = ff2_q;
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_sync_2ff.v</span><button class="copy-btn" onclick="copyLabCode('code-tbsync2ff', this)">📋 Copy</button></div>
+      <pre id="code-tbsync2ff">`timescale 1ns/1ps
+module tb_sync_2ff;
+
+    reg  clk_b = 0;
+    reg  rst_b = 0;
+    reg  data_a = 0;
+    wire sync_out;
+
+    // clk_b: 100 MHz (10 ns period)
+    always #5 clk_b = ~clk_b;
+
+    sync_2ff dut (
+        .clk_b(clk_b),
+        .rst_b(rst_b),
+        .data_a(data_a),
+        .sync_out(sync_out)
+    );
+
+    initial begin
+        $dumpfile("sync_2ff.vcd");
+        $dumpvars(0, tb_sync_2ff);
+
+        rst_b = 0;
+        #12 rst_b = 1;
+
+        // data_a toggles at an offset unrelated to clk_b's edges,
+        // deliberately landing close to an edge at least once
+        #7  data_a = 1;
+        #23 data_a = 0;
+        #9  data_a = 1;   // near-edge case
+        #31 data_a = 0;
+        #17 data_a = 1;
+
+        #80 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>Two flip-flops, both clocked by the <em>receiving</em> domain's clock, chained D→Q→D→Q. Nothing else touches the signal in between.</li>
+        <li>FF1 absorbs the metastability risk; FF2 only ever samples a value that's had a full clock period to settle.</li>
+        <li>Costs one extra clock period of latency, and only works for single-bit level signals — buses and pulses need different techniques (coming up next).</li>
+        <li>The RTL is trivial. Keeping it safe through synthesis and place-and-route — no logic between the flops, physically adjacent placement, <code>ASYNC_REG</code>/<code>dont_touch</code> attributes — is where real designs actually go wrong.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/mtbf-failure-rates/">← Previous: MTBF and Failure Rates</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
