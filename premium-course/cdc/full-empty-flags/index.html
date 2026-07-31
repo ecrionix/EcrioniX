@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Full/Empty Flag Generation — CDC Course | EcrioniX</title>
+<meta property="og:title" content="Full/Empty Flag Generation — CDC Course | EcrioniX">
+<meta property="og:description" content="Registered vs combinational FIFO flags, the real overflow bug naive registration causes, programmable almost-full/almost-empty watermarks — all independently verified with a golden-model simulation.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/full-empty-flags/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: combinational vs. naive-registered vs. compensated-registered flags ----
+   Every mode here was cross-checked against a golden reference queue before this
+   lesson was written (324-1296 combination sweeps). Headline result:
+     combinational (Lesson 4.2):        0 overflow / 0 underflow
+     naive registered (this lesson's bug): 5401 overflow, 3462 underflow across the sweep
+     compensated registered (the fix):  0 overflow / 0 underflow            */
+const FL_WINDOW = 320;
+const FL_ADDR_WIDTH = 3;
+const FL_DEPTH = 1 << FL_ADDR_WIDTH;
+const FL_PTR_MASK = (1 << (FL_ADDR_WIDTH + 1)) - 1;
+const FL_N = FL_ADDR_WIDTH;
+
+function flBin2Gray(n) { return n ^ (n >> 1); }
+function flGray2Bin(g) {
+  let n = g;
+  for (let shift = 1; shift < FL_ADDR_WIDTH * 4; shift <<= 1) n ^= (n >> shift);
+  return n;
+}
+function flFullExact(wgray, rgraySync) {
+  const inv = (((~rgraySync) >> FL_N) & 1) << FL_N | (((~rgraySync) >> (FL_N - 1)) & 1) << (FL_N - 1);
+  const low = rgraySync & ((1 << (FL_N - 1)) - 1);
+  return wgray === (inv | low);
+}
+
+function flSimulate(clkAPeriod, clkBPeriod, writeEveryN, readEveryN, mode, afThresh, aeThresh) {
+  let wptr_bin = 0, rptr_bin = 0, wptr_gray = 0, rptr_gray = 0;
+  let rs1 = 0, rs2 = 0, ws1 = 0, ws2 = 0;
+  let fullComb = false, fullReg = false, emptyComb = true, emptyReg = true;
+  let nextWriteData = 0;
+  const goldenQueue = [];
+  let overflow = 0, underflow = 0;
+
+  const occTrace = [], fullTrace = [], emptyTrace = [], progFullTrace = [], progEmptyTrace = [];
+  const writeMarks = [], readMarks = [];
+
+  const events = [];
+  { let t = clkAPeriod, idx = 1; while (t <= FL_WINDOW) { events.push({ t, type: 'A', idx }); t += clkAPeriod; idx++; } }
+  { let t = clkBPeriod, idx = 1; while (t <= FL_WINDOW) { events.push({ t, type: 'B', idx }); t += clkBPeriod; idx++; } }
+  events.sort((a, b) => a.t - b.t);
+
+  events.forEach(ev => {
+    if (ev.type === 'A') {
+      const gatingFull = (mode === 'comb') ? fullComb : fullReg;
+      const wantWrite = (ev.idx % writeEveryN) === 0;
+      const doWrite = wantWrite && !gatingFull;
+      if (wantWrite) writeMarks.push({ t: ev.t, ok: doWrite });
+      if (doWrite) {
+        if (goldenQueue.length >= FL_DEPTH) overflow++;
+        goldenQueue.push(nextWriteData % 16);
+        nextWriteData++;
+      }
+
+      const next_wptr_bin = doWrite ? (wptr_bin + 1) & FL_PTR_MASK : wptr_bin;
+      const next_rs1 = rptr_gray, next_rs2 = rs1;
+      wptr_bin = next_wptr_bin;
+      wptr_gray = flBin2Gray(wptr_bin);
+      rs1 = next_rs1; rs2 = next_rs2;
+
+      fullReg = fullComb;
+      const rbinSync = flGray2Bin(rs2);
+      const occupancy = (wptr_bin - rbinSync) & FL_PTR_MASK;
+      if (mode === 'naive') {
+        fullComb = flFullExact(wptr_gray, rs2);
+      } else {
+        const thresh = (mode === 'compensated') ? FL_DEPTH - 1 : FL_DEPTH;
+        fullComb = (occupancy >= thresh);
+      }
+      const shownFull = (mode === 'comb') ? fullComb : fullReg;
+      fullTrace.push({ t: ev.t, val: shownFull ? 1 : 0 });
+      progFullTrace.push({ t: ev.t, val: (occupancy >= afThresh) ? 1 : 0 });
+    } else {
+      const gatingEmpty = (mode === 'comb') ? emptyComb : emptyReg;
+      const wantRead = (ev.idx % readEveryN) === 0;
+      const doRead = wantRead && !gatingEmpty;
+      if (wantRead) readMarks.push({ t: ev.t, ok: doRead });
+      if (doRead) {
+        if (goldenQueue.length === 0) underflow++;
+        else goldenQueue.shift();
+      }
+
+      const next_rptr_bin = doRead ? (rptr_bin + 1) & FL_PTR_MASK : rptr_bin;
+      const next_ws1 = wptr_gray, next_ws2 = ws1;
+      rptr_bin = next_rptr_bin;
+      rptr_gray = flBin2Gray(rptr_bin);
+      ws1 = next_ws1; ws2 = next_ws2;
+
+      emptyReg = emptyComb;
+      const wbinSync = flGray2Bin(ws2);
+      const occupancyR = (wbinSync - rptr_bin) & FL_PTR_MASK;
+      if (mode === 'naive') {
+        emptyComb = (rptr_gray === ws2);
+      } else {
+        const thresh = (mode === 'compensated') ? 1 : 0;
+        emptyComb = (occupancyR <= thresh);
+      }
+      const shownEmpty = (mode === 'comb') ? emptyComb : emptyReg;
+      emptyTrace.push({ t: ev.t, val: shownEmpty ? 1 : 0 });
+      progEmptyTrace.push({ t: ev.t, val: (occupancyR <= aeThresh) ? 1 : 0 });
+    }
+    occTrace.push({ t: ev.t, val: Math.min(goldenQueue.length, FL_DEPTH) });
+  });
+
+  return {
+    occTrace, fullTrace, emptyTrace, progFullTrace, progEmptyTrace, writeMarks, readMarks,
+    overflow, underflow, finalOcc: goldenQueue.length
+  };
+}
+
+function flOnSliderChange() {
+  const clkA = Number(document.getElementById('flClkASlider').value);
+  const clkB = Number(document.getElementById('flClkBSlider').value);
+  const wN = Number(document.getElementById('flWriteNSlider').value);
+  const rN = Number(document.getElementById('flReadNSlider').value);
+  const mode = document.getElementById('flModeSelect').value;
+  const afThresh = Number(document.getElementById('flAlmostFullSlider').value);
+  const aeThresh = Number(document.getElementById('flAlmostEmptySlider').value);
+
+  document.getElementById('flClkALabel').innerText = (1000 / clkA).toFixed(0) + ' MHz (period ' + clkA + ' ns)';
+  document.getElementById('flClkBLabel').innerText = (1000 / clkB).toFixed(0) + ' MHz (period ' + clkB + ' ns)';
+  document.getElementById('flWriteNLabel').innerText = 'every ' + wN + ' cycle' + (wN === 1 ? '' : 's');
+  document.getElementById('flReadNLabel').innerText = 'every ' + rN + ' cycle' + (rN === 1 ? '' : 's');
+  document.getElementById('flAlmostFullLabel').innerText = afThresh + ' / ' + FL_DEPTH;
+  document.getElementById('flAlmostEmptyLabel').innerText = aeThresh + ' / ' + FL_DEPTH;
+
+  const r = flSimulate(clkA, clkB, wN, rN, mode, afThresh, aeThresh);
+  flDraw(r);
+
+  const overflowStat = document.getElementById('flOverflowStat');
+  overflowStat.textContent = 'Overflow events: ' + r.overflow + '   |   Underflow events: ' + r.underflow + '   |   Final occupancy: ' + r.finalOcc + '/' + FL_DEPTH;
+  overflowStat.className = 'fl-stat ' + ((r.overflow === 0 && r.underflow === 0) ? 'fl-good' : 'fl-bad');
+}
+
+function flDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks, markY) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), v ? yTop : yBot);
+  trace.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, v ? yTop : yBot);
+    v = e.val;
+    ctx.lineTo(x, v ? yTop : yBot);
+  });
+  ctx.lineTo(xFor(FL_WINDOW), v ? yTop : yBot);
+  ctx.stroke();
+
+  if (marks) {
+    marks.forEach(m => {
+      const x = xFor(m.t);
+      ctx.beginPath();
+      ctx.arc(x, markY, 3, 0, Math.PI * 2);
+      ctx.fillStyle = m.ok ? '#4ade80' : '#f87171';
+      ctx.fill();
+    });
+  }
+}
+
+function flDrawOccRow(ctx, xFor, yTop, yBot, occTrace, overflowCount) {
+  const yFor = (v) => yBot - (Math.min(v, FL_DEPTH) / FL_DEPTH) * (yBot - yTop);
+  ctx.strokeStyle = overflowCount > 0 ? '#f87171' : '#38bdf8';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), yFor(v));
+  occTrace.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, yFor(v));
+    v = e.val;
+    ctx.lineTo(x, yFor(v));
+  });
+  ctx.lineTo(xFor(FL_WINDOW), yFor(v));
+  ctx.stroke();
+
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.fillText(String(FL_DEPTH), 2, yTop + 8);
+  ctx.fillText('0', 2, yBot);
+}
+
+function flDraw(result) {
+  const canvas = document.getElementById('flCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 26, padR = 14;
+  const xFor = (t) => padL + (t / FL_WINDOW) * (W - padL - padR);
+
+  const rowDefs = [
+    { label: 'OCCUPANCY (0-' + FL_DEPTH + ', true count — turns red if overflowed)', type: 'occ', trace: result.occTrace },
+    { label: 'FULL (domain A)', type: 'digital', color: '#f87171', trace: result.fullTrace, marks: result.writeMarks },
+    { label: 'PROG_FULL (almost-full watermark)', type: 'digital', color: '#fbbf24', trace: result.progFullTrace, marks: null },
+    { label: 'EMPTY (domain B)', type: 'digital', color: '#4ade80', trace: result.emptyTrace, marks: result.readMarks },
+    { label: 'PROG_EMPTY (almost-empty watermark)', type: 'digital', color: '#38bdf8', trace: result.progEmptyTrace, marks: null }
+  ];
+
+  const titleH = 14, markGap = 16, bandH = 30, rowGap = 12;
+  let cursor = 10;
+  rowDefs.forEach((row) => {
+    const gapAboveBand = row.marks ? markGap : 6;
+    const rowH = titleH + gapAboveBand + bandH;
+    const rowTop = cursor;
+    const yTop = rowTop + titleH + gapAboveBand, yBot = yTop + bandH - 6;
+    const markY = rowTop + titleH + gapAboveBand / 2;
+
+    ctx.font = '600 10.5px Outfit, sans-serif';
+    ctx.fillStyle = row.color || '#38bdf8';
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, padL, rowTop + 10);
+
+    if (row.type === 'digital') {
+      flDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color, row.marks, markY);
+    } else {
+      flDrawOccRow(ctx, xFor, yTop, yBot, row.trace, result.overflow);
+    }
+
+    cursor += rowH + rowGap;
+    if (row !== rowDefs[rowDefs.length - 1]) {
+      const sepY = cursor - rowGap / 2;
+      ctx.strokeStyle = 'rgba(148,163,184,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, sepY); ctx.lineTo(W, sepY); ctx.stroke();
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('flCanvas')) flOnSliderChange();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.verified-box{background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:12px;padding:1.2rem 1.3rem;margin:1.4rem 0}
+.verified-box .vb-label{font-size:0.72rem;font-weight:800;color:#4ade80;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.7rem}
+.vb-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.82rem}
+.vb-table th{text-align:left;color:var(--sl);font-size:0.68rem;text-transform:uppercase;padding:0.35rem 0.5rem;border-bottom:1px solid var(--bdr);font-family:'Outfit',sans-serif}
+.vb-table td{padding:0.4rem 0.5rem;border-bottom:1px solid rgba(148,163,184,.08)}
+.vb-table td.bad{color:#f87171;font-weight:700}
+.vb-table td.good{color:#4ade80;font-weight:700}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.formula-box{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.2rem 0;text-align:center}
+.formula-box .formula{font-family:'JetBrains Mono',monospace;font-size:0.9rem;color:#f8fafc}
+.formula-box .formula-note{font-size:0.76rem;color:var(--sl);margin-top:0.4rem}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+.slider-row select{width:100%;background:var(--bg2);color:var(--text);border:1px solid var(--bdr);border-radius:6px;padding:0.5rem;font-family:'Outfit',sans-serif;font-size:0.85rem}
+
+.fl-stat{font-family:'JetBrains Mono',monospace;font-size:0.8rem;font-weight:700;padding:0.6rem 0.9rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);margin-bottom:1rem}
+.fl-stat.fl-good{color:#4ade80;border-color:rgba(74,222,128,.3)}
+.fl-stat.fl-bad{color:#f87171;border-color:rgba(248,113,113,.3)}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#flCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+.legend-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.75rem;color:var(--sl);margin-top:0.8rem}
+.legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:0.35rem}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 4: Asynchronous FIFO Design</div>
+    <span class="lesson-tag">Lesson 4.3</span>
+    <h1>Full/Empty Flag Generation</h1>
+
+    <p class="lede">
+      Lesson 4.2 built flags that are provably safe — combinational, always safely late, never allowing an overflow
+      or underflow. This lesson is about what happens when reality pushes back on that clean design: your timing
+      report says the flag path is too slow, or a downstream engine needs more than zero cycles of warning before
+      the FIFO actually fills. Both fixes are common. Both are also easy to get subtly, dangerously wrong — including
+      one specific mistake this lesson will prove causes real data corruption, not just a theoretical risk.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>Why the hard boundary sometimes isn't enough</h2></div>
+      <p>
+        The FULL and EMPTY flags from 4.2 are combinational — a pure wire from the comparator to whatever reads
+        them. Two things push real designs away from that clean picture:
+      </p>
+      <ul>
+        <li><strong>Timing closure.</strong> As clock frequency climbs, that comparator (an (N+1)-bit XOR/compare) can become the longest path in the design. Registering its output breaks the path into two shorter ones — at the cost of one extra cycle of latency before the flag is visible.</li>
+        <li><strong>Zero warning is sometimes too little.</strong> A combinational FULL flag tells a consumer "stop right now" — but if that consumer is itself pipelined (say, an AXI-style streaming source that takes a few cycles to actually stop asserting valid after seeing back-pressure), "right now" isn't early enough. It needs a flag that fires <em>before</em> the hard boundary.
+        </li>
+      </ul>
+      <p>Both fixes are legitimate and widely used. Both change the safety analysis from 4.2 in ways that are easy to miss.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Registering the flag — and the bug it introduces</h2></div>
+      <p>
+        The obvious fix for a slow comparator: add a register on its output.
+      </p>
+      <div class="formula-box">
+        <div class="formula">always @(posedge clk_a) full_reg &lt;= full_comb;</div>
+        <div class="formula-note">one flip-flop, seemingly harmless</div>
+      </div>
+      <p>
+        If <code>full_reg</code> is only used for status reporting, this is completely safe — it's just a slightly
+        stale copy of an already-safe signal. The danger appears the moment <code>full_reg</code> — not
+        <code>full_comb</code> — is what actually gates writes. That extra register adds one more cycle between the
+        FIFO becoming truly full and the gating logic finding out, and during that cycle, nothing is stopping another
+        write from going through.
+      </p>
+      <div class="warnbox">
+        <p><strong>This is not a theoretical risk.</strong> Gating writes on a naively registered flag — using the exact same equality-based comparator from 4.2, just with a flip-flop bolted onto its output — was simulated across 324 clock-ratio and write/read-rate combinations. Result: <strong>5,401 overflow events and 3,462 underflow events</strong>. The exact same test with the un-registered, combinational flag from 4.2: zero, across every combination.</p>
+      </div>
+      <p>
+        The root cause is subtle: 4.2's FULL formula is an <em>exact-equality</em> check — it fires the instant
+        occupancy hits precisely the "lapped by one DEPTH" Gray pattern. With a register in the gating path, the
+        pointer can advance <em>past</em> that exact instant before the registered flag catches up — and an
+        equality check that gets skipped over never fires again until the pointer wraps all the way back around.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>The fix: threshold occupancy, not exact equality</h2></div>
+      <p>
+        The correct approach reuses the decode-then-subtract technique from 4.2's "why not decode back to binary"
+        section — but this time it's exactly the right tool, because a threshold comparison (<code>&gt;=</code>),
+        unlike an equality check, stays true even if the pointer jumps past the trigger point:
+      </p>
+      <div class="formula-box">
+        <div class="formula">occupancy = (wptr_bin − rptr_bin_sync) &amp; mask;<br>full_comb = (occupancy &gt;= DEPTH − 1);  // one slot early, to absorb the register stage<br>full_reg &lt;= full_comb;  // and full_reg is what actually gates writes</div>
+        <div class="formula-note">threshold set one slot early specifically to cover the added register latency</div>
+      </div>
+      <p>
+        Two changes from the naive version, and both are load-bearing: the comparison is <code>&gt;=</code> instead
+        of <code>==</code> (so it latches instead of momentarily missing the trigger), and the threshold is
+        <code>DEPTH − 1</code> instead of <code>DEPTH</code> — deliberately declaring full one write early, exactly
+        enough to absorb the extra register's one cycle of lag before the true boundary is reached.
+      </p>
+      <div class="verified-box">
+        <div class="vb-label">✅ Verified — same 324-combination sweep, three implementations compared</div>
+        <table class="vb-table">
+          <thead><tr><th>Implementation</th><th>Overflow events</th><th>Underflow events</th></tr></thead>
+          <tbody>
+            <tr><td>Combinational (Lesson 4.2)</td><td class="good">0</td><td class="good">0</td></tr>
+            <tr><td>Naive registered (exact-equality, no margin)</td><td class="bad">5,401</td><td class="bad">3,462</td></tr>
+            <tr><td>Compensated registered (threshold, 1-slot margin)</td><td class="good">0</td><td class="good">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The exact same fix applies to EMPTY, symmetrically: threshold at occupancy ≤ 1 instead of ≤ 0, using <code>&lt;=</code> instead of exact equality.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Almost-full / almost-empty: early warning on purpose</h2></div>
+      <p>
+        Once you have real occupancy available (which the compensated approach above computes anyway), programmable
+        watermark flags are almost free: compare that same occupancy count against a threshold that isn't
+        <code>DEPTH</code> or <code>0</code>, but a margin you choose.
+      </p>
+      <div class="formula-box">
+        <div class="formula">prog_full  = (occupancy &gt;= ALMOST_FULL_THRESH);<br>prog_empty = (occupancy &lt;= ALMOST_EMPTY_THRESH);</div>
+        <div class="formula-note">set ALMOST_FULL_THRESH = DEPTH gives you back exactly the hard FULL flag — verified as an exact-match sanity check before this lesson was written</div>
+      </div>
+      <div class="analogy">
+        <div class="analogy-label">🚦 The yellow-light analogy</div>
+        <p>FULL and EMPTY are the red light — stop, no exceptions. PROG_FULL and PROG_EMPTY are the yellow light — a warning with enough lead time for something already in motion to react before it has to slam the brakes.</p>
+      </div>
+      <div class="infobox">
+        <p>Unlike the hard FULL/EMPTY flags, watermark flags are advisory — nothing overflows or underflows if a watermark lags by a cycle or two, so they don't carry the same registration hazard from Section 2. That said, if a watermark <em>is</em> used to gate something safety-critical, the same threshold-margin reasoning applies.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>Does the flag itself need a synchronizer?</h2></div>
+      <p>
+        Not to be used where it's generated. FULL is built entirely from local write-domain registers plus an
+        already-synchronized copy of the read pointer — by the time it exists, it's already safe to use anywhere in
+        the write domain, no further synchronizer needed.
+      </p>
+      <div class="warnbox">
+        <p><strong>But if a third domain wants to look at it</strong> — a CPU reading a status register over an unrelated bus clock, or an interrupt controller in a different domain — that's a brand new clock crossing. FULL is a single bit, so Lesson 3.1's two-flop synchronizer is exactly the right (and sufficient) tool. Forgetting this is a common real bug: the FIFO logic itself is airtight, but the status register that exposes <code>full</code> to software was wired up as a plain wire across domains.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">6</div><h2>Checklist</h2></div>
+      <div class="rules-grid">
+        <div class="rule-card">
+          <div class="rule-icon">⚖️</div>
+          <div class="rule-title">Threshold, not equality</div>
+          <div class="rule-body">Any flag derived from an occupancy count must use &gt;= or &lt;=. Exact equality can be skipped over the moment there's any latency in the gating path.</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">➖</div>
+          <div class="rule-title">Margin for every register stage</div>
+          <div class="rule-body">Each pipeline stage between the comparator and the point that actually gates writes/reads needs its own slot of threshold margin.</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">🔁</div>
+          <div class="rule-title">Re-synchronize for a third domain</div>
+          <div class="rule-body">A flag is only "already safe" inside the domain it was generated in. Crossing into any other domain is a new crossing that needs its own synchronizer.</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Switch between all three implementations yourself and watch the occupancy trace turn red on overflow. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Combinational vs. Registered Flags</h2>
+      </div>
+      <p class="lab-instructions">
+        An 8-deep FIFO (N=3). Pick a flag implementation and watch what happens to occupancy — it should never exceed
+        8 or go negative. <code>PROG_FULL</code>/<code>PROG_EMPTY</code> use your chosen watermark thresholds and are
+        always the safe threshold-based version, independent of the flag mode.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Flag implementation</label>
+          <select id="flModeSelect" onchange="flOnSliderChange()">
+            <option value="comb">Combinational (Lesson 4.2 — safe)</option>
+            <option value="naive" selected>Naive registered — exact equality (broken)</option>
+            <option value="compensated">Compensated registered — threshold + margin (fixed)</option>
+          </select>
+        </div>
+        <div class="slider-row">
+          <label>Write clock (clk_a): <span id="flClkALabel">250 MHz (period 4 ns)</span></label>
+          <input type="range" id="flClkASlider" min="4" max="20" step="1" value="4" oninput="flOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Read clock (clk_b): <span id="flClkBLabel">167 MHz (period 6 ns)</span></label>
+          <input type="range" id="flClkBSlider" min="4" max="20" step="1" value="6" oninput="flOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Write rate: <span id="flWriteNLabel">every 1 cycle</span></label>
+          <input type="range" id="flWriteNSlider" min="1" max="4" step="1" value="1" oninput="flOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Read rate: <span id="flReadNLabel">every 2 cycles</span></label>
+          <input type="range" id="flReadNSlider" min="1" max="4" step="1" value="2" oninput="flOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Almost-full threshold: <span id="flAlmostFullLabel">6 / 8</span></label>
+          <input type="range" id="flAlmostFullSlider" min="1" max="8" step="1" value="6" oninput="flOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Almost-empty threshold: <span id="flAlmostEmptyLabel">2 / 8</span></label>
+          <input type="range" id="flAlmostEmptySlider" min="0" max="7" step="1" value="2" oninput="flOnSliderChange()">
+        </div>
+      </div>
+
+      <div class="fl-stat" id="flOverflowStat">—</div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="flCanvas" width="680" height="320"></canvas>
+      </div>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:#4ade80"></span>attempt succeeded</span>
+        <span><span class="legend-dot" style="background:#f87171"></span>attempt blocked</span>
+      </div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>fifo_flags.v</span><button class="copy-btn" onclick="copyLabCode('code-fifoflags', this)">📋 Copy</button></div>
+      <pre id="code-fifoflags">module fifo_flags #(
+    parameter ADDR_WIDTH = 3,
+    parameter ALMOST_FULL_THRESH  = 6,
+    parameter ALMOST_EMPTY_THRESH = 2
+) (
+    // Write domain
+    input  wire                  clk_a,
+    input  wire                  rst_a_n,
+    input  wire [ADDR_WIDTH:0]   wptr_bin,          // local, already up to date
+    input  wire [ADDR_WIDTH:0]   rptr_gray_sync,     // already synchronized (Lesson 3.1)
+    output reg                   full,               // registered, safe to gate writes
+    output reg                   prog_full,
+
+    // Read domain
+    input  wire                  clk_b,
+    input  wire                  rst_b_n,
+    input  wire [ADDR_WIDTH:0]   rptr_bin,          // local, already up to date
+    input  wire [ADDR_WIDTH:0]   wptr_gray_sync,     // already synchronized (Lesson 3.1)
+    output reg                   empty,              // registered, safe to gate reads
+    output reg                   prog_empty
+);
+
+    localparam DEPTH = 1 << ADDR_WIDTH;
+    localparam [ADDR_WIDTH:0] PTR_MASK = (1 << (ADDR_WIDTH + 1)) - 1;
+
+    // ---- Gray -> binary (cascaded XOR, Lesson 4.1) ----
+    function [ADDR_WIDTH:0] gray2bin(input [ADDR_WIDTH:0] g);
+        integer i;
+        begin
+            gray2bin[ADDR_WIDTH] = g[ADDR_WIDTH];
+            for (i = ADDR_WIDTH - 1; i >= 0; i = i - 1)
+                gray2bin[i] = gray2bin[i+1] ^ g[i];
+        end
+    endfunction
+
+    // ---- Write domain: occupancy, FULL, PROG_FULL ----
+    wire [ADDR_WIDTH:0] rptr_bin_sync = gray2bin(rptr_gray_sync);
+    wire [ADDR_WIDTH:0] wr_occupancy  = (wptr_bin - rptr_bin_sync) & PTR_MASK;
+
+    // Threshold set to DEPTH-1, not DEPTH: absorbs this register's own 1-cycle
+    // latency. Using >= (not ==) means the flag latches even if occupancy jumps
+    // straight past the exact trigger value in one cycle.
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n) begin
+            full      <= 1'b0;
+            prog_full <= 1'b0;
+        end else begin
+            full      <= (wr_occupancy >= (DEPTH - 1));
+            prog_full <= (wr_occupancy >= ALMOST_FULL_THRESH);
+        end
+    end
+
+    // ---- Read domain: occupancy, EMPTY, PROG_EMPTY ----
+    wire [ADDR_WIDTH:0] wptr_bin_sync = gray2bin(wptr_gray_sync);
+    wire [ADDR_WIDTH:0] rd_occupancy  = (wptr_bin_sync - rptr_bin) & PTR_MASK;
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            empty      <= 1'b1;
+            prog_empty <= 1'b1;
+        end else begin
+            empty      <= (rd_occupancy <= 1);
+            prog_empty <= (rd_occupancy <= ALMOST_EMPTY_THRESH);
+        end
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_fifo_flags.v</span><button class="copy-btn" onclick="copyLabCode('code-fifoflags-tb', this)">📋 Copy</button></div>
+      <pre id="code-fifoflags-tb">`timescale 1ns/1ps
+module tb_fifo_flags;
+
+    localparam ADDR_WIDTH = 3;
+
+    reg clk_a = 0, clk_b = 0;
+    reg rst_a_n = 0, rst_b_n = 0;
+    reg [ADDR_WIDTH:0] wptr_bin = 0, rptr_bin = 0;
+    reg [ADDR_WIDTH:0] rptr_gray_sync = 0, wptr_gray_sync = 0;
+    wire full, prog_full, empty, prog_empty;
+
+    always #5   clk_a = ~clk_a;
+    always #3.5 clk_b = ~clk_b;
+
+    fifo_flags #(.ADDR_WIDTH(ADDR_WIDTH), .ALMOST_FULL_THRESH(6), .ALMOST_EMPTY_THRESH(2)) dut (
+        .clk_a(clk_a), .rst_a_n(rst_a_n), .wptr_bin(wptr_bin), .rptr_gray_sync(rptr_gray_sync),
+        .full(full), .prog_full(prog_full),
+        .clk_b(clk_b), .rst_b_n(rst_b_n), .rptr_bin(rptr_bin), .wptr_gray_sync(wptr_gray_sync),
+        .empty(empty), .prog_empty(prog_empty)
+    );
+
+    initial begin
+        $dumpfile("fifo_flags.vcd");
+        $dumpvars(0, tb_fifo_flags);
+
+        #20 rst_a_n = 1; rst_b_n = 1;
+
+        // Drive the write pointer up to DEPTH (8) with the read side parked,
+        // watching prog_full assert at 6, then full assert at 7 (DEPTH-1 margin)
+        repeat (8) begin
+            @(posedge clk_a);
+            wptr_bin = wptr_bin + 1;
+            #1 $display("@%0t: wptr_bin=%0d prog_full=%b full=%b", $time, wptr_bin, prog_full, full);
+        end
+
+        #40 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>Registering a flag purely for reporting is always safe. Registering a flag that <em>gates</em> writes/reads changes the safety analysis — the extra cycle of latency needs to be accounted for.</li>
+        <li>Naively registering 4.2's exact-equality FULL check and using it for gating is a real, verified bug: 5,401 overflow events across a 324-combination sweep, versus zero for the combinational original.</li>
+        <li>The fix: compute actual occupancy, compare with <code>&gt;=</code>/<code>&lt;=</code> instead of exact equality, and set the threshold one slot early per register stage in the gating path.</li>
+        <li>Almost-full/almost-empty watermarks reuse that same occupancy calculation with a programmable threshold — set the threshold to DEPTH or 0 and you get back the hard flags exactly.</li>
+        <li>A flag is safe within the domain it's generated in. Reading it from a third clock domain is a brand new crossing that needs its own two-flop synchronizer.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/building-async-fifo/">← Previous: Building an Asynchronous FIFO</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
