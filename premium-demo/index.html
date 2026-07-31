@@ -327,6 +327,16 @@ input.invalid{border-color:#f87171}
     <p id="approvedCoursesDisplay"></p>
   </div>
 
+  <div class="account-card" id="emailVerifyGate" style="display:none;">
+    <div class="req-status-banner pending">
+      📧 Please verify your email address before requesting a course. Check your inbox for a verification link.
+      <div style="margin-top:0.8rem">
+        <button class="btn btn-primary" onclick="resendVerificationEmail()" id="resendVerifyBtn">Resend Verification Email</button>
+        <button class="btn btn-logout" onclick="recheckVerification()">I've Verified — Refresh</button>
+      </div>
+    </div>
+  </div>
+
   <div class="account-card" id="requestAccessForm" style="display:none;">
     <div id="latestRequestStatus"></div>
     <h2>Request Access</h2>
@@ -591,6 +601,9 @@ function signupWithEmail() {
       return result.user.updateProfile({ displayName: name }).then(() => result.user);
     })
     .then(user => {
+      return user.sendEmailVerification().then(() => user);
+    })
+    .then(user => {
       return firebase.firestore().collection('users').doc(user.uid).set({
         name: name,
         email: email,
@@ -630,6 +643,39 @@ function logout() {
   });
 }
 
+function resendVerificationEmail() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const btn = document.getElementById('resendVerifyBtn');
+  btn.disabled = true;
+  btn.innerText = 'Sending...';
+
+  user.sendEmailVerification()
+    .then(() => {
+      alert('Verification email sent to ' + user.email);
+    })
+    .catch(error => {
+      alert('Could not send email: ' + friendlyAuthError(error));
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerText = 'Resend Verification Email';
+    });
+}
+
+function recheckVerification() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  user.reload().then(() => {
+    checkPremiumStatus(firebase.auth().currentUser);
+    if (!firebase.auth().currentUser.emailVerified) {
+      alert('Still not verified. Please click the link in the verification email first.');
+    }
+  });
+}
+
 const COURSE_NAMES = {
   'cdc': 'Clock Domain Crossing (CDC)',
   'low-power': 'Low Power Verification',
@@ -650,17 +696,27 @@ async function checkPremiumStatus(user) {
     if (userData?.approvedCourses && userData.approvedCourses.length > 0) {
       document.getElementById('premiumContent').style.display = 'block';
       document.getElementById('requestAccessForm').style.display = 'none';
+      document.getElementById('emailVerifyGate').style.display = 'none';
       document.getElementById('approvedCoursesDisplay').innerHTML =
         userData.approvedCourses.map(c => `🎓 ${COURSE_NAMES[c] || c.toUpperCase()}`).join('<br>');
+    } else if (!user.emailVerified) {
+      document.getElementById('premiumContent').style.display = 'none';
+      document.getElementById('requestAccessForm').style.display = 'none';
+      document.getElementById('emailVerifyGate').style.display = 'block';
     } else {
       document.getElementById('premiumContent').style.display = 'none';
+      document.getElementById('emailVerifyGate').style.display = 'none';
       document.getElementById('requestAccessForm').style.display = 'block';
     }
   } catch (error) {
     console.error("Error checking premium:", error);
     hideLoginModal();
     renderProfile(user, null);
-    document.getElementById('requestAccessForm').style.display = 'block';
+    if (!user.emailVerified) {
+      document.getElementById('emailVerifyGate').style.display = 'block';
+    } else {
+      document.getElementById('requestAccessForm').style.display = 'block';
+    }
   }
 }
 
@@ -759,6 +815,11 @@ async function submitAccessRequest() {
   const user = auth.currentUser;
   if (!user) {
     alert("Login first!");
+    return;
+  }
+
+  if (!user.emailVerified) {
+    alert("Please verify your email before submitting a request.");
     return;
   }
 
