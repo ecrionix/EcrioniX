@@ -204,6 +204,7 @@ const TBL_COLUMNS = [
   { key: 'paymentId', label: 'Payment ID', type: 'text' },
   { key: 'status', label: 'Status', type: 'select' },
   { key: 'createdAt', label: 'Submitted', type: 'date' },
+  { key: 'expiresAt', label: 'Expires', type: 'none' },
   { key: 'actions', label: 'Actions', type: 'none' },
 ];
 
@@ -316,6 +317,15 @@ function renderTableBody(rows) {
   tbody.innerHTML = rows.map(req => {
     const submitted = req.createdAt?.toDate?.()?.toLocaleString() || 'N/A';
 
+    let expiresCell = '—';
+    if (req.status === 'approved' && req.expiresAt) {
+      const expiryDate = req.expiresAt.toDate();
+      const isExpired = expiryDate < new Date();
+      expiresCell = isExpired
+        ? `<span style="color:#f87171;font-weight:700">Expired ${expiryDate.toLocaleDateString()}</span>`
+        : expiryDate.toLocaleDateString();
+    }
+
     let actions = '';
     if (req.status === 'pending') {
       actions = `
@@ -337,6 +347,7 @@ function renderTableBody(rows) {
         <td>${escapeHtml(req.paymentId)}</td>
         <td><span class="hist-badge ${escapeHtml(req.status)}">${escapeHtml(req.status)}</span></td>
         <td>${submitted}</td>
+        <td>${expiresCell}</td>
         <td><div class="tbl-actions">${actions}</div></td>
       </tr>
     `;
@@ -391,25 +402,32 @@ async function reopenRequest(requestId) {
   }
 }
 
+const COURSE_ACCESS_DAYS = 60;
+
 async function approveRequest(requestId, userId, courseId) {
-  if (!confirm(`Approve access to "${courseId}" for this user?`)) return;
+  if (!confirm(`Approve access to "${courseId}" for this user? Access will be valid for ${COURSE_ACCESS_DAYS} days.`)) return;
 
   try {
     const db = firebase.firestore();
+    const expiresAt = new Date(Date.now() + COURSE_ACCESS_DAYS * 24 * 60 * 60 * 1000);
 
-    // Add course to user's approved courses
+    // Add course to user's approved courses, with 60-day expiry
     await db.collection('users').doc(userId).set({
       approvedCourses: firebase.firestore.FieldValue.arrayUnion(courseId),
       grantedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      courseExpiry: {
+        [courseId]: firebase.firestore.Timestamp.fromDate(expiresAt),
+      },
     }, { merge: true });
 
     // Mark request as approved
     await db.collection('paymentRequests').doc(requestId).update({
       status: 'approved',
       approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
     });
 
-    alert('✅ Request approved!');
+    alert(`✅ Request approved! Access valid until ${expiresAt.toLocaleDateString()}.`);
     await loadStats();
     await loadAllRequestsHistory();
   } catch (error) {
@@ -444,6 +462,7 @@ async function revokeAccess(userId, courseId) {
     const db = firebase.firestore();
     await db.collection('users').doc(userId).update({
       approvedCourses: firebase.firestore.FieldValue.arrayRemove(courseId),
+      [`courseExpiry.${courseId}`]: firebase.firestore.FieldValue.delete(),
     });
 
     const reqSnapshot = await db.collection('paymentRequests')

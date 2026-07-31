@@ -129,6 +129,7 @@ input.invalid{border-color:#f87171}
 .access-status{display:inline-flex;align-items:center;gap:0.35rem;font-size:0.75rem;font-weight:700;padding:0.3rem 0.7rem;border-radius:20px;margin-bottom:0.8rem;width:fit-content}
 .access-status.locked{background:rgba(148,163,184,.1);color:var(--sl);border:1px solid rgba(148,163,184,.2)}
 .access-status.enrolled{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
+.access-status.expired{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
 .access-status a{color:inherit;font-weight:700}
 .course-features{list-style:none;margin:1rem 0;flex-grow:1}
 .course-features li{color:var(--sl);font-size:0.88rem;padding:0.35rem 0;padding-left:1.5rem;position:relative}
@@ -696,17 +697,30 @@ const COURSE_LINKS = {
   'riscv': '/premium-course/riscv/',
 };
 
-function updateCourseAccessBadges(approvedCourses) {
+function isCourseActive(courseId, userData) {
+  if (!userData?.approvedCourses?.includes(courseId)) return false;
+  const expiry = userData.courseExpiry?.[courseId];
+  if (!expiry) return true; // no expiry recorded (legacy approval) - treat as active
+  return expiry.toDate() > new Date();
+}
+
+function updateCourseAccessBadges(userData) {
   document.querySelectorAll('.course-card[data-course]').forEach(card => {
     const courseId = card.dataset.course;
     const badge = document.getElementById(`access-${courseId}`);
     if (!badge) return;
 
-    if (approvedCourses.includes(courseId)) {
+    const wasApproved = userData?.approvedCourses?.includes(courseId);
+    const isActive = isCourseActive(courseId, userData);
+
+    if (isActive) {
       badge.className = 'access-status enrolled';
       badge.innerHTML = COURSE_LINKS[courseId]
         ? `✅ <a href="${COURSE_LINKS[courseId]}">Enrolled — Open Course →</a>`
         : '✅ Enrolled';
+    } else if (wasApproved) {
+      badge.className = 'access-status expired';
+      badge.innerHTML = '⏰ Expired — Renew Access';
     } else {
       badge.className = 'access-status locked';
       badge.innerHTML = '🔒 Locked — Not Purchased';
@@ -722,18 +736,23 @@ async function checkPremiumStatus(user) {
     const userData = userDoc.data();
 
     renderProfile(user, userData);
-    loadPurchaseHistory(user.uid);
+    await loadPurchaseHistory(user.uid);
 
-    updateCourseAccessBadges(userData?.approvedCourses || []);
+    updateCourseAccessBadges(userData);
 
-    if (userData?.approvedCourses && userData.approvedCourses.length > 0) {
+    const activeCourses = (userData?.approvedCourses || []).filter(c => isCourseActive(c, userData));
+    const expiredCourses = (userData?.approvedCourses || []).filter(c => !isCourseActive(c, userData));
+
+    if (activeCourses.length > 0) {
       document.getElementById('premiumContent').style.display = 'block';
       document.getElementById('requestAccessForm').style.display = 'none';
       document.getElementById('emailVerifyGate').style.display = 'none';
       document.getElementById('approvedCoursesDisplay').innerHTML =
-        userData.approvedCourses.map(c => {
+        activeCourses.map(c => {
           const label = `🎓 ${COURSE_NAMES[c] || c.toUpperCase()}`;
-          return COURSE_LINKS[c] ? `<a href="${COURSE_LINKS[c]}">${label} →</a>` : `${label} (content coming soon)`;
+          const expiry = userData.courseExpiry?.[c];
+          const expiryNote = expiry ? ` <span style="color:var(--sl);font-size:0.8rem">(valid until ${expiry.toDate().toLocaleDateString()})</span>` : '';
+          return (COURSE_LINKS[c] ? `<a href="${COURSE_LINKS[c]}">${label} →</a>` : `${label} (content coming soon)`) + expiryNote;
         }).join('<br>');
     } else if (!user.emailVerified) {
       document.getElementById('premiumContent').style.display = 'none';
@@ -743,6 +762,11 @@ async function checkPremiumStatus(user) {
       document.getElementById('premiumContent').style.display = 'none';
       document.getElementById('emailVerifyGate').style.display = 'none';
       document.getElementById('requestAccessForm').style.display = 'block';
+      if (expiredCourses.length > 0) {
+        const names = expiredCourses.map(c => COURSE_NAMES[c] || c).join(', ');
+        document.getElementById('latestRequestStatus').innerHTML =
+          `<div class="req-status-banner rejected">⏰ Your access to <strong>${names}</strong> has expired. Submit a new request below to renew.</div>`;
+      }
     }
   } catch (error) {
     console.error("Error checking premium:", error);
