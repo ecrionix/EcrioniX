@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MTBF and Failure Rates — CDC Course | EcrioniX</title>
+<meta property="og:title" content="MTBF and Failure Rates — CDC Course | EcrioniX">
+<meta property="og:description" content="The real formula engineers use to calculate synchronizer failure rates — and why adding one clock period of resolution time can turn microseconds into millions of years.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/mtbf-failure-rates/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: MTBF Calculator ---- */
+// Illustrative technology constants (real values come from your standard-cell library)
+const TAU = 200e-12;   // 200 ps -- how fast this flop's metastability naturally decays
+const T0 = 0.5e-9;     // 0.5 ns -- width of the flop's metastability-prone window
+
+function computeMTBF(trNs, fClkMHz, fDataMHz) {
+  const tr = trNs * 1e-9;
+  const fClk = fClkMHz * 1e6;
+  const fData = fDataMHz * 1e6;
+  const exponent = tr / TAU;
+  const numerator = Math.exp(Math.min(exponent, 700)); // clamp to avoid Infinity
+  const denominator = T0 * fClk * fData;
+  return numerator / denominator; // seconds
+}
+
+function formatSeconds(seconds) {
+  if (!isFinite(seconds)) return 'longer than the age of the universe';
+  if (seconds < 1e-6) return (seconds * 1e9).toFixed(2) + ' ns';
+  if (seconds < 1e-3) return (seconds * 1e6).toFixed(2) + ' μs';
+  if (seconds < 1) return (seconds * 1e3).toFixed(2) + ' ms';
+  if (seconds < 60) return seconds.toFixed(2) + ' sec';
+  if (seconds < 3600) return (seconds / 60).toFixed(2) + ' min';
+  if (seconds < 86400) return (seconds / 3600).toFixed(2) + ' hours';
+  if (seconds < 31536000) return (seconds / 86400).toFixed(1) + ' days';
+  const years = seconds / 31536000;
+  if (years > 1.38e10) return 'longer than the age of the universe (13.8B years)';
+  if (years < 1e6) return years.toFixed(1) + ' years';
+  if (years < 1e9) return (years / 1e6).toFixed(2) + ' million years';
+  return (years / 1e9).toFixed(2) + ' billion years';
+}
+
+function updateMTBFCalc() {
+  const tr = Number(document.getElementById('trSlider').value);
+  const fClk = Number(document.getElementById('fClkSlider').value);
+  const fData = Number(document.getElementById('fDataSlider').value);
+
+  document.getElementById('trLabel').innerText = tr.toFixed(1) + ' ns';
+  document.getElementById('fClkLabel').innerText = fClk + ' MHz';
+  document.getElementById('fDataLabel').innerText = fData + ' MHz';
+
+  const mtbf = computeMTBF(tr, fClk, fData);
+  const display = document.getElementById('mtbfResult');
+  const verdict = document.getElementById('mtbfVerdict');
+
+  display.textContent = formatSeconds(mtbf);
+
+  let verdictClass, verdictText;
+  if (mtbf < 86400) {
+    verdictClass = 'mtbf-danger';
+    verdictText = '🔴 DANGEROUS — fails multiple times a day. Never ship this.';
+  } else if (mtbf < 31536000 * 10) {
+    verdictClass = 'mtbf-risky';
+    verdictText = '🟡 RISKY — might survive a demo, will not survive the field.';
+  } else {
+    verdictClass = 'mtbf-safe';
+    verdictText = '🟢 SAFE — the kind of margin real sign-off requires.';
+  }
+  display.className = 'mtbf-number ' + verdictClass;
+  verdict.className = 'mtbf-verdict ' + verdictClass;
+  verdict.textContent = verdictText;
+
+  drawMTBFBar(tr);
+}
+
+function drawMTBFBar(currentTr) {
+  const canvas = document.getElementById('mtbfCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const fClk = Number(document.getElementById('fClkSlider').value);
+  const fData = Number(document.getElementById('fDataSlider').value);
+  const padL = 45, padR = 15, padT = 15, padB = 25;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const minTr = 0.5, maxTr = 10;
+
+  // Log-scale MTBF curve across the tr range
+  const points = [];
+  let minLog = Infinity, maxLog = -Infinity;
+  for (let i = 0; i <= 60; i++) {
+    const tr = minTr + (i / 60) * (maxTr - minTr);
+    const mtbf = computeMTBF(tr, fClk, fData);
+    const logVal = Math.log10(Math.max(mtbf, 1e-12));
+    points.push({ tr, logVal });
+    minLog = Math.min(minLog, logVal);
+    maxLog = Math.max(maxLog, logVal);
+  }
+
+  const xFor = (tr) => padL + ((tr - minTr) / (maxTr - minTr)) * plotW;
+  const yFor = (logVal) => padT + plotH - ((logVal - minLog) / (maxLog - minLog || 1)) * plotH;
+
+  // Curve
+  ctx.strokeStyle = '#2dd4bf';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach((pt, i) => {
+    const x = xFor(pt.tr), y = yFor(pt.logVal);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Current position marker
+  const curMtbf = computeMTBF(currentTr, fClk, fData);
+  const curLog = Math.log10(Math.max(curMtbf, 1e-12));
+  const cx = xFor(currentTr), cy = yFor(curLog);
+  ctx.save();
+  ctx.shadowColor = '#fbbf24';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.font = '10px Outfit, sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  ctx.textAlign = 'left';
+  ctx.fillText('MTBF (log scale) →', padL, 12);
+  ctx.textAlign = 'center';
+  ctx.fillText('resolution time (t_r) →', W / 2, H - 6);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('mtbfCanvas')) updateMTBFCalc();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.formula-box{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.4rem;margin:1.4rem 0;text-align:center}
+.formula-box .formula{font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:#f8fafc;margin-bottom:0.3rem}
+.formula-box .formula .exp{color:#fbbf24}
+.formula-box .formula-note{font-size:0.78rem;color:var(--sl)}
+
+.term-table{width:100%;border-collapse:collapse;margin:1.3rem 0;font-size:0.86rem}
+.term-table th{text-align:left;color:var(--sl);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.04em;padding:0.5rem 0.7rem;border-bottom:1px solid var(--bdr)}
+.term-table td{padding:0.7rem;border-bottom:1px solid var(--bdr);color:var(--text);vertical-align:top}
+.term-table td:first-child{font-family:'JetBrains Mono',monospace;color:var(--teal);font-weight:700;white-space:nowrap}
+.term-table tr:last-child td{border-bottom:none}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.impact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.8rem;margin:1.3rem 0}
+.impact-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center}
+.impact-card .it-tr{font-size:0.72rem;color:var(--sl);margin-bottom:0.4rem}
+.impact-card .it-mtbf{font-family:'JetBrains Mono',monospace;font-size:0.92rem;font-weight:700}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.mtbf-display{text-align:center;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.3rem;margin-bottom:1rem}
+.mtbf-display .mtbf-label{font-size:0.72rem;color:var(--sl);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem}
+.mtbf-number{font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:800}
+.mtbf-number.mtbf-danger{color:#f87171}
+.mtbf-number.mtbf-risky{color:#fbbf24}
+.mtbf-number.mtbf-safe{color:#4ade80}
+.mtbf-verdict{font-size:0.82rem;margin-top:0.5rem;font-weight:600}
+.mtbf-verdict.mtbf-danger{color:#f87171}
+.mtbf-verdict.mtbf-risky{color:#fbbf24}
+.mtbf-verdict.mtbf-safe{color:#4ade80}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#mtbfCanvas{display:block;width:100%;max-width:600px;margin:0 auto}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 2: Metastability</div>
+    <span class="lesson-tag">Lesson 2.2</span>
+    <h1>MTBF and Failure Rates</h1>
+
+    <p class="lede">
+      Last lesson ended with a promise: turn "it's unpredictable" into "here's an actual number." That number is
+      called <span class="hl">MTBF</span> — Mean Time Between Failures — and it's not a rough guess. It's the exact
+      formula real chip teams plug real numbers into before they sign off a design. By the end of this lesson, you'll
+      be able to read one yourself.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>From "sometimes" to "how often"</h2></div>
+      <p>
+        No one can tell you whether <em>your specific chip</em> will hit a metastability failure next Tuesday. That's
+        still true, and it always will be — resolution time is random. But step back and look at millions of clock
+        edges instead of one, and something familiar happens: the individual events stay unpredictable, while the
+        <span class="term">average rate</span> becomes remarkably steady.
+      </p>
+      <div class="analogy">
+        <div class="analogy-label">📊 The insurance analogy</div>
+        <p>An insurance company can't predict which of their customers dies next year. But they can predict, with striking accuracy, roughly how many will — because across a large enough population, individual randomness averages into a stable rate. MTBF is that same idea applied to synchronizer failures.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>The formula, piece by piece</h2></div>
+      <p>Here's the actual equation used to calculate a synchronizer's MTBF:</p>
+
+      <div class="formula-box">
+        <div class="formula">MTBF&nbsp;=&nbsp;e<span class="exp">^(t_r / τ)</span> / (T₀ × f_clk × f_data)</div>
+        <div class="formula-note">bigger result = safer design</div>
+      </div>
+
+      <table class="term-table">
+        <thead><tr><th>Term</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td>t_r</td><td>Resolution time — how long you give the signal to settle before anything reads it. <strong>This is the one thing you directly control</strong> by adding synchronizer stages.</td></tr>
+          <tr><td>&tau; (tau)</td><td>How quickly this particular flip-flop's process technology naturally resolves metastability. Fixed by your standard-cell library, not something you tune per-design.</td></tr>
+          <tr><td>T&#8320;</td><td>How "sensitive" the flop is to begin with — the width of its metastability-prone window. Also fixed by the technology.</td></tr>
+          <tr><td>f_clk</td><td>The receiving clock's frequency — how often you're giving the signal a chance to be sampled.</td></tr>
+          <tr><td>f_data</td><td>How often the async signal actually changes — how often a crossing opportunity even exists.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="def-box">
+        <div class="def-label">The one thing to notice</div>
+        <p>t_r sits in the exponent. Everything else — clock speed, data rate, the technology constants — only scales the result up or down. t_r changes the result exponentially. That single asymmetry is the whole story of this lesson.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Why one clock period is such a big deal</h2></div>
+      <p>
+        Because t_r lives in the exponent, small increases in resolution time produce enormous jumps in MTBF — not
+        percentage improvements, but entire orders of magnitude. Here's what that looks like with the same clock and
+        data rate, changing only how much resolution time you budget:
+      </p>
+
+      <div class="impact-grid">
+        <div class="impact-card"><div class="it-tr">t_r = 0.5 ns</div><div class="it-mtbf" style="color:#f87171">~2.4 &micro;s</div></div>
+        <div class="impact-card"><div class="it-tr">t_r = 2 ns</div><div class="it-mtbf" style="color:#f87171">~4.4 ms</div></div>
+        <div class="impact-card"><div class="it-tr">t_r = 4 ns</div><div class="it-mtbf" style="color:#fbbf24">~97 sec</div></div>
+        <div class="impact-card"><div class="it-tr">t_r = 6 ns</div><div class="it-mtbf" style="color:#fbbf24">~25 days</div></div>
+        <div class="impact-card"><div class="it-tr">t_r = 8 ns</div><div class="it-mtbf" style="color:#4ade80">~1,490 yrs</div></div>
+        <div class="impact-card"><div class="it-tr">t_r = 10 ns</div><div class="it-mtbf" style="color:#4ade80">~33M yrs</div></div>
+      </div>
+
+      <p>
+        Same clock, same data rate — only the resolution time changed, and the design went from failing every few
+        microseconds to failing less often than the sun will exist. This is exactly why the two-flop synchronizer
+        works so well: that one extra clock period of resolution time isn't a small improvement, it's the entire game.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Reading a real MTBF number honestly</h2></div>
+      <p>
+        Two things engineers new to this get wrong, and both matter:
+      </p>
+      <ul>
+        <li><strong>A high MTBF is not a guarantee.</strong> It's an average. A design with an MTBF of 500 years can still fail on day one — it's just very unlikely. MTBF tells you the odds, not the outcome.</li>
+        <li><strong>MTBF gets worse the busier your system is.</strong> f_clk and f_data both sit in the denominator — a faster clock or a signal that toggles more often means more sampling opportunities, which means more chances to land in the danger window.</li>
+      </ul>
+      <div class="warnbox">
+        <p><strong>The scale problem:</strong> an MTBF of "50 years per device" sounds perfectly safe for one chip. Now ship 10 million of them. On average, that's a synchronizer failure happening somewhere in your installed base roughly <em>every few hours</em>. This is why real sign-off requires margin that looks excessive for a single device — because it never ships as a single device.</p>
+      </div>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Play with the real formula below — watch how much resolution time actually costs you in safety margin. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: MTBF Calculator</h2>
+      </div>
+      <p class="lab-instructions">
+        This uses the real MTBF formula with illustrative (but realistic-shaped) technology constants. Drag the
+        sliders and watch the result — especially <b>t_r</b>.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Resolution time (t_r): <span id="trLabel">2.0 ns</span> <span class="slider-hint">(time budgeted to settle — this is what an extra synchronizer stage buys you)</span></label>
+          <input type="range" id="trSlider" min="0.5" max="10" step="0.1" value="2" oninput="updateMTBFCalc()">
+        </div>
+        <div class="slider-row">
+          <label>Clock frequency (f_clk): <span id="fClkLabel">200 MHz</span></label>
+          <input type="range" id="fClkSlider" min="50" max="1000" step="10" value="200" oninput="updateMTBFCalc()">
+        </div>
+        <div class="slider-row">
+          <label>Data transition rate (f_data): <span id="fDataLabel">50 MHz</span></label>
+          <input type="range" id="fDataSlider" min="1" max="200" step="1" value="50" oninput="updateMTBFCalc()">
+        </div>
+      </div>
+
+      <div class="mtbf-display">
+        <div class="mtbf-label">Mean Time Between Failures</div>
+        <div class="mtbf-number" id="mtbfResult">—</div>
+        <div class="mtbf-verdict" id="mtbfVerdict"></div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="mtbfCanvas" width="600" height="180"></canvas>
+      </div>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>MTBF turns "unpredictable per-event" into "predictable on average" — same idea as actuarial tables.</li>
+        <li>The formula is MTBF = e^(t_r/&tau;) / (T&#8320; &times; f_clk &times; f_data) — and t_r is the only term you directly control.</li>
+        <li>Because t_r is in the exponent, one extra clock period of resolution time can improve MTBF by many orders of magnitude.</li>
+        <li>A high MTBF is an average, not a promise — and it gets worse at scale, once you're shipping millions of units.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/understanding-metastability/">← Previous: Understanding Metastability</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+</body>
+</html>
