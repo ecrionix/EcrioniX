@@ -75,6 +75,24 @@ h1{font-size:1.8rem;margin-bottom:0.4rem;color:#f8fafc}
 .admin-btn:hover{border-color:var(--blue);color:var(--blue)}
 .admin-btn.danger:hover{border-color:#f87171;color:#f87171}
 .empty-feed{text-align:center;color:var(--sl);padding:3rem 1rem}
+.poll-toggle{display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;color:var(--sl);cursor:pointer;user-select:none}
+.poll-toggle input{cursor:pointer}
+.poll-option-input-row{display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center}
+.poll-option-input-row input{flex:1;padding:0.5rem 0.7rem;border-radius:6px;border:1px solid var(--bdr);background:var(--bg3);color:var(--text);font-size:0.85rem}
+.poll-option-input-row input:focus{outline:none;border-color:var(--blue)}
+.poll-option-remove{background:none;border:none;color:var(--sl);font-size:1.2rem;cursor:pointer;line-height:1;padding:0 0.3rem}
+.poll-option-remove:hover{color:#f87171}
+.poll-add-option-btn{background:none;border:1px dashed var(--bdr);border-radius:6px;color:var(--sl);font-size:0.8rem;padding:0.4rem 0.8rem;cursor:pointer;width:100%}
+.poll-add-option-btn:hover{border-color:var(--blue);color:var(--blue)}
+.poll-question{font-weight:700;color:#f8fafc;font-size:0.92rem;margin-bottom:0.8rem}
+.poll-option{position:relative;border:1px solid var(--bdr);border-radius:8px;padding:0.55rem 0.8rem;margin-bottom:0.5rem;cursor:pointer;overflow:hidden;background:var(--bg3);transition:border-color 0.15s}
+.poll-option:hover{border-color:var(--blue)}
+.poll-option.voted{border-color:var(--blue)}
+.poll-option-fill{position:absolute;top:0;left:0;bottom:0;background:rgba(56,189,248,.15);z-index:0;transition:width 0.3s}
+.poll-option-content{position:relative;z-index:1;display:flex;justify-content:space-between;gap:0.6rem;font-size:0.85rem}
+.poll-option-label{display:flex;align-items:center;gap:0.4rem}
+.poll-option-pct{color:var(--sl);font-weight:700;flex-shrink:0}
+.poll-total-votes{font-size:0.75rem;color:var(--sl);margin-top:0.4rem}
 footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
 </style>
 </head>
@@ -100,9 +118,18 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 
     <div class="composer">
       <textarea id="postText" placeholder="Share something with the community... (links are okay, no images)"></textarea>
+      <div id="pollBuilder" style="display:none;margin-top:0.8rem">
+        <div id="pollOptionsList"></div>
+        <button type="button" class="poll-add-option-btn" onclick="addPollOptionField()">+ Add option</button>
+      </div>
       <div class="composer-footer">
-        <span class="composer-hint">Text only · Links supported · Be respectful</span>
-        <button class="post-btn" id="postBtn" onclick="submitPost()">Post</button>
+        <label class="poll-toggle">
+          <input type="checkbox" id="pollToggle" onchange="togglePollBuilder()"> 📊 Make this a poll
+        </label>
+        <div style="display:flex;gap:0.6rem;align-items:center">
+          <span class="composer-hint">Text only · Links supported · Be respectful</span>
+          <button class="post-btn" id="postBtn" onclick="submitPost()">Post</button>
+        </div>
       </div>
     </div>
 
@@ -155,17 +182,63 @@ function linkify(escapedText) {
   });
 }
 
+const MAX_POLL_OPTIONS = 6;
+
+function togglePollBuilder() {
+  const enabled = document.getElementById('pollToggle').checked;
+  const builder = document.getElementById('pollBuilder');
+  const textarea = document.getElementById('postText');
+  builder.style.display = enabled ? 'block' : 'none';
+  textarea.placeholder = enabled
+    ? 'Ask your poll question...'
+    : 'Share something with the community... (links are okay, no images)';
+
+  if (enabled) {
+    const list = document.getElementById('pollOptionsList');
+    list.innerHTML = '';
+    addPollOptionField();
+    addPollOptionField();
+  }
+}
+
+function addPollOptionField() {
+  const list = document.getElementById('pollOptionsList');
+  if (list.children.length >= MAX_POLL_OPTIONS) return;
+
+  const row = document.createElement('div');
+  row.className = 'poll-option-input-row';
+  row.innerHTML = `
+    <input type="text" class="poll-option-input" placeholder="Option ${list.children.length + 1}">
+    <button type="button" class="poll-option-remove" onclick="this.parentElement.remove()">×</button>
+  `;
+  list.appendChild(row);
+}
+
 async function submitPost() {
   const textarea = document.getElementById('postText');
   const text = textarea.value.trim();
   if (!text) return;
+
+  const isPoll = document.getElementById('pollToggle').checked;
+  let pollOptions = [];
+
+  if (isPoll) {
+    pollOptions = [...document.querySelectorAll('.poll-option-input')]
+      .map(input => input.value.trim())
+      .filter(Boolean);
+
+    if (pollOptions.length < 2) {
+      alert('A poll needs at least 2 options.');
+      return;
+    }
+  }
 
   const btn = document.getElementById('postBtn');
   btn.disabled = true;
 
   try {
     const isAdmin = currentUser.uid === ADMIN_UID;
-    await firebase.firestore().collection('communityPosts').add({
+    const postData = {
       authorId: currentUser.uid,
       authorName: isAdmin ? 'EcrioniX' : (currentUser.displayName || 'Member'),
       authorPhoto: isAdmin ? null : (currentUser.photoURL || null),
@@ -173,8 +246,18 @@ async function submitPost() {
       likes: [],
       dislikes: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (isPoll) {
+      postData.isPoll = true;
+      postData.pollOptions = pollOptions;
+      postData.pollVotes = {};
+    }
+
+    await firebase.firestore().collection('communityPosts').add(postData);
     textarea.value = '';
+    document.getElementById('pollToggle').checked = false;
+    togglePollBuilder();
   } catch (error) {
     console.error('Error posting:', error);
     alert('Could not post. Please try again.');
@@ -217,7 +300,8 @@ function renderPost(postId, post) {
   const userLiked = currentUser && likes.includes(currentUser.uid);
   const userDisliked = currentUser && dislikes.includes(currentUser.uid);
 
-  const bodyHtml = linkify(escapeHtml(post.text));
+  const bodyHtml = post.isPoll ? '' : linkify(escapeHtml(post.text));
+  const pollHtml = post.isPoll ? renderPoll(postId, post) : '';
 
   const adminControls = isAdminUser ? `
     <div class="admin-actions">
@@ -235,7 +319,8 @@ function renderPost(postId, post) {
           <div class="post-time">${time}${editedNote}</div>
         </div>
       </div>
-      <div class="post-text">${bodyHtml}</div>
+      ${post.isPoll ? '' : `<div class="post-text">${bodyHtml}</div>`}
+      ${pollHtml}
       <div class="post-actions">
         <button class="reaction-btn ${userLiked ? 'active-like' : ''}" onclick="toggleReaction('${postId}', 'likes')">👍 ${likes.length}</button>
         <button class="reaction-btn ${userDisliked ? 'active-dislike' : ''}" onclick="toggleReaction('${postId}', 'dislikes')">👎 ${dislikes.length}</button>
@@ -243,6 +328,46 @@ function renderPost(postId, post) {
       </div>
     </div>
   `;
+}
+
+function renderPoll(postId, post) {
+  const options = post.pollOptions || [];
+  const votes = post.pollVotes || {};
+  const voteValues = Object.values(votes);
+  const totalVotes = voteValues.length;
+  const myVote = currentUser ? votes[currentUser.uid] : undefined;
+
+  const optionsHtml = options.map((optionText, index) => {
+    const count = voteValues.filter(v => v === index).length;
+    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+    const voted = myVote === index;
+    return `
+      <div class="poll-option ${voted ? 'voted' : ''}" onclick="castVote('${postId}', ${index})">
+        <div class="poll-option-fill" style="width:${pct}%"></div>
+        <div class="poll-option-content">
+          <span class="poll-option-label">${voted ? '✅' : ''} ${escapeHtml(optionText)}</span>
+          <span class="poll-option-pct">${pct}% (${count})</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="poll-question">📊 ${linkify(escapeHtml(post.text))}</div>
+    ${optionsHtml}
+    <div class="poll-total-votes">${totalVotes} vote${totalVotes === 1 ? '' : 's'}</div>
+  `;
+}
+
+async function castVote(postId, optionIndex) {
+  if (!currentUser) return;
+  try {
+    await firebase.firestore().collection('communityPosts').doc(postId).update({
+      [`pollVotes.${currentUser.uid}`]: optionIndex,
+    });
+  } catch (error) {
+    console.error('Error casting vote:', error);
+  }
 }
 
 async function toggleReaction(postId, field) {
