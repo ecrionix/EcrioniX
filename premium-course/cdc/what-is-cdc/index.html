@@ -55,6 +55,212 @@ async function checkAccess(user) {
     document.getElementById('noAccess').style.display = 'block';
   }
 }
+
+/* ---- Interactive Lab: CDC crossing visualizer ---- */
+const LAB_WINDOW_MS = 3000;
+const LAB_CLOCK_A_PERIOD = 130;
+const LAB_CLOCK_B_PERIOD = 172;
+const LAB_DANGER_MS = 9;
+
+let labTransitions = [];
+let labClockBEdges = [];
+let labPlayheadT = 0;
+let labRunning = false;
+let labAnimId = null;
+
+function labGenerateTransitions() {
+  const transitions = [];
+  let t = 100 + Math.random() * 100;
+  while (t < LAB_WINDOW_MS - 100) {
+    transitions.push(t);
+    t += 180 + Math.random() * 220;
+  }
+  return transitions;
+}
+
+function labComputeClockEdges(period) {
+  const edges = [];
+  for (let t = period; t < LAB_WINDOW_MS; t += period) edges.push(t);
+  return edges;
+}
+
+function labClockLevel(t, period) {
+  return Math.floor(t / (period / 2)) % 2 === 0 ? 1 : 0;
+}
+
+function labIsRisky(transitionT) {
+  return labClockBEdges.some(edge => Math.abs(edge - transitionT) <= LAB_DANGER_MS);
+}
+
+function labInit() {
+  labTransitions = labGenerateTransitions();
+  labClockBEdges = labComputeClockEdges(LAB_CLOCK_B_PERIOD);
+  labPlayheadT = 0;
+  labRunning = false;
+  if (labAnimId) cancelAnimationFrame(labAnimId);
+  document.getElementById('labSafeCount').innerText = '0';
+  document.getElementById('labRiskyCount').innerText = '0';
+  document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
+  document.getElementById('labRunBtn').disabled = false;
+  labDraw();
+}
+
+function resetLab() {
+  labInit();
+}
+
+function labTimeToX(t, plotW, padL) {
+  return padL + (t / LAB_WINDOW_MS) * plotW;
+}
+
+function labDraw() {
+  const canvas = document.getElementById('labCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const padL = 90, padR = 20;
+  const plotW = W - padL - padR;
+  const rowH = 60;
+  const rowYs = [20, 90, 160];
+  const rowLabels = ['Clock A', 'Clock B', 'Data Signal'];
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  // Danger zone bands (drawn across full height, behind everything)
+  ctx.fillStyle = 'rgba(248,113,113,0.12)';
+  labClockBEdges.forEach(edge => {
+    const x1 = labTimeToX(edge - LAB_DANGER_MS, plotW, padL);
+    const x2 = labTimeToX(edge + LAB_DANGER_MS, plotW, padL);
+    ctx.fillRect(x1, 5, x2 - x1, H - 10);
+  });
+
+  // Row labels
+  ctx.font = '11px Outfit, sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  rowLabels.forEach((label, i) => {
+    ctx.fillText(label, 4, rowYs[i] + rowH / 2 + 4);
+  });
+
+  // Clock A waveform
+  labDrawSquareWave(ctx, LAB_CLOCK_A_PERIOD, rowYs[0], rowH, plotW, padL, '#38bdf8');
+  // Clock B waveform
+  labDrawSquareWave(ctx, LAB_CLOCK_B_PERIOD, rowYs[1], rowH, plotW, padL, '#a78bfa');
+
+  // Data signal waveform (based on transitions list)
+  ctx.strokeStyle = '#2dd4bf';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let level = 0;
+  let prevX = padL;
+  const yHigh = rowYs[2] + 10, yLow = rowYs[2] + rowH - 10;
+  ctx.moveTo(prevX, level ? yHigh : yLow);
+  labTransitions.forEach(t => {
+    const x = labTimeToX(t, plotW, padL);
+    ctx.lineTo(x, level ? yHigh : yLow);
+    level = level ? 0 : 1;
+    ctx.lineTo(x, level ? yHigh : yLow);
+    prevX = x;
+  });
+  ctx.lineTo(padL + plotW, level ? yHigh : yLow);
+  ctx.stroke();
+
+  // Mark transitions already passed by the playhead
+  labTransitions.forEach(t => {
+    if (t > labPlayheadT) return;
+    const x = labTimeToX(t, plotW, padL);
+    const risky = labIsRisky(t);
+    ctx.fillStyle = risky ? '#f87171' : '#4ade80';
+    ctx.beginPath();
+    ctx.arc(x, rowYs[2] + rowH / 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Playhead
+  if (labPlayheadT > 0) {
+    const x = labTimeToX(labPlayheadT, plotW, padL);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 5);
+    ctx.lineTo(x, H - 5);
+    ctx.stroke();
+  }
+}
+
+function labDrawSquareWave(ctx, period, rowY, rowH, plotW, padL, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const yHigh = rowY + 10, yLow = rowY + rowH - 10;
+  const steps = 400;
+  let prevLevel = null;
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * LAB_WINDOW_MS;
+    const lvl = labClockLevel(t, period);
+    const x = labTimeToX(t, plotW, padL);
+    const y = lvl ? yHigh : yLow;
+    if (prevLevel === null) {
+      ctx.moveTo(x, y);
+    } else if (lvl !== prevLevel) {
+      ctx.lineTo(x, prevLevel ? yHigh : yLow);
+      ctx.lineTo(x, y);
+    }
+    prevLevel = lvl;
+  }
+  ctx.lineTo(padL + plotW, prevLevel ? yHigh : yLow);
+  ctx.stroke();
+}
+
+function runLab() {
+  if (labRunning) return;
+  labRunning = true;
+  document.getElementById('labRunBtn').disabled = true;
+  document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
+
+  const startTime = performance.now();
+  const durationMs = 4000;
+  let safeCount = 0, riskyCount = 0;
+  const countedSoFar = new Set();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    labPlayheadT = Math.min((elapsed / durationMs) * LAB_WINDOW_MS, LAB_WINDOW_MS);
+
+    labTransitions.forEach(t => {
+      if (t <= labPlayheadT && !countedSoFar.has(t)) {
+        countedSoFar.add(t);
+        if (labIsRisky(t)) riskyCount++; else safeCount++;
+        document.getElementById('labSafeCount').innerText = safeCount;
+        document.getElementById('labRiskyCount').innerText = riskyCount;
+      }
+    });
+
+    labDraw();
+
+    if (labPlayheadT < LAB_WINDOW_MS) {
+      labAnimId = requestAnimationFrame(step);
+    } else {
+      labRunning = false;
+      document.getElementById('labRunBtn').disabled = false;
+      const verdict = document.getElementById('labVerdict');
+      verdict.classList.add('show');
+      if (riskyCount > 0) {
+        verdict.classList.add('risky-verdict');
+        verdict.innerHTML = `⚠️ <b>${riskyCount} transition${riskyCount === 1 ? '' : 's'} landed in the danger zone.</b> Without a synchronizer, Clock B's flip-flop could go metastable at those moments. Click "New Random Run" to try again — the risk is different every time because the clocks aren't related.`;
+      } else {
+        verdict.classList.add('safe-verdict');
+        verdict.innerHTML = `✅ <b>No risky crossings this run</b> — but don't be fooled. This was luck, not safety. Run it again and you'll likely see a red one. That unpredictability is exactly why CDC needs a proper synchronizer, not luck.`;
+      }
+    }
+  }
+
+  labAnimId = requestAnimationFrame(step);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('labCanvas')) labInit();
+});
 </script>
 <style>
 :root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
@@ -91,6 +297,34 @@ h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
 .key-takeaway li{margin-bottom:0.4rem}
 
 .lab-note{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin-top:2rem;font-size:0.87rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#labCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+.lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
+.lab-btn{background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;border:none;border-radius:8px;padding:0.55rem 1.2rem;font-weight:700;cursor:pointer;font-size:0.85rem;transition:opacity 0.15s}
+.lab-btn:hover{opacity:0.9}
+.lab-btn:disabled{opacity:0.4;cursor:not-allowed}
+.lab-btn.secondary{background:none;border:1px solid var(--bdr);color:var(--sl)}
+.lab-btn.secondary:hover{border-color:var(--blue);color:var(--blue)}
+.lab-stats{display:flex;gap:1.2rem;margin-left:auto;flex-wrap:wrap}
+.lab-stat{text-align:center}
+.lab-stat-num{font-size:1.3rem;font-weight:800}
+.lab-stat-num.safe{color:#4ade80}
+.lab-stat-num.risky{color:#f87171}
+.lab-stat-label{font-size:0.68rem;color:var(--sl);text-transform:uppercase;letter-spacing:0.04em}
+.lab-legend{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:1rem;font-size:0.78rem;color:var(--sl)}
+.lab-legend span{display:inline-flex;align-items:center;gap:0.35rem}
+.lab-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.lab-verdict{margin-top:1rem;padding:0.9rem 1.1rem;border-radius:8px;font-size:0.85rem;display:none}
+.lab-verdict.show{display:block}
+.lab-verdict.risky-verdict{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#f87171}
+.lab-verdict.safe-verdict{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:#4ade80}
 .lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
 footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
 </style>
@@ -175,8 +409,37 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </ul>
     </div>
 
-    <div class="lab-note">
-      🧪 <b>Interactive Lab</b> — coming next: you'll simulate a signal crossing clock domains and see metastability happen live.
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Watch a Crossing Happen</h2>
+      </div>
+      <p class="lab-instructions">
+        Clock A and Clock B run at different, unrelated speeds — just like two independent domains on a chip.
+        A data signal changes state in Clock A's domain and must be sampled by Clock B. Click <b>Run</b> to sweep
+        through time and see which transitions land dangerously close to a Clock B edge.
+      </p>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="labCanvas" width="680" height="230"></canvas>
+      </div>
+
+      <div class="lab-legend">
+        <span><i style="background:#f87171"></i> Danger zone (near a Clock B edge)</span>
+        <span><i style="background:#4ade80"></i> Safe transition</span>
+        <span><i style="background:#38bdf8"></i> Playhead</span>
+      </div>
+
+      <div class="lab-controls">
+        <button class="lab-btn" id="labRunBtn" onclick="runLab()">▶ Run</button>
+        <button class="lab-btn secondary" id="labResetBtn" onclick="resetLab()">↻ New Random Run</button>
+        <div class="lab-stats">
+          <div class="lab-stat"><div class="lab-stat-num safe" id="labSafeCount">0</div><div class="lab-stat-label">Safe</div></div>
+          <div class="lab-stat"><div class="lab-stat-num risky" id="labRiskyCount">0</div><div class="lab-stat-label">Risky</div></div>
+        </div>
+      </div>
+
+      <div class="lab-verdict" id="labVerdict"></div>
     </div>
 
     <div class="lesson-nav">
