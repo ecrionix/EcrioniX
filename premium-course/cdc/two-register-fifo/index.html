@@ -519,7 +519,79 @@
             <div class="section-num">4</div>
             <h2>Verilog Implementation</h2>
         </div>
-        <div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="hl-kw">module</span> two_reg_fifo_sync #(    <span class="hl-kw">parameter</span> DWIDTH = <span class="hl-num">32</span>)(    <span class="hl-cmt">// Tx Domain</span>    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_clk,    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_rst_n,    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_en,    <span class="hl-type">input</span>  <span class="hl-type">wire</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] tx_data,    <span class="hl-type">output</span> <span class="hl-type">wire</span>              tx_ready, <span class="hl-cmt">// 0 means waiting for Rx to catch up</span>    <span class="hl-cmt">// Rx Domain</span>    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              rx_clk,    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              rx_rst_n,    <span class="hl-type">output</span> <span class="hl-type">reg</span>  [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] rx_data,    <span class="hl-type">output</span> <span class="hl-type">wire</span>              rx_valid);    <span class="hl-cmt">//---------------------------------------------------------</span>    <span class="hl-cmt">// TX Domain Logic</span>    <span class="hl-cmt">//---------------------------------------------------------</span>    <span class="hl-type">reg</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] reg_a;    <span class="hl-type">reg</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] reg_b;    <span class="hl-type">reg</span>              tx_ptr;    <span class="hl-cmt">// 0=A, 1=B</span>    <span class="hl-type">reg</span>              tx_toggle;    <span class="hl-cmt">// Optional: Synchronize rx_toggle back to Tx for backpressure</span>    <span class="hl-type">reg</span> [<span class="hl-num">2</span>:<span class="hl-num">0</span>] rx_toggle_sync_tx;    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> tx_clk or <span class="hl-edge">negedge</span> tx_rst_n) <span class="hl-kw">begin</span>        <span class="hl-kw">if</span> (!tx_rst_n) rx_toggle_sync_tx <= <span class="hl-num">3'b0</span>;        <span class="hl-kw">else</span>           rx_toggle_sync_tx <= {rx_toggle_sync_tx[<span class="hl-num">1</span>:<span class="hl-num">0</span>], rx_toggle_sync};    <span class="hl-kw">end</span>        <span class="hl-cmt">// Ready if we haven't overwritten the register Rx is currently reading</span>    <span class="hl-cmt">// (In strict ping-pong without backpressure, you assume tx is slow)</span>    <span class="hl-kw">assign</span> tx_ready = <span class="hl-num">1'b1</span>; <span class="hl-cmt">// Simplified for basic configuration passing</span>    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> tx_clk or <span class="hl-edge">negedge</span> tx_rst_n) <span class="hl-kw">begin</span>        <span class="hl-kw">if</span> (!tx_rst_n) <span class="hl-kw">begin</span>            tx_ptr    <= <span class="hl-num">1'b0</span>;            tx_toggle <= <span class="hl-num">1'b0</span>;            reg_a     <= {DWIDTH{<span class="hl-num">1'b0</span>}};            reg_b     <= {DWIDTH{<span class="hl-num">1'b0</span>}};        <span class="hl-kw">end</span> <span class="hl-kw">else</span> <span class="hl-kw">if</span> (tx_en && tx_ready) <span class="hl-kw">begin</span>            <span class="hl-kw">if</span> (tx_ptr == <span class="hl-num">1'b0</span>) reg_a <= tx_data;            <span class="hl-kw">else</span>                reg_b <= tx_data;                        tx_ptr    <= ~tx_ptr;            tx_toggle <= ~tx_toggle;        <span class="hl-kw">end</span>    <span class="hl-kw">end</span>    <span class="hl-cmt">//---------------------------------------------------------</span>    <span class="hl-cmt">// RX Domain Logic</span>    <span class="hl-cmt">//---------------------------------------------------------</span>    <span class="hl-type">reg</span> [<span class="hl-num">2</span>:<span class="hl-num">0</span>] tx_toggle_sync;        <span class="hl-cmt">// 3-stage synchronizer + edge detect pipeline</span>    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> rx_clk or <span class="hl-edge">negedge</span> rx_rst_n) <span class="hl-kw">begin</span>        <span class="hl-kw">if</span> (!rx_rst_n) tx_toggle_sync <= <span class="hl-num">3'b0</span>;        <span class="hl-kw">else</span>           tx_toggle_sync <= {tx_toggle_sync[<span class="hl-num">1</span>:<span class="hl-num">0</span>], tx_toggle};    <span class="hl-kw">end</span>    <span class="hl-cmt">// Edge detect on the synchronized toggle flag</span>    <span class="hl-type">wire</span> toggle_edge = (tx_toggle_sync[<span class="hl-num">1</span>] ^ tx_toggle_sync[<span class="hl-num">2</span>]);    <span class="hl-kw">assign</span> rx_valid  = toggle_edge;    <span class="hl-cmt">// Read MUX</span>    <span class="hl-kw">always</span> @(*) <span class="hl-kw">begin</span>        <span class="hl-cmt">// If sync[1] is 0, Tx last wrote to A, so we read A.</span>        <span class="hl-kw">if</span> (tx_toggle_sync[<span class="hl-num">1</span>] == <span class="hl-num">1'b1</span>)              rx_data = reg_b;        <span class="hl-kw">else</span> rx_data = reg_a;    <span class="hl-kw">end</span><span class="hl-kw">endmodule</span></code></pre></div>
+        <div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="hl-kw">module</span> two_reg_fifo_sync #(
+    <span class="hl-kw">parameter</span> DWIDTH = <span class="hl-num">32</span>
+)(
+    <span class="hl-cmt">// Tx Domain</span>
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_clk,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_rst_n,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              tx_en,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] tx_data,
+    <span class="hl-type">output</span> <span class="hl-type">wire</span>              tx_ready, <span class="hl-cmt">// 0 means waiting for Rx to catch up</span>
+    
+    <span class="hl-cmt">// Rx Domain</span>
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              rx_clk,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span>              rx_rst_n,
+    <span class="hl-type">output</span> <span class="hl-type">reg</span>  [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] rx_data,
+    <span class="hl-type">output</span> <span class="hl-type">wire</span>              rx_valid
+);
+
+    <span class="hl-cmt">//---------------------------------------------------------</span>
+    <span class="hl-cmt">// TX Domain Logic</span>
+    <span class="hl-cmt">//---------------------------------------------------------</span>
+    <span class="hl-type">reg</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] reg_a;
+    <span class="hl-type">reg</span> [DWIDTH-<span class="hl-num">1</span>:<span class="hl-num">0</span>] reg_b;
+    <span class="hl-type">reg</span>              tx_ptr;       <span class="hl-cmt">// 0=A, 1=B</span>
+    <span class="hl-type">reg</span>              tx_toggle;
+
+    <span class="hl-cmt">// Optional: Synchronize rx_toggle back to Tx for backpressure</span>
+    <span class="hl-type">reg</span> [<span class="hl-num">2</span>:<span class="hl-num">0</span>] rx_toggle_sync_tx;
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> tx_clk or <span class="hl-edge">negedge</span> tx_rst_n) <span class="hl-kw">begin</span>
+        <span class="hl-kw">if</span> (!tx_rst_n) rx_toggle_sync_tx <= <span class="hl-num">3'b0</span>;
+        <span class="hl-kw">else</span>           rx_toggle_sync_tx <= {rx_toggle_sync_tx[<span class="hl-num">1</span>:<span class="hl-num">0</span>], rx_toggle_sync};
+    <span class="hl-kw">end</span>
+    
+    <span class="hl-cmt">// Ready if we haven't overwritten the register Rx is currently reading</span>
+    <span class="hl-cmt">// (In strict ping-pong without backpressure, you assume tx is slow)</span>
+    <span class="hl-kw">assign</span> tx_ready = <span class="hl-num">1'b1</span>; <span class="hl-cmt">// Simplified for basic configuration passing</span>
+
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> tx_clk or <span class="hl-edge">negedge</span> tx_rst_n) <span class="hl-kw">begin</span>
+        <span class="hl-kw">if</span> (!tx_rst_n) <span class="hl-kw">begin</span>
+            tx_ptr    <= <span class="hl-num">1'b0</span>;
+            tx_toggle <= <span class="hl-num">1'b0</span>;
+            reg_a     <= {DWIDTH{<span class="hl-num">1'b0</span>}};
+            reg_b     <= {DWIDTH{<span class="hl-num">1'b0</span>}};
+        <span class="hl-kw">end</span> <span class="hl-kw">else</span> <span class="hl-kw">if</span> (tx_en && tx_ready) <span class="hl-kw">begin</span>
+            <span class="hl-kw">if</span> (tx_ptr == <span class="hl-num">1'b0</span>) reg_a <= tx_data;
+            <span class="hl-kw">else</span>                reg_b <= tx_data;
+            
+            tx_ptr    <= ~tx_ptr;
+            tx_toggle <= ~tx_toggle;
+        <span class="hl-kw">end</span>
+    <span class="hl-kw">end</span>
+
+    <span class="hl-cmt">//---------------------------------------------------------</span>
+    <span class="hl-cmt">// RX Domain Logic</span>
+    <span class="hl-cmt">//---------------------------------------------------------</span>
+    <span class="hl-type">reg</span> [<span class="hl-num">2</span>:<span class="hl-num">0</span>] tx_toggle_sync;
+    
+    <span class="hl-cmt">// 3-stage synchronizer + edge detect pipeline</span>
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> rx_clk or <span class="hl-edge">negedge</span> rx_rst_n) <span class="hl-kw">begin</span>
+        <span class="hl-kw">if</span> (!rx_rst_n) tx_toggle_sync <= <span class="hl-num">3'b0</span>;
+        <span class="hl-kw">else</span>           tx_toggle_sync <= {tx_toggle_sync[<span class="hl-num">1</span>:<span class="hl-num">0</span>], tx_toggle};
+    <span class="hl-kw">end</span>
+
+    <span class="hl-cmt">// Edge detect on the synchronized toggle flag</span>
+    <span class="hl-type">wire</span> toggle_edge = (tx_toggle_sync[<span class="hl-num">1</span>] ^ tx_toggle_sync[<span class="hl-num">2</span>]);
+    <span class="hl-kw">assign</span> rx_valid  = toggle_edge;
+
+    <span class="hl-cmt">// Read MUX</span>
+    <span class="hl-kw">always</span> @(*) <span class="hl-kw">begin</span>
+        <span class="hl-cmt">// If sync[1] is 0, Tx last wrote to A, so we read A.</span>
+        <span class="hl-kw">if</span> (tx_toggle_sync[<span class="hl-num">1</span>] == <span class="hl-num">1'b1</span>) rx_data = reg_b;
+        <span class="hl-kw">else</span>                           rx_data = reg_a;
+    <span class="hl-kw">end</span>
+<span class="hl-kw">endmodule</span></code></pre></div>
 
         <div class="warnbox">
             <h3>

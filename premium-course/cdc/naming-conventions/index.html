@@ -396,7 +396,13 @@
     
     <p>When you follow strict naming conventions, writing these Synthesis Design Constraints (SDC) becomes trivial and wildcard-friendly:</p>
 
-<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="comment"># SDC/XDC Constraint Examples using Naming Conventions</span><span class="comment"># Safely ignore all paths crossing from domain A to domain B's async inputs</span>set_false_path -from [get_clocks clk_a] -to [get_pins *clk_b_*_meta_reg/D]<span class="comment"># Datapath-only constraint <span class="hl-kw">for</span> a CDC FIFO gray pointer crossing</span>set_max_delay -datapath_only -from [get_cells *clk_a_wptr_reg*] \                             -to   [get_cells *clk_b_wptr_meta_reg*] <span class="hl-num">5</span>.<span class="hl-num">0</span></code></pre></div>
+<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="hl-cmt"># SDC/XDC Constraint Examples using Naming Conventions</span>
+<span class="hl-cmt"># Safely ignore all paths crossing from domain A to domain B's async inputs</span>
+set_false_path -from [get_clocks clk_a] -to [get_pins *clk_b_*_meta_reg/D]
+
+<span class="hl-cmt"># Datapath-only constraint for a CDC FIFO gray pointer crossing</span>
+set_max_delay -datapath_only -from [get_cells *clk_a_wptr_reg*] \
+                             -to   [get_cells *clk_b_wptr_meta_reg*] <span class="hl-num">5.0</span></code></pre></div>
     
     <p>If you don't use naming conventions, you are forced to write hundreds of individual cell constraints, which are prone to human error and break easily when the design is refactored.</p>
 
@@ -405,13 +411,69 @@
     <div class="worked-example">
       <h3>Bad Partitioning (Spaghetti Design)</h3>
       <p>In this example, the module takes two clocks and blindly mixes them. It is very hard to visually inspect if <code>flag_out</code> is safe to use in the TX domain.</p>
-<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="keyword"><span class="hl-kw">module</span></span> <span class="name">data_processor</span> (    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">rx_clk</span>,    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">tx_clk</span>,    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">rx_data_en</span>,    <span class="keyword"><span class="hl-type">output</span></span> <span class="keyword"><span class="hl-type">reg</span></span>  <span class="type">flag_out</span>);    <span class="keyword"><span class="hl-type">reg</span></span> rx_active;        <span class="keyword"><span class="hl-kw">always</span></span> @(<span class="keyword"><span class="hl-edge">posedge</span></span> rx_clk) <span class="keyword"><span class="hl-kw">begin</span></span>        rx_active <= rx_data_en;    <span class="keyword"><span class="hl-kw">end</span></span>    <span class="comment"><span class="hl-cmt">// DANGER: Direct use of rx_active in tx_clk domain! (Metastability risk)</span></span>    <span class="keyword"><span class="hl-kw">always</span></span> @(<span class="keyword"><span class="hl-edge">posedge</span></span> tx_clk) <span class="keyword"><span class="hl-kw">begin</span></span>        flag_out <= rx_active;     <span class="keyword"><span class="hl-kw">end</span></span><span class="keyword"><span class="hl-kw">endmodule</span></span></code></pre></div>
+<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="hl-kw">module</span> data_processor (
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> rx_clk,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> tx_clk,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> rx_data_en,
+    <span class="hl-type">output</span> <span class="hl-type">reg</span>  flag_out
+);
+
+    <span class="hl-type">reg</span> rx_active;
+    
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> rx_clk) <span class="hl-kw">begin</span>
+        rx_active <= rx_data_en;
+    <span class="hl-kw">end</span>
+
+    <span class="hl-cmt">// DANGER: Direct use of rx_active in tx_clk domain! (Metastability risk)</span>
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> tx_clk) <span class="hl-kw">begin</span>
+        flag_out <= rx_active; 
+    <span class="hl-kw">end</span>
+<span class="hl-kw">endmodule</span></code></pre></div>
     </div>
 
     <div class="worked-example">
       <h3>Good Partitioning (Methodological Design)</h3>
       <p>Here, the processing module only sees the RX clock. The CDC is explicitly handled by a dedicated synchronizer module at the top level, and naming conventions make the intent crystal clear.</p>
-<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="comment"><span class="hl-cmt">// 1. Synchronous Core Module (Single Clock Only)</span></span><span class="keyword"><span class="hl-kw">module</span></span> <span class="name">rx_processor</span> (    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">clk_rx</span>,    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">rx_data_en</span>,    <span class="keyword"><span class="hl-type">output</span></span> <span class="keyword"><span class="hl-type">reg</span></span>  <span class="type">rx_active</span>);    <span class="keyword"><span class="hl-kw">always</span></span> @(<span class="keyword"><span class="hl-edge">posedge</span></span> clk_rx) <span class="keyword"><span class="hl-kw">begin</span></span>        rx_active <= rx_data_en;    <span class="keyword"><span class="hl-kw">end</span></span><span class="keyword"><span class="hl-kw">endmodule</span></span><span class="comment"><span class="hl-cmt">// 2. Dedicated 2-Flop Synchronizer Module</span></span><span class="keyword"><span class="hl-kw">module</span></span> <span class="name">cdc_sync_2ff</span> (    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">clk_dest</span>,    <span class="keyword"><span class="hl-type">input</span></span>  <span class="keyword"><span class="hl-type">wire</span></span> <span class="type">async_in</span>,    <span class="keyword"><span class="hl-type">output</span></span> <span class="keyword"><span class="hl-type">reg</span></span>  <span class="type">sync_out</span>);    <span class="comment"><span class="hl-cmt">// (* ASYNC_REG = "TRUE" *) for Vivado/Synthesis mapping</span></span>    <span class="keyword"><span class="hl-type">reg</span></span> meta;    <span class="keyword"><span class="hl-kw">always</span></span> @(<span class="keyword"><span class="hl-edge">posedge</span></span> clk_dest) <span class="keyword"><span class="hl-kw">begin</span></span>        meta     <= async_in;        sync_out <= meta;    <span class="keyword"><span class="hl-kw">end</span></span><span class="keyword"><span class="hl-kw">endmodule</span></span><span class="comment"><span class="hl-cmt">// 3. Top Level Instantiation</span></span><span class="keyword"><span class="hl-type">wire</span></span> rx_active;<span class="keyword"><span class="hl-type">wire</span></span> tx_active_sync;<span class="name">rx_processor</span> u_rx_proc (    .clk_rx(clk_rx),    .rx_data_en(rx_data_en),    .rx_active(rx_active));<span class="name">cdc_sync_2ff</span> u_sync_rx_to_tx (    .clk_dest(clk_tx),    .async_in(rx_active),    .sync_out(tx_active_sync));</code></pre></div>
+<div class="code-panel"><div class="code-panel-head"><span>filename.v</span></div><pre><code><span class="hl-cmt">// 1. Synchronous Core Module (Single Clock Only)</span>
+<span class="hl-kw">module</span> rx_processor (
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> clk_rx,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> rx_data_en,
+    <span class="hl-type">output</span> <span class="hl-type">reg</span>  rx_active
+);
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> clk_rx) <span class="hl-kw">begin</span>
+        rx_active <= rx_data_en;
+    <span class="hl-kw">end</span>
+<span class="hl-kw">endmodule</span>
+
+<span class="hl-cmt">// 2. Dedicated 2-Flop Synchronizer Module</span>
+<span class="hl-kw">module</span> cdc_sync_2ff (
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> clk_dest,
+    <span class="hl-type">input</span>  <span class="hl-type">wire</span> async_in,
+    <span class="hl-type">output</span> <span class="hl-type">reg</span>  sync_out
+);
+    <span class="hl-cmt">// (* ASYNC_REG = "TRUE" *) for Vivado/Synthesis mapping</span>
+    <span class="hl-type">reg</span> meta;
+    <span class="hl-kw">always</span> @(<span class="hl-edge">posedge</span> clk_dest) <span class="hl-kw">begin</span>
+        meta     <= async_in;
+        sync_out <= meta;
+    <span class="hl-kw">end</span>
+<span class="hl-kw">endmodule</span>
+
+<span class="hl-cmt">// 3. Top Level Instantiation</span>
+<span class="hl-type">wire</span> rx_active;
+<span class="hl-type">wire</span> tx_active_sync;
+
+rx_processor u_rx_proc (
+    .clk_rx(clk_rx),
+    .rx_data_en(rx_data_en),
+    .rx_active(rx_active)
+);
+
+cdc_sync_2ff u_sync_rx_to_tx (
+    .clk_dest(clk_tx),
+    .async_in(rx_active),
+    .sync_out(tx_active_sync)
+);</code></pre></div>
     </div>
 
     <div class="key-takeaway">
