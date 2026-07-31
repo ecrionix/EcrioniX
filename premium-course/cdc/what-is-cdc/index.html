@@ -58,24 +58,32 @@ async function checkAccess(user) {
 
 /* ---- Interactive Lab: CDC crossing visualizer ---- */
 const LAB_WINDOW_MS = 3000;
-const LAB_CLOCK_A_PERIOD = 130;
-const LAB_CLOCK_B_PERIOD = 172;
 const LAB_DANGER_MS = 9;
 
+let labClockAPeriod = 130;
+let labClockBPeriod = 172;
 let labTransitions = [];
 let labClockBEdges = [];
 let labPlayheadT = 0;
 let labRunning = false;
 let labAnimId = null;
 
+function onClockASlider(val) {
+  labClockAPeriod = Number(val);
+  document.getElementById('clkALabel').innerText = val + ' ms';
+  resetLab();
+}
+
+function onClockBSlider(val) {
+  labClockBPeriod = Number(val);
+  document.getElementById('clkBLabel').innerText = val + ' ms';
+  resetLab();
+}
+
 function labGenerateTransitions() {
-  const transitions = [];
-  let t = 100 + Math.random() * 100;
-  while (t < LAB_WINDOW_MS - 100) {
-    transitions.push(t);
-    t += 180 + Math.random() * 220;
-  }
-  return transitions;
+  // Data can only change on Clock A's rising edges (it lives in Domain A)
+  const edgesA = labComputeClockEdges(labClockAPeriod);
+  return edgesA.filter(() => Math.random() < 0.4);
 }
 
 function labComputeClockEdges(period) {
@@ -94,7 +102,7 @@ function labIsRisky(transitionT) {
 
 function labInit() {
   labTransitions = labGenerateTransitions();
-  labClockBEdges = labComputeClockEdges(LAB_CLOCK_B_PERIOD);
+  labClockBEdges = labComputeClockEdges(labClockBPeriod);
   labPlayheadT = 0;
   labRunning = false;
   if (labAnimId) cancelAnimationFrame(labAnimId);
@@ -102,11 +110,75 @@ function labInit() {
   document.getElementById('labRiskyCount').innerText = '0';
   document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
   document.getElementById('labRunBtn').disabled = false;
+  labResetDiagram();
   labDraw();
 }
 
 function resetLab() {
   labInit();
+}
+
+function labResetDiagram() {
+  const ffA = document.getElementById('ffABox');
+  const ffB = document.getElementById('ffBBox');
+  const dot = document.getElementById('signalDot');
+  const statusLabel = document.getElementById('ffStatusLabel');
+  if (!ffA) return;
+  ffA.classList.remove('ff-flash-safe');
+  ffB.classList.remove('ff-flash-safe', 'ff-flash-risky');
+  dot.setAttribute('opacity', '0');
+  dot.setAttribute('cx', '180');
+  statusLabel.textContent = '';
+  document.getElementById('ffAQVal').textContent = 'Q=0';
+  document.getElementById('ffBQVal').textContent = 'Q=0';
+}
+
+function labAnimateSignalDot() {
+  const dot = document.getElementById('signalDot');
+  const startX = 180, endX = 490;
+  const duration = 320;
+  const startTime = performance.now();
+  dot.setAttribute('opacity', '1');
+  function tick(now) {
+    const p = Math.min((now - startTime) / duration, 1);
+    dot.setAttribute('cx', String(startX + (endX - startX) * p));
+    if (p < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      setTimeout(() => dot.setAttribute('opacity', '0'), 200);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+function labFlashFlipFlops(risky, newVal) {
+  const ffA = document.getElementById('ffABox');
+  const ffB = document.getElementById('ffBBox');
+  const statusLabel = document.getElementById('ffStatusLabel');
+
+  ffA.classList.remove('ff-flash-safe');
+  void ffA.offsetWidth;
+  ffA.classList.add('ff-flash-safe');
+  document.getElementById('ffAQVal').textContent = 'Q=' + newVal;
+
+  labAnimateSignalDot();
+
+  setTimeout(() => {
+    ffB.classList.remove('ff-flash-safe', 'ff-flash-risky');
+    void ffB.offsetWidth;
+    if (risky) {
+      ffB.classList.add('ff-flash-risky');
+      statusLabel.textContent = '⚠ METASTABLE';
+      statusLabel.setAttribute('fill', '#f87171');
+      document.getElementById('ffBQVal').textContent = 'Q=?';
+    } else {
+      ffB.classList.add('ff-flash-safe');
+      statusLabel.textContent = '✓ latched';
+      statusLabel.setAttribute('fill', '#4ade80');
+      document.getElementById('ffBQVal').textContent = 'Q=' + newVal;
+    }
+    setTimeout(() => { statusLabel.textContent = ''; }, 900);
+  }, 320);
 }
 
 function labTimeToX(t, plotW, padL) {
@@ -143,9 +215,9 @@ function labDraw() {
   });
 
   // Clock A waveform
-  labDrawSquareWave(ctx, LAB_CLOCK_A_PERIOD, rowYs[0], rowH, plotW, padL, '#38bdf8');
+  labDrawSquareWave(ctx, labClockAPeriod, rowYs[0], rowH, plotW, padL, '#38bdf8');
   // Clock B waveform
-  labDrawSquareWave(ctx, LAB_CLOCK_B_PERIOD, rowYs[1], rowH, plotW, padL, '#a78bfa');
+  labDrawSquareWave(ctx, labClockBPeriod, rowYs[1], rowH, plotW, padL, '#a78bfa');
 
   // Data signal waveform (based on transitions list)
   ctx.strokeStyle = '#2dd4bf';
@@ -217,10 +289,12 @@ function runLab() {
   labRunning = true;
   document.getElementById('labRunBtn').disabled = true;
   document.getElementById('labVerdict').classList.remove('show', 'risky-verdict', 'safe-verdict');
+  labResetDiagram();
 
   const startTime = performance.now();
-  const durationMs = 4000;
+  const durationMs = 6000;
   let safeCount = 0, riskyCount = 0;
+  let dataVal = 0;
   const countedSoFar = new Set();
 
   function step(now) {
@@ -230,9 +304,12 @@ function runLab() {
     labTransitions.forEach(t => {
       if (t <= labPlayheadT && !countedSoFar.has(t)) {
         countedSoFar.add(t);
-        if (labIsRisky(t)) riskyCount++; else safeCount++;
+        dataVal = dataVal ? 0 : 1;
+        const risky = labIsRisky(t);
+        if (risky) riskyCount++; else safeCount++;
         document.getElementById('labSafeCount').innerText = safeCount;
         document.getElementById('labRiskyCount').innerText = riskyCount;
+        labFlashFlipFlops(risky, dataVal);
       }
     });
 
@@ -304,6 +381,28 @@ h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
 .lab-header h2{font-size:1.15rem;color:#f8fafc}
 .lab-icon{font-size:1.4rem}
 .lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.ffdiagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.6rem;margin-bottom:1rem}
+.ff-box{transition:stroke 0.2s}
+.ff-flash-safe{animation:ffFlashSafe 1.1s ease}
+.ff-flash-risky{animation:ffFlashRisky 1.1s ease}
+@keyframes ffFlashSafe{
+  0%{stroke:#4ade80;filter:drop-shadow(0 0 10px rgba(74,222,128,.7))}
+  100%{stroke:#a78bfa;filter:none}
+}
+@keyframes ffFlashRisky{
+  0%,15%,30%,45%{stroke:#f87171;filter:drop-shadow(0 0 10px rgba(248,113,113,.85))}
+  8%,23%,38%{stroke:#7f1d1d;filter:none}
+  100%{stroke:#a78bfa;filter:none}
+}
+
 .lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
 #labCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
 .lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
@@ -415,10 +514,50 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <h2>Interactive Lab: Watch a Crossing Happen</h2>
       </div>
       <p class="lab-instructions">
-        Clock A and Clock B run at different, unrelated speeds — just like two independent domains on a chip.
-        A data signal changes state in Clock A's domain and must be sampled by Clock B. Click <b>Run</b> to sweep
-        through time and see which transitions land dangerously close to a Clock B edge.
+        FF A (Domain A) drives a signal into FF B (Domain B). Adjust each clock's speed below, then click <b>Run</b>
+        to watch the signal cross over — and see what happens when it arrives too close to a Clock B edge.
       </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Clock A period: <span id="clkALabel">130 ms</span> <span class="slider-hint">(lower = faster)</span></label>
+          <input type="range" id="clkASlider" min="60" max="220" step="5" value="130" oninput="onClockASlider(this.value)">
+        </div>
+        <div class="slider-row">
+          <label>Clock B period: <span id="clkBLabel">172 ms</span> <span class="slider-hint">(lower = faster)</span></label>
+          <input type="range" id="clkBSlider" min="60" max="220" step="5" value="172" oninput="onClockBSlider(this.value)">
+        </div>
+      </div>
+
+      <div class="ffdiagram-wrap">
+        <svg id="ffDiagram" viewBox="0 0 680 180" width="100%" preserveAspectRatio="xMidYMid meet">
+          <rect x="10" y="8" width="320" height="164" rx="10" fill="rgba(56,189,248,0.05)" stroke="rgba(56,189,248,0.25)"/>
+          <text x="22" y="26" fill="#38bdf8" font-size="12" font-weight="700">DOMAIN A</text>
+          <rect x="350" y="8" width="320" height="164" rx="10" fill="rgba(167,139,250,0.05)" stroke="rgba(167,139,250,0.25)"/>
+          <text x="362" y="26" fill="#a78bfa" font-size="12" font-weight="700">DOMAIN B</text>
+          <line x1="340" y1="5" x2="340" y2="175" stroke="rgba(148,163,184,0.3)" stroke-dasharray="4 4"/>
+
+          <text id="ffStatusLabel" x="535" y="45" fill="#94a3b8" font-size="12" font-weight="700" text-anchor="middle"></text>
+
+          <rect id="ffABox" class="ff-box" x="90" y="65" width="90" height="60" rx="6" fill="#0c1526" stroke="#38bdf8" stroke-width="2"/>
+          <text x="135" y="92" fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle">FF A</text>
+          <text id="ffAQVal" x="135" y="110" fill="#4ade80" font-size="11" text-anchor="middle">Q=0</text>
+          <line x1="90" y1="125" x2="90" y2="145" stroke="#94a3b8" stroke-width="1"/>
+          <path d="M84 145 l6 8 l6 -8" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="90" y="163" fill="#94a3b8" font-size="10" text-anchor="middle">Clk A</text>
+
+          <line x1="180" y1="95" x2="490" y2="95" stroke="#2dd4bf" stroke-width="2"/>
+          <text x="335" y="82" fill="#64748b" font-size="9" text-anchor="middle">signal crosses domains</text>
+          <circle id="signalDot" cx="180" cy="95" r="5" fill="#2dd4bf" opacity="0"/>
+
+          <rect id="ffBBox" class="ff-box" x="490" y="65" width="90" height="60" rx="6" fill="#0c1526" stroke="#a78bfa" stroke-width="2"/>
+          <text x="535" y="92" fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle">FF B</text>
+          <text id="ffBQVal" x="535" y="110" fill="#4ade80" font-size="11" text-anchor="middle">Q=0</text>
+          <line x1="490" y1="125" x2="490" y2="145" stroke="#94a3b8" stroke-width="1"/>
+          <path d="M484 145 l6 8 l6 -8" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="490" y="163" fill="#94a3b8" font-size="10" text-anchor="middle">Clk B</text>
+        </svg>
+      </div>
 
       <div class="lab-canvas-wrap">
         <canvas id="labCanvas" width="680" height="230"></canvas>
