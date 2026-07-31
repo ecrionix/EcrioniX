@@ -160,40 +160,63 @@ function gcOnSliderChange() {
   grayStat.className = 'gc-stat ' + (result.grayGlitches === 0 ? 'gc-good' : 'gc-bad');
 }
 
-function gcValueY(val, yTop, yBot) {
-  return yBot - (val / (Math.pow(2, GC_BITS) - 1)) * (yBot - yTop);
+// A multi-bit signal is drawn as a classic "bus" waveform: a flat band holding
+// the decimal value, with an hourglass-shaped crossing at each transition --
+// not a single 0/1 line, which only makes sense for a 1-bit signal.
+function gcEventsToSegments(events, windowEnd) {
+  const segs = [];
+  let curVal = 0, curStart = 0, curGlitch = false;
+  events.forEach(e => {
+    if (e.val === curVal && curGlitch === !!e.glitch) return; // no real change, skip
+    segs.push({ start: curStart, end: e.t, val: curVal, glitch: curGlitch });
+    curStart = e.t; curVal = e.val; curGlitch = !!e.glitch;
+  });
+  segs.push({ start: curStart, end: windowEnd, val: curVal, glitch: curGlitch });
+  return segs;
 }
 
-function gcDrawRow(ctx, xFor, yTop, yBot, events, color) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  let v = 0;
-  ctx.moveTo(xFor(0), gcValueY(v, yTop, yBot));
-  events.forEach(e => {
-    const x = xFor(e.t);
-    ctx.lineTo(x, gcValueY(v, yTop, yBot));
-    v = e.val;
-    ctx.lineTo(x, gcValueY(v, yTop, yBot));
-  });
-  ctx.lineTo(xFor(GC_WINDOW), gcValueY(v, yTop, yBot));
-  ctx.stroke();
+function gcDrawBusRow(ctx, xFor, bandTop, bandBot, segments, color) {
+  const crossW = 5; // px, half-width of the hourglass crossing at each transition
 
-  events.forEach(e => {
-    if (e.glitch) {
-      const x = xFor(e.t), y = gcValueY(e.val, yTop, yBot);
-      ctx.save();
-      ctx.shadowColor = '#f87171';
-      ctx.shadowBlur = 12;
+  segments.forEach((seg, i) => {
+    const x0raw = xFor(seg.start), x1raw = xFor(seg.end);
+    const isFirst = i === 0, isLast = i === segments.length - 1;
+    const x0 = x0raw + (isFirst ? 0 : crossW);
+    const x1 = x1raw - (isLast ? 0 : crossW);
+    if (x1 <= x0) return;
+
+    const segColor = seg.glitch ? '#f87171' : color;
+
+    // translucent fill for the flat band
+    ctx.fillStyle = seg.glitch ? 'rgba(248,113,113,0.22)' : 'rgba(148,163,184,0.08)';
+    ctx.fillRect(x0, bandTop, x1 - x0, bandBot - bandTop);
+
+    // top and bottom edges
+    ctx.strokeStyle = segColor;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x0, bandTop); ctx.lineTo(x1, bandTop);
+    ctx.moveTo(x0, bandBot); ctx.lineTo(x1, bandBot);
+    ctx.stroke();
+
+    // value text, only if there's room
+    if (x1 - x0 > 20) {
+      ctx.font = '700 12px JetBrains Mono, monospace';
+      ctx.fillStyle = seg.glitch ? '#fecaca' : '#e2e8f0';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(seg.val), (x0 + x1) / 2, (bandTop + bandBot) / 2 + 4);
+    }
+
+    // hourglass crossing into the NEXT segment
+    if (!isLast) {
+      const xb = xFor(seg.end);
+      const nextGlitch = segments[i + 1].glitch;
+      ctx.strokeStyle = (seg.glitch || nextGlitch) ? '#f87171' : '#64748b';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = '#f87171';
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#fff';
+      ctx.moveTo(xb - crossW, bandTop); ctx.lineTo(xb + crossW, bandBot);
+      ctx.moveTo(xb - crossW, bandBot); ctx.lineTo(xb + crossW, bandTop);
       ctx.stroke();
-      ctx.restore();
     }
   });
 }
@@ -206,49 +229,34 @@ function gcDraw(result) {
   ctx.fillStyle = '#0c1526';
   ctx.fillRect(0, 0, W, H);
 
-  const padL = 20, padR = 46, padTitle = 22;
+  const padL = 14, padR = 14;
   const xFor = (t) => padL + (t / GC_WINDOW) * (W - padL - padR);
 
   const rows = [
-    { label: 'TRUE COUNTER (domain A)', color: '#a78bfa', data: result.transitions.map(tr => ({ t: tr.t, val: tr.newVal })) },
-    { label: 'NAIVE BINARY SYNC (domain B)', color: '#f87171', data: result.naiveTrace },
-    { label: 'GRAY-CODE SYNC (domain B)', color: '#4ade80', data: result.grayTrace }
+    { label: 'TRUE COUNTER (domain A)', color: '#a78bfa', segs: gcEventsToSegments(result.transitions.map(tr => ({ t: tr.t, val: tr.newVal })), GC_WINDOW) },
+    { label: 'NAIVE BINARY SYNC (domain B)', color: '#f87171', segs: gcEventsToSegments(result.naiveTrace, GC_WINDOW) },
+    { label: 'GRAY-CODE SYNC (domain B)', color: '#4ade80', segs: gcEventsToSegments(result.grayTrace, GC_WINDOW) }
   ];
-  const gap = 14;
-  const rowH = (H - 10 - gap * (rows.length - 1)) / rows.length;
+
+  const titleH = 18, bandH = 40, rowGap = 18;
+  const rowH = titleH + bandH;
 
   rows.forEach((row, i) => {
-    const rowTop = 6 + (rowH + gap) * i;
-    const yTop = rowTop + padTitle, yBot = rowTop + rowH - 4;
+    const rowTop = 8 + (rowH + rowGap) * i;
+    const bandTop = rowTop + titleH, bandBot = bandTop + bandH;
 
     ctx.font = '600 12px Outfit, sans-serif';
     ctx.fillStyle = row.color;
     ctx.textAlign = 'left';
     ctx.fillText(row.label, padL, rowTop + 12);
 
-    // reference gridlines at 0, 5, 10, 15 with tick labels on the right
-    ctx.font = '9px JetBrains Mono, monospace';
-    [0, 5, 10, 15].forEach(v => {
-      const y = gcValueY(v, yTop, yBot);
-      ctx.strokeStyle = 'rgba(148,163,184,0.12)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(W - padR, y);
-      ctx.stroke();
-      ctx.fillStyle = '#64748b';
-      ctx.textAlign = 'left';
-      ctx.fillText(String(v), W - padR + 6, y + 3);
-    });
-
-    gcDrawRow(ctx, xFor, yTop, yBot, row.data, row.color);
+    gcDrawBusRow(ctx, xFor, bandTop, bandBot, row.segs, row.color);
   });
 
-  // separators between rows
   ctx.strokeStyle = 'rgba(148,163,184,0.18)';
   ctx.lineWidth = 1;
   for (let i = 1; i < rows.length; i++) {
-    const y = 6 + (rowH + gap) * i - gap / 2;
+    const y = 8 + (rowH + rowGap) * i - rowGap / 2;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 }
@@ -576,8 +584,9 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </div>
       <p class="lab-instructions">
         A 4-bit counter increments in domain A. Each bit is synchronized into domain B independently — once as plain
-        binary, once as Gray code — with a small, realistic timing skew between bit paths. Watch for red glitch dots:
-        moments where the synchronized value briefly isn't the old count <em>or</em> the new count.
+        binary, once as Gray code — with a small, realistic timing skew between bit paths. Each band below is a
+        standard multi-bit waveform: a flat segment holds the decimal value, and an hourglass crossing marks each
+        change. Watch for red segments: moments where the synchronized value briefly isn't the old count <em>or</em> the new count.
       </p>
 
       <div class="lab-sliders">
@@ -601,7 +610,7 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </div>
 
       <div class="lab-canvas-wrap">
-        <canvas id="gcCanvas" width="680" height="380"></canvas>
+        <canvas id="gcCanvas" width="680" height="240"></canvas>
       </div>
       <div class="legend-row">
         <span><span class="legend-dot" style="background:#f87171"></span>glitch: a value that was never actually counted</span>
