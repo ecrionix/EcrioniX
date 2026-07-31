@@ -103,7 +103,7 @@ function labIsRisky(transitionT) {
 function labInit() {
   labTransitions = labGenerateTransitions();
   labClockBEdges = labComputeClockEdges(labClockBPeriod);
-  labPlayheadT = 0;
+  labPlayheadT = LAB_WINDOW_MS;
   labRunning = false;
   if (labAnimId) cancelAnimationFrame(labAnimId);
   document.getElementById('labSafeCount').innerText = '0';
@@ -214,32 +214,51 @@ function labDraw() {
     ctx.fillText(label, 4, rowYs[i] + rowH / 2 + 4);
   });
 
-  // Clock A waveform
-  labDrawSquareWave(ctx, labClockAPeriod, rowYs[0], rowH, plotW, padL, '#38bdf8');
+  const drawT = Math.max(labPlayheadT, 0);
+  const isLive = labRunning;
+
+  // Clock A waveform (drawn live up to the current time)
+  labDrawSquareWave(ctx, labClockAPeriod, rowYs[0], rowH, plotW, padL, '#38bdf8', drawT, isLive);
   // Clock B waveform
-  labDrawSquareWave(ctx, labClockBPeriod, rowYs[1], rowH, plotW, padL, '#a78bfa');
+  labDrawSquareWave(ctx, labClockBPeriod, rowYs[1], rowH, plotW, padL, '#a78bfa', drawT, isLive);
 
-  // Data signal waveform (based on transitions list)
-  ctx.strokeStyle = '#2dd4bf';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  let level = 0;
-  let prevX = padL;
+  // Data signal waveform — drawn live, segment by segment, up to drawT
   const yHigh = rowYs[2] + 10, yLow = rowYs[2] + rowH - 10;
-  ctx.moveTo(prevX, level ? yHigh : yLow);
-  labTransitions.forEach(t => {
-    const x = labTimeToX(t, plotW, padL);
-    ctx.lineTo(x, level ? yHigh : yLow);
-    level = level ? 0 : 1;
-    ctx.lineTo(x, level ? yHigh : yLow);
-    prevX = x;
-  });
-  ctx.lineTo(padL + plotW, level ? yHigh : yLow);
-  ctx.stroke();
+  let level = 0;
+  let prevT = 0;
+  ctx.lineWidth = 2;
 
-  // Mark transitions already passed by the playhead
+  const drawSeg = (t0, t1, lvl) => {
+    if (t1 <= t0) return;
+    const x0 = labTimeToX(t0, plotW, padL), x1 = labTimeToX(t1, plotW, padL);
+    ctx.strokeStyle = '#2dd4bf';
+    ctx.beginPath();
+    ctx.moveTo(x0, lvl ? yHigh : yLow);
+    ctx.lineTo(x1, lvl ? yHigh : yLow);
+    ctx.stroke();
+  };
+
   labTransitions.forEach(t => {
-    if (t > labPlayheadT) return;
+    if (prevT >= drawT) return;
+    const segEnd = Math.min(t, drawT);
+    drawSeg(prevT, segEnd, level);
+    if (t <= drawT) {
+      // vertical tick at the transition
+      const x = labTimeToX(t, plotW, padL);
+      ctx.strokeStyle = '#2dd4bf';
+      ctx.beginPath();
+      ctx.moveTo(x, level ? yHigh : yLow);
+      ctx.lineTo(x, level ? yLow : yHigh);
+      ctx.stroke();
+      level = level ? 0 : 1;
+    }
+    prevT = segEnd;
+  });
+  drawSeg(prevT, drawT, level);
+
+  // Dots marking transitions already crossed
+  labTransitions.forEach(t => {
+    if (t > drawT) return;
     const x = labTimeToX(t, plotW, padL);
     const risky = labIsRisky(t);
     ctx.fillStyle = risky ? '#f87171' : '#4ade80';
@@ -248,11 +267,27 @@ function labDraw() {
     ctx.fill();
   });
 
-  // Playhead
-  if (labPlayheadT > 0) {
-    const x = labTimeToX(labPlayheadT, plotW, padL);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
+  // Glowing "pen" tip at the live write-head, one per trace, only while running
+  if (isLive && drawT > 0 && drawT < LAB_WINDOW_MS) {
+    const x = labTimeToX(drawT, plotW, padL);
+    const tips = [
+      { y: rowYs[0] + (labClockLevel(drawT, labClockAPeriod) ? 10 : rowH - 10), color: '#38bdf8' },
+      { y: rowYs[1] + (labClockLevel(drawT, labClockBPeriod) ? 10 : rowH - 10), color: '#a78bfa' },
+      { y: rowYs[2] + (level ? 10 : rowH - 10), color: '#2dd4bf' },
+    ];
+    tips.forEach(tip => {
+      ctx.save();
+      ctx.shadowColor = tip.color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = tip.color;
+      ctx.beginPath();
+      ctx.arc(x, tip.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+    // faint sweep line trailing the pen tips
+    ctx.strokeStyle = 'rgba(56,189,248,0.25)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, 5);
     ctx.lineTo(x, H - 5);
@@ -260,15 +295,16 @@ function labDraw() {
   }
 }
 
-function labDrawSquareWave(ctx, period, rowY, rowH, plotW, padL, color) {
+function labDrawSquareWave(ctx, period, rowY, rowH, plotW, padL, color, drawT, isLive) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();
   const yHigh = rowY + 10, yLow = rowY + rowH - 10;
-  const steps = 400;
+  const limit = isLive ? drawT : LAB_WINDOW_MS;
+  const steps = Math.max(4, Math.round((limit / LAB_WINDOW_MS) * 400));
   let prevLevel = null;
   for (let i = 0; i <= steps; i++) {
-    const t = (i / steps) * LAB_WINDOW_MS;
+    const t = (i / steps) * limit;
     const lvl = labClockLevel(t, period);
     const x = labTimeToX(t, plotW, padL);
     const y = lvl ? yHigh : yLow;
@@ -280,7 +316,9 @@ function labDrawSquareWave(ctx, period, rowY, rowH, plotW, padL, color) {
     }
     prevLevel = lvl;
   }
-  ctx.lineTo(padL + plotW, prevLevel ? yHigh : yLow);
+  if (prevLevel !== null) {
+    ctx.lineTo(labTimeToX(limit, plotW, padL), prevLevel ? yHigh : yLow);
+  }
   ctx.stroke();
 }
 
