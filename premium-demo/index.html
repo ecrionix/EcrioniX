@@ -99,6 +99,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
 input.invalid{border-color:#f87171}
 .account-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:2rem;margin:2rem 0}
 .account-card h2{border-bottom:none;padding-bottom:0}
+.profile-header{display:flex;align-items:center;gap:1.2rem;margin-bottom:1.5rem}
+.profile-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+.profile-avatar img{width:100%;height:100%;object-fit:cover}
+.profile-name{font-size:1.2rem;font-weight:700;color:#f8fafc}
+.profile-email{color:var(--sl);font-size:0.9rem}
+.profile-meta{color:var(--sl);font-size:0.8rem;margin-top:0.2rem}
+.history-item{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:1rem;margin-bottom:0.8rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+.history-course{font-weight:600;color:#f8fafc}
+.history-date{color:var(--sl);font-size:0.8rem}
+.status-badge{font-size:0.75rem;font-weight:700;padding:0.3rem 0.7rem;border-radius:20px;text-transform:uppercase}
+.status-pending{background:rgba(251,191,36,.15);color:#fbbf24}
+.status-approved{background:rgba(74,222,128,.15);color:#4ade80}
+.status-rejected{background:rgba(248,113,113,.15);color:#f87171}
 @media(max-width:768px){
   .modal{padding:2rem;max-width:90vw}
   .navbar{padding:0.8rem}
@@ -150,11 +163,24 @@ input.invalid{border-color:#f87171}
     </div>
   </div>
 
+  <div class="account-card" id="profileCard" style="display:none;">
+    <div class="profile-header">
+      <div class="profile-avatar" id="profileAvatar"></div>
+      <div>
+        <div class="profile-name" id="profileName">-</div>
+        <div class="profile-email" id="profileEmail">-</div>
+        <div class="profile-meta" id="profileMeta"></div>
+      </div>
+    </div>
+    <h2 style="font-size:1.1rem;margin-top:1.5rem">Purchase History</h2>
+    <div id="purchaseHistory"><p style="font-size:0.85rem">No purchase history yet.</p></div>
+    <button class="btn btn-logout" onclick="logout()">Logout</button>
+  </div>
+
   <div class="account-card" id="premiumContent" style="display:none;">
     <div class="success-message">✅ Premium Access Granted</div>
     <h2>Your Approved Courses</h2>
     <p id="approvedCoursesDisplay"></p>
-    <button class="btn btn-logout" onclick="logout()">Logout</button>
   </div>
 
   <div class="account-card" id="requestAccessForm" style="display:none;">
@@ -191,7 +217,6 @@ input.invalid{border-color:#f87171}
 
     <button class="modal-button modal-button-primary" onclick="submitAccessRequest()">Submit Request</button>
     <div id="formStatus" style="margin-top:1rem"></div>
-    <button class="modal-button modal-button-secondary" onclick="logout()">Logout</button>
   </div>
 </div>
 
@@ -266,6 +291,7 @@ function showLoginModal() {
   document.getElementById('loginModal').classList.add('active');
   document.getElementById('premiumContent').style.display = 'none';
   document.getElementById('requestAccessForm').style.display = 'none';
+  document.getElementById('profileCard').style.display = 'none';
   document.getElementById('modalCloseBtn').style.display = 'none';
   document.body.classList.add('modal-open');
   switchTab('signin');
@@ -437,6 +463,12 @@ function logout() {
   });
 }
 
+const COURSE_NAMES = {
+  'cdc': 'Clock Domain Crossing (CDC)',
+  'low-power': 'Low Power Verification',
+  'riscv': 'RISC-V Deep Dive',
+};
+
 async function checkPremiumStatus(user) {
   try {
     document.getElementById('userEmail').innerText = user.email;
@@ -445,11 +477,14 @@ async function checkPremiumStatus(user) {
     const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
     const userData = userDoc.data();
 
+    renderProfile(user, userData);
+    loadPurchaseHistory(user.uid);
+
     if (userData?.approvedCourses && userData.approvedCourses.length > 0) {
       document.getElementById('premiumContent').style.display = 'block';
       document.getElementById('requestAccessForm').style.display = 'none';
       document.getElementById('approvedCoursesDisplay').innerHTML =
-        userData.approvedCourses.map(c => `🎓 ${c.toUpperCase()}`).join('<br>');
+        userData.approvedCourses.map(c => `🎓 ${COURSE_NAMES[c] || c.toUpperCase()}`).join('<br>');
     } else {
       document.getElementById('premiumContent').style.display = 'none';
       document.getElementById('requestAccessForm').style.display = 'block';
@@ -457,7 +492,63 @@ async function checkPremiumStatus(user) {
   } catch (error) {
     console.error("Error checking premium:", error);
     hideLoginModal();
+    renderProfile(user, null);
     document.getElementById('requestAccessForm').style.display = 'block';
+  }
+}
+
+function renderProfile(user, userData) {
+  document.getElementById('profileCard').style.display = 'block';
+  const name = user.displayName || userData?.name || 'User';
+  document.getElementById('profileName').innerText = name;
+  document.getElementById('profileEmail').innerText = user.email;
+
+  const avatar = document.getElementById('profileAvatar');
+  if (user.photoURL) {
+    avatar.innerHTML = `<img src="${user.photoURL}" alt="${name}">`;
+  } else {
+    avatar.innerText = name.charAt(0).toUpperCase();
+  }
+
+  const joined = user.metadata?.creationTime
+    ? new Date(user.metadata.creationTime).toLocaleDateString()
+    : null;
+  document.getElementById('profileMeta').innerText = joined ? `Member since ${joined}` : '';
+}
+
+async function loadPurchaseHistory(uid) {
+  const historyDiv = document.getElementById('purchaseHistory');
+  try {
+    const snapshot = await firebase.firestore().collection('paymentRequests')
+      .where('userId', '==', uid)
+      .get();
+
+    if (snapshot.empty) {
+      historyDiv.innerHTML = '<p style="font-size:0.85rem">No purchase history yet.</p>';
+      return;
+    }
+
+    const requests = [];
+    snapshot.forEach(doc => requests.push(doc.data()));
+    requests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+
+    historyDiv.innerHTML = requests.map(req => {
+      const courseName = COURSE_NAMES[req.courseId] || req.courseId;
+      const date = req.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A';
+      const statusClass = `status-${req.status}`;
+      return `
+        <div class="history-item">
+          <div>
+            <div class="history-course">${courseName}</div>
+            <div class="history-date">${date}</div>
+          </div>
+          <span class="status-badge ${statusClass}">${req.status}</span>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error("Error loading purchase history:", error);
+    historyDiv.innerHTML = '<p style="font-size:0.85rem">Unable to load purchase history.</p>';
   }
 }
 
@@ -500,6 +591,8 @@ async function submitAccessRequest() {
     document.getElementById('paymentMethod').value = 'upi';
     document.getElementById('paymentId').value = '';
     document.getElementById('notes').value = '';
+
+    loadPurchaseHistory(user.uid);
 
     setTimeout(() => {
       statusDiv.innerHTML = '';
