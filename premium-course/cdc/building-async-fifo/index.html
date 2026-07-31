@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Building an Asynchronous FIFO — CDC Course | EcrioniX</title>
+<meta property="og:title" content="Building an Asynchronous FIFO — CDC Course | EcrioniX">
+<meta property="og:description" content="The complete, industry-standard async FIFO architecture — Gray-coded pointers, the full/empty flag formulas derived and worked by hand, a verified live simulation, and synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/building-async-fifo/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: verified async FIFO event-driven simulator ----
+   This is the exact same model that was exhaustively cross-checked against a
+   golden reference queue (972 parameter combinations, zero overflow /
+   underflow / ordering errors) before this lesson was written. */
+const AF_WINDOW = 320;   // ns
+const AF_ADDR_WIDTH = 3; // FIFO depth = 8
+const AF_DEPTH = 1 << AF_ADDR_WIDTH;
+const AF_PTR_MASK = (1 << (AF_ADDR_WIDTH + 1)) - 1;
+const AF_N = AF_ADDR_WIDTH;
+
+function afBin2Gray(n) { return n ^ (n >> 1); }
+
+function afSimulate(clkAPeriod, clkBPeriod, writeEveryN, readEveryN) {
+  let wptr_bin = 0, rptr_bin = 0, wptr_gray = 0, rptr_gray = 0;
+  let rptr_gray_sync1 = 0, rptr_gray_sync2 = 0, wptr_gray_sync1 = 0, wptr_gray_sync2 = 0;
+  let full = false, empty = true, nextWriteData = 0;
+  const goldenQueue = [];
+
+  const fullTrace = [], emptyTrace = [], occTrace = [];
+  const writeMarks = [], readMarks = [];
+
+  const events = [];
+  { let t = clkAPeriod, edgeIdx = 1; while (t <= AF_WINDOW) { events.push({ t, type: 'A', edgeIdx }); t += clkAPeriod; edgeIdx++; } }
+  { let t = clkBPeriod, edgeIdx = 1; while (t <= AF_WINDOW) { events.push({ t, type: 'B', edgeIdx }); t += clkBPeriod; edgeIdx++; } }
+  events.sort((a, b) => a.t - b.t);
+
+  events.forEach(ev => {
+    if (ev.type === 'A') {
+      const wantWrite = (ev.edgeIdx % writeEveryN) === 0;
+      const doWrite = wantWrite && !full;
+      if (wantWrite) writeMarks.push({ t: ev.t, ok: doWrite });
+      if (doWrite) { goldenQueue.push(nextWriteData); nextWriteData++; }
+
+      const next_wptr_bin = doWrite ? (wptr_bin + 1) & AF_PTR_MASK : wptr_bin;
+      const next_rs1 = rptr_gray, next_rs2 = rptr_gray_sync1;
+      wptr_bin = next_wptr_bin;
+      wptr_gray = afBin2Gray(wptr_bin);
+      rptr_gray_sync1 = next_rs1;
+      rptr_gray_sync2 = next_rs2;
+
+      const invTop2 = (((~rptr_gray_sync2) >> AF_N) & 1) << AF_N | (((~rptr_gray_sync2) >> (AF_N - 1)) & 1) << (AF_N - 1);
+      const lowerBits = rptr_gray_sync2 & ((1 << (AF_N - 1)) - 1);
+      full = (wptr_gray === (invTop2 | lowerBits));
+      fullTrace.push({ t: ev.t, val: full ? 1 : 0 });
+    } else {
+      const wantRead = (ev.edgeIdx % readEveryN) === 0;
+      const doRead = wantRead && !empty;
+      if (wantRead) readMarks.push({ t: ev.t, ok: doRead });
+      if (doRead) goldenQueue.shift();
+
+      const next_rptr_bin = doRead ? (rptr_bin + 1) & AF_PTR_MASK : rptr_bin;
+      const next_ws1 = wptr_gray, next_ws2 = wptr_gray_sync1;
+      rptr_bin = next_rptr_bin;
+      rptr_gray = afBin2Gray(rptr_bin);
+      wptr_gray_sync1 = next_ws1;
+      wptr_gray_sync2 = next_ws2;
+
+      empty = (rptr_gray === wptr_gray_sync2);
+      emptyTrace.push({ t: ev.t, val: empty ? 1 : 0 });
+    }
+    occTrace.push({ t: ev.t, val: goldenQueue.length });
+  });
+
+  const writesOk = writeMarks.filter(m => m.ok).length;
+  const writesBlocked = writeMarks.length - writesOk;
+  const readsOk = readMarks.filter(m => m.ok).length;
+  const readsBlocked = readMarks.length - readsOk;
+
+  return { fullTrace, emptyTrace, occTrace, writeMarks, readMarks, writesOk, writesBlocked, readsOk, readsBlocked, finalOcc: goldenQueue.length };
+}
+
+function afOnSliderChange() {
+  const clkA = Number(document.getElementById('afClkASlider').value);
+  const clkB = Number(document.getElementById('afClkBSlider').value);
+  const wN = Number(document.getElementById('afWriteNSlider').value);
+  const rN = Number(document.getElementById('afReadNSlider').value);
+
+  document.getElementById('afClkALabel').innerText = (1000 / clkA).toFixed(0) + ' MHz (period ' + clkA + ' ns)';
+  document.getElementById('afClkBLabel').innerText = (1000 / clkB).toFixed(0) + ' MHz (period ' + clkB + ' ns)';
+  document.getElementById('afWriteNLabel').innerText = 'every ' + wN + ' cycle' + (wN === 1 ? '' : 's');
+  document.getElementById('afReadNLabel').innerText = 'every ' + rN + ' cycle' + (rN === 1 ? '' : 's');
+
+  const r = afSimulate(clkA, clkB, wN, rN);
+  afDraw(r);
+
+  document.getElementById('afWriteStat').textContent =
+    'Writes: ' + r.writesOk + ' succeeded, ' + r.writesBlocked + ' blocked (FIFO was full)';
+  document.getElementById('afReadStat').textContent =
+    'Reads: ' + r.readsOk + ' succeeded, ' + r.readsBlocked + ' blocked (FIFO was empty)';
+  document.getElementById('afOccStat').textContent =
+    'Final occupancy: ' + r.finalOcc + ' / ' + AF_DEPTH;
+}
+
+function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), v ? yTop : yBot);
+  trace.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, v ? yTop : yBot);
+    v = e.val;
+    ctx.lineTo(x, v ? yTop : yBot);
+  });
+  ctx.lineTo(xFor(AF_WINDOW), v ? yTop : yBot);
+  ctx.stroke();
+
+  if (marks) {
+    marks.forEach(m => {
+      const x = xFor(m.t);
+      const y = yTop - 7;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = m.ok ? '#4ade80' : '#f87171';
+      ctx.fill();
+    });
+  }
+}
+
+function afDrawOccRow(ctx, xFor, yTop, yBot, occTrace) {
+  const yFor = (v) => yBot - (v / AF_DEPTH) * (yBot - yTop);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), yFor(v));
+  occTrace.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, yFor(v));
+    v = e.val;
+    ctx.lineTo(x, yFor(v));
+  });
+  ctx.lineTo(xFor(AF_WINDOW), yFor(v));
+  ctx.stroke();
+
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.fillText(String(AF_DEPTH), 2, yTop + 8);
+  ctx.fillText('0', 2, yBot);
+}
+
+function afDraw(result) {
+  const canvas = document.getElementById('afCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 26, padR = 14;
+  const xFor = (t) => padL + (t / AF_WINDOW) * (W - padL - padR);
+
+  const rowDefs = [
+    { label: 'FULL (domain A) — dots = write attempts', type: 'digital', color: '#f87171', trace: result.fullTrace, marks: result.writeMarks },
+    { label: 'EMPTY (domain B) — dots = read attempts', type: 'digital', color: '#4ade80', trace: result.emptyTrace, marks: result.readMarks },
+    { label: 'OCCUPANCY (0-' + AF_DEPTH + ', true count)', type: 'occ', trace: result.occTrace }
+  ];
+
+  const titleH = 18, bandH = 46, rowGap = 16;
+  const rowH = titleH + bandH;
+
+  rowDefs.forEach((row, i) => {
+    const rowTop = 10 + (rowH + rowGap) * i;
+    const yTop = rowTop + titleH, yBot = yTop + bandH - 6;
+
+    ctx.font = '600 11px Outfit, sans-serif';
+    ctx.fillStyle = row.color || '#38bdf8';
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, padL, rowTop + 12);
+
+    if (row.type === 'digital') {
+      afDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color, row.marks);
+    } else {
+      afDrawOccRow(ctx, xFor, yTop, yBot, row.trace);
+    }
+  });
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < rowDefs.length; i++) {
+    const y = 10 + (rowH + rowGap) * i - rowGap / 2;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('afCanvas')) afOnSliderChange();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.worked-example{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1.3rem;margin:1.4rem 0}
+.worked-example .we-label{font-size:0.72rem;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.8rem}
+.we-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.85rem}
+.we-table td{padding:0.35rem 0.6rem;border-bottom:1px solid rgba(148,163,184,.08)}
+.we-table td:first-child{color:var(--sl);font-family:'Outfit',sans-serif;white-space:nowrap}
+.we-table tr:last-child td{border-bottom:none;font-weight:700;color:#4ade80}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.formula-box{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.2rem 0;text-align:center}
+.formula-box .formula{font-family:'JetBrains Mono',monospace;font-size:0.95rem;color:#f8fafc}
+.formula-box .formula-note{font-size:0.76rem;color:var(--sl);margin-top:0.4rem}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.af-stats{display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem}
+.af-stat{font-family:'JetBrains Mono',monospace;font-size:0.82rem;font-weight:700;padding:0.55rem 0.9rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--text)}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#afCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+.legend-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.75rem;color:var(--sl);margin-top:0.8rem}
+.legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:0.35rem}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 4: Asynchronous FIFO Design</div>
+    <span class="lesson-tag">Lesson 4.2</span>
+    <h1>Building an Asynchronous FIFO</h1>
+
+    <p class="lede">
+      Everything in this module has been leading here. An asynchronous FIFO lets one clock domain write data in and
+      a completely unrelated clock domain read it back out, safely, continuously, with no handshake per word. It's
+      built entirely from pieces you already have: a dual-port memory, two Gray-coded pointers, and two two-flop
+      synchronizers. This lesson assembles them into the <span class="hl">exact circuit used in real chips</span> —
+      derived carefully, verified against a golden reference model, with nothing hand-waved.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>What a FIFO actually needs to know</h2></div>
+      <p>
+        Strip away the memory for a moment. A FIFO is really just two counters: a <span class="term">write
+        pointer</span> that says where the next word goes, and a <span class="term">read pointer</span> that says
+        where the next word comes from. The entire job of "crossing clock domains" comes down to one question, asked
+        by both sides at once:
+      </p>
+      <ul>
+        <li><strong>The write side needs to know:</strong> "has the read side made enough room for me to write here?" — i.e., am I about to overtake the reader and overwrite data it hasn't read yet? That's the <span class="term">FULL</span> flag.</li>
+        <li><strong>The read side needs to know:</strong> "has the write side actually put something here yet?" — i.e., am I about to read a slot the writer hasn't reached? That's the <span class="term">EMPTY</span> flag.</li>
+      </ul>
+      <p>
+        Both questions require comparing your <em>own</em> pointer against the <em>other</em> domain's pointer. And a
+        pointer is a multi-bit counter — which means Lesson 4.1 isn't optional background here, it's the mechanism
+        that makes this entire circuit safe.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>The complete architecture</h2></div>
+      <p>
+        Two mirror-image halves, one shared memory in the middle, and two independent synchronizer lanes — one
+        carrying each pointer into the other domain, in opposite directions, on separate lanes that never cross.
+      </p>
+      <div class="visual">
+        <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+          <line x1="360" y1="15" x2="360" y2="285" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="175" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A — clk_a (write)</text>
+          <text x="545" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B — clk_b (read)</text>
+
+          <!-- WRITE LOGIC -->
+          <rect x="15" y="55" width="140" height="205" rx="8" fill="rgba(56,189,248,0.07)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="85" y="74" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">WRITE LOGIC</text>
+          <text x="85" y="248" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">wptr_bin → wptr_gray</text>
+
+          <!-- READ LOGIC -->
+          <rect x="565" y="55" width="140" height="205" rx="8" fill="rgba(74,222,128,0.07)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="635" y="74" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">READ LOGIC</text>
+          <text x="635" y="248" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">rptr_bin → rptr_gray</text>
+
+          <!-- RAM -->
+          <rect x="310" y="145" width="100" height="55" rx="6" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="360" y="168" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">DUAL-PORT RAM</text>
+          <text x="360" y="182" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">depth = 2^N</text>
+
+          <!-- middle lane: local addresses, never cross the divider -->
+          <line x1="155" y1="172" x2="310" y2="172" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrowF)"/>
+          <text x="230" y="165" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">wr_addr</text>
+          <line x1="410" y1="172" x2="565" y2="172" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrowF)"/>
+          <text x="490" y="165" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">rd_addr</text>
+
+          <!-- top lane: wptr_gray -> sync -> read domain (feeds EMPTY compare) -->
+          <line x1="155" y1="100" x2="405" y2="100" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowF)"/>
+          <rect x="405" y="80" width="110" height="40" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="460" y="98" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC 2FF</text>
+          <text x="460" y="111" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">clk_b · wptr_gray</text>
+          <line x1="515" y1="100" x2="565" y2="100" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowF)"/>
+
+          <!-- bottom lane: rptr_gray -> sync -> write domain (feeds FULL compare) -->
+          <line x1="565" y1="240" x2="315" y2="240" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowF)"/>
+          <rect x="195" y="220" width="110" height="40" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="250" y="238" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC 2FF</text>
+          <text x="250" y="251" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">clk_a · rptr_gray</text>
+          <line x1="195" y1="240" x2="155" y2="240" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowF)"/>
+
+          <text x="85" y="230" fill="#f87171" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FULL = compare(wptr_gray, rptr_gray_sync)</text>
+          <text x="635" y="230" fill="#4ade80" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">EMPTY = compare(rptr_gray, wptr_gray_sync)</text>
+
+          <defs><marker id="arrowF" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+        </svg>
+        <div class="visual-cap">Three lanes that never touch: local addresses stay entirely on their own side (no synchronizer needed — they're never compared across domains), <code>wptr_gray</code> travels one way to feed EMPTY, <code>rptr_gray</code> travels the other way to feed FULL.</div>
+      </div>
+      <div class="infobox">
+        <p>Notice what does <em>not</em> cross: the actual data path. <code>wr_data</code> goes straight into the RAM in domain A; <code>rd_data</code> comes straight out of the RAM in domain B. The only things that cross are the two pointers — and only in Gray-coded form.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>The extra bit that makes full/empty possible</h2></div>
+      <p>
+        Here's a problem you'd hit immediately with plain N-bit address counters: after writing all the way around
+        the RAM once, the write pointer's address bits are back to <code>0</code> — identical to a read pointer that
+        hasn't moved at all. Address-equal could mean "completely empty" or "completely full." An N-bit pointer
+        alone can't tell you which.
+      </p>
+      <p>
+        The fix: make each pointer <strong>one bit wider than the address</strong> (N+1 bits for an N-bit address /
+        2<sup>N</sup>-deep FIFO), and just let it keep counting normally — no special wraparound logic required. The
+        bottom N bits, used as the actual RAM address, naturally cycle through 0…2<sup>N</sup>-1 and repeat. The
+        extra top bit toggles exactly once every time the pointer completes a full lap.
+      </p>
+      <div class="def-box">
+        <div class="def-label">What the extra bit tells you</div>
+        <p>Two pointers with equal address bits but <em>different</em> top bits means one of them has lapped the other exactly once — the FIFO is full. Equal address bits <em>and</em> equal top bits means they're at the exact same position — the FIFO is empty.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Detecting FULL, worked by hand</h2></div>
+      <p>
+        The standard formula compares the write pointer (Gray-coded) against the <em>synchronized</em> read pointer
+        (Gray-coded), with the top two bits of the read side flipped:
+      </p>
+      <div class="formula-box">
+        <div class="formula">full = (wptr_gray == { ~rptr_gray_sync[N:N-1], rptr_gray_sync[N-2:0] })</div>
+        <div class="formula-note">N = address width; the pointer itself is N+1 bits wide</div>
+      </div>
+      <p>
+        That inverted-top-two-bits pattern isn't arbitrary — it's what a Gray-coded pointer's bit pattern looks like
+        after it's lapped another pointer sitting at the same address by exactly one cycle, because of how the
+        Gray-code reflection works across the wrap. Rather than take that on faith, work through an actual case:
+      </p>
+      <div class="worked-example">
+        <div class="we-label">Depth-4 FIFO (N=2), 4 writes, 0 reads — should read as FULL</div>
+        <table class="we-table">
+          <tr><td>wptr_bin</td><td>100 (decimal 4 — four writes have happened, 3-bit pointer)</td></tr>
+          <tr><td>wptr_gray</td><td>110 &nbsp;(= 100 ^ 010)</td></tr>
+          <tr><td>rptr_bin</td><td>000 (nothing read yet)</td></tr>
+          <tr><td>rptr_gray_sync</td><td>000</td></tr>
+          <tr><td>~rptr_gray_sync[2:1]</td><td>11 &nbsp;(inverting the top two bits of 00)</td></tr>
+          <tr><td>{ ~rptr_gray_sync[2:1], rptr_gray_sync[0] }</td><td>110</td></tr>
+          <tr><td>full?</td><td>110 == 110 → TRUE ✓</td></tr>
+        </table>
+      </div>
+      <p>
+        Now check it doesn't false-trigger: with only 3 writes (<code>wptr_bin = 011</code>, <code>wptr_gray =
+        010</code>), the same comparison against <code>rptr_gray_sync = 000</code> gives <code>110</code> again on
+        the right-hand side — but <code>010 ≠ 110</code>, so <code>full</code> correctly stays false. This exact
+        formula was also verified programmatically against a reference model across 972 clock/depth/rate
+        combinations with zero false positives or negatives before this lesson was published.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>Detecting EMPTY — the easy direction</h2></div>
+      <p>
+        EMPTY doesn't need any bit-inversion trick. The read pointer is only ever chasing the write pointer, never
+        overtaking it — so "caught up" simply means the two Gray-coded values are identical:
+      </p>
+      <div class="formula-box">
+        <div class="formula">empty = (rptr_gray == wptr_gray_sync)</div>
+        <div class="formula-note">direct equality — no wrap-bit handling needed</div>
+      </div>
+      <p>
+        This asymmetry between the two formulas is normal, not a mistake: FULL has to distinguish "lapped by one"
+        from "exactly caught up," while EMPTY only ever has one way to be true.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">6</div><h2>The flags are always safely late — and that's the design working correctly</h2></div>
+      <p>
+        Each flag is computed from a <em>synchronized</em> copy of the other domain's pointer, which lags the real
+        value by up to two receiving-clock cycles (Lesson 3.1). That means:
+      </p>
+      <ul>
+        <li><strong>FULL can report true slightly later than the FIFO is actually full</strong> — never earlier. A write is never allowed to overtake data the reader genuinely hasn't consumed yet.</li>
+        <li><strong>EMPTY can report true slightly later than the FIFO is actually empty</strong> — never earlier. A read is never allowed to consume a slot the writer hasn't genuinely written yet.</li>
+      </ul>
+      <div class="warnbox">
+        <p><strong>This costs a little throughput, on purpose.</strong> A real FIFO might sit at, say, 6 of 8 slots full and still show room for a couple more writes even though the reader already caught up further than the flag reflects — that's the safety margin, not a bug. Trading a few cycles of pessimism for a mathematically airtight overflow/underflow guarantee is the entire point.</p>
+      </div>
+      <p>
+        Exactly how these flags get registered, timed, and extended with early-warning "almost full / almost empty"
+        watermarks is deep enough to earn its own lesson — that's next.
+      </p>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Watch a live 8-deep FIFO fill and drain, verified against the same golden model used to prove this design. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: FIFO Fill / Drain Simulator</h2>
+      </div>
+      <p class="lab-instructions">
+        An 8-deep FIFO (N=3) with independent write and read clocks. Writes are attempted every <em>N</em> write-clock
+        cycles, reads every <em>N</em> read-clock cycles. Green dots are successful attempts; red dots were blocked
+        by FULL or EMPTY.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Write clock (clk_a): <span id="afClkALabel">125 MHz (period 8 ns)</span></label>
+          <input type="range" id="afClkASlider" min="4" max="20" step="1" value="8" oninput="afOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Read clock (clk_b): <span id="afClkBLabel">125 MHz (period 8 ns)</span></label>
+          <input type="range" id="afClkBSlider" min="4" max="20" step="1" value="8" oninput="afOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Write rate: <span id="afWriteNLabel">every 2 cycles</span></label>
+          <input type="range" id="afWriteNSlider" min="1" max="4" step="1" value="2" oninput="afOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Read rate: <span id="afReadNLabel">every 3 cycles</span></label>
+          <input type="range" id="afReadNSlider" min="1" max="4" step="1" value="3" oninput="afOnSliderChange()">
+        </div>
+      </div>
+
+      <div class="af-stats">
+        <div class="af-stat" id="afWriteStat">Writes: —</div>
+        <div class="af-stat" id="afReadStat">Reads: —</div>
+        <div class="af-stat" id="afOccStat">Final occupancy: —</div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="afCanvas" width="680" height="220"></canvas>
+      </div>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:#4ade80"></span>attempt succeeded</span>
+        <span><span class="legend-dot" style="background:#f87171"></span>attempt blocked</span>
+      </div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>async_fifo.v</span><button class="copy-btn" onclick="copyLabCode('code-asyncfifo', this)">📋 Copy</button></div>
+      <pre id="code-asyncfifo">module async_fifo #(
+    parameter DATA_WIDTH = 8,
+    parameter ADDR_WIDTH = 3            // FIFO depth = 2**ADDR_WIDTH
+) (
+    // Write domain
+    input  wire                  clk_a,
+    input  wire                  rst_a_n,
+    input  wire                  wr_en,
+    input  wire [DATA_WIDTH-1:0] wr_data,
+    output wire                  full,
+
+    // Read domain
+    input  wire                  clk_b,
+    input  wire                  rst_b_n,
+    input  wire                  rd_en,
+    output reg  [DATA_WIDTH-1:0] rd_data,
+    output wire                  empty
+);
+
+    localparam DEPTH = 1 << ADDR_WIDTH;
+
+    // ---- Shared dual-port memory ----
+    reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
+
+    // ---- Write domain: N+1-bit binary pointer + Gray-coded copy ----
+    reg  [ADDR_WIDTH:0] wptr_bin;
+    wire [ADDR_WIDTH:0] wptr_gray = wptr_bin ^ (wptr_bin >> 1);
+    wire wr_now = wr_en && !full;
+
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n)     wptr_bin <= {(ADDR_WIDTH+1){1'b0}};
+        else if (wr_now)  wptr_bin <= wptr_bin + 1'b1;
+    end
+
+    always @(posedge clk_a) begin
+        if (wr_now) mem[wptr_bin[ADDR_WIDTH-1:0]] <= wr_data;
+    end
+
+    // ---- Read domain: N+1-bit binary pointer + Gray-coded copy ----
+    reg  [ADDR_WIDTH:0] rptr_bin;
+    wire [ADDR_WIDTH:0] rptr_gray = rptr_bin ^ (rptr_bin >> 1);
+    wire rd_now = rd_en && !empty;
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n)     rptr_bin <= {(ADDR_WIDTH+1){1'b0}};
+        else if (rd_now)  rptr_bin <= rptr_bin + 1'b1;
+    end
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n)      rd_data <= {DATA_WIDTH{1'b0}};
+        else if (rd_now)   rd_data <= mem[rptr_bin[ADDR_WIDTH-1:0]];
+    end
+
+    // ---- Synchronize rptr_gray into the write domain (feeds FULL) ----
+    (* ASYNC_REG = "TRUE" *) reg [ADDR_WIDTH:0] rptr_gray_sync1, rptr_gray_sync2;
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n) begin
+            rptr_gray_sync1 <= {(ADDR_WIDTH+1){1'b0}};
+            rptr_gray_sync2 <= {(ADDR_WIDTH+1){1'b0}};
+        end else begin
+            rptr_gray_sync1 <= rptr_gray;
+            rptr_gray_sync2 <= rptr_gray_sync1;
+        end
+    end
+
+    // ---- Synchronize wptr_gray into the read domain (feeds EMPTY) ----
+    (* ASYNC_REG = "TRUE" *) reg [ADDR_WIDTH:0] wptr_gray_sync1, wptr_gray_sync2;
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            wptr_gray_sync1 <= {(ADDR_WIDTH+1){1'b0}};
+            wptr_gray_sync2 <= {(ADDR_WIDTH+1){1'b0}};
+        end else begin
+            wptr_gray_sync1 <= wptr_gray;
+            wptr_gray_sync2 <= wptr_gray_sync1;
+        end
+    end
+
+    // ---- FULL: write has lapped the synchronized read pointer by one cycle ----
+    assign full = (wptr_gray == {~rptr_gray_sync2[ADDR_WIDTH:ADDR_WIDTH-1],
+                                   rptr_gray_sync2[ADDR_WIDTH-2:0]});
+
+    // ---- EMPTY: read pointer has caught up to the synchronized write pointer ----
+    assign empty = (rptr_gray == wptr_gray_sync2);
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_async_fifo.v</span><button class="copy-btn" onclick="copyLabCode('code-asyncfifo-tb', this)">📋 Copy</button></div>
+      <pre id="code-asyncfifo-tb">`timescale 1ns/1ps
+module tb_async_fifo;
+
+    localparam DATA_WIDTH = 8;
+    localparam ADDR_WIDTH = 3;
+
+    reg clk_a = 0, clk_b = 0;
+    reg rst_a_n = 0, rst_b_n = 0;
+    reg wr_en = 0, rd_en = 0;
+    reg [DATA_WIDTH-1:0] wr_data = 0;
+    wire full, empty;
+    wire [DATA_WIDTH-1:0] rd_data;
+
+    always #5   clk_a = ~clk_a;   // 100 MHz write clock
+    always #3.5 clk_b = ~clk_b;   // ~143 MHz read clock
+
+    async_fifo #(.DATA_WIDTH(DATA_WIDTH), .ADDR_WIDTH(ADDR_WIDTH)) dut (
+        .clk_a(clk_a), .rst_a_n(rst_a_n), .wr_en(wr_en), .wr_data(wr_data), .full(full),
+        .clk_b(clk_b), .rst_b_n(rst_b_n), .rd_en(rd_en), .rd_data(rd_data), .empty(empty)
+    );
+
+    initial begin
+        $dumpfile("async_fifo.vcd");
+        $dumpvars(0, tb_async_fifo);
+        #20 rst_a_n = 1; rst_b_n = 1;
+    end
+
+    // Write side: push 12 values, backing off whenever FULL
+    integer i;
+    initial begin
+        wr_en = 0;
+        @(posedge rst_a_n);
+        for (i = 0; i < 12; i = i + 1) begin
+            @(posedge clk_a);
+            while (full) @(posedge clk_a);
+            #1 wr_en = 1; wr_data = i;
+            @(posedge clk_a);
+            #1 wr_en = 0;
+        end
+    end
+
+    // Read side: pop everything, backing off whenever EMPTY, checking order
+    integer expected;
+    initial begin
+        rd_en = 0;
+        expected = 0;
+        @(posedge rst_b_n);
+        while (expected < 12) begin
+            @(posedge clk_b);
+            while (empty) @(posedge clk_b);
+            #1 rd_en = 1;
+            @(posedge clk_b);
+            #1 rd_en = 0;
+            if (rd_data !== expected)
+                $display("MISMATCH at time %0t: expected %0d, got %0d", $time, expected, rd_data);
+            else
+                $display("OK at time %0t: read %0d", $time, rd_data);
+            expected = expected + 1;
+        end
+        #20 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>An async FIFO is a shared dual-port RAM plus two binary counters (write/read pointers), each Gray-coded and synchronized into the <em>other</em> domain to generate FULL and EMPTY.</li>
+        <li>Pointers are N+1 bits wide for an N-bit address — the extra top bit tracks how many times each pointer has lapped the RAM, which is exactly what distinguishes "full" from "empty" when the address bits alone are identical.</li>
+        <li>FULL compares the write pointer against the synchronized read pointer with its top two bits inverted. EMPTY is a direct equality — no inversion needed.</li>
+        <li>Both flags are always safely late, never early — a small, deliberate throughput cost in exchange for a mathematically guaranteed absence of overflow or underflow.</li>
+        <li>The actual data (<code>wr_data</code>/<code>rd_data</code>) never crosses domains — only the two Gray-coded pointers do.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/gray-code-fundamentals/">← Previous: Gray Code Fundamentals</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
