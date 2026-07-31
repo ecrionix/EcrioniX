@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gray Code Fundamentals — CDC Course | EcrioniX</title>
+<meta property="og:title" content="Gray Code Fundamentals — CDC Course | EcrioniX">
+<meta property="og:description" content="Why binary counters break when crossing clock domains, why Gray code fixes it, the conversion math, an accurate glitch-race simulation, and synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/gray-code-fundamentals/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: naive binary sync vs Gray-code sync, glitch race ---- */
+const GC_WINDOW = 320; // ns, fixed display window
+const GC_BITS = 4;     // 4-bit counter, 0-15
+
+function gcToGray(n) { return n ^ (n >> 1); }
+function gcFromGray(g) {
+  let n = g;
+  for (let shift = 1; shift < GC_BITS * 4; shift <<= 1) n ^= (n >> shift);
+  return n;
+}
+function gcSeededRand(seed) {
+  const x = Math.sin(seed * 999.7) * 10000;
+  return x - Math.floor(x);
+}
+
+function gcSimulate(clkBPeriod, spacing, skewWindow) {
+  // Deterministic per-bit routing skew -- models the fact that in real silicon,
+  // different bit paths never switch at EXACTLY the same instant.
+  const skew = [];
+  for (let i = 0; i < GC_BITS; i++) skew.push((gcSeededRand(i + 1) - 0.5) * skewWindow);
+
+  const transitions = [];
+  let t = spacing, val = 0;
+  while (t <= GC_WINDOW) {
+    const newVal = (val + 1) % (1 << GC_BITS);
+    transitions.push({ t, oldVal: val, newVal });
+    val = newVal;
+    t += spacing;
+  }
+
+  function buildBitHistory(encodeFn) {
+    const hist = [];
+    for (let i = 0; i < GC_BITS; i++) hist.push([{ t: 0, val: (encodeFn(0) >> i) & 1 }]);
+    transitions.forEach(tr => {
+      const oldE = encodeFn(tr.oldVal), newE = encodeFn(tr.newVal);
+      for (let i = 0; i < GC_BITS; i++) {
+        const ob = (oldE >> i) & 1, nb = (newE >> i) & 1;
+        if (ob !== nb) hist[i].push({ t: tr.t + skew[i], val: nb });
+      }
+    });
+    return hist;
+  }
+  function bitValAt(hist, t) {
+    let v = hist[0].val;
+    for (const e of hist) { if (e.t <= t) v = e.val; else break; }
+    return v;
+  }
+
+  const binHist = buildBitHistory(n => n);
+  const grayHist = buildBitHistory(gcToGray);
+
+  const clkEdges = [];
+  { let e = clkBPeriod; while (e <= GC_WINDOW) { clkEdges.push(e); e += clkBPeriod; } }
+
+  function counterValAt(t) {
+    let v = 0;
+    for (const tr of transitions) { if (tr.t <= t) v = tr.newVal; else break; }
+    return v;
+  }
+
+  const naiveTrace = [], grayTrace = [];
+  let binGlitches = 0, grayGlitches = 0;
+  clkEdges.forEach(e => {
+    let bw = 0, gw = 0;
+    for (let i = 0; i < GC_BITS; i++) {
+      bw |= bitValAt(binHist[i], e) << i;
+      gw |= bitValAt(grayHist[i], e) << i;
+    }
+    const gd = gcFromGray(gw);
+    const before = counterValAt(e - 1e-6), at = counterValAt(e);
+    const validSet = new Set([before, at]);
+    const binGlitch = !validSet.has(bw);
+    const grayGlitch = !validSet.has(gd);
+    if (binGlitch) binGlitches++;
+    if (grayGlitch) grayGlitches++;
+    naiveTrace.push({ t: e, val: bw, glitch: binGlitch });
+    grayTrace.push({ t: e, val: gd, glitch: grayGlitch });
+  });
+
+  return { transitions, clkEdges, naiveTrace, grayTrace, binGlitches, grayGlitches, samples: clkEdges.length };
+}
+
+function gcOnSliderChange() {
+  const clkBPeriod = Number(document.getElementById('gcClkBSlider').value);
+  const spacing = Number(document.getElementById('gcSpacingSlider').value);
+  const skewWindow = Number(document.getElementById('gcSkewSlider').value);
+
+  document.getElementById('gcClkBLabel').innerText = (1000 / clkBPeriod).toFixed(0) + ' MHz (period ' + clkBPeriod + ' ns)';
+  document.getElementById('gcSpacingLabel').innerText = spacing + ' ns / increment';
+  document.getElementById('gcSkewLabel').innerText = skewWindow.toFixed(1) + ' ns';
+
+  const result = gcSimulate(clkBPeriod, spacing, skewWindow);
+  gcDraw(result);
+
+  const naiveStat = document.getElementById('gcNaiveStat');
+  naiveStat.textContent = 'Naive binary sync: ' + result.binGlitches + ' glitch' + (result.binGlitches === 1 ? '' : 'es') + ' out of ' + result.samples + ' samples';
+  naiveStat.className = 'gc-stat ' + (result.binGlitches === 0 ? 'gc-good' : 'gc-bad');
+
+  const grayStat = document.getElementById('gcGrayStat');
+  grayStat.textContent = 'Gray-code sync: ' + result.grayGlitches + ' glitch' + (result.grayGlitches === 1 ? '' : 'es') + ' out of ' + result.samples + ' samples';
+  grayStat.className = 'gc-stat ' + (result.grayGlitches === 0 ? 'gc-good' : 'gc-bad');
+}
+
+function gcValueY(val, yTop, yBot) {
+  return yBot - (val / (Math.pow(2, GC_BITS) - 1)) * (yBot - yTop);
+}
+
+function gcDrawRow(ctx, xFor, yTop, yBot, events, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), gcValueY(v, yTop, yBot));
+  events.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, gcValueY(v, yTop, yBot));
+    v = e.val;
+    ctx.lineTo(x, gcValueY(v, yTop, yBot));
+  });
+  ctx.lineTo(xFor(GC_WINDOW), gcValueY(v, yTop, yBot));
+  ctx.stroke();
+
+  events.forEach(e => {
+    if (e.glitch) {
+      const x = xFor(e.t), y = gcValueY(e.val, yTop, yBot);
+      ctx.save();
+      ctx.shadowColor = '#f87171';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#f87171';
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+}
+
+function gcDraw(result) {
+  const canvas = document.getElementById('gcCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 130, padR = 15;
+  const xFor = (t) => padL + (t / GC_WINDOW) * (W - padL - padR);
+
+  const rows = [
+    { label: 'TRUE COUNTER (dom A)', color: '#a78bfa', data: result.transitions.map(tr => ({ t: tr.t, val: tr.newVal })) },
+    { label: 'NAIVE BINARY SYNC', color: '#f87171', data: result.naiveTrace },
+    { label: 'GRAY-CODE SYNC', color: '#4ade80', data: result.grayTrace }
+  ];
+  const rowH = (H - 10) / rows.length;
+
+  rows.forEach((row, i) => {
+    const yTop = 8 + rowH * i + 6, yBot = 8 + rowH * (i + 1) - 10;
+
+    ctx.font = '10px Outfit, sans-serif';
+    ctx.fillStyle = row.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 4, yTop + 3);
+    ctx.font = '8px JetBrains Mono, monospace';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('15', 4, yTop + 12);
+    ctx.fillText('0', 4, yBot);
+
+    gcDrawRow(ctx, xFor, yTop, yBot, row.data, row.color);
+  });
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < rows.length; i++) {
+    const y = 8 + rowH * i;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+  }
+}
+
+function gcPopcount(x) {
+  let c = 0;
+  while (x) { c += x & 1; x >>= 1; }
+  return c;
+}
+function gcColorDiff(str, diffMask) {
+  let out = '';
+  for (let b = 0; b < 4; b++) {
+    const bitPos = 3 - b;
+    const bit = str[b];
+    const changed = (diffMask >> bitPos) & 1;
+    out += changed ? '<span class="bit-changed">' + bit + '</span>' : bit;
+  }
+  return out;
+}
+function renderGrayTable() {
+  const tbody = document.getElementById('grayTableBody');
+  if (!tbody) return;
+  const rows = [];
+  let prevBin = 0, prevGray = 0;
+  for (let i = 0; i < 16; i++) {
+    const bin = i;
+    const gray = i ^ (i >> 1);
+    const binStr = bin.toString(2).padStart(4, '0');
+    const grayStr = gray.toString(2).padStart(4, '0');
+    const binDiffMask = bin ^ prevBin, grayDiffMask = gray ^ prevGray;
+    const binDiff = i === 0 ? '—' : gcPopcount(binDiffMask);
+    const grayDiff = i === 0 ? '—' : gcPopcount(grayDiffMask);
+    rows.push(
+      '<tr><td class="decimal">' + i + '</td>' +
+      '<td>' + gcColorDiff(binStr, i === 0 ? 0 : binDiffMask) + '</td>' +
+      '<td>' + binDiff + '</td>' +
+      '<td>' + gcColorDiff(grayStr, i === 0 ? 0 : grayDiffMask) + '</td>' +
+      '<td>' + grayDiff + '</td></tr>'
+    );
+    prevBin = bin; prevGray = gray;
+  }
+  tbody.innerHTML = rows.join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderGrayTable();
+  if (document.getElementById('gcCanvas')) gcOnSliderChange();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.gray-table-wrap{overflow-x:auto;margin:1.4rem 0}
+.gray-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.82rem}
+.gray-table th{text-align:center;color:var(--sl);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.03em;padding:0.5rem;border-bottom:1px solid var(--bdr);font-family:'Outfit',sans-serif}
+.gray-table td{text-align:center;padding:0.4rem 0.5rem;border-bottom:1px solid rgba(148,163,184,.06);color:var(--text)}
+.gray-table td.bit-changed{color:#fbbf24;font-weight:700}
+.gray-table td.decimal{color:var(--sl);font-family:'Outfit',sans-serif}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.formula-box{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem;margin:1.2rem 0;text-align:center}
+.formula-box .formula{font-family:'JetBrains Mono',monospace;font-size:1rem;color:#f8fafc}
+.formula-box .formula-note{font-size:0.76rem;color:var(--sl);margin-top:0.3rem}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.gc-stats{display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem}
+.gc-stat{font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:700;padding:0.6rem 0.9rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3)}
+.gc-stat.gc-good{color:#4ade80;border-color:rgba(74,222,128,.3)}
+.gc-stat.gc-bad{color:#f87171;border-color:rgba(248,113,113,.3)}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#gcCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+.legend-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.75rem;color:var(--sl);margin-top:0.8rem}
+.legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:0.35rem}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 4: Asynchronous FIFO Design</div>
+    <span class="lesson-tag">Lesson 4.1</span>
+    <h1>Gray Code Fundamentals</h1>
+
+    <p class="lede">
+      Every technique so far has moved a single bit, or a value guarded by a handshake. An asynchronous FIFO needs
+      something different: two <span class="hl">multi-bit counters</span> — a write pointer and a read pointer —
+      each constantly incrementing in its own clock domain, each needing to be read safely from the <em>other</em>
+      domain, continuously, with no handshake slowing it down. A plain binary counter cannot survive that crossing.
+      Gray code is the reason it can.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>Why a binary counter breaks the moment it crosses</h2></div>
+      <p>
+        You already met this failure mode in Lesson 3.1: independently synchronize each bit of a multi-bit bus, and
+        the receiver can briefly see a combination that was never actually driven. A counter makes this worse, not
+        better — because counters roll over constantly, and some of those rollovers flip <em>every bit at once</em>.
+      </p>
+      <p>
+        Watch what happens at <code>0111 → 1000</code> (7 → 8). All four bits change simultaneously. In real
+        silicon, "simultaneously" is never perfectly true — different bit paths have slightly different delays. If a
+        receiving clock edge lands inside that tiny window, some bits might already reflect the new value while
+        others still show the old one. The bits synchronizer produces isn't 7 or 8 — it could be <code>1111</code>
+        (15), <code>0000</code> (0), or any other combination of old and new bits.
+      </p>
+      <div class="warnbox">
+        <p><strong>This is exactly the mechanism behind classic FIFO corruption bugs.</strong> A momentarily wrong pointer value can make a FIFO believe it's full when it's empty, or read stale data as if it were valid — bugs that show up rarely, under specific timing, and are notoriously painful to reproduce in the lab.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Gray code: counting where only one bit ever moves</h2></div>
+      <p>
+        Gray code is a way of numbering the same 16 values a 4-bit counter would produce, but reordering which bit
+        pattern represents which count — so that every step to the <span class="term">next</span> value changes
+        <span class="term">exactly one bit</span>. Nothing else about "counting" changes: it still goes through 16
+        distinct values before repeating.
+      </p>
+      <div class="gray-table-wrap">
+        <table class="gray-table">
+          <thead><tr><th>Decimal</th><th>Binary</th><th>Bits changed</th><th>Gray Code</th><th>Bits changed</th></tr></thead>
+          <tbody id="grayTableBody"></tbody>
+        </table>
+      </div>
+      <div class="def-box">
+        <div class="def-label">Read the table</div>
+        <p>The Binary column routinely changes 2, 3, even all 4 bits between consecutive rows (highlighted amber). The Gray Code column never changes more than 1 — including the wraparound from 15 back to 0.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Why one-bit-at-a-time is exactly enough</h2></div>
+      <p>
+        Go back to the independent-per-bit synchronizer picture from Section 1. With Gray code, only one bit is ever
+        transitioning at any given moment. So no matter how a receiving clock edge lands relative to that one bit's
+        change — before it, after it, or awkwardly in between — every <em>other</em> bit is guaranteed unchanged.
+      </p>
+      <div class="def-box">
+        <div class="def-label">The entire guarantee, in one sentence</div>
+        <p>A synchronizer sampling a Gray-coded value can only ever read the old value or the new value — because those are the only two combinations of bits that exist during the transition. There is no third option.</p>
+      </div>
+      <p>
+        This doesn't remove metastability from the picture — the single bit that <em>is</em> changing can still go
+        metastable, exactly as in Lesson 2.1, and still needs its own two-flop synchronizer, exactly as in Lesson
+        3.1. What Gray code removes is the <em>multi-bit tearing</em> problem — a completely different failure mode
+        that two-flop synchronizers were never able to fix on their own.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>The complete circuit</h2></div>
+      <p>One straight chain: count in binary (it's what adders are built for), convert to Gray right before crossing, synchronize bit-by-bit, convert back on the other side.</p>
+      <div class="visual">
+        <svg viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg">
+          <line x1="330" y1="15" x2="330" y2="175" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="160" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A (clk_a)</text>
+          <text x="520" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B (clk_b)</text>
+
+          <rect x="10" y="65" width="90" height="50" rx="6" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="55" y="86" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">COUNTER</text>
+          <text x="55" y="100" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">binary · clk_a</text>
+
+          <rect x="140" y="65" width="100" height="50" rx="6" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="190" y="86" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">BIN2GRAY</text>
+          <text x="190" y="100" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">g = b ^ (b&gt;&gt;1)</text>
+
+          <rect x="360" y="65" width="120" height="50" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="420" y="82" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">N × 2-FLOP SYNC</text>
+          <text x="420" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">1 per Gray bit · clk_b</text>
+          <text x="420" y="107" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">(Lesson 3.1, repeated N times)</text>
+
+          <rect x="520" y="65" width="100" height="50" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="570" y="86" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">GRAY2BIN</text>
+          <text x="570" y="100" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">clk_b</text>
+
+          <rect x="660" y="70" width="55" height="40" rx="6" fill="#0c1526" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="687" y="94" fill="#4ade80" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">ptr_sync</text>
+
+          <line x1="100" y1="90" x2="140" y2="90" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowG)"/>
+          <line x1="240" y1="90" x2="360" y2="90" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowG)"/>
+          <line x1="480" y1="90" x2="520" y2="90" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowG)"/>
+          <line x1="620" y1="90" x2="660" y2="90" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowG)"/>
+
+          <line x1="55" y1="150" x2="55" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="190" y1="150" x2="190" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="55" y1="150" x2="190" y2="150" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="120" y="163" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">clk_a</text>
+
+          <line x1="420" y1="150" x2="420" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="570" y1="150" x2="570" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="420" y1="150" x2="570" y2="150" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="495" y="163" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">clk_b</text>
+
+          <defs><marker id="arrowG" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+        </svg>
+        <div class="visual-cap">The counter itself stays plain binary — Gray code only has to exist for the moment the value crosses. BIN2GRAY and GRAY2BIN are both pure combinational logic; the only registers are the counter and the N independent two-flop synchronizers.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>The conversion math</h2></div>
+      <p>Both directions are simple, cheap, combinational logic — no lookup tables, no iteration cost worth worrying about.</p>
+      <div class="formula-box">
+        <div class="formula">gray = binary ^ (binary &gt;&gt; 1)</div>
+        <div class="formula-note">binary → Gray: XOR each bit with the bit above it</div>
+      </div>
+      <div class="formula-box">
+        <div class="formula">binary[N-1] = gray[N-1]; binary[i] = binary[i+1] ^ gray[i]</div>
+        <div class="formula-note">Gray → binary: XOR cascades from the top bit down</div>
+      </div>
+      <div class="infobox">
+        <p>Notice the asymmetry: binary→Gray is a single-level XOR (fast, constant delay regardless of width). Gray→binary is a cascaded XOR chain (delay grows with bit width). This is one reason the Gray-coded value is what actually crosses the domain — the wide-conversion is a one-time combinational cost paid once you're already safely in the receiving domain.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">6</div><h2>Where this is actually used</h2></div>
+      <p>
+        This exact circuit — binary counter, Gray-code the pointer, synchronize it, decode it back — is the standard
+        way real asynchronous FIFOs move their write and read pointers across domains so the "how full is it?" logic
+        on each side can trust what it's comparing. That's the very next lesson.
+      </p>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Race naive binary sync against Gray-code sync on the same counter, live. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Binary Sync vs. Gray-Code Sync</h2>
+      </div>
+      <p class="lab-instructions">
+        A 4-bit counter increments in domain A. Each bit is synchronized into domain B independently — once as plain
+        binary, once as Gray code — with a small, realistic timing skew between bit paths. Watch for red glitch dots:
+        moments where the synchronized value briefly isn't the old count <em>or</em> the new count.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Receiving clock (clk_b): <span id="gcClkBLabel">100 MHz (period 10 ns)</span></label>
+          <input type="range" id="gcClkBSlider" min="4" max="20" step="1" value="10" oninput="gcOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Counter speed: <span id="gcSpacingLabel">30 ns / increment</span></label>
+          <input type="range" id="gcSpacingSlider" min="15" max="60" step="1" value="30" oninput="gcOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Inter-bit routing skew: <span id="gcSkewLabel">1.2 ns</span> <span class="slider-hint">(how differently each bit's wire delay behaves — always present in real silicon)</span></label>
+          <input type="range" id="gcSkewSlider" min="0" max="2" step="0.1" value="1.2" oninput="gcOnSliderChange()">
+        </div>
+      </div>
+
+      <div class="gc-stats">
+        <div class="gc-stat" id="gcNaiveStat">Naive binary sync: —</div>
+        <div class="gc-stat" id="gcGrayStat">Gray-code sync: —</div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="gcCanvas" width="680" height="260"></canvas>
+      </div>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:#f87171"></span>glitch: a value that was never actually counted</span>
+      </div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>gray_pointer_sync.v</span><button class="copy-btn" onclick="copyLabCode('code-graysync', this)">📋 Copy</button></div>
+      <pre id="code-graysync">module gray_pointer_sync #(
+    parameter WIDTH = 4
+) (
+    input  wire             clk_a,
+    input  wire             rst_a_n,
+    input  wire             increment,             // domain A: pulse to advance the counter
+
+    input  wire             clk_b,
+    input  wire             rst_b_n,
+    output wire [WIDTH-1:0] ptr_bin_sync            // domain B: safe binary value of the pointer
+);
+
+    // ---- Domain A: plain binary counter ----
+    reg [WIDTH-1:0] bin_cnt_a;
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n)        bin_cnt_a <= {WIDTH{1'b0}};
+        else if (increment)  bin_cnt_a <= bin_cnt_a + 1'b1;
+    end
+
+    // ---- Domain A: binary -> Gray (single-level XOR, combinational) ----
+    wire [WIDTH-1:0] gray_cnt_a = bin_cnt_a ^ (bin_cnt_a >> 1);
+
+    // ---- Domain B: N independent two-flop synchronizers, one per Gray bit ----
+    (* ASYNC_REG = "TRUE" *) reg [WIDTH-1:0] gray_sync_stage1;
+    (* ASYNC_REG = "TRUE" *) reg [WIDTH-1:0] gray_sync_b;
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            gray_sync_stage1 <= {WIDTH{1'b0}};
+            gray_sync_b      <= {WIDTH{1'b0}};
+        end else begin
+            gray_sync_stage1 <= gray_cnt_a;
+            gray_sync_b      <= gray_sync_stage1;
+        end
+    end
+
+    // ---- Domain B: Gray -> binary (cascaded XOR) ----
+    genvar i;
+    wire [WIDTH-1:0] bin_from_gray;
+    assign bin_from_gray[WIDTH-1] = gray_sync_b[WIDTH-1];
+    generate
+        for (i = WIDTH-2; i >= 0; i = i - 1) begin : GRAY2BIN
+            assign bin_from_gray[i] = bin_from_gray[i+1] ^ gray_sync_b[i];
+        end
+    endgenerate
+
+    assign ptr_bin_sync = bin_from_gray;
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_gray_pointer_sync.v</span><button class="copy-btn" onclick="copyLabCode('code-graysync-tb', this)">📋 Copy</button></div>
+      <pre id="code-graysync-tb">`timescale 1ns/1ps
+module tb_gray_pointer_sync;
+
+    reg clk_a = 0, clk_b = 0;
+    reg rst_a_n = 0, rst_b_n = 0;
+    reg increment = 0;
+    wire [3:0] ptr_bin_sync;
+
+    // Two unrelated clocks
+    always #5   clk_a = ~clk_a;   // 100 MHz
+    always #3.5 clk_b = ~clk_b;   // ~143 MHz
+
+    gray_pointer_sync #(.WIDTH(4)) dut (
+        .clk_a(clk_a), .rst_a_n(rst_a_n), .increment(increment),
+        .clk_b(clk_b), .rst_b_n(rst_b_n), .ptr_bin_sync(ptr_bin_sync)
+    );
+
+    initial begin
+        $dumpfile("gray_pointer_sync.vcd");
+        $dumpvars(0, tb_gray_pointer_sync);
+
+        #20 rst_a_n = 1; rst_b_n = 1;
+
+        // Free-run the counter through a full wraparound, including 7->8 and 15->0
+        repeat (20) begin
+            #10 increment = 1;
+            #5  increment = 0;
+        end
+
+        #60 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>A binary counter's bits don't all change at exactly the same instant in real silicon — and independent per-bit synchronizers can catch a torn combination that was never a real count value.</li>
+        <li>Gray code reorders the same count sequence so consecutive values (including the wraparound) differ in exactly one bit — so a synchronizer can only ever read the old value or the new one.</li>
+        <li>Gray code doesn't remove metastability — the one changing bit still needs its own two-flop synchronizer. It removes the separate multi-bit tearing problem.</li>
+        <li>The circuit: count in binary, Gray-code it right before crossing, synchronize bit-by-bit, decode back to binary on the receiving side.</li>
+        <li>This is exactly how real asynchronous FIFOs move read/write pointers across domains — up next.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/pulse-synchronizer/">← Previous: The Pulse Synchronizer</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
