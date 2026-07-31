@@ -150,7 +150,7 @@ function afOnSliderChange() {
     'Final occupancy: ' + r.finalOcc + ' / ' + AF_DEPTH;
 }
 
-function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks) {
+function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks, markY) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.2;
   ctx.beginPath();
@@ -168,9 +168,8 @@ function afDrawDigitalRow(ctx, xFor, yTop, yBot, trace, color, marks) {
   if (marks) {
     marks.forEach(m => {
       const x = xFor(m.t);
-      const y = yTop - 7;
       ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.arc(x, markY, 3, 0, Math.PI * 2);
       ctx.fillStyle = m.ok ? '#4ade80' : '#f87171';
       ctx.fill();
     });
@@ -212,25 +211,28 @@ function afDraw(result) {
   const xFor = (t) => padL + (t / AF_WINDOW) * (W - padL - padR);
 
   const rowDefs = [
-    { label: 'FULL (domain A) — dots = write attempts', type: 'digital', color: '#f87171', trace: result.fullTrace, marks: result.writeMarks },
-    { label: 'EMPTY (domain B) — dots = read attempts', type: 'digital', color: '#4ade80', trace: result.emptyTrace, marks: result.readMarks },
-    { label: 'OCCUPANCY (0-' + AF_DEPTH + ', true count)', type: 'occ', trace: result.occTrace }
+    { label: 'FULL (domain A)', type: 'digital', color: '#f87171', trace: result.fullTrace, marks: result.writeMarks },
+    { label: 'EMPTY (domain B)', type: 'digital', color: '#4ade80', trace: result.emptyTrace, marks: result.readMarks },
+    { label: 'OCCUPANCY (0-' + AF_DEPTH + ')', type: 'occ', trace: result.occTrace }
   ];
 
-  const titleH = 18, bandH = 46, rowGap = 16;
-  const rowH = titleH + bandH;
+  // Each row: title text, then a dedicated strip for attempt-marker dots
+  // (kept well clear of the title above and the band below), then the band.
+  const titleH = 14, markGap = 16, bandH = 34, rowGap = 18;
+  const rowH = titleH + markGap + bandH;
 
   rowDefs.forEach((row, i) => {
-    const rowTop = 10 + (rowH + rowGap) * i;
-    const yTop = rowTop + titleH, yBot = yTop + bandH - 6;
+    const rowTop = 12 + (rowH + rowGap) * i;
+    const yTop = rowTop + titleH + markGap, yBot = yTop + bandH - 6;
+    const markY = rowTop + titleH + markGap / 2; // centered in the gap strip, clear of title and band
 
     ctx.font = '600 11px Outfit, sans-serif';
     ctx.fillStyle = row.color || '#38bdf8';
     ctx.textAlign = 'left';
-    ctx.fillText(row.label, padL, rowTop + 12);
+    ctx.fillText(row.label, padL, rowTop + 10);
 
     if (row.type === 'digital') {
-      afDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color, row.marks);
+      afDrawDigitalRow(ctx, xFor, yTop, yBot, row.trace, row.color, row.marks, markY);
     } else {
       afDrawOccRow(ctx, xFor, yTop, yBot, row.trace);
     }
@@ -239,7 +241,7 @@ function afDraw(result) {
   ctx.strokeStyle = 'rgba(148,163,184,0.18)';
   ctx.lineWidth = 1;
   for (let i = 1; i < rowDefs.length; i++) {
-    const y = 10 + (rowH + rowGap) * i - rowGap / 2;
+    const y = 12 + (rowH + rowGap) * i - rowGap / 2;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 }
@@ -531,7 +533,61 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="section">
-      <div class="section-head"><div class="section-num">6</div><h2>The flags are always safely late — and that's the design working correctly</h2></div>
+      <div class="section-head"><div class="section-num">6</div><h2>Why not just decode back to binary and compare?</h2></div>
+      <p>
+        It's a completely reasonable question: Lesson 4.1 gave you <code>gray2bin</code> as well as
+        <code>bin2gray</code> — so why does the comparator above work directly on Gray patterns instead of decoding
+        the synchronized pointer back into an ordinary binary number first?
+      </p>
+      <p>
+        You <em>can</em> decode first. It's a legitimate, used-in-practice alternative — but it has a sharp edge that
+        catches people, so it's worth building correctly rather than skipping.
+      </p>
+
+      <div class="visual">
+        <svg viewBox="0 0 620 130" xmlns="http://www.w3.org/2000/svg">
+          <rect x="10" y="45" width="110" height="40" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="65" y="69" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC 2FF</text>
+          <text x="65" y="35" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">rptr_gray, arriving in domain A</text>
+
+          <rect x="180" y="45" width="120" height="40" rx="6" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="240" y="63" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">GRAY2BIN</text>
+          <text x="240" y="76" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">cascaded XOR (Lesson 4.1)</text>
+
+          <rect x="360" y="45" width="150" height="40" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="435" y="63" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">OCCUPANCY = wptr − rptr_sync</text>
+          <text x="435" y="76" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">(N+1)-bit modular subtraction</text>
+
+          <line x1="120" y1="65" x2="180" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowD)"/>
+          <line x1="300" y1="65" x2="360" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowD)"/>
+          <line x1="510" y1="65" x2="560" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowD)"/>
+          <text x="580" y="69" fill="#4ade80" font-size="9" font-family="JetBrains Mono,monospace">full</text>
+
+          <defs><marker id="arrowD" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+        </svg>
+        <div class="visual-cap">The block missing from a naive version of this diagram: after <code>GRAY2BIN</code>, you must compute an actual <em>occupancy count</em> and compare it to <code>DEPTH</code> — not simply check the two pointers for equality.</div>
+      </div>
+
+      <div class="formula-box">
+        <div class="formula">occupancy = (wptr_bin − rptr_bin_sync) &amp; {(N+1){1'b1}}; &nbsp; full = (occupancy == DEPTH); &nbsp; empty = (occupancy == 0)</div>
+        <div class="formula-note">correct decode-then-compare form — verified against the same golden model, 324 combinations, zero errors</div>
+      </div>
+
+      <div class="warnbox">
+        <p><strong>The bug this section exists to prevent:</strong> it's tempting to decode the synced pointer and then just check <code>wptr_next == rptr_bin_sync</code> for equality, the way you might expect "pointers matching means full." Trace it through: with an 8-deep FIFO and the read pointer parked at 0, that check never goes true until the write pointer has counted all the way past <strong>15</strong> — meaning writes 9 through 15 are silently allowed through, overwriting unread data. Full genuinely means "lapped by exactly one <em>DEPTH</em>," not "pointers are numerically equal" — that equality condition is what EMPTY looks like, not FULL.</p>
+      </div>
+
+      <p>
+        Both the direct-Gray comparator from Section 4 and this corrected decode-then-subtract form are mathematically
+        sound and were independently verified. The reason production designs (and this lesson's Verilog) default to
+        comparing Gray patterns directly is timing: <code>GRAY2BIN</code> is a cascaded XOR chain whose delay grows
+        with pointer width, and that delay would sit directly in the FULL/EMPTY path — the one place in this whole
+        circuit where you least want extra combinational depth.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">7</div><h2>The flags are always safely late — and that's the design working correctly</h2></div>
       <p>
         Each flag is computed from a <em>synchronized</em> copy of the other domain's pointer, which lags the real
         value by up to two receiving-clock cycles (Lesson 3.1). That means:
@@ -590,7 +646,7 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </div>
 
       <div class="lab-canvas-wrap">
-        <canvas id="afCanvas" width="680" height="220"></canvas>
+        <canvas id="afCanvas" width="680" height="250"></canvas>
       </div>
       <div class="legend-row">
         <span><span class="legend-dot" style="background:#4ade80"></span>attempt succeeded</span>
