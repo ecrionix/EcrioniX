@@ -75,6 +75,26 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .hist-badge.approved{background:rgba(74,222,128,.15);color:#4ade80}
 .hist-badge.rejected{background:rgba(248,113,113,.15);color:#f87171}
 .hist-badge.revoked{background:rgba(148,163,184,.15);color:#94a3b8}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--bdr);border-radius:8px}
+.data-tbl{width:100%;border-collapse:collapse;font-size:0.85rem;white-space:nowrap}
+.data-tbl th{background:var(--bg3);text-align:left;padding:0;border-bottom:2px solid var(--bdr);position:sticky;top:0}
+.data-tbl th .th-inner{display:flex;align-items:center;gap:0.4rem;padding:0.7rem 0.9rem;cursor:pointer;user-select:none;color:#f8fafc;font-weight:700}
+.data-tbl th .th-inner:hover{color:var(--blue)}
+.data-tbl th .sort-arrow{font-size:0.7rem;color:var(--blue);min-width:0.8rem}
+.data-tbl th .th-filter{padding:0.4rem 0.6rem;border-top:1px solid var(--bdr)}
+.data-tbl th .th-filter select,.data-tbl th .th-filter input{width:100%;padding:0.3rem 0.4rem;border-radius:4px;border:1px solid var(--bdr);background:var(--bg2);color:var(--text);font-size:0.75rem}
+.data-tbl td{padding:0.7rem 0.9rem;border-bottom:1px solid rgba(148,163,184,.06);color:var(--sl);vertical-align:top}
+.data-tbl tr:hover td{background:rgba(56,189,248,.03)}
+.data-tbl td.name-cell{color:#f8fafc;font-weight:600}
+.tbl-actions{display:flex;gap:0.4rem}
+.tbl-btn{padding:0.3rem 0.7rem;border-radius:5px;border:none;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.tbl-btn-approve{background:#4ade80;color:#000}
+.tbl-btn-reject{background:#f87171;color:#fff}
+.tbl-btn-revoke{background:#f87171;color:#fff}
+.tbl-btn-reopen{background:var(--blue);color:#020617}
+.clear-filters-btn{font-size:0.78rem;color:var(--sl);background:none;border:1px solid var(--bdr);border-radius:6px;padding:0.4rem 0.8rem;cursor:pointer;margin-bottom:0.8rem}
+.clear-filters-btn:hover{border-color:var(--blue);color:var(--blue)}
+.row-count{font-size:0.8rem;color:var(--sl);margin-bottom:0.6rem}
 h1{font-size:2rem;margin-bottom:1rem;color:#f8fafc}
 h2{font-size:1.3rem;margin:1.5rem 0 0.5rem;color:#f8fafc;border-bottom:2px solid rgba(56,189,248,.15);padding-bottom:0.5rem}
 .request-row{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:1.5rem;margin:1rem 0}
@@ -140,9 +160,18 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="card">
-      <h2>📜 All Requests History</h2>
-      <p style="color:var(--sl);font-size:0.85rem">Every request ever submitted, regardless of status — pending, approved, rejected, or revoked.</p>
-      <div id="allRequestsHistory"></div>
+      <h2>📊 All Requests (Spreadsheet View)</h2>
+      <p style="color:var(--sl);font-size:0.85rem;margin-bottom:1rem">Click a column header to sort. Use the boxes below each header to filter.</p>
+      <button class="clear-filters-btn" onclick="clearTableFilters()">Clear all filters</button>
+      <div class="row-count" id="tblRowCount"></div>
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead>
+            <tr id="tblHeaderRow"></tr>
+          </thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card">
@@ -168,50 +197,151 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+const TBL_COLUMNS = [
+  { key: 'name', label: 'Name', type: 'text' },
+  { key: 'email', label: 'Email', type: 'text' },
+  { key: 'courseId', label: 'Course', type: 'select' },
+  { key: 'paymentMethod', label: 'Method', type: 'select' },
+  { key: 'paymentId', label: 'Payment ID', type: 'text' },
+  { key: 'status', label: 'Status', type: 'select' },
+  { key: 'createdAt', label: 'Submitted', type: 'date' },
+  { key: 'actions', label: 'Actions', type: 'none' },
+];
+
+let tblData = [];
+let tblSort = { key: 'createdAt', dir: 'desc' };
+let tblFilters = {};
+
 async function loadAllRequestsHistory() {
   try {
     const db = firebase.firestore();
     const snapshot = await db.collection('paymentRequests').get();
 
-    const list = document.getElementById('allRequestsHistory');
+    tblData = [];
+    snapshot.forEach(doc => tblData.push({ id: doc.id, ...doc.data() }));
 
-    if (snapshot.empty) {
-      list.innerHTML = '<p style="color:var(--sl)">No requests yet</p>';
-      return;
-    }
-
-    const requests = [];
-    snapshot.forEach(doc => requests.push(doc.data()));
-    requests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-
-    list.innerHTML = requests.map(req => {
-      const statusDates = {
-        pending: req.createdAt?.toDate?.()?.toLocaleString(),
-        approved: req.approvedAt?.toDate?.()?.toLocaleString(),
-        rejected: req.rejectedAt?.toDate?.()?.toLocaleString(),
-        revoked: req.revokedAt?.toDate?.()?.toLocaleString(),
-      };
-      const statusDate = statusDates[req.status];
-      const reasonLine = req.status === 'rejected' && req.rejectionReason
-        ? `<p><b>Rejection Reason:</b> ${escapeHtml(req.rejectionReason)}</p>`
-        : '';
-      return `
-        <div class="request-row">
-          <span class="hist-badge ${escapeHtml(req.status)}">${escapeHtml(req.status)}</span>
-          <h3>${escapeHtml(req.name)}</h3>
-          <p><b>Email:</b> ${escapeHtml(req.email)}</p>
-          <p><b>Course:</b> ${escapeHtml(req.courseId)}</p>
-          <p><b>Payment ID:</b> ${escapeHtml(req.paymentId)}</p>
-          ${reasonLine}
-          <p style="color:var(--sl);font-size:0.85rem"><b>Submitted:</b> ${req.createdAt?.toDate?.()?.toLocaleString() || 'N/A'}</p>
-          <p style="color:var(--sl);font-size:0.85rem"><b>Last updated (${escapeHtml(req.status)}):</b> ${statusDate || 'N/A'}</p>
-        </div>
-      `;
-    }).join('');
+    renderTableHeader();
+    applyTableFiltersAndSort();
   } catch (error) {
     console.error("Error loading request history:", error);
-    document.getElementById('allRequestsHistory').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+    document.getElementById('tblBody').innerHTML = `<tr><td colspan="${TBL_COLUMNS.length}"><div class="status error">Error: ${error.message}</div></td></tr>`;
   }
+}
+
+function renderTableHeader() {
+  const headerRow = document.getElementById('tblHeaderRow');
+
+  headerRow.innerHTML = TBL_COLUMNS.map(col => {
+    const arrow = tblSort.key === col.key ? (tblSort.dir === 'asc' ? '▲' : '▼') : '';
+    const sortableHeader = col.type !== 'none'
+      ? `<div class="th-inner" onclick="sortTable('${col.key}')"><span>${col.label}</span><span class="sort-arrow">${arrow}</span></div>`
+      : `<div class="th-inner" style="cursor:default"><span>${col.label}</span></div>`;
+
+    let filterHtml = '';
+    if (col.type === 'text') {
+      filterHtml = `<div class="th-filter"><input type="text" placeholder="Filter..." value="${escapeHtml(tblFilters[col.key] || '')}" oninput="onTableFilterChange('${col.key}', this.value)"></div>`;
+    } else if (col.type === 'select') {
+      const uniqueValues = [...new Set(tblData.map(r => r[col.key]).filter(Boolean))].sort();
+      const options = uniqueValues.map(v => `<option value="${escapeHtml(v)}" ${tblFilters[col.key] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
+      filterHtml = `<div class="th-filter"><select onchange="onTableFilterChange('${col.key}', this.value)"><option value="">All</option>${options}</select></div>`;
+    } else if (col.type === 'date') {
+      filterHtml = '<div class="th-filter" style="visibility:hidden">-</div>';
+    }
+
+    return `<th>${sortableHeader}${filterHtml}</th>`;
+  }).join('');
+}
+
+function onTableFilterChange(key, value) {
+  if (value) {
+    tblFilters[key] = value;
+  } else {
+    delete tblFilters[key];
+  }
+  applyTableFiltersAndSort();
+}
+
+function clearTableFilters() {
+  tblFilters = {};
+  renderTableHeader();
+  applyTableFiltersAndSort();
+}
+
+function sortTable(key) {
+  if (tblSort.key === key) {
+    tblSort.dir = tblSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    tblSort = { key, dir: 'asc' };
+  }
+  renderTableHeader();
+  applyTableFiltersAndSort();
+}
+
+function applyTableFiltersAndSort() {
+  let rows = tblData.filter(req => {
+    return Object.entries(tblFilters).every(([key, value]) => {
+      const cellValue = req[key];
+      if (key === 'courseId' || key === 'paymentMethod' || key === 'status') {
+        return cellValue === value;
+      }
+      return String(cellValue || '').toLowerCase().includes(value.toLowerCase());
+    });
+  });
+
+  rows.sort((a, b) => {
+    let av, bv;
+    if (tblSort.key === 'createdAt') {
+      av = a.createdAt?.toMillis?.() || 0;
+      bv = b.createdAt?.toMillis?.() || 0;
+    } else {
+      av = String(a[tblSort.key] || '').toLowerCase();
+      bv = String(b[tblSort.key] || '').toLowerCase();
+    }
+    if (av < bv) return tblSort.dir === 'asc' ? -1 : 1;
+    if (av > bv) return tblSort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  document.getElementById('tblRowCount').innerText = `Showing ${rows.length} of ${tblData.length} request(s)`;
+  renderTableBody(rows);
+}
+
+function renderTableBody(rows) {
+  const tbody = document.getElementById('tblBody');
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${TBL_COLUMNS.length}" style="text-align:center;color:var(--sl)">No matching requests</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(req => {
+    const submitted = req.createdAt?.toDate?.()?.toLocaleString() || 'N/A';
+
+    let actions = '';
+    if (req.status === 'pending') {
+      actions = `
+        <button class="tbl-btn tbl-btn-approve" onclick="approveRequest('${req.id}', '${req.userId}', '${escapeHtml(req.courseId)}')">Approve</button>
+        <button class="tbl-btn tbl-btn-reject" onclick="rejectRequest('${req.id}')">Reject</button>
+      `;
+    } else if (req.status === 'approved') {
+      actions = `<button class="tbl-btn tbl-btn-revoke" onclick="revokeAccess('${req.userId}', '${escapeHtml(req.courseId)}')">Revoke</button>`;
+    } else if (req.status === 'rejected') {
+      actions = `<button class="tbl-btn tbl-btn-reopen" onclick="reopenRequest('${req.id}')">Reopen</button>`;
+    }
+
+    return `
+      <tr>
+        <td class="name-cell">${escapeHtml(req.name)}</td>
+        <td>${escapeHtml(req.email)}</td>
+        <td>${escapeHtml(req.courseId)}</td>
+        <td>${escapeHtml(req.paymentMethod)}</td>
+        <td>${escapeHtml(req.paymentId)}</td>
+        <td><span class="hist-badge ${escapeHtml(req.status)}">${escapeHtml(req.status)}</span></td>
+        <td>${submitted}</td>
+        <td><div class="tbl-actions">${actions}</div></td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function loadDashboard(user) {
