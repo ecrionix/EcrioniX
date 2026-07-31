@@ -12,6 +12,7 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="/favicon1.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -132,7 +133,7 @@ function labInit() {
   labTransitions = labGenerateTransitions();
   labClockBEdges = labComputeClockEdges(labClockBPeriod);
   labSyncEvents = labBuildSyncEvents();
-  labPlayheadT = 0;
+  labPlayheadT = LAB_WINDOW_MS;
   labRunning = false;
   if (labAnimId) cancelAnimationFrame(labAnimId);
   document.getElementById('labCleanCount').innerText = '0';
@@ -200,15 +201,19 @@ function labDraw() {
   ctx.fillStyle = '#94a3b8';
   rowLabels.forEach((label, i) => ctx.fillText(label, 4, rowYs[i] + rowH / 2 + 4));
 
-  // Clock B waveform
+  const drawT = Math.max(labPlayheadT, 0);
+  const isLive = labRunning;
+  const limit = isLive ? drawT : LAB_WINDOW_MS;
+  const steps = Math.max(4, Math.round((limit / LAB_WINDOW_MS) * 400));
+
+  // Clock B waveform (drawn live up to the current time)
   ctx.strokeStyle = '#a78bfa';
   ctx.lineWidth = 2;
   ctx.beginPath();
   const yHighB = rowYs[0] + 12, yLowB = rowYs[0] + rowH - 12;
-  const steps = 400;
   let prevLevel = null;
   for (let i = 0; i <= steps; i++) {
-    const t = (i / steps) * LAB_WINDOW_MS;
+    const t = (i / steps) * limit;
     const lvl = labClockLevel(t, labClockBPeriod);
     const x = labTimeToX(t, plotW, padL);
     const y = lvl ? yHighB : yLowB;
@@ -216,18 +221,17 @@ function labDraw() {
     else if (lvl !== prevLevel) { ctx.lineTo(x, prevLevel ? yHighB : yLowB); ctx.lineTo(x, y); }
     prevLevel = lvl;
   }
-  ctx.lineTo(padL + plotW, prevLevel ? yHighB : yLowB);
+  if (prevLevel !== null) ctx.lineTo(labTimeToX(limit, plotW, padL), prevLevel ? yHighB : yLowB);
   ctx.stroke();
 
-  // FF_SYNC Q waveform (with wobble)
+  // FF_SYNC Q waveform (with wobble), drawn live up to the current time
   const yHighS = rowYs[1] + 12, yLowS = rowYs[1] + rowH - 12, yMidS = rowYs[1] + rowH / 2;
-  ctx.strokeStyle = '#2dd4bf';
   ctx.lineWidth = 2;
   ctx.beginPath();
   let started = false;
+  let lastY = yLowS;
   for (let i = 0; i <= steps; i++) {
-    const t = (i / steps) * LAB_WINDOW_MS;
-    if (t > labPlayheadT) break;
+    const t = (i / steps) * limit;
     const x = labTimeToX(t, plotW, padL);
     const lvl = labSyncLevelAt(t);
     let y;
@@ -240,14 +244,29 @@ function labDraw() {
     }
     if (!started) { ctx.moveTo(x, y); started = true; }
     else ctx.lineTo(x, y);
+    lastY = y;
   }
   ctx.stroke();
 
-  // Playhead
-  if (labPlayheadT > 0) {
-    const x = labTimeToX(labPlayheadT, plotW, padL);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
+  // Glowing "pen" tips at the live write-head, only while running
+  if (isLive && drawT > 0 && drawT < LAB_WINDOW_MS) {
+    const x = labTimeToX(drawT, plotW, padL);
+    const tips = [
+      { y: rowYs[0] + (labClockLevel(drawT, labClockBPeriod) ? 12 : rowH - 12), color: '#a78bfa' },
+      { y: lastY, color: '#2dd4bf' },
+    ];
+    tips.forEach(tip => {
+      ctx.save();
+      ctx.shadowColor = tip.color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = tip.color;
+      ctx.beginPath();
+      ctx.arc(x, tip.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.strokeStyle = 'rgba(56,189,248,0.25)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, 5);
     ctx.lineTo(x, H - 5);
@@ -312,6 +331,7 @@ let labDisagreeCount = 0;
 function runLab() {
   if (labRunning) return;
   labRunning = true;
+  labPlayheadT = 0;
   labCleanCount = 0;
   labDisagreeCount = 0;
   document.getElementById('labCleanCount').innerText = '0';
@@ -387,13 +407,47 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
 .lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
 
-.qa-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem 1.4rem;margin-bottom:1rem}
-.qa-q{display:flex;align-items:flex-start;gap:0.7rem;font-weight:700;color:#f8fafc;font-size:0.98rem;margin-bottom:0.6rem}
-.qa-q-mark{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:800;flex-shrink:0}
-.qa-a{display:flex;align-items:flex-start;gap:0.7rem;color:var(--sl);font-size:0.92rem}
-.qa-a-mark{background:rgba(74,222,128,.14);color:#4ade80;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;flex-shrink:0}
-.qa-a ul{margin:0.3rem 0 0 1.1rem}
-.qa-a li{margin-bottom:0.3rem}
+/* Course content */
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.3rem 0}
+.compare-card{border-radius:10px;padding:1.1rem}
+.compare-card.bad{background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25)}
+.compare-card.good{background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25)}
+.compare-card h4{font-size:0.88rem;margin-bottom:0.5rem}
+.compare-card.bad h4{color:#fca5a5}
+.compare-card.good h4{color:#86efac}
+.compare-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+@media(max-width:520px){.compare-grid{grid-template-columns:1fr}}
 
 .key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
 .key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
@@ -478,52 +532,127 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     <span class="lesson-tag">Lesson 1.2</span>
     <h1>Why Single-Flop Synchronization Fails</h1>
 
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> What does "single-flop synchronization" mean?</div>
-      <div class="qa-a"><span class="qa-a-mark">A</span> Placing just <b>one</b> flip-flop in the destination clock domain to catch the incoming async signal, then feeding its output straight into the rest of the logic — no second stage in between.</div>
+    <p class="lede">
+      You finished the last lesson knowing exactly where the danger lives — that window around a clock edge where an
+      incoming signal has to sit still, and doesn't. So the fix seems obvious: catch the signal with a flip-flop on
+      the receiving side, and let it settle. Problem solved, right?
+    </p>
+    <p class="lede" style="margin-bottom:2rem">
+      <span class="hl">Wrong — and this exact mistake has shipped in real silicon.</span> A single synchronizing
+      flip-flop feels like a fix. It is one of the most common, most dangerous habits in digital design. This lesson
+      shows you precisely why it fails — and the reason is sharper and stranger than "sometimes you get the wrong bit."
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>The tempting, wrong fix</h2></div>
+      <p>
+        <span class="term">Single-flop synchronization</span> means exactly what it sounds like: you drop one
+        flip-flop into the receiving clock domain, let it capture the incoming signal, and wire its output straight
+        into the rest of your logic. No second stage. No buffer. Just one flop standing between chaos and your circuit.
+      </p>
+      <p>
+        It's an easy trap to fall into. The flop <em>does</em> catch the signal. Most of the time its output looks
+        perfectly clean. It'll pass a quick simulation. It might even survive weeks on the bench. Which is exactly
+        what makes it dangerous — it looks like it works.
+      </p>
     </div>
 
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> If metastability eventually resolves on its own, why isn't one flop enough?</div>
-      <div class="qa-a"><span class="qa-a-mark">A</span> "Eventually" has no fixed deadline. Resolution time is probabilistic, not guaranteed — it usually resolves fast, but occasionally takes much longer. A single flop gives it zero extra time before its output gets used by the next stage.</div>
-    </div>
-
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> What actually happens if the flop's output is still settling when it gets used?</div>
-      <div class="qa-a">
-        <span class="qa-a-mark">A</span>
-        <ul>
-          <li>A metastable flop output sits at an invalid in-between voltage — not a clean 0 or clean 1.</li>
-          <li>Every downstream gate has its own individual switching threshold and noise margin.</li>
-          <li>That means different gates can interpret that <i>same</i> in-between voltage <i>differently</i>.</li>
-        </ul>
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Metastability doesn't come with a deadline</h2></div>
+      <p>
+        Here's the assumption hiding underneath the single-flop fix: <em>"sure, it might go metastable, but it'll
+        settle down eventually — long before anyone needs the value."</em> That assumption is the whole bug.
+      </p>
+      <p>
+        Metastability resolves at a <span class="term">random</span> speed. Most of the time, yes, it settles in a
+        tiny fraction of a clock cycle — far faster than you'd ever notice. But there's no law of physics guaranteeing
+        that. Occasionally, rarely, it takes meaningfully longer. And a single flop gives that settling process exactly
+        <strong>zero</strong> extra time before its output gets used. Whatever voltage is sitting on that output the
+        instant the next stage reads it — resolved or not — is what propagates.
+      </p>
+      <div class="warnbox">
+        <p><strong>"Usually fine" is not the same as "guaranteed."</strong> A bug that shows up once every few million cycles is still a bug — it just waits for the worst possible moment to appear, usually in a customer's hands, not on your bench.</p>
       </div>
     </div>
 
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> Wait — can two parts of the same chip really see two different values from the same wire?</div>
-      <div class="qa-a"><span class="qa-a-mark">A</span> Yes, and this is the real danger — not just "occasionally wrong data." If a still-metastable output fans out to multiple gates, one part of the logic might read a 1 while another reads a 0, from the exact same signal, in the exact same clock cycle. That's internal disagreement, not a clean bit-flip.</div>
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>The real danger: gates can disagree</h2></div>
+      <p>
+        Here's the part most people get wrong about single-flop failures — it's not really about "getting a random
+        bit." It's stranger than that.
+      </p>
+      <p>
+        A metastable flop output isn't a clean 0 or a clean 1. It's an <span class="term">invalid, in-between voltage</span> —
+        neither rail. Every gate downstream that reads it has its own individual switching threshold, its own tiny
+        manufacturing variation, its own noise margin. Feed that same in-between voltage to two different gates, and
+        there's no guarantee they interpret it the same way.
+      </p>
+
+      <div class="def-box">
+        <div class="def-label">The key insight</div>
+        <p>If a still-settling output fans out to multiple gates, one gate can read a 1 while another reads a 0 — from the exact same wire, in the exact same clock cycle. That's not a wrong value. That's two parts of your chip disagreeing about reality.</p>
+      </div>
+
+      <div class="visual">
+        <svg viewBox="0 0 480 190" width="480">
+          <rect x="20" y="70" width="110" height="60" rx="6" fill="#0c1526" stroke="#38bdf8" stroke-width="2"/>
+          <text x="75" y="95" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle">FF_SYNC</text>
+          <text x="75" y="112" fill="#f87171" font-size="10" text-anchor="middle">metastable</text>
+
+          <line x1="130" y1="100" x2="220" y2="100" stroke="#f87171" stroke-width="2" stroke-dasharray="3 3"/>
+          <line x1="220" y1="100" x2="220" y2="55" stroke="#f87171" stroke-width="2" stroke-dasharray="3 3"/>
+          <line x1="220" y1="100" x2="220" y2="145" stroke="#f87171" stroke-width="2" stroke-dasharray="3 3"/>
+          <line x1="220" y1="55" x2="290" y2="55" stroke="#f87171" stroke-width="2" stroke-dasharray="3 3"/>
+          <line x1="220" y1="145" x2="290" y2="145" stroke="#f87171" stroke-width="2" stroke-dasharray="3 3"/>
+
+          <rect x="290" y="30" width="100" height="50" rx="6" fill="#0c1526" stroke="#4ade80" stroke-width="2"/>
+          <text x="340" y="53" fill="#e2e8f0" font-size="11" font-weight="700" text-anchor="middle">Gate X</text>
+          <text x="340" y="68" fill="#4ade80" font-size="12" font-weight="700" text-anchor="middle">reads 1</text>
+
+          <rect x="290" y="120" width="100" height="50" rx="6" fill="#0c1526" stroke="#f87171" stroke-width="2"/>
+          <text x="340" y="143" fill="#e2e8f0" font-size="11" font-weight="700" text-anchor="middle">Gate Y</text>
+          <text x="340" y="158" fill="#f87171" font-size="12" font-weight="700" text-anchor="middle">reads 0</text>
+
+          <text x="255" y="18" fill="#fbbf24" font-size="11" text-anchor="middle" font-weight="700">same wire, same cycle, different answers</text>
+        </svg>
+        <div class="visual-cap">One unsettled output, two downstream gates, two different conclusions — internal disagreement a single flop can't prevent.</div>
+      </div>
     </div>
 
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> How does the standard two-flop synchronizer actually fix this?</div>
-      <div class="qa-a"><span class="qa-a-mark">A</span> The second flop doesn't stop the first flop from going metastable — nothing can prevent that. It gives the first flop's output a <b>full extra clock period</b> to settle before anything reads it. By the time the second flop samples it, the chance it's still unresolved is astronomically small — and only the second flop's clean output fans out, so every downstream gate sees the same value.</div>
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Why the second flop actually works</h2></div>
+      <p>
+        The standard fix is a <span class="term">two-flop synchronizer</span> — and it's worth being precise about
+        <em>why</em> it works, because it's not what most people assume.
+      </p>
+      <p>
+        The second flop does <strong>not</strong> stop the first flop from going metastable. Nothing can prevent that
+        — it's physics, not a design flaw you can engineer away. What the second flop buys you is <strong>time</strong>:
+        a full extra clock period between the moment the first flop might go metastable and the moment anything
+        actually reads its value.
+      </p>
+
+      <div class="compare-grid">
+        <div class="compare-card bad">
+          <h4>❌ Single flop</h4>
+          <p>FF_SYNC's output fans out immediately. If it's still settling, every downstream gate sees whatever voltage happens to be there — right now, no time to recover.</p>
+        </div>
+        <div class="compare-card good">
+          <h4>✅ Two flops</h4>
+          <p>FF_SYNC1 may go metastable — but only FF_SYNC2 reads it, one full clock period later. By then it has almost certainly resolved. Only FF_SYNC2's clean output fans out.</p>
+        </div>
+      </div>
+
+      <p>
+        "Almost certainly" isn't hand-waving — it's a real, calculable probability called <span class="term">MTBF</span>
+        (Mean Time Between Failures), and it's the whole subject of the next module. For now, the concept is what
+        matters: <strong>buy time, then let only the settled value fan out.</strong>
+      </p>
     </div>
 
-    <div class="qa-card">
-      <div class="qa-q"><span class="qa-q-mark">Q</span> Why does this bug often slip past simulation and bring-up testing?</div>
-      <div class="qa-a"><span class="qa-a-mark">A</span> RTL simulators don't model real analog metastable settling — they just pick a value quickly. So a single-flop design can pass simulation and even early lab testing, then fail unpredictably in the field months later, under specific timing conditions nobody tested for.</div>
-    </div>
-
-    <div class="key-takeaway">
-      <h3>🎯 Key Takeaway</h3>
-      <ul>
-        <li>A single synchronizer flop gives metastability zero time to resolve before it's used.</li>
-        <li>The real risk is fan-out disagreement — different gates reading the same unsettled signal differently.</li>
-        <li>The two-flop synchronizer works by buying a full extra clock period of settling time, not by "preventing" metastability.</li>
-        <li>Single-flop bugs are dangerous precisely because they can pass simulation and testing, then fail randomly in the field.</li>
-      </ul>
-    </div>
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Time to see it happen. In the lab below, FF_SYNC fans out to two gates — watch how often they actually agree. 👇
+    </p>
 
     <div class="lab-section">
       <div class="lab-header">
@@ -595,6 +724,134 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       <div class="lab-verdict" id="labVerdict"></div>
     </div>
 
+    <div class="section">
+      <div class="section-head"><div class="section-num">💻</div><h2>Try it yourself in real Verilog</h2></div>
+      <p>
+        Below is a single-flop synchronizer whose output fans out to two separate always-blocks — a rough stand-in for
+        two independent downstream gates. Paste both files into our
+        <a href="/tools/verilog-simulator/" target="_blank">Verilog Simulator</a> and compare
+        <code style="color:var(--teal)">gate_x</code> and <code style="color:var(--teal)">gate_y</code> in the waveform.
+      </p>
+
+      <div class="infobox">
+        <p><strong>Heads up:</strong> since Icarus (and RTL simulators generally) don't model real analog metastability, <code style="color:var(--teal)">gate_x</code> and <code style="color:var(--teal)">gate_y</code> will always agree here — both are driven from the same resolved simulation value. What this code <em>does</em> show clearly is the structure of the mistake: one flop, output fanning out with nothing buffering it. The actual disagreement you watched in the lab above is what happens to that same structure in real silicon.</p>
+      </div>
+
+      <div class="code-panel">
+        <div class="code-panel-head">
+          <span>Design — single_flop_sync.v</span>
+          <button class="copy-btn" onclick="copyLabCode('designCode', this)">Copy</button>
+        </div>
+        <pre id="designCode">// ------------------------------------------------------------
+// single_flop_sync.v
+// A single synchronizer flop whose output fans out to two
+// separate destinations -- the unsafe structure this lesson
+// covers. (Fixed properly with a 2-flop synchronizer later.)
+// ------------------------------------------------------------
+module single_flop_sync (
+  input  clk_a,
+  input  clk_b,
+  input  rst,
+  output reg data_a,   // toggles inside Domain A
+  output reg ff_sync,  // the single synchronizer flop
+  output reg gate_x,   // one downstream destination
+  output reg gate_y    // another downstream destination
+);
+
+  // Domain A: source flip-flop
+  always @(posedge clk_a or posedge rst) begin
+    if (rst)
+      data_a &lt;= 1'b0;
+    else
+      data_a &lt;= ~data_a;
+  end
+
+  // Domain B: the single synchronizer flop -- no second stage!
+  always @(posedge clk_b or posedge rst) begin
+    if (rst)
+      ff_sync &lt;= 1'b0;
+    else
+      ff_sync &lt;= data_a;
+  end
+
+  // Two "gates" both fed directly from ff_sync's output.
+  // In real silicon, if ff_sync is still metastable here,
+  // these two paths can latch different values.
+  always @(posedge clk_b or posedge rst) begin
+    if (rst)
+      gate_x &lt;= 1'b0;
+    else
+      gate_x &lt;= ff_sync;
+  end
+
+  always @(posedge clk_b or posedge rst) begin
+    if (rst)
+      gate_y &lt;= 1'b0;
+    else
+      gate_y &lt;= ff_sync;
+  end
+
+endmodule</pre>
+      </div>
+
+      <div class="code-panel">
+        <div class="code-panel-head">
+          <span>Testbench — tb.v</span>
+          <button class="copy-btn" onclick="copyLabCode('tbCode', this)">Copy</button>
+        </div>
+        <pre id="tbCode">// ------------------------------------------------------------
+// tb.v -- drives two unrelated clocks and dumps waves
+// ------------------------------------------------------------
+module tb;
+
+  reg clk_a = 0;
+  reg clk_b = 0;
+  reg rst   = 1;
+
+  wire data_a, ff_sync, gate_x, gate_y;
+
+  single_flop_sync dut (
+    .clk_a   (clk_a),
+    .clk_b   (clk_b),
+    .rst     (rst),
+    .data_a  (data_a),
+    .ff_sync (ff_sync),
+    .gate_x  (gate_x),
+    .gate_y  (gate_y)
+  );
+
+  // Clock A: 10ns period
+  always #5 clk_a = ~clk_a;
+
+  // Clock B: 13ns period -- deliberately unrelated to Clock A
+  always #6.5 clk_b = ~clk_b;
+
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+
+    rst = 1;
+    #20 rst = 0;
+
+    #500 $finish;
+  end
+
+endmodule</pre>
+      </div>
+
+      <a href="/tools/verilog-simulator/" target="_blank" class="sim-cta">🚀 Open Verilog Simulator →</a>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>A single synchronizer flop gives metastability <strong>zero</strong> time to resolve before its output gets used.</li>
+        <li>The real risk isn't "an occasional wrong bit" — it's <strong>fan-out disagreement</strong>: different downstream gates reading the same unsettled signal differently, in the same cycle.</li>
+        <li>The two-flop synchronizer works by buying a full extra clock period of settling time, not by "preventing" metastability — nothing can prevent it.</li>
+        <li>Single-flop bugs are dangerous precisely because they can pass simulation and bench testing, then fail randomly in the field.</li>
+      </ul>
+    </div>
+
     <div class="lesson-nav">
       <a href="/premium-course/cdc/">← Back to Course Index</a>
     </div>
@@ -604,6 +861,8 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 <footer>
   © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
 </footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
 
 </body>
 </html>
