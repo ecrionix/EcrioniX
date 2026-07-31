@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Pulse Synchronizer — CDC Course | EcrioniX</title>
+<meta property="og:title" content="The Pulse Synchronizer — CDC Course | EcrioniX">
+<meta property="og:description" content="Why a single-cycle pulse can vanish crossing clock domains, the toggle-and-detect fix, an accurate side-by-side lab proving it, and synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/pulse-synchronizer/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: Toggle-sync vs naive-sync pulse race ---- */
+const PS_WINDOW = 320; // ns, fixed display window
+
+function psComputeClockEdges(period) {
+  const edges = [];
+  let t = period;
+  while (t <= PS_WINDOW) { edges.push(t); t += period; }
+  return edges;
+}
+
+function psComputePulses(spacing, width, clkBPeriod) {
+  // Only emit a pulse if there's enough room left in the window for it to
+  // fully resolve (2-flop sync + edge-detect stage) -- otherwise a pulse near
+  // the right edge of the display would look "missed" purely because we
+  // stopped drawing before its result arrived, not because it was actually lost.
+  const margin = clkBPeriod * 3 + width;
+  const pulses = [];
+  let t = spacing;
+  while (t + margin <= PS_WINDOW) { pulses.push({ start: t, end: t + width }); t += spacing; }
+  return pulses;
+}
+
+function psPulseValAt(pulses, t) {
+  for (const p of pulses) { if (t >= p.start && t < p.end) return 1; }
+  return 0;
+}
+function psToggleAAt(pulses, t) {
+  let count = 0;
+  for (const p of pulses) { if (p.start <= t) count++; else break; }
+  return count % 2;
+}
+
+function psSimulate(clkBPeriod, spacing, width) {
+  const pulses = psComputePulses(spacing, width, clkBPeriod);
+  const clkBEdges = psComputeClockEdges(clkBPeriod);
+
+  // toggle path: ff1 -> ff2 (2-flop sync of the toggle) -> ff3 (1 more cycle, for edge detect)
+  let ff1 = 0, ff2 = 0, ff3 = 0;
+  const toggleATrace = [];   // domain-A toggle level, sampled at each clk_b edge (for drawing only)
+  const syncTrace = [];      // {t, val: ff2}  -- the synchronized toggle
+  const pulseOutTrace = [];  // {t, val}       -- XOR(ff2, ff3): the regenerated pulse
+
+  clkBEdges.forEach(t => {
+    const toggleNow = psToggleAAt(pulses, t);
+    ff3 = ff2; ff2 = ff1; ff1 = toggleNow;
+    syncTrace.push({ t, val: ff2 });
+    pulseOutTrace.push({ t, val: (ff2 !== ff3) ? 1 : 0 });
+    toggleATrace.push({ t, val: toggleNow });
+  });
+
+  // naive path: direct 2-flop sync of the raw pulse itself
+  let nff1 = 0, nff2 = 0;
+  const naiveTrace = [];
+  clkBEdges.forEach(t => {
+    const raw = psPulseValAt(pulses, t);
+    nff2 = nff1; nff1 = raw;
+    naiveTrace.push({ t, val: nff2 });
+  });
+
+  const toggleCaught = pulseOutTrace.filter(e => e.val === 1).length;
+  let naiveCaught = 0, prevN = 0;
+  naiveTrace.forEach(e => { if (e.val === 1 && prevN === 0) naiveCaught++; prevN = e.val; });
+
+  return { pulses, clkBEdges, clkBPeriod, syncTrace, pulseOutTrace, naiveTrace, toggleATrace, toggleCaught, naiveCaught, total: pulses.length };
+}
+
+function psOnSliderChange() {
+  const clkBPeriod = Number(document.getElementById('psClkBSlider').value);
+  const spacing = Number(document.getElementById('psSpacingSlider').value);
+  const width = Number(document.getElementById('psWidthSlider').value);
+
+  document.getElementById('psClkBLabel').innerText = (1000 / clkBPeriod).toFixed(0) + ' MHz (period ' + clkBPeriod + ' ns)';
+  document.getElementById('psSpacingLabel').innerText = spacing + ' ns apart';
+  document.getElementById('psWidthLabel').innerText = width + ' ns wide';
+
+  const result = psSimulate(clkBPeriod, spacing, width);
+  psDraw(result);
+
+  const togglePct = result.total ? Math.round(result.toggleCaught / result.total * 100) : 0;
+  const naivePct = result.total ? Math.round(result.naiveCaught / result.total * 100) : 0;
+
+  const toggleStat = document.getElementById('psToggleStat');
+  toggleStat.textContent = 'Toggle method: caught ' + result.toggleCaught + ' of ' + result.total + ' (' + togglePct + '%)';
+  toggleStat.className = 'ps-stat ' + (togglePct === 100 ? 'ps-good' : (togglePct >= 90 ? 'ps-warn' : 'ps-bad'));
+
+  const naiveStat = document.getElementById('psNaiveStat');
+  naiveStat.textContent = 'Naive direct-sync method: caught ' + result.naiveCaught + ' of ' + result.total + ' (' + naivePct + '%)';
+  naiveStat.className = 'ps-stat ' + (naivePct === 100 ? 'ps-good' : (naivePct >= 90 ? 'ps-warn' : 'ps-bad'));
+}
+
+function psStepDraw(ctx, events, xFor, yHi, yLo, color, dashed) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let v = 0;
+  ctx.moveTo(xFor(0), v ? yHi : yLo);
+  if (dashed) ctx.setLineDash([3, 2]);
+  events.forEach(e => {
+    const x = xFor(e.t);
+    ctx.lineTo(x, v ? yHi : yLo);
+    v = e.val;
+    ctx.lineTo(x, v ? yHi : yLo);
+  });
+  ctx.lineTo(xFor(PS_WINDOW), v ? yHi : yLo);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function psDraw(result) {
+  const canvas = document.getElementById('psCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const padL = 130, padR = 15;
+  const xFor = (t) => padL + (t / PS_WINDOW) * (W - padL - padR);
+
+  const rows = [
+    { label: 'CLK B', color: '#a78bfa' },
+    { label: 'PULSE_A (source)', color: '#f472b6' },
+    { label: 'TOGGLE_A', color: '#fbbf24' },
+    { label: 'TOGGLE_SYNC_B', color: '#38bdf8' },
+    { label: 'PULSE_OUT (toggle method)', color: '#4ade80' },
+    { label: 'NAIVE_SYNC (direct method)', color: '#f87171' }
+  ];
+  const rowH = (H - 10) / rows.length;
+
+  rows.forEach((row, i) => {
+    const yMid = 5 + rowH * i + rowH / 2;
+    const yHi = yMid - rowH * 0.3, yLo = yMid + rowH * 0.3;
+
+    ctx.font = '10px Outfit, sans-serif';
+    ctx.fillStyle = row.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 4, yMid + 3);
+
+    if (i === 0) {
+      // CLK B square wave
+      ctx.strokeStyle = row.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let curLevel = 0;
+      ctx.moveTo(xFor(0), curLevel ? yHi : yLo);
+      const halfPeriod = result.clkBPeriod / 2;
+      let tt = 0;
+      while (tt < PS_WINDOW) {
+        const next = Math.min(tt + halfPeriod, PS_WINDOW);
+        ctx.lineTo(xFor(next), curLevel ? yHi : yLo);
+        if (next < PS_WINDOW) {
+          curLevel = curLevel ? 0 : 1;
+          ctx.lineTo(xFor(next), curLevel ? yHi : yLo);
+        }
+        tt = next;
+      }
+      ctx.stroke();
+    } else if (i === 1) {
+      // PULSE_A
+      ctx.strokeStyle = row.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let v = 0;
+      ctx.moveTo(xFor(0), yLo);
+      result.pulses.forEach(p => {
+        ctx.lineTo(xFor(p.start), yLo);
+        ctx.lineTo(xFor(p.start), yHi);
+        ctx.lineTo(xFor(p.end), yHi);
+        ctx.lineTo(xFor(p.end), yLo);
+      });
+      ctx.lineTo(xFor(PS_WINDOW), yLo);
+      ctx.stroke();
+    } else if (i === 2) {
+      psStepDraw(ctx, result.toggleATrace, xFor, yHi, yLo, row.color, false);
+    } else if (i === 3) {
+      psStepDraw(ctx, result.syncTrace, xFor, yHi, yLo, row.color, false);
+    } else if (i === 4) {
+      psStepDraw(ctx, result.pulseOutTrace, xFor, yHi, yLo, row.color, false);
+    } else if (i === 5) {
+      psStepDraw(ctx, result.naiveTrace, xFor, yHi, yLo, row.color, false);
+    }
+  });
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < rows.length; i++) {
+    const y = 5 + rowH * i;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('psCanvas')) psOnSliderChange();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.9rem}
+.slider-row:last-child{margin-bottom:0}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.ps-stats{display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem}
+.ps-stat{font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:700;padding:0.6rem 0.9rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3)}
+.ps-stat.ps-good{color:#4ade80;border-color:rgba(74,222,128,.3)}
+.ps-stat.ps-warn{color:#fbbf24;border-color:rgba(251,191,36,.3)}
+.ps-stat.ps-bad{color:#f87171;border-color:rgba(248,113,113,.3)}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#psCanvas{display:block;width:100%;max-width:680px;margin:0 auto}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 3: Synchronization Techniques</div>
+    <span class="lesson-tag">Lesson 3.3</span>
+    <h1>The Pulse Synchronizer</h1>
+
+    <p class="lede">
+      One more shape of signal doesn't survive the two-flop synchronizer untouched: a <span class="hl">single-cycle
+      pulse</span>. It's not about metastability this time — it's simpler and sneakier than that. A pulse can be
+      completely, cleanly, silently missed, with no violation, no X, no warning. Here's why, and the neat trick that fixes it.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>How a perfectly clean pulse just disappears</h2></div>
+      <p>
+        A two-flop synchronizer only ever reports whatever <code>data_a</code> happens to be <em>at the instant</em>
+        of a <code>clk_b</code> rising edge. That's fine for a level that stays put. But a pulse, by definition, comes
+        and goes — and if it comes and goes entirely between two <code>clk_b</code> edges, no edge ever sees it. FF1's
+        <code>D</code> input was 1 for a while and 0 again, and FF1 never sampled anything but 0.
+      </p>
+
+      <div class="visual">
+        <svg viewBox="0 0 620 160" xmlns="http://www.w3.org/2000/svg">
+          <text x="10" y="24" fill="#a78bfa" font-size="11" font-family="JetBrains Mono,monospace">CLK B</text>
+          <path d="M60,20 L60,40 L160,40 L160,20 L260,20 L260,40 L360,40 L360,20 L460,20 L460,40 L560,40 L560,20"
+                fill="none" stroke="#a78bfa" stroke-width="2"/>
+          <line x1="60" y1="55" x2="60" y2="140" stroke="rgba(167,139,250,0.25)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="160" y1="55" x2="160" y2="140" stroke="rgba(167,139,250,0.25)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="260" y1="55" x2="260" y2="140" stroke="rgba(167,139,250,0.25)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="360" y1="55" x2="360" y2="140" stroke="rgba(167,139,250,0.25)" stroke-width="1" stroke-dasharray="3,3"/>
+
+          <text x="10" y="84" fill="#f472b6" font-size="11" font-family="JetBrains Mono,monospace">data_a</text>
+          <path d="M60,100 L195,100 L195,75 L215,75 L215,100 L560,100" fill="none" stroke="#f472b6" stroke-width="2"/>
+          <text x="205" y="68" fill="#f472b6" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">pulse</text>
+
+          <text x="205" y="126" fill="#fca5a5" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">↑ squeezed entirely between two clk_b edges</text>
+          <text x="205" y="142" fill="#f87171" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">FF1 never samples a 1 — the pulse is gone. No error, no trace.</text>
+        </svg>
+        <div class="visual-cap">This isn't a rare edge case — it's guaranteed to happen whenever the pulse is narrower than one <code>clk_b</code> period and its timing is unrelated to <code>clk_b</code>, which is exactly the situation CDC exists to handle.</div>
+      </div>
+
+      <div class="warnbox">
+        <p><strong>Making the pulse wider doesn't fully solve it either.</strong> Even a pulse as wide as one full <code>clk_b</code> period can still land with unlucky phase and get missed by one sample, and if <code>clk_b</code> is much slower than <code>clk_a</code> — or their ratio isn't known at design time — there's no width you can pick that's always safe. You need a technique that works regardless of the frequency relationship.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>The fix: stop sending a pulse — send a level change</h2></div>
+      <p>
+        A level can't be squeezed out of existence — it just sits there until something changes it, and the two-flop
+        synchronizer is built exactly for levels. So: don't synchronize the pulse. <span class="term">Toggle a
+        flip-flop</span> in domain A every time the pulse fires, synchronize <em>that</em> (a level, immune to
+        width), and then rebuild a clean one-cycle pulse on the other side.
+      </p>
+      <div class="analogy">
+        <div class="analogy-label">💡 The light-switch analogy</div>
+        <p>Flicking a light switch is a brief action, easy to miss if you glance away at the wrong moment. But whether the light is currently ON or OFF is a state you can check any time and always get the right answer. Toggling turns a "did something just happen?" question (easy to miss) into an "is it currently different than before?" question (impossible to miss).</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>The complete circuit</h2></div>
+      <p>One straight chain, three stages, nothing crossing back on itself:</p>
+      <div class="visual">
+        <svg viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg">
+          <line x1="330" y1="15" x2="330" y2="175" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="160" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A (clk_a)</text>
+          <text x="520" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B (clk_b)</text>
+
+          <!-- pulse in -->
+          <rect x="10" y="70" width="80" height="40" rx="6" fill="#0c1526" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="50" y="94" fill="#f472b6" font-size="10" text-anchor="middle" font-family="JetBrains Mono,monospace">pulse_a</text>
+
+          <!-- toggle FF (domain A) -->
+          <rect x="130" y="65" width="90" height="50" rx="6" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="175" y="86" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">TOGGLE FF</text>
+          <text x="175" y="100" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">T · clk_a</text>
+
+          <!-- 2-flop sync (domain B) -->
+          <rect x="360" y="65" width="110" height="50" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="415" y="86" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC_2FF</text>
+          <text x="415" y="100" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">2 flops · clk_b</text>
+
+          <!-- delay reg + XOR (domain B) -->
+          <rect x="510" y="65" width="110" height="50" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="565" y="82" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">DELAY + XOR</text>
+          <text x="565" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">edge detector</text>
+          <text x="565" y="107" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">clk_b</text>
+
+          <!-- out -->
+          <rect x="650" y="70" width="60" height="40" rx="6" fill="#0c1526" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="680" y="94" fill="#4ade80" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">pulse_out</text>
+
+          <line x1="90" y1="90" x2="130" y2="90" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowP)"/>
+          <line x1="220" y1="90" x2="360" y2="90" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowP)"/>
+          <text x="290" y="82" fill="#fbbf24" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">toggle_a</text>
+          <line x1="470" y1="90" x2="510" y2="90" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowP)"/>
+          <text x="490" y="82" fill="#38bdf8" font-size="7" text-anchor="middle" font-family="JetBrains Mono,monospace">toggle_sync</text>
+          <line x1="620" y1="90" x2="650" y2="90" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowP)"/>
+
+          <!-- clocks below, never crossing the signal lane -->
+          <line x1="175" y1="150" x2="175" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="175" y="163" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">clk_a</text>
+          <line x1="415" y1="150" x2="415" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="565" y1="150" x2="565" y2="115" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="415" y1="150" x2="565" y2="150" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="490" y="163" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">clk_b</text>
+
+          <defs><marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+        </svg>
+        <div class="visual-cap">TOGGLE FF turns the pulse into a level flip. SYNC_2FF is exactly Lesson 3.1's circuit — it can't lose a level. DELAY+XOR compares the synchronized toggle to a 1-cycle-older copy of itself: whenever they differ, exactly one <code>clk_b</code>-wide pulse comes out.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Walking through it</h2></div>
+      <ol>
+        <li><strong>pulse_a fires.</strong> The TOGGLE FF flips — <code>toggle_a</code> changes level and, critically, <em>stays</em> at the new level indefinitely, however narrow the original pulse was.</li>
+        <li><strong>toggle_a crosses through SYNC_2FF</strong> — the exact same two-flop synchronizer from Lesson 3.1. Because it's a level, not a pulse, it cannot be missed the way the raw pulse could.</li>
+        <li><strong>The DELAY+XOR stage compares</strong> the freshly synchronized toggle against a copy of itself delayed by one more <code>clk_b</code> cycle. For exactly one cycle after the toggle changes, the two disagree — and that disagreement <em>is</em> <code>pulse_out</code>: a clean, single-<code>clk_b</code>-cycle pulse.</li>
+      </ol>
+      <div class="def-box">
+        <div class="def-label">Why this is immune to pulse width</div>
+        <p>The only thing that has to survive is a level change reaching the toggle flop — and levels don't have a "width" to be too narrow. It doesn't matter if <code>clk_b</code> is faster, slower, or completely unrelated to <code>clk_a</code>.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>The constraint this doesn't remove: pulse rate</h2></div>
+      <p>
+        Immunity to <em>width</em> is not immunity to <em>rate</em>. If a second source pulse fires before the first
+        toggle has finished making its way through SYNC_2FF and the edge detector, the two toggles can blur together
+        — the receiver sees one level change instead of two, and a pulse is lost anyway, this time for a completely
+        different reason: it never even reached the point of being "too narrow."
+      </p>
+      <div class="warnbox">
+        <p><strong>Rule of thumb: keep source pulses spaced at least 3 receiving-clock periods apart.</strong> That gives the two-flop synchronizer its full settling time <em>and</em> the edge detector a clean, separate cycle to register each toggle. If your source needs to fire faster than that, a pulse synchronizer is the wrong tool — reach for the handshake synchronizer (Lesson 3.2) or a FIFO (Module 4) instead, both of which have built-in back-pressure.</p>
+      </div>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Race the two methods head-to-head — same pulse train, same clock, two different synchronizers. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Toggle-Sync vs. Naive-Sync</h2>
+      </div>
+      <p class="lab-instructions">
+        The same <code>pulse_a</code> train feeds two synchronizers at once: the toggle-and-detect circuit from this
+        lesson, and a naive direct two-flop synchronizer applied straight to the pulse. Drag the sliders and watch
+        which one actually gets every pulse through.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Receiving clock (clk_b): <span id="psClkBLabel">100 MHz (period 10 ns)</span></label>
+          <input type="range" id="psClkBSlider" min="4" max="20" step="1" value="10" oninput="psOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Pulse spacing: <span id="psSpacingLabel">33 ns apart</span> <span class="slider-hint">(time between source pulses)</span></label>
+          <input type="range" id="psSpacingSlider" min="6" max="60" step="1" value="33" oninput="psOnSliderChange()">
+        </div>
+        <div class="slider-row">
+          <label>Pulse width: <span id="psWidthLabel">1.5 ns wide</span> <span class="slider-hint">(how long each source pulse lasts)</span></label>
+          <input type="range" id="psWidthSlider" min="0.3" max="8" step="0.1" value="1.5" oninput="psOnSliderChange()">
+        </div>
+      </div>
+
+      <div class="ps-stats">
+        <div class="ps-stat" id="psToggleStat">Toggle method: —</div>
+        <div class="ps-stat" id="psNaiveStat">Naive direct-sync method: —</div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="psCanvas" width="680" height="270"></canvas>
+      </div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>pulse_sync.v</span><button class="copy-btn" onclick="copyLabCode('code-pulsesync', this)">📋 Copy</button></div>
+      <pre id="code-pulsesync">module pulse_sync (
+    input  wire clk_a,
+    input  wire rst_a_n,
+    input  wire pulse_a,        // single-cycle pulse, domain A
+
+    input  wire clk_b,
+    input  wire rst_b_n,
+    output wire pulse_b         // single-cycle pulse, domain B
+);
+
+    // ---- Domain A: pulse -> toggle ----
+    reg toggle_a;
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n)      toggle_a <= 1'b0;
+        else if (pulse_a)  toggle_a <= ~toggle_a;
+    end
+
+    // ---- Domain B: 2-flop synchronizer for the toggle ----
+    (* ASYNC_REG = "TRUE" *) reg sync_stage1;
+    (* ASYNC_REG = "TRUE" *) reg toggle_sync_b;
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            sync_stage1   <= 1'b0;
+            toggle_sync_b <= 1'b0;
+        end else begin
+            sync_stage1   <= toggle_a;
+            toggle_sync_b <= sync_stage1;
+        end
+    end
+
+    // ---- Domain B: edge detector (delay + XOR) ----
+    reg toggle_sync_b_d1;
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) toggle_sync_b_d1 <= 1'b0;
+        else          toggle_sync_b_d1 <= toggle_sync_b;
+    end
+
+    assign pulse_b = toggle_sync_b ^ toggle_sync_b_d1;
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_pulse_sync.v</span><button class="copy-btn" onclick="copyLabCode('code-pulsesync-tb', this)">📋 Copy</button></div>
+      <pre id="code-pulsesync-tb">`timescale 1ns/1ps
+module tb_pulse_sync;
+
+    reg clk_a = 0, clk_b = 0;
+    reg rst_a_n = 0, rst_b_n = 0;
+    reg pulse_a = 0;
+    wire pulse_b;
+
+    // Two unrelated clocks
+    always #5   clk_a = ~clk_a;   // 100 MHz
+    always #3.5 clk_b = ~clk_b;   // ~143 MHz
+
+    pulse_sync dut (
+        .clk_a(clk_a), .rst_a_n(rst_a_n), .pulse_a(pulse_a),
+        .clk_b(clk_b), .rst_b_n(rst_b_n), .pulse_b(pulse_b)
+    );
+
+    initial begin
+        $dumpfile("pulse_sync.vcd");
+        $dumpvars(0, tb_pulse_sync);
+
+        #20 rst_a_n = 1; rst_b_n = 1;
+
+        // Fire a single-cycle pulse a few times, spaced safely apart
+        repeat (4) begin
+            #23 pulse_a = 1;
+            #5  pulse_a = 0;   // exactly 1 clk_a cycle wide
+        end
+
+        #60 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>A two-flop synchronizer can silently drop a pulse that's narrower than the receiving clock period — no error, no warning, it just never gets sampled.</li>
+        <li>The fix: toggle a flip-flop on every source pulse (turning it into a level change), synchronize that level with a normal two-flop synchronizer, then regenerate a clean pulse with a delay register + XOR edge detector.</li>
+        <li>This makes the crossing immune to pulse <em>width</em> and immune to the clk_a/clk_b frequency ratio — but not immune to pulse <em>rate</em>.</li>
+        <li>Keep source pulses spaced at least ~3 receiving-clock periods apart. Faster than that, use the handshake synchronizer or a FIFO instead.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/handshake-synchronizer/">← Previous: The Handshake-Based Synchronizer</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
