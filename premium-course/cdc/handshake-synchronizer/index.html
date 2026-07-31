@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Handshake-Based Synchronizer — CDC Course | EcrioniX</title>
+<meta property="og:title" content="The Handshake-Based Synchronizer — CDC Course | EcrioniX">
+<meta property="og:description" content="How to safely cross a multi-bit value between clock domains using REQ/ACK — full circuit, non-crossing signal-flow diagram, step-through lab, and synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/handshake-synchronizer/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: 4-phase REQ/ACK handshake, step-through ---- */
+const HS_STEPS = [
+  { desc: 'IDLE — both domains quiet. No transfer in progress.', lane: 'idle',
+    req: 0, reqSync: 0, ack: 0, ackSync: 0, data: 0, srcState: 'IDLE', dstState: 'IDLE' },
+  { desc: 'SRC drives DATA onto the bus and asserts REQ (domain A).', lane: 'src',
+    req: 1, reqSync: 0, ack: 0, ackSync: 0, data: 1, srcState: 'REQ_HIGH', dstState: 'IDLE' },
+  { desc: 'REQ is in flight through the 2-flop synchronizer into domain B.', lane: 'sync_req',
+    req: 1, reqSync: 'x', ack: 0, ackSync: 0, data: 1, srcState: 'REQ_HIGH', dstState: 'IDLE' },
+  { desc: 'REQ_SYNC arrives in domain B. DST captures DATA and asserts ACK.', lane: 'dst',
+    req: 1, reqSync: 1, ack: 1, ackSync: 0, data: 1, srcState: 'REQ_HIGH', dstState: 'ACK_HIGH' },
+  { desc: 'ACK is in flight through the 2-flop synchronizer back into domain A.', lane: 'sync_ack',
+    req: 1, reqSync: 1, ack: 1, ackSync: 'x', data: 1, srcState: 'REQ_HIGH', dstState: 'ACK_HIGH' },
+  { desc: 'ACK_SYNC arrives in domain A. SRC confirms the transfer and drops REQ.', lane: 'src',
+    req: 0, reqSync: 1, ack: 1, ackSync: 1, data: 0, srcState: 'WAIT_ACK_LOW', dstState: 'ACK_HIGH' },
+  { desc: 'REQ=0 is in flight through the synchronizer into domain B.', lane: 'sync_req',
+    req: 0, reqSync: 'x', ack: 1, ackSync: 1, data: 0, srcState: 'WAIT_ACK_LOW', dstState: 'ACK_HIGH' },
+  { desc: 'REQ_SYNC=0 arrives. DST sees the request withdrawn and drops ACK.', lane: 'dst',
+    req: 0, reqSync: 0, ack: 0, ackSync: 1, data: 0, srcState: 'WAIT_ACK_LOW', dstState: 'IDLE' },
+  { desc: 'ACK=0 is in flight through the synchronizer back into domain A.', lane: 'sync_ack',
+    req: 0, reqSync: 0, ack: 0, ackSync: 'x', data: 0, srcState: 'WAIT_ACK_LOW', dstState: 'IDLE' },
+  { desc: 'ACK_SYNC=0 arrives. SRC is back in IDLE — ready for the next transfer.', lane: 'idle',
+    req: 0, reqSync: 0, ack: 0, ackSync: 0, data: 0, srcState: 'IDLE', dstState: 'IDLE' }
+];
+let hsStep = 0;
+
+const HS_LANE_IDS = {
+  src:      ['diagSrcBox'],
+  sync_req: ['diagSyncReqBox', 'wireReqIn', 'wireReqOut'],
+  dst:      ['diagDstBox'],
+  sync_ack: ['diagSyncAckBox', 'wireAckIn', 'wireAckOut'],
+  idle:     []
+};
+
+function hsSetLevel(elId, level) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.setAttribute('data-level', String(level));
+  el.setAttribute('fill', level === 1 ? '#4ade80' : (level === 'x' ? '#fbbf24' : '#334155'));
+}
+
+function hsHighlight(lane) {
+  Object.keys(HS_LANE_IDS).forEach(key => {
+    HS_LANE_IDS[key].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('hs-active', key === lane);
+    });
+  });
+}
+
+function hsRender() {
+  const s = HS_STEPS[hsStep];
+  document.getElementById('hsStepCounter').textContent = 'Step ' + (hsStep + 1) + ' of ' + HS_STEPS.length;
+  document.getElementById('hsDesc').textContent = s.desc;
+  document.getElementById('hsSrcState').textContent = s.srcState;
+  document.getElementById('hsDstState').textContent = s.dstState;
+
+  hsSetLevel('dotReq', s.req);
+  hsSetLevel('dotReqSync', s.reqSync);
+  hsSetLevel('dotAck', s.ack);
+  hsSetLevel('dotAckSync', s.ackSync);
+  hsSetLevel('dotData', s.data);
+
+  hsHighlight(s.lane);
+
+  document.getElementById('hsPrevBtn').disabled = hsStep === 0;
+  document.getElementById('hsNextBtn').disabled = hsStep === HS_STEPS.length - 1;
+
+  hsDrawWaveform();
+}
+
+function hsNext() {
+  if (hsStep < HS_STEPS.length - 1) { hsStep++; hsRender(); }
+}
+function hsPrev() {
+  if (hsStep > 0) { hsStep--; hsRender(); }
+}
+function hsReset() {
+  hsStep = 0;
+  hsRender();
+}
+
+function hsLevelY(val, yHi, yLo, yMid) {
+  if (val === 1) return yHi;
+  if (val === 0) return yLo;
+  return yMid; // 'x' = in flight / unresolved
+}
+
+function hsDrawWaveform() {
+  const canvas = document.getElementById('hsCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const rows = [
+    { key: 'data', label: 'DATA', color: '#f472b6' },
+    { key: 'req', label: 'REQ (dom A)', color: '#38bdf8' },
+    { key: 'reqSync', label: 'REQ_SYNC (dom B)', color: '#38bdf8' },
+    { key: 'ack', label: 'ACK (dom B)', color: '#4ade80' },
+    { key: 'ackSync', label: 'ACK_SYNC (dom A)', color: '#4ade80' }
+  ];
+  const padL = 118, padR = 10, rowH = (H - 10) / rows.length;
+  const colW = (W - padL - padR) / HS_STEPS.length;
+
+  rows.forEach((row, ri) => {
+    const yMid = 5 + rowH * ri + rowH / 2;
+    const yHi = yMid - rowH * 0.32, yLo = yMid + rowH * 0.32;
+
+    ctx.font = '10px Outfit, sans-serif';
+    ctx.fillStyle = row.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 4, yMid + 3);
+
+    ctx.strokeStyle = row.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let prevY = null;
+    for (let i = 0; i <= hsStep; i++) {
+      const val = HS_STEPS[i][row.key];
+      const y = hsLevelY(val, yHi, yLo, yMid);
+      const x0 = padL + colW * i;
+      const x1 = padL + colW * (i + 1);
+      if (prevY !== null && prevY !== y) {
+        ctx.lineTo(x0, prevY);
+        ctx.lineTo(x0, y);
+      } else if (i === 0) {
+        ctx.moveTo(x0, y);
+      }
+      if (val === 'x') {
+        ctx.save();
+        ctx.setLineDash([2, 2]);
+        ctx.lineTo(x1, y);
+        ctx.restore();
+      } else {
+        ctx.lineTo(x1, y);
+      }
+      prevY = y;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // current-step marker
+    const curVal = HS_STEPS[hsStep][row.key];
+    const curY = hsLevelY(curVal, yHi, yLo, yMid);
+    const curX = padL + colW * (hsStep + 0.5);
+    ctx.save();
+    ctx.shadowColor = row.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(curX, curY, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = row.color;
+    ctx.fill();
+    ctx.restore();
+  });
+
+  ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < rows.length; i++) {
+    const y = 5 + rowH * i;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('hsCanvas')) hsRender();
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ol li{margin-bottom:0.5rem}
+.section ol li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin:1.4rem 0}
+.rule-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem}
+.rule-card .rule-icon{font-size:1.2rem;margin-bottom:0.4rem}
+.rule-card .rule-title{font-size:0.88rem;font-weight:700;color:#f8fafc;margin-bottom:0.3rem}
+.rule-card .rule-body{font-size:0.82rem;color:var(--sl)}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin-bottom:1rem;text-align:center}
+.lab-diagram-wrap svg{max-width:100%;height:auto}
+.hs-active{filter:drop-shadow(0 0 6px currentColor)}
+
+.hs-status-bar{display:flex;justify-content:space-between;align-items:center;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem 1.1rem;margin-bottom:1rem;flex-wrap:wrap;gap:0.6rem}
+.hs-step-counter{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--blue);font-weight:700}
+.hs-states{display:flex;gap:1.2rem;font-family:'JetBrains Mono',monospace;font-size:0.78rem}
+.hs-states span b{color:#f8fafc}
+.hs-desc{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.9rem 1.1rem;margin-bottom:1rem;font-size:0.9rem;color:var(--text);min-height:1.4em}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#hsCanvas{display:block;width:100%;max-width:660px;margin:0 auto}
+
+.lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
+.lab-btn{background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;border:none;border-radius:8px;padding:0.55rem 1.2rem;font-weight:700;cursor:pointer;font-size:0.85rem;transition:opacity 0.15s}
+.lab-btn:hover{opacity:0.9}
+.lab-btn:disabled{opacity:0.35;cursor:not-allowed}
+.lab-btn.secondary{background:var(--bg3);color:var(--text);border:1px solid var(--bdr)}
+.legend-row{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.75rem;color:var(--sl);margin-top:0.8rem}
+.legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:0.35rem}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 3: Synchronization Techniques</div>
+    <span class="lesson-tag">Lesson 3.2</span>
+    <h1>The Handshake-Based Synchronizer</h1>
+
+    <p class="lede">
+      The two-flop synchronizer from Lesson 3.1 has a hard limit: it only trusts a <span class="hl">single bit</span>.
+      Put a multi-bit bus through independent two-flop synchronizers and different bits can resolve on different
+      clock edges — the receiver briefly sees a value that was never actually driven. To move a whole multi-bit value
+      safely, you need a way for the receiver to say "got it" back to the sender. That's a <span class="hl">handshake</span>.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>The problem two flops can't solve</h2></div>
+      <p>
+        Imagine domain A wants to send the 8-bit value <code>10110010</code> to domain B. If every bit gets its own
+        two-flop synchronizer, each bit resolves independently — some bits might land on this <code>clk_b</code> edge,
+        others on the next one. For one brief cycle, domain B could sample <code>10111010</code> — a value that
+        never existed anywhere. This is exactly why Lesson 3.1 called multi-bit buses out as a real bug class.
+      </p>
+      <p>
+        The fix isn't a smarter flop. It's a <span class="term">protocol</span>: hold the data rock-steady, and don't
+        let the receiver read it until the receiver has actually had time to notice it's there — and don't let the
+        sender change it until the receiver confirms it's done reading.
+      </p>
+      <div class="analogy">
+        <div class="analogy-label">✋ The relay-baton handshake</div>
+        <p>A relay runner doesn't just fling the baton and hope. They hold it out, wait until the next runner's hand actually closes around it, and only then let go. The handshake synchronizer is that same discipline, built out of two control wires instead of two hands.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>The four-phase handshake, in words</h2></div>
+      <p>Two control signals do all the work — <code>req</code> (request) and <code>ack</code> (acknowledge) — and the data bus just sits still while they talk:</p>
+      <ol>
+        <li><strong>SRC drives DATA, then raises REQ.</strong> Data is stable before REQ ever moves.</li>
+        <li><strong>REQ crosses into domain B</strong> through its own two-flop synchronizer — same circuit as Lesson 3.1, just carrying a control signal instead of raw data.</li>
+        <li><strong>DST sees REQ_SYNC go high, captures DATA, raises ACK.</strong> By now DATA has been stable for multiple <code>clk_b</code> cycles, so sampling it is completely safe — no synchronizer needed on the data bus itself.</li>
+        <li><strong>ACK crosses back into domain A</strong> through its own two-flop synchronizer.</li>
+        <li><strong>SRC sees ACK_SYNC go high — the transfer is confirmed — and drops REQ.</strong> Only now is SRC allowed to change DATA.</li>
+        <li><strong>REQ=0 and ACK=0 each cross back</strong> through the same synchronizers, returning both domains to idle before the next transfer can start.</li>
+      </ol>
+      <div class="def-box">
+        <div class="def-label">Why it's called "four-phase"</div>
+        <p>REQ rises, ACK rises, REQ falls, ACK falls — four distinct level changes, each one triggering the next. Every single-bit crossing in that chain is exactly the two-flop synchronizer you already know.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>The complete circuit</h2></div>
+      <p>
+        Three lanes, flowing left-to-right and right-to-left, that never need to cross: DATA passes straight through
+        (held steady, no synchronizer). REQ crosses A→B through its own two-flop pair. ACK crosses B→A through a
+        second, independent two-flop pair.
+      </p>
+
+      <div class="visual">
+        <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+          <!-- domain divider -->
+          <line x1="360" y1="15" x2="360" y2="240" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="170" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A (clk_a)</text>
+          <text x="550" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B (clk_b)</text>
+
+          <!-- SRC FSM (spans all 3 lanes) -->
+          <rect x="20" y="60" width="120" height="150" rx="8" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="80" y="82" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SRC FSM</text>
+          <text x="80" y="98" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">(domain A)</text>
+
+          <!-- DST FSM (spans all 3 lanes) -->
+          <rect x="580" y="60" width="120" height="150" rx="8" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="640" y="82" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">DST FSM</text>
+          <text x="640" y="98" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">(domain B)</text>
+
+          <!-- LANE 1: DATA (y=100) straight through, no sync -->
+          <line x1="140" y1="100" x2="580" y2="100" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowH)"/>
+          <text x="360" y="93" fill="#f472b6" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">DATA (held stable — no sync needed)</text>
+
+          <!-- LANE 2: REQ (y=150) A -> B, through SYNC_REQ -->
+          <line x1="140" y1="150" x2="390" y2="150" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowH)"/>
+          <rect x="390" y="128" width="130" height="44" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="455" y="146" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC_REQ</text>
+          <text x="455" y="160" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">2 flops · clk_b</text>
+          <line x1="520" y1="150" x2="580" y2="150" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowH)"/>
+
+          <!-- LANE 3: ACK (y=200) B -> A, through SYNC_ACK -->
+          <line x1="580" y1="200" x2="330" y2="200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowH)"/>
+          <rect x="200" y="178" width="130" height="44" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="265" y="196" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC_ACK</text>
+          <text x="265" y="210" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">2 flops · clk_a</text>
+          <line x1="200" y1="200" x2="140" y2="200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowH)"/>
+
+          <!-- clk_a / clk_b distribution (below everything, never crosses a signal lane) -->
+          <line x1="20" y1="255" x2="330" y2="255" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="80" y1="255" x2="80" y2="210" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="265" y1="255" x2="265" y2="222" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="20" y="270" fill="#a78bfa" font-size="9" font-family="JetBrains Mono,monospace">clk_a</text>
+
+          <line x1="390" y1="255" x2="700" y2="255" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="455" y1="255" x2="455" y2="172" stroke="#a78bfa" stroke-width="1.2"/>
+          <line x1="640" y1="255" x2="640" y2="210" stroke="#a78bfa" stroke-width="1.2"/>
+          <text x="670" y="270" fill="#a78bfa" font-size="9" font-family="JetBrains Mono,monospace">clk_b</text>
+
+          <defs>
+            <marker id="arrowH" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+          </defs>
+        </svg>
+        <div class="visual-cap">Three lanes, three jobs. DATA never needs synchronizing because it's already sat still for cycles by the time anyone reads it. REQ and ACK are each just a Lesson-3.1 two-flop synchronizer, aimed in opposite directions.</div>
+      </div>
+
+      <div class="def-box">
+        <div class="def-label">The one rule that makes this all work</div>
+        <p>SRC is not allowed to change DATA until it has seen ACK_SYNC go high. That's the entire safety guarantee — everything else in the protocol exists to make that one promise enforceable.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>What it costs — and when to reach for it</h2></div>
+      <p>
+        A full transfer touches four independent two-flop crossings (REQ up, ACK up, REQ down, ACK down) — call it
+        roughly 8-10 clock cycles round trip, depending on both clocks' speeds. That's dramatically slower than a
+        continuous bit stream.
+      </p>
+      <div class="rules-grid">
+        <div class="rule-card">
+          <div class="rule-icon">🐢</div>
+          <div class="rule-title">Low throughput, by design</div>
+          <div class="rule-body">Good for occasional, multi-bit control/status transfers — a configuration register, a command word, a one-shot event. Not for streaming data continuously.</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">✅</div>
+          <div class="rule-title">Bulletproof correctness</div>
+          <div class="rule-body">Every bit of DATA is guaranteed stable and fully sampled before anything moves on — no partial or torn values are possible, ever.</div>
+        </div>
+        <div class="rule-card">
+          <div class="rule-icon">📦</div>
+          <div class="rule-title">Need continuous throughput instead?</div>
+          <div class="rule-body">That's what the asynchronous FIFO (Module 4) is for — it reuses this same two-flop building block, arranged to keep data streaming instead of stopping to shake hands every word.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>The bug this protocol exists to prevent</h2></div>
+      <p>
+        The single most common mistake implementing this circuit: the sender changes DATA (or de-asserts REQ) the
+        instant it thinks the transfer is "probably done," instead of strictly waiting for ACK_SYNC.
+      </p>
+      <div class="warnbox">
+        <p><strong>Never advance SRC's state on a guess.</strong> If SRC drops REQ or changes DATA before ACK_SYNC has actually arrived, the receiver's synchronized REQ might still be settling — the "got it" promise gets broken, and you're back to the exact torn-data problem this whole protocol was built to avoid. The FSM must gate every transition strictly on the synchronized control signal, never on a timer or an assumption.</p>
+      </div>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Step through a full transfer yourself, one phase at a time. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Step Through a Handshake</h2>
+      </div>
+      <p class="lab-instructions">
+        Click <b>Next</b> to advance one phase at a time through a complete REQ/ACK transfer. Watch which lane lights
+        up in the diagram, and how the waveform below builds up column by column. Dashed segments mean a signal is
+        mid-flight through a synchronizer — not yet resolved.
+      </p>
+
+      <div class="lab-diagram-wrap" id="hsDiagramWrap">
+        <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg">
+          <line x1="360" y1="15" x2="360" y2="240" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,5"/>
+          <text x="170" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN A (clk_a)</text>
+          <text x="550" y="30" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DOMAIN B (clk_b)</text>
+
+          <!-- SRC FSM -->
+          <rect id="diagSrcBox" x="20" y="60" width="120" height="150" rx="8" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="80" y="82" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SRC FSM</text>
+          <text x="80" y="98" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">(domain A)</text>
+
+          <!-- DST FSM -->
+          <rect id="diagDstBox" x="580" y="60" width="120" height="150" rx="8" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="640" y="82" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">DST FSM</text>
+          <text x="640" y="98" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">(domain B)</text>
+
+          <!-- LANE 1: DATA (y=100) straight through, no sync -->
+          <line x1="140" y1="100" x2="580" y2="100" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowH2)"/>
+          <text x="360" y="93" fill="#f472b6" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">DATA</text>
+          <circle id="dotData" cx="360" cy="100" r="5" fill="#334155"/>
+
+          <!-- LANE 2: REQ (y=150) A -> B, through SYNC_REQ -->
+          <line id="wireReqIn" x1="140" y1="150" x2="390" y2="150" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowH2)"/>
+          <rect id="diagSyncReqBox" x="390" y="128" width="130" height="44" rx="6" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="455" y="146" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC_REQ</text>
+          <text x="455" y="160" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">2 flops · clk_b</text>
+          <line id="wireReqOut" x1="520" y1="150" x2="580" y2="150" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowH2)"/>
+          <circle id="dotReq" cx="165" cy="150" r="5" fill="#334155"/>
+          <circle id="dotReqSync" cx="555" cy="150" r="5" fill="#334155"/>
+
+          <!-- LANE 3: ACK (y=200) B -> A, through SYNC_ACK -->
+          <line id="wireAckOut" x1="580" y1="200" x2="330" y2="200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowH2)"/>
+          <rect id="diagSyncAckBox" x="200" y="178" width="130" height="44" rx="6" fill="rgba(74,222,128,0.08)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="265" y="196" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700">SYNC_ACK</text>
+          <text x="265" y="210" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">2 flops · clk_a</text>
+          <line id="wireAckIn" x1="200" y1="200" x2="140" y2="200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrowH2)"/>
+          <circle id="dotAck" cx="555" cy="200" r="5" fill="#334155"/>
+          <circle id="dotAckSync" cx="165" cy="200" r="5" fill="#334155"/>
+
+          <defs>
+            <marker id="arrowH2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="hs-status-bar">
+        <span class="hs-step-counter" id="hsStepCounter">Step 1 of 10</span>
+        <span class="hs-states">
+          <span>SRC: <b id="hsSrcState">IDLE</b></span>
+          <span>DST: <b id="hsDstState">IDLE</b></span>
+        </span>
+      </div>
+      <div class="hs-desc" id="hsDesc"></div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="hsCanvas" width="660" height="200"></canvas>
+      </div>
+
+      <div class="lab-controls">
+        <button class="lab-btn secondary" id="hsPrevBtn" onclick="hsPrev()">← Prev</button>
+        <button class="lab-btn" id="hsNextBtn" onclick="hsNext()">Next →</button>
+        <button class="lab-btn secondary" onclick="hsReset()">⟲ Reset</button>
+      </div>
+      <div class="legend-row">
+        <span><span class="legend-dot" style="background:#4ade80"></span>logic 1</span>
+        <span><span class="legend-dot" style="background:#334155"></span>logic 0</span>
+        <span><span class="legend-dot" style="background:#fbbf24"></span>in flight (syncing)</span>
+      </div>
+    </div>
+
+    <p style="margin:2.4rem 0 1rem;color:var(--text)">
+      Try it yourself — copy this into our Verilog simulator and check the waveform. 👇
+    </p>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>sync_2ff.v (reused for both REQ and ACK)</span><button class="copy-btn" onclick="copyLabCode('code-hs-sync', this)">📋 Copy</button></div>
+      <pre id="code-hs-sync">module sync_2ff (
+    input  wire clk,
+    input  wire rst_n,
+    input  wire d_in,
+    (* ASYNC_REG = "TRUE" *) output reg d_out
+);
+
+    (* ASYNC_REG = "TRUE" *) reg stage1;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            stage1 <= 1'b0;
+            d_out  <= 1'b0;
+        end else begin
+            stage1 <= d_in;
+            d_out  <= stage1;
+        end
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>handshake_sync_top.v</span><button class="copy-btn" onclick="copyLabCode('code-hs-top', this)">📋 Copy</button></div>
+      <pre id="code-hs-top">module handshake_sync_top #(
+    parameter WIDTH = 8
+) (
+    // Domain A (sender)
+    input  wire             clk_a,
+    input  wire             rst_a_n,
+    input  wire             send,               // pulse: "start a transfer"
+    input  wire [WIDTH-1:0] data_in,
+    output reg              src_busy,
+
+    // Domain B (receiver)
+    input  wire             clk_b,
+    input  wire             rst_b_n,
+    output reg  [WIDTH-1:0] data_out,
+    output reg              data_valid          // pulses when data_out updates
+);
+
+    // ---- Domain A: SRC FSM ----
+    localparam A_IDLE = 1'b0, A_WAIT_ACK = 1'b1;
+    reg a_state;
+    reg [WIDTH-1:0] data_hold;
+    reg req;
+    wire ack_sync;
+
+    always @(posedge clk_a or negedge rst_a_n) begin
+        if (!rst_a_n) begin
+            a_state   <= A_IDLE;
+            req       <= 1'b0;
+            src_busy  <= 1'b0;
+            data_hold <= {WIDTH{1'b0}};
+        end else begin
+            case (a_state)
+                A_IDLE: begin
+                    if (send) begin
+                        data_hold <= data_in;   // DATA locked in before REQ ever moves
+                        req       <= 1'b1;
+                        src_busy  <= 1'b1;
+                        a_state   <= A_WAIT_ACK;
+                    end
+                end
+                A_WAIT_ACK: begin
+                    if (ack_sync) begin        // only react to the SYNCHRONIZED ack
+                        req      <= 1'b0;
+                        src_busy <= 1'b0;
+                        a_state  <= A_IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+
+    // ---- Domain B: DST FSM ----
+    localparam B_IDLE = 1'b0, B_ACK_HIGH = 1'b1;
+    reg b_state;
+    reg ack;
+    wire req_sync;
+
+    always @(posedge clk_b or negedge rst_b_n) begin
+        if (!rst_b_n) begin
+            b_state    <= B_IDLE;
+            ack        <= 1'b0;
+            data_out   <= {WIDTH{1'b0}};
+            data_valid <= 1'b0;
+        end else begin
+            data_valid <= 1'b0;
+            case (b_state)
+                B_IDLE: begin
+                    if (req_sync) begin        // DATA has been stable for cycles by now
+                        data_out   <= data_hold;
+                        data_valid <= 1'b1;
+                        ack        <= 1'b1;
+                        b_state    <= B_ACK_HIGH;
+                    end
+                end
+                B_ACK_HIGH: begin
+                    if (!req_sync) begin
+                        ack     <= 1'b0;
+                        b_state <= B_IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+
+    // ---- Control-signal synchronizers ----
+    sync_2ff sync_req (.clk(clk_b), .rst_n(rst_b_n), .d_in(req), .d_out(req_sync));
+    sync_2ff sync_ack (.clk(clk_a), .rst_n(rst_a_n), .d_in(ack), .d_out(ack_sync));
+
+endmodule</pre>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-panel-head"><span>tb_handshake_sync.v</span><button class="copy-btn" onclick="copyLabCode('code-hs-tb', this)">📋 Copy</button></div>
+      <pre id="code-hs-tb">`timescale 1ns/1ps
+module tb_handshake_sync;
+
+    reg clk_a = 0, clk_b = 0;
+    reg rst_a_n = 0, rst_b_n = 0;
+    reg send = 0;
+    reg [7:0] data_in = 8'h00;
+    wire src_busy, data_valid;
+    wire [7:0] data_out;
+
+    // Two unrelated clocks -- 10ns and 7ns periods
+    always #5   clk_a = ~clk_a;
+    always #3.5 clk_b = ~clk_b;
+
+    handshake_sync_top #(.WIDTH(8)) dut (
+        .clk_a(clk_a), .rst_a_n(rst_a_n), .send(send), .data_in(data_in), .src_busy(src_busy),
+        .clk_b(clk_b), .rst_b_n(rst_b_n), .data_out(data_out), .data_valid(data_valid)
+    );
+
+    initial begin
+        $dumpfile("handshake_sync.vcd");
+        $dumpvars(0, tb_handshake_sync);
+
+        #20 rst_a_n = 1; rst_b_n = 1;
+
+        #15 data_in = 8'hB6;
+        send = 1;
+        #10 send = 0;
+
+        wait (!src_busy);   // wait for the full 4-phase handshake to complete
+
+        #40 $finish;
+    end
+
+endmodule</pre>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>REQ/ACK moves a whole multi-bit value safely by holding DATA still and letting two independent two-flop synchronizers (one per direction) carry the control signals.</li>
+        <li>DATA itself never needs its own synchronizer — by the time REQ_SYNC arrives, it's already been stable for multiple receiving-clock cycles.</li>
+        <li>The four phases — REQ up, ACK up, REQ down, ACK down — must each fully complete before the next transfer starts.</li>
+        <li>It costs roughly 8-10 cycles of round-trip latency per transfer — fine for occasional control/status words, wrong tool for continuous streaming (that's the async FIFO, coming in Module 4).</li>
+        <li>The one rule that must never be broken: SRC only changes DATA after seeing the <em>synchronized</em> ACK — never on a guess or a timer.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/two-flop-synchronizer/">← Previous: The Two-Flop Synchronizer</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+<script src="/assets/verilog-code-block.js" defer></script>
+</body>
+</html>
