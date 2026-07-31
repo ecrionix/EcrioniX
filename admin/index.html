@@ -70,6 +70,11 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .status.error{background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3)}
 .status.success{background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
 .status.warning{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.hist-badge{font-size:0.7rem;font-weight:700;padding:0.25rem 0.7rem;border-radius:20px;text-transform:uppercase;display:inline-block;margin-bottom:0.5rem}
+.hist-badge.pending{background:rgba(251,191,36,.15);color:#fbbf24}
+.hist-badge.approved{background:rgba(74,222,128,.15);color:#4ade80}
+.hist-badge.rejected{background:rgba(248,113,113,.15);color:#f87171}
+.hist-badge.revoked{background:rgba(148,163,184,.15);color:#94a3b8}
 h1{font-size:2rem;margin-bottom:1rem;color:#f8fafc}
 h2{font-size:1.3rem;margin:1.5rem 0 0.5rem;color:#f8fafc;border-bottom:2px solid rgba(56,189,248,.15);padding-bottom:0.5rem}
 .request-row{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:1.5rem;margin:1rem 0}
@@ -135,6 +140,12 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
     </div>
 
     <div class="card">
+      <h2>📜 All Requests History</h2>
+      <p style="color:var(--sl);font-size:0.85rem">Every request ever submitted, regardless of status — pending, approved, rejected, or revoked.</p>
+      <div id="allRequestsHistory"></div>
+    </div>
+
+    <div class="card">
       <h2>👥 All Logged-In Users</h2>
       <div style="margin-bottom:1.5rem">
         <input type="text" id="userSearchInput" placeholder="Search by name or email..." style="width:100%;padding:0.8rem;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--text);font-size:0.9rem">
@@ -157,12 +168,59 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+async function loadAllRequestsHistory() {
+  try {
+    const db = firebase.firestore();
+    const snapshot = await db.collection('paymentRequests').get();
+
+    const list = document.getElementById('allRequestsHistory');
+
+    if (snapshot.empty) {
+      list.innerHTML = '<p style="color:var(--sl)">No requests yet</p>';
+      return;
+    }
+
+    const requests = [];
+    snapshot.forEach(doc => requests.push(doc.data()));
+    requests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+
+    list.innerHTML = requests.map(req => {
+      const statusDates = {
+        pending: req.createdAt?.toDate?.()?.toLocaleString(),
+        approved: req.approvedAt?.toDate?.()?.toLocaleString(),
+        rejected: req.rejectedAt?.toDate?.()?.toLocaleString(),
+        revoked: req.revokedAt?.toDate?.()?.toLocaleString(),
+      };
+      const statusDate = statusDates[req.status];
+      const reasonLine = req.status === 'rejected' && req.rejectionReason
+        ? `<p><b>Rejection Reason:</b> ${escapeHtml(req.rejectionReason)}</p>`
+        : '';
+      return `
+        <div class="request-row">
+          <span class="hist-badge ${escapeHtml(req.status)}">${escapeHtml(req.status)}</span>
+          <h3>${escapeHtml(req.name)}</h3>
+          <p><b>Email:</b> ${escapeHtml(req.email)}</p>
+          <p><b>Course:</b> ${escapeHtml(req.courseId)}</p>
+          <p><b>Payment ID:</b> ${escapeHtml(req.paymentId)}</p>
+          ${reasonLine}
+          <p style="color:var(--sl);font-size:0.85rem"><b>Submitted:</b> ${req.createdAt?.toDate?.()?.toLocaleString() || 'N/A'}</p>
+          <p style="color:var(--sl);font-size:0.85rem"><b>Last updated (${escapeHtml(req.status)}):</b> ${statusDate || 'N/A'}</p>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error("Error loading request history:", error);
+    document.getElementById('allRequestsHistory').innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+  }
+}
+
 async function loadDashboard(user) {
   document.getElementById('dashboard').style.display = 'block';
   await loadStats();
   await loadPendingRequests();
   await loadApprovedUsers();
   await loadRejectedRequests();
+  await loadAllRequestsHistory();
   await loadAllUsers();
 }
 
@@ -322,6 +380,7 @@ async function reopenRequest(requestId) {
 
     await loadPendingRequests();
     await loadRejectedRequests();
+    await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
   }
@@ -348,6 +407,7 @@ async function approveRequest(requestId, userId, courseId) {
     alert('✅ Request approved!');
     await loadPendingRequests();
     await loadApprovedUsers();
+    await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
   }
@@ -368,6 +428,7 @@ async function rejectRequest(requestId) {
     alert('❌ Request rejected');
     await loadPendingRequests();
     await loadRejectedRequests();
+    await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
   }
@@ -382,8 +443,24 @@ async function revokeAccess(userId, courseId) {
       approvedCourses: firebase.firestore.FieldValue.arrayRemove(courseId),
     });
 
+    const reqSnapshot = await db.collection('paymentRequests')
+      .where('userId', '==', userId)
+      .where('courseId', '==', courseId)
+      .where('status', '==', 'approved')
+      .get();
+
+    const batch = db.batch();
+    reqSnapshot.forEach(doc => {
+      batch.update(doc.ref, {
+        status: 'revoked',
+        revokedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+
     alert('🚫 Access revoked');
     await loadApprovedUsers();
+    await loadAllRequestsHistory();
   } catch (error) {
     alert('Error: ' + error.message);
   }
