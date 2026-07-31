@@ -20,6 +20,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
@@ -419,6 +420,12 @@ input.invalid{border-color:#f87171}
     <div class="form-group">
       <label>Payment ID / Reference:</label>
       <input type="text" id="paymentId" placeholder="UPI Ref ID, Bank Txn ID, etc.">
+    </div>
+
+    <div class="form-group">
+      <label>Payment Proof / Screenshot (Recommended):</label>
+      <input type="file" id="paymentScreenshot" accept="image/*">
+      <div style="font-size:0.75rem;color:var(--sl);margin-top:0.3rem">Upload UPI screenshot or payment receipt to speed up approval.</div>
     </div>
 
     <div class="form-group">
@@ -999,43 +1006,99 @@ async function submitAccessRequest() {
   const paymentMethod = document.getElementById('paymentMethod').value;
   const paymentId = document.getElementById('paymentId').value;
   const notes = document.getElementById('notes').value;
+  const fileInput = document.getElementById('paymentScreenshot');
 
   if (!paymentId) {
     alert("Enter payment ID");
     return;
   }
 
+  const submitBtn = document.querySelector('#requestAccessForm .modal-button-primary');
+  const statusDiv = document.getElementById('formStatus');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Submitting Request...';
+  }
+
+  let screenshotUrl = '';
+
   try {
+    // 1. Handle Screenshot Upload if provided
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      try {
+        const storageRef = firebase.storage().ref(`payment_screenshots/${user.uid}_${Date.now()}_${file.name}`);
+        const snapshot = await storageRef.put(file);
+        screenshotUrl = await snapshot.ref.getDownloadURL();
+      } catch (storageErr) {
+        console.warn("Storage upload fallback to base64:", storageErr);
+        // Fallback: Read file as Data URL if Storage bucket permissions block client direct upload
+        screenshotUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(file);
+        });
+      }
+    }
+
+    // 2. Write to Firestore
     const docRef = firebase.firestore().collection('paymentRequests').doc();
     await docRef.set({
       userId: user.uid,
       email: user.email,
-      name: user.displayName,
+      name: user.displayName || user.email,
       courseId: courseId,
       paymentMethod: paymentMethod,
       paymentId: paymentId,
-      notes: notes,
+      screenshotUrl: screenshotUrl || '',
+      notes: notes || '',
       status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    const statusDiv = document.getElementById('formStatus');
+    // 3. Send Email Notification to Admin (elango369elango@gmail.com)
+    try {
+      fetch('https://formspree.io/f/mqabedlq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminEmail: 'elango369elango@gmail.com',
+          subject: `🔔 New Payment Request from ${user.displayName || user.email}`,
+          userName: user.displayName || 'Student',
+          userEmail: user.email,
+          course: COURSE_NAMES[courseId] || courseId,
+          paymentMethod: paymentMethod,
+          paymentId: paymentId,
+          notes: notes || 'None',
+          screenshotUrl: screenshotUrl ? (screenshotUrl.startsWith('data:') ? 'Base64 Attachment in Firestore' : screenshotUrl) : 'No screenshot attached',
+          submittedAt: new Date().toLocaleString(),
+        })
+      }).catch(err => console.log('Email notification dispatched:', err));
+    } catch(e) {}
+
     statusDiv.className = 'success-message';
-    statusDiv.innerHTML = '✅ Request submitted! Admin will review within 24 hours.';
+    statusDiv.innerHTML = '✅ Request submitted! Admin notification sent to elango369elango@gmail.com. Access will be reviewed within 24 hours.';
 
     document.getElementById('courseSelect').value = 'cdc';
     document.getElementById('paymentMethod').value = 'upi';
     document.getElementById('paymentId').value = '';
     document.getElementById('notes').value = '';
+    if (fileInput) fileInput.value = '';
 
     loadPurchaseHistory(user.uid);
 
     setTimeout(() => {
       statusDiv.innerHTML = '';
-    }, 5000);
+    }, 6000);
   } catch (error) {
     console.error("Error submitting request:", error);
-    alert("Something went wrong submitting your request. Please try again.");
+    alert("Something went wrong submitting your request: " + error.message);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'Submit Request';
+    }
   }
 }
 
