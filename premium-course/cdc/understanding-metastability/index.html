@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Understanding Metastability — CDC Course | EcrioniX</title>
+<meta property="og:title" content="Understanding Metastability — CDC Course | EcrioniX">
+<meta property="og:description" content="What actually happens inside a flip-flop during metastability, why resolution time is unpredictable, and why you can only buy time — not prevent it.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/cdc/understanding-metastability/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) {
+    window.location.href = '/premium-course/';
+    return;
+  }
+  checkAccess(user);
+});
+
+async function checkAccess(user) {
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('cdc');
+    const expiry = data?.courseExpiry?.cdc;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+
+    document.getElementById('authLoading').style.display = 'none';
+
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+
+/* ---- Interactive Lab: Ball on the Hill (metastability resolution) ---- */
+let ballHistory = [];
+let ballAnimId = null;
+let ballRunning = false;
+
+function computeResolveTime(strength) {
+  // Smaller strength (closer to dead-center) -> exponentially longer to resolve.
+  // Mirrors the real relationship: t_resolve = tau * ln(Vswing / Vperturbation)
+  const t = 55 * Math.log(120 / strength);
+  return Math.max(8, Math.min(420, t));
+}
+
+function ballDrop() {
+  if (ballRunning) return;
+  const strength = Number(document.getElementById('strengthSlider').value);
+  let sign = Math.random() < 0.5 ? -1 : 1;
+  // Below this strength, even the OUTCOME (not just the timing) becomes a coin flip —
+  // real thermal noise can push a near-perfectly-balanced node either way.
+  const coinFlipZone = strength < 12;
+
+  const resolveTime = computeResolveTime(strength);
+  const durationMs = 900 + resolveTime * 6;
+
+  ballRunning = true;
+  document.getElementById('ballDropBtn').disabled = true;
+  document.getElementById('ballResult').classList.remove('show');
+  document.getElementById('ballTimer').textContent = '';
+
+  const startTime = performance.now();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const p = Math.min(elapsed / durationMs, 1);
+    // Starts nearly flat near the peak, then accelerates away — like tanh growth
+    const curve = Math.tanh(p * 3.2) * sign;
+    drawHill(curve, p < 1);
+    document.getElementById('ballTimer').textContent = (p * resolveTime).toFixed(1) + ' ns';
+
+    if (p < 1) {
+      ballAnimId = requestAnimationFrame(step);
+    } else {
+      ballRunning = false;
+      document.getElementById('ballDropBtn').disabled = false;
+      const finalValue = coinFlipZone ? (Math.random() < 0.5 ? 0 : 1) : (sign > 0 ? 1 : 0);
+      drawHill(finalValue === 1 ? 1 : -1, false);
+
+      ballHistory.unshift({ strength, resolveTime, value: finalValue, coinFlip: coinFlipZone });
+      ballHistory = ballHistory.slice(0, 6);
+      renderBallHistory();
+
+      const result = document.getElementById('ballResult');
+      result.classList.add('show');
+      result.innerHTML = `Resolved to <b style="color:${finalValue === 1 ? '#4ade80' : '#38bdf8'}">${finalValue}</b> after <b>${resolveTime.toFixed(1)} ns</b>` +
+        (coinFlipZone ? ' — and honestly, at this strength, which side it fell to was basically a coin flip.' : '.');
+    }
+  }
+  ballAnimId = requestAnimationFrame(step);
+}
+
+function renderBallHistory() {
+  const container = document.getElementById('ballHistory');
+  if (ballHistory.length === 0) {
+    container.innerHTML = '<p style="font-size:0.8rem;color:var(--sl)">Drop the ball a few times to see the pattern.</p>';
+    return;
+  }
+  container.innerHTML = ballHistory.map(h => `
+    <div class="history-row">
+      <span class="history-cell">strength ${h.strength}</span>
+      <span class="history-cell">${h.resolveTime.toFixed(1)} ns</span>
+      <span class="history-cell" style="color:${h.value === 1 ? '#4ade80' : '#38bdf8'}">→ ${h.value}</span>
+      ${h.coinFlip ? '<span class="history-flag">coin flip!</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function drawHill(pos, mid) {
+  const canvas = document.getElementById('hillCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0c1526';
+  ctx.fillRect(0, 0, W, H);
+
+  const midX = W / 2, baseY = H - 30, peakY = 35;
+
+  // Hill curve (inverted parabola-ish, drawn as two slopes)
+  ctx.strokeStyle = '#a78bfa';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(20, baseY);
+  ctx.quadraticCurveTo(midX - 60, peakY + 10, midX, peakY);
+  ctx.quadraticCurveTo(midX + 60, peakY + 10, W - 20, baseY);
+  ctx.stroke();
+
+  // Valley labels
+  ctx.font = '13px Outfit, sans-serif';
+  ctx.fillStyle = '#38bdf8';
+  ctx.textAlign = 'center';
+  ctx.fillText('LOGIC 0', 55, baseY + 20);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('LOGIC 1', W - 55, baseY + 20);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillText('unstable balance point', midX, peakY - 14);
+
+  // Ball position: pos ranges -1 (left/0) .. 0 (center) .. 1 (right/1)
+  const t = Math.abs(pos);
+  const ballX = midX + pos * (midX - 40);
+  // approximate height along the curve
+  const ballY = peakY + (baseY - peakY) * (t * t);
+
+  ctx.beginPath();
+  ctx.arc(midX, peakY - 2, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(148,163,184,0.3)';
+  ctx.fill();
+
+  ctx.save();
+  ctx.shadowColor = mid ? '#fbbf24' : (pos > 0 ? '#4ade80' : '#38bdf8');
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, 8, 0, Math.PI * 2);
+  ctx.fillStyle = mid ? '#fbbf24' : (pos > 0 ? '#4ade80' : '#38bdf8');
+  ctx.fill();
+  ctx.restore();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('hillCanvas')) {
+    drawHill(0, true);
+    renderBallHistory();
+  }
+});
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}
+.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+
+/* Course content (shared visual language across lessons) */
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:#f8fafc;font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.3rem;color:#f8fafc;margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p .term{color:var(--teal);font-weight:600}
+.section p strong{color:#f8fafc}
+.section ul{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li{margin-bottom:0.5rem}
+.section ul li strong{color:#f8fafc}
+
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox strong{color:#fca5a5}
+
+.visual{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.3rem;margin:1.5rem 0;text-align:center}
+.visual svg{max-width:100%;height:auto}
+.visual-cap{font-size:0.8rem;color:var(--sl);margin-top:0.8rem;line-height:1.55}
+
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:#f8fafc;font-size:1.02rem;font-weight:500;line-height:1.6}
+
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+
+/* Interactive lab */
+.lab-section{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;margin-top:2rem}
+.lab-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.lab-header h2{font-size:1.15rem;color:#f8fafc}
+.lab-icon{font-size:1.4rem}
+.lab-instructions{color:var(--sl);font-size:0.88rem;margin-bottom:1.2rem}
+
+.lab-sliders{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.slider-row{margin-bottom:0.4rem}
+.slider-row label{display:block;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;font-weight:600}
+.slider-hint{color:var(--sl);font-weight:400;font-size:0.75rem}
+.slider-row input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer}
+
+.lab-canvas-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:0.8rem;overflow-x:auto}
+#hillCanvas{display:block;width:100%;max-width:600px;margin:0 auto}
+
+.lab-controls{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1.1rem;align-items:center}
+.lab-btn{background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;border:none;border-radius:8px;padding:0.55rem 1.2rem;font-weight:700;cursor:pointer;font-size:0.85rem;transition:opacity 0.15s}
+.lab-btn:hover{opacity:0.9}
+.lab-btn:disabled{opacity:0.4;cursor:not-allowed}
+.ball-timer{font-family:'JetBrains Mono',monospace;font-size:1rem;color:#fbbf24;margin-left:auto}
+
+.ball-result{margin-top:1rem;padding:0.9rem 1.1rem;border-radius:8px;font-size:0.85rem;background:var(--bg3);border:1px solid var(--bdr);color:var(--text);display:none}
+.ball-result.show{display:block}
+
+.history-row{display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0.8rem;border-bottom:1px solid var(--bdr);font-size:0.8rem;color:var(--sl)}
+.history-row:last-child{border-bottom:none}
+.history-cell{font-family:'JetBrains Mono',monospace}
+.history-flag{margin-left:auto;font-size:0.7rem;font-weight:800;color:#fbbf24;background:rgba(251,191,36,.12);padding:0.2rem 0.5rem;border-radius:10px;text-transform:uppercase}
+
+.lesson-nav{display:flex;justify-content:space-between;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/cdc/" class="back-link">← Course Index</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/cdc/">CDC Course</a> / Module 2: Metastability</div>
+    <span class="lesson-tag">Lesson 2.1</span>
+    <h1>Understanding Metastability</h1>
+
+    <p class="lede">
+      You've used the word "metastable" twice already in this course — an in-between voltage, an undefined output.
+      But <span class="hl">what actually happens inside the flip-flop</span> to cause that? This lesson opens it up:
+      the real physical reason a flop can get stuck, why the stuck time is unpredictable, and why that unpredictability
+      follows a pattern you can actually picture.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>A flip-flop is a tug-of-war between two states</h2></div>
+      <p>
+        Underneath the Verilog, a flip-flop's storage element is built from two tiny circuits (inverters) wired so
+        each one feeds the other. Whatever one side says, the other side says the opposite — and that opposite
+        feeds back into the first. It's a loop that reinforces itself.
+      </p>
+      <p>
+        This feedback loop has exactly <span class="term">two stable resting states</span>: "side A high, side B low"
+        (which we read out as logic 1) and "side A low, side B high" (logic 0). Once the loop settles into either one,
+        it holds itself there — that's literally what makes it useful as memory.
+      </p>
+      <div class="infobox">
+        <p>This is why every flip-flop can only ever <em>want</em> to be a clean 0 or a clean 1 — the feedback loop actively pulls it toward one of those two states, like a ball rolling toward the bottom of a valley.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>The knife-edge in between</h2></div>
+      <p>
+        Here's the catch: between those two valleys, there's a single point where the pull toward "0" and the pull
+        toward "1" are exactly, perfectly balanced. Mathematically, that point exists. It's an unstable equilibrium —
+        a real state the circuit can sit in, but the instant anything nudges it even slightly, it slides toward
+        whichever side it was nudged.
+      </p>
+      <p>
+        A setup/hold violation is exactly this kind of nudge. When the input changes right as the clock samples it,
+        the flop's internal feedback loop gets shoved toward that knife-edge point instead of cleanly toward one
+        valley. How close to the exact center it lands determines what happens next.
+      </p>
+
+      <div class="analogy">
+        <div class="analogy-label">⛰️ The hill analogy</div>
+        <p>Picture a ball balanced exactly on top of a smooth hill, with a valley on each side. Balanced dead-center, it could — in theory — sit there forever. But nudge it even a hair, and gravity takes over: the smaller the nudge, the longer it takes before it's clearly rolling down one side. That's exactly what's happening inside a metastable flip-flop.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Why the resolve time is unpredictable</h2></div>
+      <p>
+        This is the piece that explains everything from the earlier lessons: <strong>the closer the initial
+        disturbance is to that dead-center point, the longer it takes to resolve</strong> — and the relationship
+        isn't a straight line. It's exponential. Getting twice as close to perfect balance doesn't double the
+        settling time; it can easily <em>multiply</em> it.
+      </p>
+      <div class="def-box">
+        <div class="def-label">Why this matters</div>
+        <p>Because setup/hold violations happen at essentially random offsets from the clock edge, some crossings land almost perfectly on the knife-edge — and those are the rare, unlucky cases where a flop stays metastable far longer than "usual." There's no hard ceiling on how long it could take.</p>
+      </div>
+      <p>
+        This is also why you can't just "wait a little bit" and call it safe. A little bit covers the common case.
+        It's the long exponential tail — the rare near-perfect balance — that a real synchronizer has to be designed
+        against. (You'll turn this exact relationship into real numbers — failure rates you can calculate — in the
+        next lesson: MTBF.)
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>You can't prevent it — only wait it out</h2></div>
+      <p>
+        Nothing in the design can stop a setup/hold violation from nudging the loop toward that knife-edge sometimes
+        — it's a consequence of two unrelated clocks, not a flaw you can route or gate away. What you <em>can</em>
+        control is how long you wait before trusting the output.
+      </p>
+      <p>
+        That's the entire idea behind the two-flop synchronizer from Lesson 1.2: give the first flop a full clock
+        period to roll all the way down to one valley before the second flop — and everything after it — ever looks
+        at the value.
+      </p>
+    </div>
+
+    <p style="margin:2rem 0 0;color:var(--text)">
+      Try it below — drop the ball at different starting distances from dead-center and watch the resolve time change. 👇
+    </p>
+
+    <div class="lab-section">
+      <div class="lab-header">
+        <span class="lab-icon">🧪</span>
+        <h2>Interactive Lab: Ball on the Hill</h2>
+      </div>
+      <p class="lab-instructions">
+        <b>Perturbation Strength</b> controls how far from dead-center the ball starts — a stand-in for how close a
+        setup/hold violation landed to the perfect knife-edge. Lower strength = closer to balanced = longer (and
+        less predictable) resolve time.
+      </p>
+
+      <div class="lab-sliders">
+        <div class="slider-row">
+          <label>Perturbation strength: <span id="strengthLabel">15</span> <span class="slider-hint">(lower = closer to the knife-edge = slower to resolve)</span></label>
+          <input type="range" id="strengthSlider" min="1" max="100" step="1" value="15" oninput="document.getElementById('strengthLabel').innerText=this.value">
+        </div>
+      </div>
+
+      <div class="lab-canvas-wrap">
+        <canvas id="hillCanvas" width="600" height="220"></canvas>
+      </div>
+
+      <div class="lab-controls">
+        <button class="lab-btn" id="ballDropBtn" onclick="ballDrop()">⚫ Drop the Ball</button>
+        <span class="ball-timer" id="ballTimer"></span>
+      </div>
+
+      <div class="ball-result" id="ballResult"></div>
+
+      <h3 style="font-size:0.9rem;color:#f8fafc;margin-top:1.3rem;margin-bottom:0.4rem">Recent drops</h3>
+      <div id="ballHistory"></div>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>A flip-flop's storage is a self-reinforcing loop with two stable states (0 and 1) — and one unstable "knife-edge" state exactly in between.</li>
+        <li>A setup/hold violation nudges the loop toward that knife-edge instead of cleanly toward a valley.</li>
+        <li>The closer the nudge lands to dead-center, the exponentially longer (and less predictable) the resolve time.</li>
+        <li>You can't prevent the nudge — you can only give the loop enough time to roll all the way down before anything reads it.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/cdc/single-flop-fails/">← Previous: Why Single-Flop Sync Fails</a>
+      <a href="/premium-course/cdc/">Back to Course Index →</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a>
+</footer>
+
+</body>
+</html>
