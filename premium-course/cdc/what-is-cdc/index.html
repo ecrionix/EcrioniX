@@ -56,6 +56,22 @@ async function checkAccess(user) {
   }
 }
 
+function copyLabCode(id, btn) {
+  const text = document.getElementById(id).innerText;
+  const original = btn.innerText;
+  const showResult = (label) => {
+    btn.innerText = label;
+    setTimeout(() => { btn.innerText = original; }, 2000);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => showResult('Copied!'))
+      .catch(() => showResult('Failed — select & copy manually'));
+  } else {
+    showResult('Failed — select & copy manually');
+  }
+}
+
 /* ---- Interactive Lab: CDC crossing visualizer ---- */
 const LAB_WINDOW_MS = 3000;
 const LAB_DANGER_MS = 9;
@@ -436,6 +452,14 @@ h1{font-size:1.7rem;margin-bottom:0.5rem;color:#f8fafc}
 .reason-card h4{color:#f8fafc;font-size:0.92rem;margin-bottom:0.35rem}
 .reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
 
+.code-panel{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;margin:1.2rem 0;overflow:hidden}
+.code-panel-head{display:flex;justify-content:space-between;align-items:center;padding:0.6rem 1rem;background:rgba(56,189,248,.06);border-bottom:1px solid var(--bdr);font-size:0.78rem;color:var(--sl);font-weight:600}
+.code-panel pre{margin:0;padding:1rem;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:0.82rem;line-height:1.65;color:#a5f3fc}
+.copy-btn{background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.35);color:var(--blue);padding:0.3rem 0.7rem;border-radius:6px;cursor:pointer;font-size:0.72rem;font-family:'Outfit',sans-serif;font-weight:700}
+.copy-btn:hover{background:rgba(56,189,248,.28)}
+.sim-cta{display:inline-flex;align-items:center;gap:0.4rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.7rem 1.3rem;border-radius:8px;font-size:0.88rem;margin-top:0.4rem}
+.sim-cta:hover{opacity:0.9;text-decoration:none}
+
 .key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
 .key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
 .key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
@@ -757,6 +781,105 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       </div>
 
       <div class="lab-verdict" id="labVerdict"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">💻</div><h2>Try it yourself in real Verilog</h2></div>
+      <p>
+        The animation above is a model of the idea. Below is the <strong>real thing</strong> — a tiny design with the
+        exact same unsafe crossing, plus a testbench that drives two unrelated clocks. Paste both into our
+        <a href="/tools/verilog-simulator/" target="_blank">Verilog Simulator</a>, hit Run, and open the waveform —
+        you'll see <code style="color:var(--teal)">data_a</code> toggling cleanly on Clock A, and
+        <code style="color:var(--teal)">data_b</code> capturing it with zero synchronization on Clock B.
+      </p>
+
+      <div class="infobox">
+        <p><strong>Heads up:</strong> ordinary RTL simulators (this one included) don't model real analog metastability — they just pick a value deterministically. So you won't see the flop "hang" mid-voltage. What you <em>will</em> see is the raw, unguarded crossing itself: two clocks with no fixed relationship, and a signal sampled with no synchronizer between them. That's the part this lesson is about — the fix comes in Module 3.</p>
+      </div>
+
+      <div class="code-panel">
+        <div class="code-panel-head">
+          <span>Design — cdc_demo.v</span>
+          <button class="copy-btn" onclick="copyLabCode('designCode', this)">Copy</button>
+        </div>
+        <pre id="designCode">// ------------------------------------------------------------
+// cdc_demo.v
+// A signal crossing from Domain A (clk_a) into Domain B (clk_b)
+// with NO synchronizer -- the unsafe crossing this lesson covers.
+// (We fix this properly with a 2-flop synchronizer in Module 3.)
+// ------------------------------------------------------------
+module cdc_demo (
+  input  clk_a,
+  input  clk_b,
+  input  rst,
+  output reg data_a,   // toggles inside Domain A
+  output reg data_b    // captured directly in Domain B (unsafe!)
+);
+
+  // Domain A: source flip-flop
+  always @(posedge clk_a or posedge rst) begin
+    if (rst)
+      data_a &lt;= 1'b0;
+    else
+      data_a &lt;= ~data_a;
+  end
+
+  // Domain B: captures data_a DIRECTLY across the clock boundary.
+  // No synchronizer in between -> classic single-flop CDC crossing.
+  always @(posedge clk_b or posedge rst) begin
+    if (rst)
+      data_b &lt;= 1'b0;
+    else
+      data_b &lt;= data_a;
+  end
+
+endmodule</pre>
+      </div>
+
+      <div class="code-panel">
+        <div class="code-panel-head">
+          <span>Testbench — tb.v</span>
+          <button class="copy-btn" onclick="copyLabCode('tbCode', this)">Copy</button>
+        </div>
+        <pre id="tbCode">// ------------------------------------------------------------
+// tb.v -- drives two unrelated clocks and dumps waves
+// ------------------------------------------------------------
+module tb;
+
+  reg clk_a = 0;
+  reg clk_b = 0;
+  reg rst   = 1;
+
+  wire data_a, data_b;
+
+  cdc_demo dut (
+    .clk_a  (clk_a),
+    .clk_b  (clk_b),
+    .rst    (rst),
+    .data_a (data_a),
+    .data_b (data_b)
+  );
+
+  // Clock A: 10ns period
+  always #5 clk_a = ~clk_a;
+
+  // Clock B: 13ns period -- deliberately unrelated to Clock A
+  always #6.5 clk_b = ~clk_b;
+
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+
+    rst = 1;
+    #20 rst = 0;
+
+    #500 $finish;
+  end
+
+endmodule</pre>
+      </div>
+
+      <a href="/tools/verilog-simulator/" target="_blank" class="sim-cta">🚀 Open Verilog Simulator →</a>
     </div>
 
     <div class="key-takeaway">
