@@ -1028,6 +1028,25 @@ let chatMessagesUnsub = null;
 let chatThreadUnsub = null;
 let chatCurrentUid = null;
 let chatPanelOpen = false;
+let chatMessagesFirstLoad = true;
+
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.3);
+  } catch (error) {
+    console.error('Notification sound failed:', error);
+  }
+}
 
 function initChatForUser(user) {
   if (chatCurrentUid === user.uid) {
@@ -1036,6 +1055,7 @@ function initChatForUser(user) {
   }
   teardownChat();
   chatCurrentUid = user.uid;
+  chatMessagesFirstLoad = true;
   document.getElementById('chatFab').style.display = 'flex';
 
   const chatRef = firebase.firestore().collection('chats').doc(user.uid);
@@ -1056,15 +1076,25 @@ function initChatForUser(user) {
       const container = document.getElementById('chatMessages');
       if (snapshot.empty) {
         container.innerHTML = '<div class="chat-empty">Send a message to start the conversation.</div>';
-        return;
+      } else {
+        container.innerHTML = snapshot.docs.map(doc => {
+          const m = doc.data();
+          const time = m.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
+          const cls = m.senderRole === 'admin' ? 'from-admin' : 'from-user';
+          return `<div class="chat-bubble ${cls}">${escapeHtml(m.text)}<div class="chat-bubble-time">${time}</div></div>`;
+        }).join('');
+        container.scrollTop = container.scrollHeight;
       }
-      container.innerHTML = snapshot.docs.map(doc => {
-        const m = doc.data();
-        const time = m.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
-        const cls = m.senderRole === 'admin' ? 'from-admin' : 'from-user';
-        return `<div class="chat-bubble ${cls}">${escapeHtml(m.text)}<div class="chat-bubble-time">${time}</div></div>`;
-      }).join('');
-      container.scrollTop = container.scrollHeight;
+
+      if (!chatMessagesFirstLoad) {
+        snapshot.docChanges().forEach(change => {
+          if (change.type === 'added' && !change.doc.metadata.hasPendingWrites) {
+            const m = change.doc.data();
+            if (m.senderRole === 'admin') playNotificationSound();
+          }
+        });
+      }
+      chatMessagesFirstLoad = false;
     }, error => console.error('Chat messages listener error:', error));
 }
 

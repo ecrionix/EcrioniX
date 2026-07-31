@@ -603,6 +603,26 @@ function displayUsers(users) {
 }
 
 let chatThreadsData = [];
+let chatThreadsFirstLoad = true;
+let chatKnownUnreadThreadIds = new Set();
+
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.3);
+  } catch (error) {
+    console.error('Notification sound failed:', error);
+  }
+}
 let chatActiveUid = null;
 let chatAdminMessagesUnsub = null;
 
@@ -612,6 +632,16 @@ function initChatThreads() {
     .onSnapshot(snapshot => {
       chatThreadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       renderChatThreadList();
+
+      if (!chatThreadsFirstLoad) {
+        chatThreadsData.forEach(thread => {
+          if (thread.unreadByAdmin && !chatKnownUnreadThreadIds.has(thread.id)) {
+            playNotificationSound();
+          }
+        });
+      }
+      chatThreadsFirstLoad = false;
+      chatKnownUnreadThreadIds = new Set(chatThreadsData.filter(t => t.unreadByAdmin).map(t => t.id));
     }, error => console.error('Error loading chat threads:', error));
 }
 
