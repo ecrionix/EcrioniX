@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
- {"@type":"Article","datePublished":"2026-06-13","dateModified":"2026-06-13","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Dual-Clock FIFOs — The Cornerstone CDC Pattern","description":"Dual-clock FIFOs combine Gray code and 2-FF synchronizers to safely pass data between async clocks. Learn the complete architecture, empty/full flag generation, and working Verilog implementation.","url":"https://ecrionix.org/clock-domain-crossing/day-05-dual-clock-fifo/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Clock Domain Crossing Guide","url":"https://ecrionix.org/clock-domain-crossing/"}},
+ {"@type":"Article","datePublished":"2026-06-13","dateModified":"2026-07-31","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Dual-Clock FIFOs — The Cornerstone CDC Pattern","description":"Dual-clock FIFOs combine Gray code and 2-FF synchronizers to safely pass data between async clocks. Learn the complete architecture, empty/full flag generation, and working Verilog implementation.","url":"https://ecrionix.org/clock-domain-crossing/day-05-dual-clock-fifo/","publisher":{"@type":"Organization","name":"EcrioniX"},"isPartOf":{"@type":"Course","name":"Clock Domain Crossing Guide","url":"https://ecrionix.org/clock-domain-crossing/"}},
  {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},{"@type":"ListItem","position":2,"name":"CDC Guide","item":"https://ecrionix.org/clock-domain-crossing/"},{"@type":"ListItem","position":3,"name":"Day 5","item":"https://ecrionix.org/clock-domain-crossing/day-05-dual-clock-fifo/"}]},
  {"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a dual-clock FIFO?","acceptedAnswer":{"@type":"Answer","text":"A FIFO (First-In-First-Out) buffer with separate write and read clocks. Data is written in one clock domain, read in another. Pointers are synchronized across domains using Gray code + 2-FF sync to prevent underflow/overflow."}},{"@type":"Question","name":"Why use Gray code for FIFO pointers?","acceptedAnswer":{"@type":"Answer","text":"FIFO pointers are binary counters that increment sequentially. Gray code ensures only 1 bit changes per increment. If that bit is delayed by metastability during cross-domain sync, the result is always a valid adjacent code, never an invalid state."}},{"@type":"Question","name":"How do empty and full flags work?","acceptedAnswer":{"@type":"Answer","text":"Write-side: FIFO is full when next write pointer equals synchronized read pointer (both in Gray). Read-side: FIFO is empty when read pointer equals synchronized write pointer. Both comparisons are done in the respective clock domains."}},{"@type":"Question","name":"What is MTBF for a dual-clock FIFO?","acceptedAnswer":{"@type":"Answer","text":"MTBF depends on input/output clock frequencies and the settling time constant of FFs in your process. Typical dual-clock FIFOs achieve MTBF of 100+ years for reasonable clock speeds. Always verify with your library characterization."}},{"@type":"Question","name":"When should I use a FIFO vs handshake?","acceptedAnswer":{"@type":"Answer","text":"FIFO: for bursty or continuous data streams where decoupling clock domains is beneficial. Handshake: for simple req-ack transactions where flow control is simple. For most streaming scenarios, FIFO is preferred."}}]}
 ]}
@@ -49,7 +49,7 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
 <div class="wrap">
 <span class="daytag">DAY 5 · CDC FUNDAMENTALS</span>
 <h1>Dual-Clock FIFOs — The Cornerstone Pattern</h1>
-<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jun 13, 2026</div>
+<div class="byline">By <a href="/about/">EcrioniX</a> · Updated Jul 31, 2026</div>
 <p class="lead">The dual-clock FIFO is the gold standard for safe data transfer between clock domains. It combines everything you've learned: Gray code pointers, 2-FF synchronizers, and empty/full flag generation. A dual-clock FIFO decouples two clock domains, allowing data to flow freely without timing violations or metastability corruption.</p>
 
 <h2>1. Architecture overview</h2>
@@ -77,13 +77,17 @@ footer{border-top:1px solid var(--bdr);padding:2rem 1.5rem;text-align:center;fon
   <li>EMPTY = (write_ptr == read_ptr_synced)</li>
 </ul>
 
-<p><b>Read domain full flag:</b></p>
+<p><b>Write domain full flag:</b></p>
 <ul>
-  <li>Sync write_ptr to read domain as Gray</li>
-  <li>Convert synced write_ptr_gray to binary → write_ptr_synced</li>
-  <li>FULL = (read_ptr == write_ptr_synced_next)</li>
-  <li>Where write_ptr_synced_next is the next value write_ptr would have</li>
+  <li>Sync read_ptr to write domain as Gray, convert back to binary → read_ptr_synced</li>
+  <li>occupancy = write_ptr − read_ptr_synced (fixed-width subtraction, wraps automatically)</li>
+  <li>FULL = (occupancy == DEPTH)</li>
 </ul>
+
+<div class="box warn">
+  <h3>⚠️ A tempting mistake</h3>
+  <p style="margin:0">Checking <code>write_ptr == read_ptr_synced</code> for plain equality looks reasonable but is wrong — that condition is what <em>EMPTY</em> looks like, not full. With the read pointer parked, an 8-deep FIFO built that way won't block writes until the write pointer has wrapped all the way past 15, silently allowing far more than 8 unread writes through and corrupting data. FULL means "lapped by exactly one DEPTH," which requires computing the actual occupancy, not just comparing the two pointers for equality.</p>
+</div>
 
 <p>This ensures flags are generated from synchronized pointers, preventing false positives/negatives due to metastability.</p>
 
@@ -196,9 +200,14 @@ module dual_clock_fifo #(
 
   assign data_out = mem[rd_ptr[ADDR_WIDTH-1:0]];
 
-  // Full flag (write domain): next write ptr == synced read ptr
-  wire [ADDR_WIDTH:0] wr_ptr_next = wr_ptr + 1;
-  assign wr_full = (wr_ptr_next == rd_ptr_sync);
+  // Full flag (write domain): occupancy (write count minus synced read count)
+  // has reached DEPTH. Fixed-width subtraction wraps automatically, so this
+  // correctly handles the pointer rollover -- a plain equality check like
+  // (wr_ptr_next == rd_ptr_sync) does NOT: with the read pointer parked,
+  // that check stays false all the way until wr_ptr wraps past 2^(ADDR_WIDTH+1)-1,
+  // silently allowing far more than DEPTH unread writes (overflow).
+  wire [ADDR_WIDTH:0] wr_occupancy = wr_ptr - rd_ptr_sync;
+  assign wr_full = (wr_occupancy == (1 << ADDR_WIDTH));
 
   // Empty flag (read domain): read ptr == synced write ptr
   assign rd_empty = (rd_ptr == wr_ptr_sync);
@@ -214,7 +223,7 @@ endmodule
   <li><b>Gray code pointers:</b> Only Gray versions cross domains</li>
   <li><b>2-FF sync:</b> Each Gray pointer gets FF1 and FF2 in receiving domain</li>
   <li><b>Binary conversion:</b> Synced Gray pointers converted back in respective domains</li>
-  <li><b>Full/empty logic:</b> Generated from synced pointers, preventing race conditions</li>
+  <li><b>Full/empty logic:</b> Full compares actual occupancy (write count minus synced read count) against DEPTH — not a plain pointer-equality check, which is the empty condition, not full</li>
 </ul>
 
 <h2>4. Testbench: stress testing with different frequencies</h2>
@@ -338,7 +347,7 @@ endmodule
   <ul>
     <li><b>Dual-clock FIFO combines:</b> Gray code pointers, 2-FF synchronizers, empty/full logic</li>
     <li><b>Pointers never cross raw:</b> Only Gray code versions cross, synced with 2-FF</li>
-    <li><b>Full flag:</b> Write domain: wr_ptr_next == rd_ptr_synced</li>
+    <li><b>Full flag:</b> Write domain: (wr_ptr − rd_ptr_synced) == DEPTH — an occupancy check, not a plain equality</li>
     <li><b>Empty flag:</b> Read domain: rd_ptr == wr_ptr_synced</li>
     <li><b>FIFO benefits:</b> Decouples clock domains, enables frequency independence, handles bursts</li>
     <li><b>Production use:</b> Use library FIFO macros (foundry PDK, Synopsys DesignWare) for certified implementations</li>
@@ -349,7 +358,7 @@ endmodule
 <h2>FAQ</h2>
 <div class="faq-item"><h3>What is a dual-clock FIFO?</h3><p>A FIFO buffer with separate write and read clocks. Data is written in one clock domain, read in another, with pointers synchronized using Gray code + 2-FF to prevent invalid states.</p></div>
 <div class="faq-item"><h3>Why use Gray code for FIFO pointers?</h3><p>FIFO pointers are strictly incrementing counters. Gray code ensures only 1 bit changes per increment. Even if that bit is delayed, the result is always valid (no invalid intermediate states).</p></div>
-<div class="faq-item"><h3>How do full/empty flags work?</h3><p>Full: write_ptr_next == read_ptr_synced (both in Gray or binary). Empty: read_ptr == write_ptr_synced. Both comparisons happen in their respective clock domains using synced pointers.</p></div>
+<div class="faq-item"><h3>How do full/empty flags work?</h3><p>Full: occupancy, computed as (write_ptr − read_ptr_synced), equals DEPTH — not a plain pointer-equality check, which is actually the empty condition. Empty: read_ptr == write_ptr_synced. Both comparisons happen in their respective clock domains using synced pointers.</p></div>
 <div class="faq-item"><h3>What if I read when FIFO is empty or write when full?</h3><p>Reading empty: data_out is undefined, no error. Writing full: data is lost, no error. Always check empty/full flags before Read. Always check full before write to prevent data loss.</p></div>
 <div class="faq-item"><h3>Can I use a regular single-clock FIFO across clock domains?</h3><p>No. A single-clock FIFO's pointer logic is not CDC-safe. You must use a dual-clock FIFO or equivalent CDC-safe design. Using a single-clock FIFO will cause data corruption.</p></div>
 <div class="faq-item"><h3>What's the MTBF of a dual-clock FIFO?</h3><p>Depends on synchronizer depth (usually 2-FF) and settling time constants. Typical: 100+ years for reasonable frequencies. Always calculate or verify with library characterization.</p></div>
