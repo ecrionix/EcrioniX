@@ -66,6 +66,20 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 
 .composer{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:1.3rem;margin:1.5rem 0 2rem;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:border-color 0.2s}
 .composer:focus-within{border-color:rgba(56,189,248,.4)}
+.reply-preview-banner{display:flex;align-items:center;gap:0.6rem;background:var(--bg3);border-left:3px solid var(--blue);border-radius:8px;padding:0.6rem 0.8rem;margin-bottom:0.8rem}
+.reply-preview-content{flex:1;min-width:0}
+.reply-preview-author{font-size:0.78rem;font-weight:700;color:var(--blue)}
+.reply-preview-text{font-size:0.82rem;color:var(--sl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-preview-close{background:none;border:none;color:var(--sl);font-size:1.3rem;cursor:pointer;line-height:1;padding:0 0.3rem;flex-shrink:0}
+.reply-preview-close:hover{color:#f87171}
+.post-reply-quote{display:flex;flex-direction:column;gap:0.1rem;background:var(--bg3);border-left:3px solid var(--blue);border-radius:6px;padding:0.5rem 0.7rem;margin-bottom:0.7rem;cursor:pointer;transition:background 0.15s}
+.post-reply-quote:hover{background:rgba(56,189,248,.08)}
+.post-reply-quote-author{font-size:0.76rem;font-weight:700;color:var(--blue)}
+.post-reply-quote-text{font-size:0.8rem;color:var(--sl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-btn{background:var(--bg3);border:1px solid var(--bdr);border-radius:20px;padding:0.4rem 0.85rem;font-size:0.8rem;color:var(--sl);cursor:pointer;transition:all 0.15s}
+.reply-btn:hover{border-color:var(--blue);color:var(--blue);transform:scale(1.05)}
+.post-card.highlight-flash{animation:highlightFlash 1.6s ease}
+@keyframes highlightFlash{0%,100%{box-shadow:none}25%{box-shadow:0 0 0 3px rgba(56,189,248,.5)}}
 .composer textarea{width:100%;min-height:80px;padding:0.8rem;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--text);font-family:inherit;font-size:0.9rem;resize:vertical}
 .composer textarea:focus{outline:none;border-color:var(--blue)}
 .composer-footer{display:flex;justify-content:space-between;align-items:center;margin-top:0.8rem;flex-wrap:wrap;gap:0.6rem}
@@ -153,6 +167,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
   <div class="container">
 
     <div class="composer">
+      <div class="reply-preview-banner" id="replyPreviewBanner" style="display:none">
+        <div class="reply-preview-content">
+          <div class="reply-preview-author" id="replyPreviewAuthor"></div>
+          <div class="reply-preview-text" id="replyPreviewText"></div>
+        </div>
+        <button type="button" class="reply-preview-close" onclick="cancelReply()">×</button>
+      </div>
       <textarea id="postText" placeholder="Share something with the community... (links are okay, no images)"></textarea>
       <div id="pollBuilder" style="display:none;margin-top:0.8rem">
         <div id="pollOptionsList"></div>
@@ -250,6 +271,33 @@ function addPollOptionField() {
   list.appendChild(row);
 }
 
+let replyingTo = null; // { postId, authorName, text }
+
+function startReplyFromBtn(btn) {
+  startReply(btn.dataset.postId, btn.dataset.author, btn.dataset.text);
+}
+
+function startReply(postId, authorName, text) {
+  replyingTo = { postId, authorName, text: text.length > 120 ? text.slice(0, 120) + '…' : text };
+  document.getElementById('replyPreviewAuthor').textContent = 'Replying to ' + authorName;
+  document.getElementById('replyPreviewText').textContent = replyingTo.text;
+  document.getElementById('replyPreviewBanner').style.display = 'flex';
+  document.getElementById('postText').focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  document.getElementById('replyPreviewBanner').style.display = 'none';
+}
+
+function scrollToPost(postId) {
+  const el = document.getElementById('post-' + postId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('highlight-flash');
+  setTimeout(() => el.classList.remove('highlight-flash'), 1600);
+}
+
 async function submitPost() {
   const textarea = document.getElementById('postText');
   const text = textarea.value.trim();
@@ -290,10 +338,15 @@ async function submitPost() {
       postData.pollVotes = {};
     }
 
+    if (replyingTo) {
+      postData.replyTo = { postId: replyingTo.postId, authorName: replyingTo.authorName, text: replyingTo.text };
+    }
+
     await firebase.firestore().collection('communityPosts').add(postData);
     textarea.value = '';
     document.getElementById('pollToggle').checked = false;
     togglePollBuilder();
+    cancelReply();
   } catch (error) {
     console.error('Error posting:', error);
     alert('Could not post. Please try again.');
@@ -345,13 +398,20 @@ function renderPost(postId, post) {
 
   const adminControls = isAdminUser ? `
     <div class="admin-actions">
-      <button class="admin-btn" onclick="editPost('${postId}', ${JSON.stringify(post.text)})">Edit</button>
+      <button class="admin-btn" data-post-id="${postId}" data-text="${escapeHtml(post.text)}" onclick="editPostFromBtn(this)">Edit</button>
       <button class="admin-btn danger" onclick="deletePost('${postId}')">Delete</button>
     </div>
   ` : '';
 
+  const replyQuoteHtml = post.replyTo ? `
+    <div class="post-reply-quote" onclick="scrollToPost('${post.replyTo.postId}')">
+      <div class="post-reply-quote-author">${escapeHtml(post.replyTo.authorName)}</div>
+      <div class="post-reply-quote-text">${escapeHtml(post.replyTo.text)}</div>
+    </div>
+  ` : '';
+
   return `
-    <div class="post-card ${isAdminPost ? 'admin-post' : ''}">
+    <div class="post-card ${isAdminPost ? 'admin-post' : ''}" id="post-${postId}">
       <div class="post-header">
         <div class="post-avatar">${avatar}</div>
         <div>
@@ -359,11 +419,13 @@ function renderPost(postId, post) {
           <div class="post-time">${time}${editedNote}</div>
         </div>
       </div>
+      ${replyQuoteHtml}
       ${post.isPoll ? '' : `<div class="post-text">${bodyHtml}</div>`}
       ${pollHtml}
       <div class="post-actions">
         <button class="reaction-btn ${userLiked ? 'active-like' : ''}" onclick="toggleReaction('${postId}', 'likes')">👍 ${likes.length}</button>
         <button class="reaction-btn ${userDisliked ? 'active-dislike' : ''}" onclick="toggleReaction('${postId}', 'dislikes')">👎 ${dislikes.length}</button>
+        <button class="reply-btn" data-post-id="${postId}" data-author="${escapeHtml(displayName)}" data-text="${escapeHtml(post.text)}" onclick="startReplyFromBtn(this)">↩ Reply</button>
         ${adminControls}
       </div>
     </div>
@@ -430,6 +492,10 @@ async function toggleReaction(postId, field) {
   } catch (error) {
     console.error('Error toggling reaction:', error);
   }
+}
+
+function editPostFromBtn(btn) {
+  editPost(btn.dataset.postId, btn.dataset.text);
 }
 
 async function editPost(postId, currentText) {
