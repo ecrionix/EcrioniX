@@ -41,21 +41,30 @@ function markChallengeSolved(slug) {
 }
 
 // The hidden testbench — never shown to the student, appended to their
-// module before sending to the grading backend. Prints a single marker
-// line the UI looks for: ALL_TESTS_PASSED or TEST_FAILED.
+// module before sending to the grading backend. Prints one line per test
+// case (expected vs received) plus a marker line the UI looks for:
+// ALL_TESTS_PASSED or TEST_FAILED.
 const HIDDEN_TB = `
 module tb;
   reg in;
   wire out;
   integer errors = 0;
+  integer i;
+  reg test_vals [0:2];
   top_module dut(.in(in), .out(out));
   initial begin
-    in = 0; #1;
-    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=0 expected out=0 got out=%b", out); end
-    in = 1; #1;
-    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=1 expected out=1 got out=%b", out); end
-    in = 0; #1;
-    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=0 expected out=0 got out=%b", out); end
+    test_vals[0] = 0;
+    test_vals[1] = 1;
+    test_vals[2] = 0;
+    for (i = 0; i < 3; i = i + 1) begin
+      in = test_vals[i]; #1;
+      if (out !== in) begin
+        errors = errors + 1;
+        $display("Test %0d: in=%b | expected out=%b | received out=%b | FAIL", i+1, in, in, out);
+      end else begin
+        $display("Test %0d: in=%b | expected out=%b | received out=%b | PASS", i+1, in, in, out);
+      end
+    end
     if (errors == 0) $display("ALL_TESTS_PASSED");
     else $display("TEST_FAILED");
     $finish;
@@ -119,13 +128,21 @@ async function runSubmit() {
     if (!d.success && d.stage === 'compile') {
       out.innerHTML = `<span class="err">── Compile Error ──────────────────────\n${esc(d.stderr)}</span>`;
     } else {
-      const stdout = d.stdout || '';
+      // Strip the raw simulator/$finish debug line (e.g. "/tmp/xyz/design.v:23:
+      // $finish called at ...") — noise, not part of the test log.
+      const stdout = (d.stdout || '')
+        .split('\n')
+        .filter(line => !/\$finish called/.test(line))
+        .join('\n')
+        .trim();
       if (stdout.includes('ALL_TESTS_PASSED')) {
-        out.innerHTML = `<span class="ok">✅ All tests passed!\n\n${esc(stdout)}</span>`;
+        const log = stdout.replace('ALL_TESTS_PASSED', '').trim();
+        out.innerHTML = `<span class="ok">✅ All tests passed!\n\n${esc(log)}</span>`;
         markChallengeSolved('wire-passthrough');
         document.getElementById('solvedBadge').style.display = 'inline-block';
       } else {
-        out.innerHTML = `<span class="err">❌ Not quite — check the output below.\n\n${esc(stdout)}${d.stderr ? '\n' + esc(d.stderr) : ''}</span>`;
+        const log = stdout.replace('TEST_FAILED', '').trim();
+        out.innerHTML = `<span class="err">❌ Not quite — check the log below.\n\n${esc(log)}</span>${d.stderr ? `\n<span class="warn">${esc(d.stderr)}</span>` : ''}`;
       }
     }
   } catch (e) {
