@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Challenge: Wire the Input Straight to the Output — EcrioniX Admin</title>
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+
+let currentUser = null;
+firebase.auth().onAuthStateChanged(user => {
+  document.getElementById('authLoading').style.display = 'none';
+  if (user && user.uid === ADMIN_UID) {
+    currentUser = user;
+    document.getElementById('adminContent').style.display = 'block';
+  } else {
+    document.getElementById('noAccess').style.display = 'block';
+  }
+});
+
+function markChallengeSolved(slug) {
+  if (!currentUser) return;
+  firebase.firestore().collection('users').doc(currentUser.uid).set({
+    completedChallenges: firebase.firestore.FieldValue.arrayUnion(slug)
+  }, { merge: true }).catch(err => console.error('Could not record challenge progress:', err));
+}
+
+// The hidden testbench — never shown to the student, appended to their
+// module before sending to the grading backend. Prints a single marker
+// line the UI looks for: ALL_TESTS_PASSED or TEST_FAILED.
+const HIDDEN_TB = `
+module tb;
+  reg in;
+  wire out;
+  integer errors = 0;
+  top_module dut(.in(in), .out(out));
+  initial begin
+    in = 0; #1;
+    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=0 expected out=0 got out=%b", out); end
+    in = 1; #1;
+    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=1 expected out=1 got out=%b", out); end
+    in = 0; #1;
+    if (out !== in) begin errors = errors + 1; $display("MISMATCH: in=0 expected out=0 got out=%b", out); end
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`;
+
+const API = 'https://ecrionix-ecrionix-verilog.hf.space/run';
+
+// HF Spaces sleep after inactivity; first request fails with network error.
+async function apiFetch(url, body, onProgress) {
+  const TIMEOUTS = [8000, 80000, 80000];
+  const WAITS = [12000, 20000, 30000];
+  let lastErr;
+  for (let attempt = 0; attempt < TIMEOUTS.length; attempt++) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), TIMEOUTS[attempt]);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      clearTimeout(tid);
+      return res;
+    } catch (e) {
+      clearTimeout(tid);
+      lastErr = e;
+      if (attempt < TIMEOUTS.length - 1) {
+        if (onProgress) onProgress(attempt, WAITS[attempt] / 1000);
+        await new Promise(r => setTimeout(r, WAITS[attempt]));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+function esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function runSubmit() {
+  const editor = document.getElementById('editor');
+  const out = document.getElementById('console');
+  const btn = document.getElementById('submit-btn');
+  const studentCode = editor.value;
+  const combined = studentCode + '\n' + HIDDEN_TB;
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  out.innerHTML = '<span class="info">Connecting to simulation server...</span>\n';
+
+  try {
+    const res = await apiFetch(API, { code: combined }, (attempt, s) => {
+      out.innerHTML = `<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt + 1}/3)\nThe server starts after inactivity; first request can take 30-60s.</span>`;
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+
+    if (!d.success && d.stage === 'compile') {
+      out.innerHTML = `<span class="err">── Compile Error ──────────────────────\n${esc(d.stderr)}</span>`;
+    } else {
+      const stdout = d.stdout || '';
+      if (stdout.includes('ALL_TESTS_PASSED')) {
+        out.innerHTML = `<span class="ok">✅ All tests passed!\n\n${esc(stdout)}</span>`;
+        markChallengeSolved('wire-passthrough');
+        document.getElementById('solvedBadge').style.display = 'inline-block';
+      } else {
+        out.innerHTML = `<span class="err">❌ Not quite — check the output below.\n\n${esc(stdout)}${d.stderr ? '\n' + esc(d.stderr) : ''}</span>`;
+      }
+    }
+  } catch (e) {
+    out.innerHTML = `<span class="err">── Error ───────────────────────────────\n${esc(e.message)}\n</span><span class="dim">Tip: the simulation server starts after inactivity — click Submit again.</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run & Submit';
+  }
+}
+
+function resetCode() {
+  document.getElementById('editor').value = STARTER;
+  document.getElementById('console').innerHTML = '<span class="dim">// Output will appear here after you submit.</span>';
+}
+
+const STARTER = `module top_module( input in, output out );
+
+  // Your code here — connect out to in.
+
+endmodule
+`;
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.2rem;font-weight:700;color:#fff}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:800px;margin:0 auto;padding:2.5rem 1.5rem}
+.no-access{text-align:center;padding:5rem 1.5rem}
+.no-access h1{color:#f87171}
+.wip-badge{display:inline-block;font-size:0.72rem;font-weight:800;color:#a78bfa;background:rgba(167,139,250,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem;margin-right:0.5rem}
+.diff-badge{display:inline-block;font-size:0.68rem;font-weight:800;color:var(--green);background:rgba(74,222,128,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+#solvedBadge{display:none;font-size:0.72rem;font-weight:800;color:var(--green);background:rgba(74,222,128,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-left:0.5rem}
+h1{font-size:1.7rem;margin-bottom:0.6rem;color:#f8fafc}
+.lede{color:var(--sl);margin-bottom:1.5rem}
+.spec-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem 1.4rem;margin-bottom:1.5rem;font-size:0.9rem;color:var(--text)}
+.spec-box code{background:var(--bg3);color:#7dd3fc;padding:0.1rem 0.4rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.85rem}
+.editor-label{font-size:0.8rem;color:var(--sl);margin-bottom:0.4rem;display:flex;justify-content:space-between;align-items:center}
+.reset-link{font-size:0.78rem;color:var(--sl);cursor:pointer;background:none;border:none}
+.reset-link:hover{color:var(--blue)}
+#editor{width:100%;min-height:180px;background:#000814;color:#e2e8f0;border:1px solid var(--bdr);border-radius:10px;padding:1rem;font-family:'JetBrains Mono',monospace;font-size:0.88rem;resize:vertical;tab-size:2}
+#editor:focus{outline:none;border-color:var(--blue)}
+.actions{display:flex;gap:0.8rem;margin:1rem 0}
+#submit-btn{background:var(--blue);color:#020617;border:none;padding:0.7rem 1.5rem;border-radius:8px;font-weight:700;font-size:0.9rem;cursor:pointer}
+#submit-btn:hover{background:#7dd3fc}
+#submit-btn:disabled{opacity:0.6;cursor:default}
+#console{background:#000814;border:1px solid var(--bdr);border-radius:10px;padding:1rem;font-family:'JetBrains Mono',monospace;font-size:0.82rem;white-space:pre-wrap;min-height:80px;color:var(--sl)}
+#console .ok{color:var(--green)}
+#console .err{color:var(--red)}
+#console .warn{color:var(--amber)}
+#console .info{color:var(--blue)}
+#console .dim{color:var(--sl);display:block;margin-top:0.5rem}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+</style>
+</head>
+<body>
+
+<div id="authLoading"><div class="auth-spinner"></div></div>
+
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <a href="/premium-course/verilog-challenges/" class="back-link">← Back to Challenges</a>
+</div>
+
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 Admin Only</h1>
+  <p>This challenge is not available yet.</p>
+  <a href="/premium-course/">Go back →</a>
+</div>
+
+<div id="adminContent" style="display:none;">
+  <div class="container">
+    <span class="wip-badge">🚧 Admin Preview Only</span>
+    <span class="diff-badge">Easy</span>
+    <span id="solvedBadge">✅ Solved</span>
+    <h1>Wire the Input Straight to the Output</h1>
+    <p class="lede">Category 1 · Verilog Language Basics · Problem 1</p>
+
+    <div class="spec-box">
+      Create a module named <code>top_module</code> with one input <code>in</code> and one output <code>out</code>
+      that simply copies the input value to the output at all times — a plain wire.
+      <br><br>
+      Port list (must match exactly): <code>module top_module( input in, output out );</code>
+    </div>
+
+    <div class="editor-label">
+      <span>Your Solution</span>
+      <button class="reset-link" onclick="resetCode()">Reset to starter code</button>
+    </div>
+    <textarea id="editor" spellcheck="false">module top_module( input in, output out );
+
+  // Your code here — connect out to in.
+
+endmodule
+</textarea>
+
+    <div class="actions">
+      <button id="submit-btn" onclick="runSubmit()">Run &amp; Submit</button>
+    </div>
+
+    <div class="editor-label"><span>Output</span></div>
+    <div id="console"><span class="dim">// Output will appear here after you submit.</span></div>
+  </div>
+</div>
+
+<footer>
+  © 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a> · <a href="/premium-course/verilog-challenges/">Challenges</a>
+</footer>
+
+</body>
+</html>
