@@ -159,6 +159,7 @@ async function runSubmit() {
 function resetCode() {
   document.getElementById('editor').value = STARTER;
   document.getElementById('console').innerHTML = '<span class="dim">// Output will appear here after you submit.</span>';
+  updateHighlight();
 }
 
 const STARTER = `module top_module( input in, output out );
@@ -167,6 +168,87 @@ const STARTER = `module top_module( input in, output out );
 
 endmodule
 `;
+
+// ── Syntax highlighter (same technique as the online Verilog simulator:
+// a transparent textarea layered over a colored <pre>, kept in sync) ──
+const KW_MOD  = new Set(['module','endmodule','macromodule','primitive','endprimitive','task','endtask','function','endfunction','generate','endgenerate']);
+const KW_TYPE = new Set(['input','output','inout','wire','reg','logic','integer','real','time','realtime','parameter','localparam','defparam','signed','unsigned','supply0','supply1','tri','triand','trior','tri0','tri1','wor','wand','bit','byte','int','shortint','longint','string','genvar','event']);
+const KW_CTRL = new Set(['always','always_ff','always_comb','always_latch','initial','begin','end','if','else','case','casex','casez','endcase','for','foreach','while','forever','repeat','do','fork','join','join_any','join_none','disable','assign','deassign','force','release','wait','return','break','continue','unique','priority']);
+const KW_EDGE = new Set(['posedge','negedge','or','and','not','nand','nor','xor','xnor','buf','bufif0','bufif1','notif0','notif1','pullup','pulldown']);
+
+function hlEsc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function kwSpan(w) {
+  if (KW_MOD.has(w)) return `<span class="hl-mod">${w}</span>`;
+  if (KW_TYPE.has(w)) return `<span class="hl-type">${w}</span>`;
+  if (KW_CTRL.has(w)) return `<span class="hl-ctrl">${w}</span>`;
+  if (KW_EDGE.has(w)) return `<span class="hl-edge">${w}</span>`;
+  return null;
+}
+
+function hlLine(line) {
+  let out = '', i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === '/' && line[i + 1] === '/') { out += `<span class="hl-cmt">${hlEsc(line.slice(i))}</span>`; break; }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < line.length && line[j] !== '"') { if (line[j] === '\\') j++; j++; }
+      out += `<span class="hl-str">${hlEsc(line.slice(i, j + 1))}</span>`;
+      i = j + 1; continue;
+    }
+    if (ch === '$') {
+      let j = i + 1;
+      while (j < line.length && /\w/.test(line[j])) j++;
+      out += `<span class="hl-sys">${hlEsc(line.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    if (ch === '`') {
+      let j = i + 1;
+      while (j < line.length && /\w/.test(line[j])) j++;
+      out += `<span class="hl-pre">${hlEsc(line.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    if (/[0-9]/.test(ch)) {
+      const m = line.slice(i).match(/^(\d+'[bBoOhHdD][0-9a-fA-FxXzZ_]+|\d[\d_]*)/);
+      if (m) { out += `<span class="hl-num">${hlEsc(m[0])}</span>`; i += m[0].length; continue; }
+    }
+    if (/[a-zA-Z_]/.test(ch)) {
+      let j = i;
+      while (j < line.length && /[\w$]/.test(line[j])) j++;
+      const word = line.slice(i, j);
+      out += kwSpan(word) || hlEsc(word);
+      i = j; continue;
+    }
+    out += hlEsc(ch); i++;
+  }
+  return out;
+}
+
+function highlight(code) { return code.split('\n').map(hlLine).join('\n'); }
+
+function updateHighlight() {
+  document.getElementById('hl-layer').innerHTML = highlight(document.getElementById('editor').value) + '\n';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const ed = document.getElementById('editor');
+  updateHighlight();
+  ed.addEventListener('input', updateHighlight);
+  ed.addEventListener('scroll', () => {
+    document.getElementById('hl-layer').scrollTop = ed.scrollTop;
+    document.getElementById('hl-layer').scrollLeft = ed.scrollLeft;
+  });
+  ed.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = ed.selectionStart, end = ed.selectionEnd;
+      ed.value = ed.value.slice(0, start) + '  ' + ed.value.slice(end);
+      ed.selectionStart = ed.selectionEnd = start + 2;
+      updateHighlight();
+    }
+  });
+});
 </script>
 <style>
 :root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--green:#4ade80;--amber:#fbbf24;--red:#f87171;--text:#e2e8f0;--sl:#94a3b8}
@@ -193,8 +275,24 @@ h1{font-size:1.7rem;margin-bottom:0.6rem;color:#f8fafc}
 .editor-label{font-size:0.8rem;color:var(--sl);margin-bottom:0.4rem;display:flex;justify-content:space-between;align-items:center}
 .reset-link{font-size:0.78rem;color:var(--sl);cursor:pointer;background:none;border:none}
 .reset-link:hover{color:var(--blue)}
-#editor{width:100%;min-height:180px;background:#000814;color:#e2e8f0;border:1px solid var(--bdr);border-radius:10px;padding:1rem;font-family:'JetBrains Mono',monospace;font-size:0.88rem;resize:vertical;tab-size:2}
-#editor:focus{outline:none;border-color:var(--blue)}
+.editor-wrap{position:relative;height:230px;background:#000814;border:1px solid var(--bdr);border-radius:10px;overflow:hidden}
+.editor-wrap:focus-within{border-color:var(--blue)}
+#hl-layer{position:absolute;inset:0;margin:0;border:0;padding:1rem;font-family:'JetBrains Mono',monospace;font-size:0.88rem;line-height:1.6;tab-size:2;white-space:pre;overflow:auto;pointer-events:none;user-select:none;color:#e2e8f0;background:transparent;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0;scrollbar-width:none}
+#hl-layer::-webkit-scrollbar{display:none}
+#editor{position:absolute;inset:0;width:100%;height:100%;background:transparent;color:transparent;caret-color:#7dd3fc;border:none;outline:none;resize:none;padding:1rem;font-family:'JetBrains Mono',monospace;font-size:0.88rem;line-height:1.6;tab-size:2;overflow:auto;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+#editor::selection{background:rgba(56,189,248,0.25)}
+.hl-mod{color:#38bdf8}
+.hl-type{color:#fbbf24}
+.hl-ctrl{color:#a78bfa}
+.hl-edge{color:#2dd4bf}
+.hl-num{color:#fb923c}
+.hl-str{color:#86efac}
+.hl-cmt{color:#4a5f72;font-style:italic}
+.hl-sys{color:#7dd3fc}
+.hl-pre{color:#f472b6}
+.concept-box{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin-bottom:1.5rem;font-size:0.87rem;color:var(--sl)}
+.concept-box b{color:#f8fafc}
+.concept-box code{background:var(--bg3);color:#7dd3fc;padding:0.1rem 0.4rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.83rem}
 .actions{display:flex;gap:0.8rem;margin:1rem 0}
 #submit-btn{background:var(--blue);color:#020617;border:none;padding:0.7rem 1.5rem;border-radius:8px;font-weight:700;font-size:0.9rem;cursor:pointer}
 #submit-btn:hover{background:#7dd3fc}
@@ -238,16 +336,23 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       Port list (must match exactly): <code>module top_module( input in, output out );</code>
     </div>
 
+    <div class="concept-box">
+      <b>Concept: continuous assignment.</b> In Verilog, <code>assign out = in;</code> wires <code>out</code> to <code>in</code> permanently — it's not a one-time copy, it's a standing connection that updates instantly whenever <code>in</code> changes, just like a real wire. This is the simplest possible piece of combinational logic, and almost every module you'll ever write builds on this same <code>assign</code> statement.
+    </div>
+
     <div class="editor-label">
       <span>Your Solution</span>
       <button class="reset-link" onclick="resetCode()">Reset to starter code</button>
     </div>
-    <textarea id="editor" spellcheck="false">module top_module( input in, output out );
+    <div class="editor-wrap">
+      <pre id="hl-layer" aria-hidden="true"></pre>
+      <textarea id="editor" spellcheck="false" autocorrect="off" autocomplete="off">module top_module( input in, output out );
 
   // Your code here — connect out to in.
 
 endmodule
 </textarea>
+    </div>
 
     <div class="actions">
       <button id="submit-btn" onclick="runSubmit()">Run &amp; Submit</button>
