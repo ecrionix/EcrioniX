@@ -56,6 +56,8 @@ module tb;
   reg test_vals [0:2];
   top_module dut(.in(in), .out(out));
   initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
     test_vals[0] = 0;
     test_vals[1] = 1;
     test_vals[2] = 0;
@@ -110,6 +112,111 @@ function esc(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ── Minimal VCD parser — pulls out just the named 1-bit signals we care
+// about (in/out), ignoring test-bookkeeping vars like loop counters. ──
+function parseVCDSignals(vcdText, wantedNames) {
+  const nameToId = {};
+  const idToName = {};
+  const events = {};
+  wantedNames.forEach(n => { events[n] = []; });
+
+  let inDefs = true;
+  let time = 0;
+  for (const raw of vcdText.split('\n')) {
+    const l = raw.trim();
+    if (!l) continue;
+    if (l.startsWith('$var')) {
+      const m = l.match(/^\$var\s+\S+\s+\d+\s+(\S+)\s+(\S+)/);
+      if (m) {
+        const [, id, name] = m;
+        if (wantedNames.includes(name) && !nameToId[name]) {
+          nameToId[name] = id;
+          idToName[id] = name;
+        }
+      }
+      continue;
+    }
+    if (l === '$enddefinitions $end') { inDefs = false; continue; }
+    if (inDefs) continue;
+    if (l.startsWith('#')) { time = parseInt(l.slice(1), 10) || 0; continue; }
+    if (l.startsWith('$')) continue;
+
+    let m = l.match(/^([01xzXZ])(\S+)$/);
+    if (m) {
+      const name = idToName[m[2]];
+      if (name) events[name].push({ time, value: m[1].toLowerCase() });
+      continue;
+    }
+    m = l.match(/^b([01xzXZ]+)\s+(\S+)$/);
+    if (m) {
+      const name = idToName[m[2]];
+      if (name) events[name].push({ time, value: (m[1].slice(-1) || '0').toLowerCase() });
+    }
+  }
+  return events;
+}
+
+// ── Renders a simple, clear timing diagram (SVG) from parsed VCD events ──
+function renderTimingDiagram(events, signalOrder, endTime) {
+  const cellW = 70, laneH = 46, labelW = 64, topPad = 24, botPad = 34;
+  const hiY = 12, loY = 34; // within-lane y offsets for logic-1 / logic-0
+  const width = labelW + (endTime + 1) * cellW + 20;
+  const height = topPad + signalOrder.length * laneH + botPad;
+
+  const yFor = v => (v === '1' ? hiY : loY);
+
+  let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">`;
+
+  // vertical gridlines + time labels
+  for (let t = 0; t <= endTime; t++) {
+    const x = labelW + t * cellW;
+    svg += `<line x1="${x}" y1="${topPad - 6}" x2="${x}" y2="${height - botPad + 6}" stroke="#1e2b40" stroke-width="1"/>`;
+    svg += `<text x="${x}" y="${height - botPad + 20}" font-size="10" fill="#64748b" text-anchor="middle">${t}ns</text>`;
+  }
+
+  signalOrder.forEach((name, idx) => {
+    const laneTop = topPad + idx * laneH;
+    const evs = (events[name] || []).slice().sort((a, b) => a.time - b.time);
+    svg += `<text x="8" y="${laneTop + 27}" font-size="13" fill="#e2e8f0" font-weight="700">${name}</text>`;
+
+    if (!evs.length) return;
+    let prevVal = evs[0].value;
+    let d = `M ${labelW} ${laneTop + yFor(prevVal)}`;
+    for (let i = 1; i < evs.length; i++) {
+      const xAt = labelW + evs[i].time * cellW;
+      d += ` L ${xAt} ${laneTop + yFor(prevVal)} L ${xAt} ${laneTop + yFor(evs[i].value)}`;
+      prevVal = evs[i].value;
+    }
+    const xEnd = labelW + endTime * cellW;
+    d += ` L ${xEnd} ${laneTop + yFor(prevVal)}`;
+    svg += `<path d="${d}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linejoin="round"/>`;
+
+    // value labels at each segment start
+    let segStart = 0, segVal = evs[0].value;
+    const labelAt = (t, v) => {
+      const x = labelW + t * cellW + 6;
+      svg += `<text x="${x}" y="${laneTop + yFor(v) - 5}" font-size="10" fill="#94a3b8">${v}</text>`;
+    };
+    labelAt(segStart, segVal);
+    for (let i = 1; i < evs.length; i++) {
+      if (evs[i].value !== segVal) { segVal = evs[i].value; labelAt(evs[i].time, segVal); }
+    }
+  });
+
+  svg += '</svg>';
+  return svg;
+}
+
+function showWaveform(vcdText) {
+  const wrap = document.getElementById('waveform-wrap');
+  if (!vcdText) { wrap.style.display = 'none'; return; }
+  const events = parseVCDSignals(vcdText, ['in', 'out']);
+  const allTimes = [...events.in, ...events.out].map(e => e.time);
+  const endTime = Math.max(3, ...allTimes) + 1;
+  document.getElementById('waveform-svg').innerHTML = renderTimingDiagram(events, ['in', 'out'], endTime);
+  wrap.style.display = 'block';
+}
+
 async function runSubmit() {
   const editor = document.getElementById('editor');
   const out = document.getElementById('console');
@@ -130,7 +237,9 @@ async function runSubmit() {
 
     if (!d.success && d.stage === 'compile') {
       out.innerHTML = `<span class="err">── Compile Error ──────────────────────\n${esc(d.stderr)}</span>`;
+      showWaveform(null);
     } else {
+      showWaveform(d.vcd);
       // Strip the raw simulator/$finish debug line (e.g. "/tmp/xyz/design.v:23:
       // $finish called at ...") — noise, not part of the test log.
       const stdout = (d.stdout || '')
@@ -306,6 +415,8 @@ h1{font-size:1.7rem;margin-bottom:0.6rem;color:#f8fafc}
 #console .warn{color:var(--amber)}
 #console .info{color:var(--blue)}
 #console .dim{color:var(--sl);display:block;margin-top:0.5rem}
+.waveform-box{background:#000814;border:1px solid var(--bdr);border-radius:10px;padding:0.9rem;overflow-x:auto}
+.waveform-box svg{display:block}
 footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
 </style>
 </head>
@@ -336,7 +447,11 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       Create a module named <code>top_module</code> with one input <code>in</code> and one output <code>out</code>
       that simply copies the input value to the output at all times — a plain wire.
       <br><br>
-      Port list (must match exactly): <code>module top_module( input in, output out );</code>
+      Port list (must match exactly):
+      <pre style="background:var(--bg3);border-radius:6px;padding:0.6rem 0.9rem;margin-top:0.4rem;font-family:'JetBrains Mono',monospace;font-size:0.83rem;color:#7dd3fc;overflow-x:auto">module top_module(
+  input   in,
+  output  out
+);</pre>
     </div>
 
     <div class="concept-box">
@@ -366,6 +481,11 @@ endmodule
 
     <div class="editor-label"><span>Output</span></div>
     <div id="console"><span class="dim">// Output will appear here after you submit.</span></div>
+
+    <div id="waveform-wrap" style="display:none">
+      <div class="editor-label" style="margin-top:1.2rem"><span>Waveform</span></div>
+      <div class="waveform-box"><div id="waveform-svg"></div></div>
+    </div>
   </div>
 </div>
 
