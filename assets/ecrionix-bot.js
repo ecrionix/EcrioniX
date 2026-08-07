@@ -188,41 +188,116 @@
   input.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
 
   // ---- Universal mobile menu fix ----
-  // Many pages hide .nav-links on mobile via CSS with no toggle button to bring them back.
-  // This detects those pages (no existing .hamburger) and injects a working hamburger + dropdown.
+  // 1) Repair pages where hamburger exists but JS never bound (script errors).
+  // 2) Inject a hamburger on pages that hide .nav-links with no toggle.
   (function(){
-    var linkLists = document.querySelectorAll('.nav-links');
-    if (!linkLists.length) return;
-
     var css = ''
-      +'.ecx-mnav-btn{display:none;background:none;border:none;cursor:pointer;padding:6px;flex-direction:column;gap:4px;flex-shrink:0}'
-      +'.ecx-mnav-btn span{display:block;width:20px;height:2px;background:#e2e8f0;border-radius:2px}'
+      +'html,body{max-width:100%;overflow-x:clip}'
+      +'.navbar,.nav,nav.navbar{overflow:visible!important}'
+      +'.hamburger,.ecx-mnav-btn{display:none;background:none;border:none;cursor:pointer;padding:8px;flex-direction:column;gap:5px;flex-shrink:0;min-width:44px;min-height:44px;align-items:center;justify-content:center;z-index:120;position:relative}'
+      +'.hamburger span,.ecx-mnav-btn span{display:block;width:22px;height:2px;background:#e2e8f0;border-radius:2px}'
+      +'.mobile-menu{display:none;flex-direction:column;background:#0c1526;border-top:1px solid rgba(148,163,184,.15);padding:.75rem 1.15rem 1rem;gap:0;position:absolute;left:0;right:0;top:100%;z-index:250;max-height:min(70vh,560px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 16px 40px rgba(0,0,0,.45);list-style:none;margin:0}'
+      +'.mobile-menu.open{display:flex!important}'
+      +'.mobile-menu a{color:#818cf8;text-decoration:none;font-size:.95rem;padding:.75rem 0;border-bottom:1px solid rgba(148,163,184,.1);min-height:44px;display:flex;align-items:center}'
+      +'.mobile-menu a:last-child{border-bottom:none}'
       +'@media(max-width:768px){'
-        +'.ecx-mnav-btn{display:flex}'
-        +'.nav-links.ecx-mnav-managed:not(.ecx-mnav-open){display:none!important}'
-        +'.nav-links.ecx-mnav-open{display:flex!important;position:absolute;left:0;right:0;top:100%;flex-direction:column;background:#0c1526;border-bottom:1px solid rgba(148,163,184,.15);padding:.75rem 1.25rem;gap:0!important;z-index:200;list-style:none;margin:0}'
-        +'.nav-links.ecx-mnav-open a,.nav-links.ecx-mnav-open li{padding:.6rem 0;border-bottom:1px solid rgba(148,163,184,.1);display:block}'
+        +'.nav-links:not(.ecx-mnav-open){display:none!important}'
+        +'.hamburger,.ecx-mnav-btn{display:flex!important}'
+        +'.nav-links.ecx-mnav-managed.ecx-mnav-open{display:flex!important;position:absolute;left:0;right:0;top:100%;flex-direction:column;background:#0c1526;border-bottom:1px solid rgba(148,163,184,.15);padding:.75rem 1.25rem;gap:0!important;z-index:250;list-style:none;margin:0;max-height:min(70vh,560px);overflow-y:auto}'
+        +'.nav-links.ecx-mnav-open a,.nav-links.ecx-mnav-open li{padding:.7rem 0;border-bottom:1px solid rgba(148,163,184,.1);display:block}'
         +'.nav-links.ecx-mnav-open li:last-child,.nav-links.ecx-mnav-open a:last-child{border-bottom:none}'
+        +'.container,.wrap,.content,.page,.hero{padding-left:max(.9rem,env(safe-area-inset-left));padding-right:max(.9rem,env(safe-area-inset-right));box-sizing:border-box}'
+        +'img,svg,video,canvas,iframe{max-width:100%;height:auto}'
+        +'table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}'
+      +'}'
+      +'@media(max-width:480px){'
+        +'h1{font-size:clamp(1.25rem,6vw,1.75rem)!important;line-height:1.25}'
+        +'.cards-grid,.card-grid,.grid{grid-template-columns:1fr!important}'
       +'}';
-    var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    var st = document.createElement('style');
+    st.setAttribute('data-ecx-mnav','1');
+    st.textContent = css;
+    document.head.appendChild(st);
 
-    linkLists.forEach(function(links){
+    function bindHamburger(ham, menu) {
+      if (!ham || !menu || ham.dataset.ecxBound === '1') return;
+      ham.dataset.ecxBound = '1';
+      ham.setAttribute('aria-expanded', 'false');
+      ham.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var open = menu.classList.toggle('open');
+        ham.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () {
+          menu.classList.remove('open');
+          ham.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
+
+    // Repair existing hamburger + mobile-menu pairs (even if page JS failed)
+    document.querySelectorAll('.hamburger').forEach(function (ham) {
+      var nav = ham.closest('.navbar, .nav, nav') || ham.parentElement;
+      if (nav) {
+        var cs = getComputedStyle(nav);
+        if (cs.position === 'static') nav.style.position = 'relative';
+        nav.style.overflow = 'visible';
+      }
+      var menu = (nav && nav.querySelector('.mobile-menu')) || document.getElementById('mobileMenu') || document.querySelector('.mobile-menu');
+      if (!menu) return;
+      // Replace node to drop any broken/duplicate page listeners, then bind once
+      if (ham.dataset.ecxBound !== '1') {
+        var fresh = ham.cloneNode(true);
+        ham.parentNode.replaceChild(fresh, ham);
+        bindHamburger(fresh, menu);
+      }
+    });
+
+    // Inject hamburger for pages that only have .nav-links
+    document.querySelectorAll('.nav-links').forEach(function (links) {
       var container = links.parentElement;
       if (!container) return;
-      if (container.querySelector('.hamburger')) return; // page already has a working toggle
-      if (container.querySelector('.ecx-mnav-btn')) return; // avoid double-inject
+      if (container.querySelector('.hamburger') || container.querySelector('.ecx-mnav-btn')) return;
+      // If a sibling mobile-menu exists under the outer nav, skip injection
+      var outer = container.closest('.navbar, .nav, nav') || container;
+      if (outer.querySelector('.mobile-menu') && outer.querySelector('.hamburger')) return;
 
       var cs = getComputedStyle(container);
       if (cs.position === 'static') container.style.position = 'relative';
-
+      container.style.overflow = 'visible';
       links.classList.add('ecx-mnav-managed');
 
       var mbtn = document.createElement('button');
       mbtn.className = 'ecx-mnav-btn';
-      mbtn.setAttribute('aria-label','Toggle menu');
+      mbtn.type = 'button';
+      mbtn.setAttribute('aria-label', 'Toggle menu');
       mbtn.innerHTML = '<span></span><span></span><span></span>';
-      mbtn.onclick = function(){ links.classList.toggle('ecx-mnav-open'); };
+      mbtn.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        links.classList.toggle('ecx-mnav-open');
+      };
       container.appendChild(mbtn);
+      links.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { links.classList.remove('ecx-mnav-open'); });
+      });
+    });
+
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('.mobile-menu.open').forEach(function (menu) {
+        var nav = menu.closest('.navbar, .nav, nav') || menu.parentElement;
+        var ham = nav && nav.querySelector('.hamburger');
+        if (menu.contains(e.target) || (ham && ham.contains(e.target))) return;
+        menu.classList.remove('open');
+        if (ham) ham.setAttribute('aria-expanded', 'false');
+      });
+      document.querySelectorAll('.nav-links.ecx-mnav-open').forEach(function (links) {
+        var btn = links.parentElement && links.parentElement.querySelector('.ecx-mnav-btn');
+        if (links.contains(e.target) || (btn && btn.contains(e.target))) return;
+        links.classList.remove('ecx-mnav-open');
+      });
     });
   })();
 })();
