@@ -20,15 +20,15 @@
       link.href = href;
       document.head.appendChild(link);
     }
-    ensureStylesheet('/assets/theme-toggle.css');
-    ensureStylesheet('/assets/site-theme.css?v=2');
+    ensureStylesheet('/assets/theme-toggle.css?v=3');
+    ensureStylesheet('/assets/site-theme.css?v=3');
 
     function ensureToggleScript() {
       if (document.getElementById('themeToggleBtn') || window.__ecxThemeToggleLoading) return;
       if ([].some.call(document.scripts, function (s) { return s.src && s.src.indexOf('theme-toggle.js') !== -1; })) return;
       window.__ecxThemeToggleLoading = true;
       var s = document.createElement('script');
-      s.src = '/assets/theme-toggle.js';
+      s.src = '/assets/theme-toggle.js?v=3';
       s.defer = true;
       document.head.appendChild(s);
     }
