@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I2C RTL Implementation — Byte + Bit Engine + CSR — RTL Design | EcrioniX</title>
+<meta property="og:title" content="I2C RTL Implementation — Byte + Bit Engine + CSR — RTL Design | EcrioniX">
+<meta property="og:description" content="Module 11.4 capstone: implement synthesizable I2C master CSR map, open-drain bit engine, byte FSM, and top wrapper — paste-ready Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/i2c-rtl-implementation/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"I2C RTL Implementation","item":"https://ecrionix.org/premium-course/rtl-design/i2c-rtl-implementation/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What are the three RTL layers in the I2C master?","acceptedAnswer":{"@type":"Answer","text":"CSR registers expose software control, the byte FSM sequences START/8 bits/ACK/STOP, and the bit engine toggles SCL/SDA with open-drain output enables."}},{"@type":"Question","name":"How does open-drain SDA work in Verilog?","acceptedAnswer":{"@type":"Answer","text":"Drive sda_oe low to release the line (external pull-up). Drive sda_oe high and sda_out low to pull SDA to zero. Never drive high actively."}}]}]}</script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);const ADMIN_UID='aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user=>{if(!user){window.location.href='/premium-course/';return;}checkAccess(user);});
+function markLessonComplete(slug){const user=firebase.auth().currentUser;if(!user)return;firebase.firestore().collection('users').doc(user.uid).set({completedLessons:{rtl:firebase.firestore.FieldValue.arrayUnion(slug)}},{merge:true}).catch(err=>console.error('Could not record lesson progress:',err));}
+async function checkAccess(user){if(user.uid===ADMIN_UID){document.getElementById('authLoading').style.display='none';document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-rtl-implementation');return;}try{const doc=await firebase.firestore().collection('users').doc(user.uid).get();const data=doc.data();const wasApproved=data?.approvedCourses?.includes('rtl');const expiry=data?.courseExpiry?.rtl;const isExpired=wasApproved&&expiry&&expiry.toDate()<new Date();const hasAccess=wasApproved&&!isExpired;document.getElementById('authLoading').style.display='none';if(hasAccess){document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-rtl-implementation');}else{document.getElementById('noAccess').style.display='block';}}catch(error){console.error('Error checking access:',error);document.getElementById('authLoading').style.display='none';document.getElementById('noAccess').style.display='block';}}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}.back-link{color:var(--sl);font-size:0.9rem}.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}.lede .hl{color:var(--heading,#f8fafc);font-weight:600}.section{margin:2.4rem 0}.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}.section ul li,.section ol li{margin-bottom:0.5rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}.map-table td{color:var(--sl)}.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.trap-box p{margin:0;color:var(--text);font-size:0.92rem}.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.9rem;margin:1.3rem 0}.reason-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.1rem}.reason-card .rc-icon{font-size:1.3rem;margin-bottom:0.45rem}.reason-card h4{color:var(--heading,#f8fafc);font-size:0.92rem;margin-bottom:0.35rem}.reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+.flow-rail{display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:center;margin:1.2rem 0}.flow-chip{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.72rem;font-weight:700;color:var(--heading,#f8fafc);white-space:nowrap}.flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}.flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar"><div class="navbar-logo">🎓 EcrioniX Premium</div><div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div></div>
+<div id="noAccess" class="no-access" style="display:none;"><h1>🔒 No Access</h1><p>You don't have approved access to this course yet.</p><a href="/premium-course/">Go back and request access →</a></div>
+<div id="lessonContent" style="display:none;">
+<div class="container">
+<div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 11: Capstone — I2C Controller</div>
+<span class="lesson-tag">Lesson 11.4 · Implementation</span>
+<h1>I2C RTL implementation — byte engine + bit engine + CSR</h1>
+<p class="lede">Architecture from <a href="/premium-course/rtl-design/i2c-architecture/">Lesson 11.3</a> is done — now you <span class="hl">write the RTL</span>. This lesson delivers paste-ready, synthesizable Verilog for the <a href="/premium-course/rtl-design/i2c-one-page-spec/">CSR map from Lesson 11.2</a>, an open-drain bit engine, a byte-level FSM, and the top wrapper that ties them together. By the end you can simulate a single-byte write transaction.</p>
+<div class="def-box"><div class="def-label">Capstone deliverable</div><p>Three layers: <strong>CSR</strong> (software interface), <strong>byte FSM</strong> (protocol sequencing), <strong>bit engine</strong> (SCL/SDA timing). Software writes ADDR + TXDATA, pulses START, polls STAT until DONE.</p></div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Three-layer block diagram</h2></div>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C master three-layer block diagram">
+<defs><marker id="m114-arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#38bdf8"/></marker><marker id="m114-teal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker></defs>
+<text x="360" y="22" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">i2c_master_top — CSR → byte FSM → bit engine → pads</text>
+<rect x="20" y="50" width="130" height="90" rx="10" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="85" y="80" fill="#38bdf8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">APB / SW</text>
+<text x="85" y="98" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">paddr, pwdata</text>
+<text x="85" y="112" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">prdata, pwrite</text>
+<rect x="180" y="40" width="160" height="110" rx="10" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="260" y="72" fill="#a78bfa" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">CSR decode</text>
+<text x="260" y="90" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">CTRL START/ABORT</text>
+<text x="260" y="104" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">STAT BUSY/NACK/DONE</text>
+<text x="260" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">ADDR TXDATA RXDATA</text>
+<rect x="370" y="40" width="160" height="110" rx="10" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+<text x="450" y="72" fill="#2dd4bf" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Byte FSM</text>
+<text x="450" y="90" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">IDLE → START</text>
+<text x="450" y="104" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">→ 8 bits → ACK</text>
+<text x="450" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">→ STOP → DONE</text>
+<rect x="560" y="40" width="140" height="110" rx="10" fill="rgba(251,191,36,.1)" stroke="#fbbf24"/>
+<text x="630" y="72" fill="#fbbf24" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Bit engine</text>
+<text x="630" y="90" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">scl_oe, sda_oe</text>
+<text x="630" y="104" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">half-period cnt</text>
+<text x="630" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">sample SDA @ ACK</text>
+<line x1="150" y1="95" x2="180" y2="95" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m114-arr)"/>
+<line x1="340" y1="95" x2="370" y2="95" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#m114-teal)"/>
+<line x1="530" y1="95" x2="560" y2="95" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#m114-arr)"/>
+<rect x="560" y="200" width="140" height="50" rx="8" fill="#0c1526" stroke="#94a3b8"/>
+<text x="630" y="230" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">I2C pads</text>
+<line x1="630" y1="150" x2="630" y2="200" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#m114-arr)"/>
+<text x="360" y="175" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">bit_cmd: drive_bit / sample_ack / gen_start / gen_stop</text>
+<rect x="180" y="200" width="350" height="70" rx="8" fill="rgba(56,189,248,.06)" stroke="rgba(56,189,248,.25)"/>
+<text x="355" y="228" fill="#38bdf8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Handshake: byte FSM issues one bit command at a time</text>
+<text x="355" y="248" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">bit_done pulse advances byte FSM · ack_sda sampled on 9th bit</text>
+</svg>
+<p class="diagram-caption">Software never touches SCL/SDA directly. CSR kicks the byte FSM; the bit engine owns pad timing.</p>
+</div>
+<div class="flow-rail">
+<span class="flow-chip accent">Write ADDR</span><span class="flow-arrow">→</span><span class="flow-chip">Write TXDATA</span><span class="flow-arrow">→</span><span class="flow-chip accent">Pulse START</span><span class="flow-arrow">→</span><span class="flow-chip">Poll BUSY</span><span class="flow-arrow">→</span><span class="flow-chip accent">Read DONE/NACK</span>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>CSR map — matches Lesson 11.2</h2></div>
+<p>Byte-aligned 32-bit registers. CTRL bits are write-1-to-set or auto-clear on START; STAT is read-only status fed by the byte FSM.</p>
+<table class="map-table">
+<tr><th>Offset</th><th>Name</th><th>Bits</th><th>Access</th><th>Description</th></tr>
+<tr><td><code>0x00</code></td><td>CTRL</td><td>[0] START, [1] ABORT, [2] IRQ_EN</td><td>R/W</td><td>START auto-clears after accept; ABORT forces idle</td></tr>
+<tr><td><code>0x04</code></td><td>STAT</td><td>[0] BUSY, [1] NACK, [2] DONE</td><td>R</td><td>BUSY high during transaction; DONE sticky until next START</td></tr>
+<tr><td><code>0x08</code></td><td>ADDR</td><td>[6:0] 7-bit slave addr</td><td>R/W</td><td>Hardware shifts: write byte = <code>{addr[6:0], 1'b0}</code> — see <a href="/premium-course/rtl-design/i2c-one-page-spec/">11.2 CSR map</a></td></tr>
+<tr><td><code>0x0C</code></td><td>TXDATA</td><td>[7:0]</td><td>R/W</td><td>Data byte to transmit after address</td></tr>
+<tr><td><code>0x10</code></td><td>RXDATA</td><td>[7:0]</td><td>R</td><td>Captured read data (extension for read path)</td></tr>
+<tr><td><code>0x14</code></td><td>CLKDIV</td><td>[15:0]</td><td>R/W</td><td>Half-period count in sys_clk cycles (default 50 → ~1 MHz @ 100 MHz)</td></tr>
+</table>
+<div class="diagram-wrap">
+<svg viewBox="0 0 500 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CSR address decode">
+<text x="250" y="18" fill="#a78bfa" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">paddr[7:2] decode → register select</text>
+<rect x="20" y="35" width="68" height="55" rx="6" fill="rgba(56,189,248,.1)" stroke="#38bdf8"/><text x="54" y="58" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">0x00</text><text x="54" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">CTRL</text>
+<rect x="95" y="35" width="68" height="55" rx="6" fill="rgba(56,189,248,.1)" stroke="#38bdf8"/><text x="129" y="58" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">0x04</text><text x="129" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">STAT</text>
+<rect x="170" y="35" width="68" height="55" rx="6" fill="rgba(45,212,191,.1)" stroke="#2dd4bf"/><text x="204" y="58" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="monospace">0x08</text><text x="204" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">ADDR</text>
+<rect x="245" y="35" width="68" height="55" rx="6" fill="rgba(45,212,191,.1)" stroke="#2dd4bf"/><text x="279" y="58" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="monospace">0x0C</text><text x="279" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">TXDATA</text>
+<rect x="320" y="35" width="68" height="55" rx="6" fill="rgba(45,212,191,.1)" stroke="#2dd4bf"/><text x="354" y="58" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="monospace">0x10</text><text x="354" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">RXDATA</text>
+<rect x="395" y="35" width="68" height="55" rx="6" fill="rgba(251,191,36,.1)" stroke="#fbbf24"/><text x="429" y="58" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="monospace">0x14</text><text x="429" y="74" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">CLKDIV</text>
+</svg>
+</div>
+<div class="code-panel">
+<div class="code-panel-head"><span>i2c_csr.v — register file + bus interface</span><button class="copy-btn" onclick="copyLabCode('m114-csr', this)">Copy</button></div>
+<pre id="m114-csr">// i2c_csr.v — CSR map for I2C master (Lesson 11.2 compatible)
+module i2c_csr #(
+  parameter ADDR_W = 8
+)(
+  input  wire              clk,
+  input  wire              rst_n,
+  // Simple register bus (replace with APB in SoC)
+  input  wire              reg_wr,
+  input  wire              reg_rd,
+  input  wire [ADDR_W-1:0] reg_addr,
+  input  wire [31:0]       reg_wdata,
+  output reg  [31:0]       reg_rdata,
+  // To byte FSM
+  output reg               ctrl_start,
+  output reg               ctrl_abort,
+  output reg               ctrl_irq_en,
+  input  wire              stat_busy,
+  input  wire              stat_nack,
+  input  wire              stat_done,
+  output reg  [6:0]        reg_slave_addr,
+  output reg  [7:0]        reg_txdata,
+  input  wire [7:0]        reg_rxdata,
+  output reg  [15:0]       reg_clkdiv
+);
+  localparam OFF_CTRL   = 8'h00;
+  localparam OFF_STAT   = 8'h04;
+  localparam OFF_ADDR   = 8'h08;
+  localparam OFF_TXDATA = 8'h0C;
+  localparam OFF_RXDATA = 8'h10;
+  localparam OFF_CLKDIV = 8'h14;
+
+  // START is a pulse — cleared when byte FSM accepts
+  wire start_accept = reg_wr &amp;&amp; (reg_addr == OFF_CTRL) &amp;&amp; reg_wdata[0];
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      ctrl_start  &lt;= 1'b0;
+      ctrl_abort  &lt;= 1'b0;
+      ctrl_irq_en &lt;= 1'b0;
+      reg_slave_addr &lt;= 7'h00;
+      reg_txdata    &lt;= 8'h00;
+      reg_clkdiv    &lt;= 16'd50;
+    end else begin
+      ctrl_start &lt;= 1'b0;  // default: pulse
+      if (reg_wr) begin
+        case (reg_addr)
+          OFF_CTRL: begin
+            if (reg_wdata[0]) ctrl_start  &lt;= 1'b1;
+            if (reg_wdata[1]) ctrl_abort  &lt;= 1'b1;
+            if (reg_wdata[2]) ctrl_irq_en &lt;= reg_wdata[2];
+          end
+          OFF_ADDR:   reg_slave_addr &lt;= reg_wdata[6:0];
+          OFF_TXDATA: reg_txdata    &lt;= reg_wdata[7:0];
+          OFF_CLKDIV: reg_clkdiv    &lt;= reg_wdata[15:0];
+          default: ;
+        endcase
+      end
+      if (start_accept)
+        ctrl_abort &lt;= 1'b0;  // clear abort on new transaction
+    end
+  end
+
+  always @(*) begin
+    reg_rdata = 32'h0;
+    if (reg_rd) begin
+      case (reg_addr)
+        OFF_CTRL:   reg_rdata = {29'b0, ctrl_irq_en, ctrl_abort, ctrl_start};
+        OFF_STAT:   reg_rdata = {29'b0, stat_done, stat_nack, stat_busy};
+        OFF_ADDR:   reg_rdata = {25'b0, reg_slave_addr};
+        OFF_TXDATA: reg_rdata = {24'b0, reg_txdata};
+        OFF_RXDATA: reg_rdata = {24'b0, reg_rxdata};
+        OFF_CLKDIV: reg_rdata = {16'b0, reg_clkdiv};
+        default:    reg_rdata = 32'h0;
+      endcase
+    end
+  end
+endmodule</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Bit engine — open-drain SCL/SDA</h2></div>
+<p>The bit engine is the only block that touches the pads. It counts <code>clkdiv</code> cycles per half-bit, drives SCL/SDA through output-enable signals, and samples <code>sda_i</code> during the ACK slot.</p>
+<div class="reason-grid">
+<div class="reason-card"><div class="rc-icon">🔌</div><h4>Open-drain model</h4><p><code>sda_oe=0</code> releases the line (high-Z, pull-up wins). <code>sda_oe=1, sda_out=0</code> pulls low. Never drive high.</p></div>
+<div class="reason-card"><div class="rc-icon">⏱️</div><h4>Half-period counter</h4><p>One I2C bit = 4 phases: SCL low setup, SCL rise, SCL high hold, SCL fall. Simplify to 2 half-periods per bit for this lab.</p></div>
+<div class="reason-card"><div class="rc-icon">📥</div><h4>ACK sample</h4><p>On the 9th bit, release SDA and sample <code>sda_i</code> while SCL is high. NACK = SDA stays high.</p></div>
+</div>
+<div class="wave-ascii">One data bit (simplified):
+SCL  ___/‾‾‾\___
+SDA  ‾‾‾\_____/‾‾   (MSB first, master drives)
+         ↑       ↑
+      drive 0  release for next bit</div>
+<div class="code-panel">
+<div class="code-panel-head"><span>i2c_bit_engine.v — timing + pad drivers</span><button class="copy-btn" onclick="copyLabCode('m114-bit', this)">Copy</button></div>
+<pre id="m114-bit">// i2c_bit_engine.v — generates SCL/SDA timing, open-drain pads
+module i2c_bit_engine (
+  input  wire        clk,
+  input  wire        rst_n,
+  input  wire [15:0] clkdiv,       // half-period in sys_clk cycles
+  // Commands from byte FSM
+  input  wire        cmd_valid,
+  input  wire [2:0]  cmd,          // 0=idle 1=start 2=stop 3=data_bit 4=sample_ack
+  input  wire        bit_val,      // data bit to drive (for cmd=data_bit)
+  output reg         bit_done,
+  output reg         ack_sda,      // sampled slave ACK (0=ACK, 1=NACK)
+  // Pad interface
+  output wire        scl_out,
+  output wire        scl_oe,
+  output wire        sda_out,
+  output wire        sda_oe,
+  input  wire        sda_i
+);
+  localparam CMD_IDLE       = 3'd0;
+  localparam CMD_START      = 3'd1;
+  localparam CMD_STOP       = 3'd2;
+  localparam CMD_DATA_BIT   = 3'd3;
+  localparam CMD_SAMPLE_ACK = 3'd4;
+
+  reg [15:0] cnt;
+  reg        scl_r, sda_r;
+  reg        scl_oe_r, sda_oe_r;
+  reg [2:0]  active_cmd;
+  reg        phase;  // 0=low half, 1=high half
+
+  assign scl_out = scl_r;
+  assign scl_oe  = scl_oe_r;
+  assign sda_out = sda_r;
+  assign sda_oe  = sda_oe_r;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      cnt &lt;= 16'd0;
+      scl_r &lt;= 1'b0; sda_r &lt;= 1'b1;
+      scl_oe_r &lt;= 1'b0; sda_oe_r &lt;= 1'b0;
+      active_cmd &lt;= CMD_IDLE;
+      phase &lt;= 1'b0;
+      bit_done &lt;= 1'b0;
+      ack_sda &lt;= 1'b1;
+    end else begin
+      bit_done &lt;= 1'b0;
+
+      if (cmd_valid &amp;&amp; active_cmd == CMD_IDLE) begin
+        active_cmd &lt;= cmd;
+        cnt &lt;= clkdiv;
+        phase &lt;= 1'b0;
+        case (cmd)
+          CMD_START: begin
+            // START: SDA falls while SCL high
+            scl_r &lt;= 1'b1; scl_oe_r &lt;= 1'b1;
+            sda_r &lt;= 1'b1; sda_oe_r &lt;= 1'b1; // release first
+          end
+          CMD_STOP: begin
+            scl_r &lt;= 1'b0; scl_oe_r &lt;= 1'b1;
+            sda_r &lt;= 1'b0; sda_oe_r &lt;= 1'b1;
+          end
+          CMD_DATA_BIT: begin
+            scl_r &lt;= 1'b0; scl_oe_r &lt;= 1'b1;
+            sda_r &lt;= bit_val; sda_oe_r &lt;= 1'b1;
+          end
+          CMD_SAMPLE_ACK: begin
+            scl_r &lt;= 1'b0; scl_oe_r &lt;= 1'b1;
+            sda_r &lt;= 1'b1; sda_oe_r &lt;= 1'b0; // release for slave
+          end
+          default: ;
+        endcase
+      end else if (active_cmd != CMD_IDLE) begin
+        if (cnt != 0)
+          cnt &lt;= cnt - 1'b1;
+        else begin
+          cnt &lt;= clkdiv;
+          case (active_cmd)
+            CMD_START: begin
+              if (!phase) begin sda_r &lt;= 1'b0; sda_oe_r &lt;= 1'b1; phase &lt;= 1'b1; end
+              else begin scl_r &lt;= 1'b0; scl_oe_r &lt;= 1'b1;
+                     active_cmd &lt;= CMD_IDLE; bit_done &lt;= 1'b1; end
+            end
+            CMD_STOP: begin
+              if (!phase) begin scl_r &lt;= 1'b1; phase &lt;= 1'b1; end
+              else begin sda_r &lt;= 1'b1; sda_oe_r &lt;= 1'b0;
+                     active_cmd &lt;= CMD_IDLE; bit_done &lt;= 1'b1; end
+            end
+            CMD_DATA_BIT: begin
+              if (!phase) begin scl_r &lt;= 1'b1; phase &lt;= 1'b1; end
+              else begin scl_r &lt;= 1'b0; active_cmd &lt;= CMD_IDLE; bit_done &lt;= 1'b1; end
+            end
+            CMD_SAMPLE_ACK: begin
+              if (!phase) begin scl_r &lt;= 1'b1; ack_sda &lt;= sda_i; phase &lt;= 1'b1; end
+              else begin scl_r &lt;= 1'b0; active_cmd &lt;= CMD_IDLE; bit_done &lt;= 1'b1; end
+            end
+            default: active_cmd &lt;= CMD_IDLE;
+          endcase
+        end
+      end
+    end
+  end
+endmodule</pre>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Never assign <code>assign sda = sda_out;</code> without tristate control. Multi-driver on an open-drain bus is the #1 lint failure in student I2C RTL. Use <code>sda_oe</code> + external pull-up in TB.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>Byte FSM — START → 8 bits → ACK → STOP</h2></div>
+<p>The byte engine sequences one I2C frame: START condition, address byte (from CSR ADDR), data byte (from CSR TXDATA), ACK check, STOP. It issues single-bit commands to the bit engine and waits for <code>bit_done</code>.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 620 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Byte FSM states">
+<defs><marker id="m114-arr2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+<text x="310" y="18" fill="#2dd4bf" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Byte FSM state flow (write transaction)</text>
+<circle cx="60" cy="75" r="28" fill="#0c1526" stroke="#38bdf8"/><text x="60" y="79" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">IDLE</text>
+<circle cx="170" cy="75" r="28" fill="#0c1526" stroke="#a78bfa"/><text x="170" y="72" fill="#e2e8f0" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">START</text><text x="170" y="84" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">cmd</text>
+<circle cx="290" cy="75" r="32" fill="#0c1526" stroke="#2dd4bf"/><text x="290" y="72" fill="#e2e8f0" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">TX_BIT</text><text x="290" y="84" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">8× per byte</text>
+<circle cx="410" cy="75" r="28" fill="#0c1526" stroke="#fbbf24"/><text x="410" y="72" fill="#e2e8f0" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">ACK</text><text x="410" y="84" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">sample</text>
+<circle cx="520" cy="75" r="28" fill="#0c1526" stroke="#f87171"/><text x="520" y="72" fill="#e2e8f0" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">STOP</text><text x="520" y="84" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">done</text>
+<line x1="88" y1="75" x2="142" y2="75" stroke="#94a3b8" marker-end="url(#m114-arr2)"/>
+<line x1="198" y1="75" x2="258" y2="75" stroke="#94a3b8" marker-end="url(#m114-arr2)"/>
+<line x1="322" y1="75" x2="382" y2="75" stroke="#94a3b8" marker-end="url(#m114-arr2)"/>
+<line x1="438" y1="75" x2="492" y2="75" stroke="#94a3b8" marker-end="url(#m114-arr2)"/>
+<text x="310" y="125" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Two bytes: ADDR then TXDATA · ABORT from any state → IDLE</text>
+</svg>
+</div>
+<div class="code-panel">
+<div class="code-panel-head"><span>i2c_byte_fsm.v — protocol sequencer</span><button class="copy-btn" onclick="copyLabCode('m114-byte', this)">Copy</button></div>
+<pre id="m114-byte">// i2c_byte_fsm.v — byte-level I2C master sequencer
+module i2c_byte_fsm (
+  input  wire       clk,
+  input  wire       rst_n,
+  input  wire       start_pulse,
+  input  wire       abort,
+  input  wire [6:0] slave_addr,
+  input  wire [7:0] txdata,
+  output reg        busy,
+  output reg        done,
+  output reg        nack,
+  output reg        cmd_valid,
+  output reg [2:0]  cmd,
+  output reg        bit_val,
+  input  wire       bit_done,
+  input  wire       ack_sda
+);
+  localparam ST_IDLE    = 4'd0;
+  localparam ST_START   = 4'd1;
+  localparam ST_TX_BIT  = 4'd2;
+  localparam ST_TX_ACK  = 4'd3;
+  localparam ST_STOP    = 4'd4;
+
+  localparam CMD_START      = 3'd1;
+  localparam CMD_STOP       = 3'd2;
+  localparam CMD_DATA_BIT   = 3'd3;
+  localparam CMD_SAMPLE_ACK = 3'd4;
+
+  reg [3:0]  state;
+  reg [7:0]  shifter;
+  reg [2:0]  bit_cnt;   // 7 down to 0
+  reg        second_byte; // 0=addr, 1=data
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state &lt;= ST_IDLE;
+      busy &lt;= 1'b0; done &lt;= 1'b0; nack &lt;= 1'b0;
+      cmd_valid &lt;= 1'b0; cmd &lt;= 3'd0; bit_val &lt;= 1'b0;
+      shifter &lt;= 8'h00; bit_cnt &lt;= 3'd7; second_byte &lt;= 1'b0;
+    end else begin
+      cmd_valid &lt;= 1'b0;
+      if (abort &amp;&amp; state != ST_IDLE) begin
+        state &lt;= ST_IDLE; busy &lt;= 1'b0; done &lt;= 1'b0;
+      end else case (state)
+        ST_IDLE: begin
+          done &lt;= 1'b0; nack &lt;= 1'b0;
+          if (start_pulse) begin
+            busy &lt;= 1'b1;
+            second_byte &lt;= 1'b0;
+            shifter &lt;= {slave_addr, 1'b0};  // write addr byte = (addr&lt;&lt;1)|0
+            bit_cnt &lt;= 3'd7;
+            state &lt;= ST_START;
+          end
+        end
+        ST_START: begin
+          cmd_valid &lt;= 1'b1; cmd &lt;= CMD_START;
+          if (bit_done) state &lt;= ST_TX_BIT;
+        end
+        ST_TX_BIT: begin
+          cmd_valid &lt;= 1'b1;
+          cmd &lt;= CMD_DATA_BIT;
+          bit_val &lt;= shifter[7];
+          if (bit_done) begin
+            shifter &lt;= {shifter[6:0], 1'b0};
+            if (bit_cnt == 0)
+              state &lt;= ST_TX_ACK;
+            else
+              bit_cnt &lt;= bit_cnt - 1'b1;
+          end
+        end
+        ST_TX_ACK: begin
+          cmd_valid &lt;= 1'b1; cmd &lt;= CMD_SAMPLE_ACK;
+          if (bit_done) begin
+            if (ack_sda) nack &lt;= 1'b1;
+            if (!second_byte) begin
+              second_byte &lt;= 1'b1;
+              shifter &lt;= txdata;
+              bit_cnt &lt;= 3'd7;
+              state &lt;= ST_TX_BIT;
+            end else
+              state &lt;= ST_STOP;
+          end
+        end
+        ST_STOP: begin
+          cmd_valid &lt;= 1'b1; cmd &lt;= CMD_STOP;
+          if (bit_done) begin
+            busy &lt;= 1'b0; done &lt;= 1'b1;
+            state &lt;= ST_IDLE;
+          end
+        end
+        default: state &lt;= ST_IDLE;
+      endcase
+    end
+  end
+endmodule</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">5</div><h2>Top wrapper — wiring it together</h2></div>
+<p>The top module instantiates CSR, byte FSM, and bit engine. Pad cells use open-drain modeling: when <code>oe=0</code>, the TB pull-up wins.</p>
+<div class="code-panel">
+<div class="code-panel-head"><span>i2c_master_top.v — complete top-level</span><button class="copy-btn" onclick="copyLabCode('m114-top', this)">Copy</button></div>
+<pre id="m114-top">// i2c_master_top.v — CSR + byte FSM + bit engine
+module i2c_master_top (
+  input  wire        clk,
+  input  wire        rst_n,
+  input  wire        reg_wr,
+  input  wire        reg_rd,
+  input  wire [7:0]  reg_addr,
+  input  wire [31:0] reg_wdata,
+  output wire [31:0] reg_rdata,
+  output wire        scl_out,
+  output wire        scl_oe,
+  output wire        sda_out,
+  output wire        sda_oe,
+  input  wire        sda_i,
+  output wire        irq
+);
+  wire       ctrl_start, ctrl_abort, ctrl_irq_en;
+  wire       stat_busy, stat_nack, stat_done;
+  wire [6:0] reg_slave_addr;
+  wire [7:0] reg_txdata, reg_rxdata;
+  wire [15:0] reg_clkdiv;
+  wire       cmd_valid, bit_done;
+  wire [2:0] cmd;
+  wire       bit_val, ack_sda;
+
+  i2c_csr u_csr (
+    .clk(clk), .rst_n(rst_n),
+    .reg_wr(reg_wr), .reg_rd(reg_rd),
+    .reg_addr(reg_addr), .reg_wdata(reg_wdata), .reg_rdata(reg_rdata),
+    .ctrl_start(ctrl_start), .ctrl_abort(ctrl_abort), .ctrl_irq_en(ctrl_irq_en),
+    .stat_busy(stat_busy), .stat_nack(stat_nack), .stat_done(stat_done),
+    .reg_slave_addr(reg_slave_addr), .reg_txdata(reg_txdata),
+    .reg_rxdata(reg_rxdata), .reg_clkdiv(reg_clkdiv)
+  );
+
+  i2c_byte_fsm u_byte (
+    .clk(clk), .rst_n(rst_n),
+    .start_pulse(ctrl_start), .abort(ctrl_abort),
+    .slave_addr(reg_slave_addr), .txdata(reg_txdata),
+    .busy(stat_busy), .done(stat_done), .nack(stat_nack),
+    .cmd_valid(cmd_valid), .cmd(cmd), .bit_val(bit_val),
+    .bit_done(bit_done), .ack_sda(ack_sda)
+  );
+
+  i2c_bit_engine u_bit (
+    .clk(clk), .rst_n(rst_n), .clkdiv(reg_clkdiv),
+    .cmd_valid(cmd_valid), .cmd(cmd), .bit_val(bit_val),
+    .bit_done(bit_done), .ack_sda(ack_sda),
+    .scl_out(scl_out), .scl_oe(scl_oe),
+    .sda_out(sda_out), .sda_oe(sda_oe), .sda_i(sda_i)
+  );
+
+  assign reg_rxdata = 8'h00;  // placeholder for read path extension
+  assign irq = ctrl_irq_en &amp;&amp; (stat_done || stat_nack);
+endmodule</pre>
+</div>
+<a class="sim-cta" href="/tools/verilog-simulator/">▶ Paste modules into Verilog simulator</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">6</div><h2>Coding style notes</h2></div>
+<ul class="check-list">
+<li><strong>Non-blocking assigns</strong> in all sequential always blocks — <code>&lt;=</code> only in FSM and counters</li>
+<li><strong>Sync reset or async assert / sync deassert</strong> — this design uses async assert on <code>rst_n</code> for simplicity; production blocks often sync deassert</li>
+<li><strong>Default outputs every cycle</strong> — <code>cmd_valid &lt;= 0</code> at top of always block prevents accidental multi-cycle commands</li>
+<li><strong>One-hot or enum states</strong> — 4-bit state encoding is fine at this scale; switch to <code>localparam</code> + case for lint clarity</li>
+<li><strong>No latches</strong> — every <code>case</code> branch assigns all regs; combinational CSR read in separate <code>always @(*)</code></li>
+<li><strong>Pulse signals</strong> — START is one cycle; don't leave it high or you'll restart mid-transaction</li>
+</ul>
+<div class="infobox"><p><strong>Synthesis note:</strong> pad <code>oe</code> signals map to IOBUF cells on FPGA/ASIC. The bit engine's <code>clkdiv</code> counter is your main timing path — keep it registered, not combinational.</p></div>
+<div class="trap-box"><div class="trap-label">Known simplification</div><p>This implementation omits clock stretching (SCL held low by slave). That's acceptable for the capstone — document it as a gap in your <a href="/premium-course/rtl-design/i2c-design-review-pack/">design review (11.6)</a>.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">7</div><h2>Implementation checklist</h2></div>
+<ul class="check-list">
+<li>CSR offsets match <a href="/premium-course/rtl-design/i2c-one-page-spec/">11.2 spec</a> (CTRL/STAT/ADDR/TXDATA/RXDATA/CLKDIV)</li>
+<li>ADDR holds 7-bit slave address; byte FSM forms <code>{addr,1'b0}</code> write byte</li>
+<li>START pulse kicks byte FSM only when not BUSY</li>
+<li>ABORT returns FSM to IDLE and clears BUSY</li>
+<li>Bit engine uses oe-based open-drain — no active-high SDA drive</li>
+<li>ACK sampled with SDA released (sda_oe=0)</li>
+<li>STAT.DONE sets after STOP completes; NACK sets if slave doesn't pull SDA low</li>
+<li>Top module wires all three sub-blocks with named ports</li>
+</ul>
+</div>
+
+<div class="key-takeaway">
+<h3>🎯 What to remember</h3>
+<ul>
+<li>Three layers: CSR (software), byte FSM (protocol), bit engine (pads).</li>
+<li>Open-drain = drive 0 or release — never fight the pull-up.</li>
+<li>Byte FSM issues one bit command at a time; bit engine owns timing.</li>
+<li>Paste all four modules into the simulator — next lesson adds the <a href="/premium-course/rtl-design/i2c-selfcheck-tb/">self-checking TB (11.5)</a>.</li>
+</ul>
+</div>
+
+<div class="lesson-nav">
+<a href="/premium-course/rtl-design/i2c-architecture/">← Previous: I2C architecture</a>
+<a href="/premium-course/rtl-design/i2c-selfcheck-tb/">Next: Self-checking testbench →</a>
+</div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

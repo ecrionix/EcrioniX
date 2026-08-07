@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I2C Protocol Crash Course — RTL Design | EcrioniX</title>
+<meta property="og:title" content="I2C Protocol Crash Course — RTL Design | EcrioniX">
+<meta property="og:description" content="Open-drain SCL/SDA, START/STOP, MSB-first bytes, ACK/NACK, 7-bit addressing, repeated START, and timing intuition — Module 11.1 I2C capstone.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/i2c-protocol-crash/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"I2C Protocol Crash Course","item":"https://ecrionix.org/premium-course/rtl-design/i2c-protocol-crash/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is an I2C START condition?","acceptedAnswer":{"@type":"Answer","text":"A START occurs when SDA transitions from high to low while SCL is high. It marks the beginning of a transaction on the bus."}},{"@type":"Question","name":"Who drives the ACK bit on I2C?","acceptedAnswer":{"@type":"Answer","text":"After each 8-bit byte, the receiver pulls SDA low during the 9th clock pulse to ACK. If the receiver leaves SDA high, that is a NACK."}}]}]}</script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);const ADMIN_UID='aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user=>{if(!user){window.location.href='/premium-course/';return;}checkAccess(user);});
+function markLessonComplete(slug){const user=firebase.auth().currentUser;if(!user)return;firebase.firestore().collection('users').doc(user.uid).set({completedLessons:{rtl:firebase.firestore.FieldValue.arrayUnion(slug)}},{merge:true}).catch(err=>console.error('Could not record lesson progress:',err));}
+async function checkAccess(user){if(user.uid===ADMIN_UID){document.getElementById('authLoading').style.display='none';document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-protocol-crash');return;}try{const doc=await firebase.firestore().collection('users').doc(user.uid).get();const data=doc.data();const wasApproved=data?.approvedCourses?.includes('rtl');const expiry=data?.courseExpiry?.rtl;const isExpired=wasApproved&&expiry&&expiry.toDate()<new Date();const hasAccess=wasApproved&&!isExpired;document.getElementById('authLoading').style.display='none';if(hasAccess){document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-protocol-crash');}else{document.getElementById('noAccess').style.display='block';}}catch(error){console.error('Error checking access:',error);document.getElementById('authLoading').style.display='none';document.getElementById('noAccess').style.display='block';}}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}.back-link{color:var(--sl);font-size:0.9rem}.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}.lede .hl{color:var(--heading,#f8fafc);font-weight:600}.section{margin:2.4rem 0}.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}.section ul li,.section ol li{margin-bottom:0.5rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}.map-table td{color:var(--sl)}.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.trap-box p{margin:0;color:var(--text);font-size:0.92rem}.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.9rem;margin:1.3rem 0}.reason-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.1rem}.reason-card .rc-icon{font-size:1.3rem;margin-bottom:0.45rem}.reason-card h4{color:var(--heading,#f8fafc);font-size:0.92rem;margin-bottom:0.35rem}.reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+.flow-rail{display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:center;margin:1.2rem 0}.flow-chip{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.72rem;font-weight:700;color:var(--heading,#f8fafc);white-space:nowrap}.flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}.flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
+.must-tag{display:inline-block;font-size:0.68rem;font-weight:800;padding:0.15rem 0.45rem;border-radius:4px;margin-right:0.35rem}.must-tag.must{background:rgba(248,113,113,.15);color:#f87171}.must-tag.should{background:rgba(251,191,36,.15);color:#fbbf24}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar"><div class="navbar-logo">🎓 EcrioniX Premium</div><div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div></div>
+<div id="noAccess" class="no-access" style="display:none;"><h1>🔒 No Access</h1><p>You don't have approved access to this course yet.</p><a href="/premium-course/">Go back and request access →</a></div>
+<div id="lessonContent" style="display:none;">
+<div class="container">
+<div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 11: Capstone — I2C Controller</div>
+<span class="lesson-tag">Lesson 11.1</span>
+<h1>I2C protocol crash course</h1>
+<p class="lede">Before you write a single line of RTL, you must speak the bus language. <span class="hl">I2C</span> (Inter-Integrated Circuit) is a two-wire, multi-drop serial protocol: one clock (<code>SCL</code>), one data (<code>SDA</code>), open-drain pads, and a strict sequence of START, address, data bytes, ACK/NACK, and STOP. This lesson gives you the protocol fluency every I2C master designer needs.</p>
+<div class="def-box"><div class="def-label">Protocol in one sentence</div><p>I2C is a <strong>master-driven, byte-oriented bus</strong> where the master generates SCL, both lines are <strong>open-drain with pull-ups</strong>, data is transferred <strong>MSB-first</strong>, and every 8-bit byte is followed by a <strong>9th ACK bit</strong> driven by the receiver.</p></div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Two wires, many devices</h2></div>
+<p>I2C connects a <strong>master</strong> (your SoC controller) to one or more <strong>slaves</strong> (EEPROM, PMIC, sensor) on a shared bus. Only two signals leave the chip — dramatically fewer pins than SPI. The trade-off: shared bandwidth, pull-up limited speed, and protocol complexity.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C multi-drop bus topology">
+<text x="360" y="24" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">I2C bus — one master, multiple slaves, shared SCL/SDA</text>
+<rect x="40" y="70" width="130" height="80" rx="10" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="105" y="100" fill="#38bdf8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Master</text>
+<text x="105" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">SoC I2C IP</text>
+<text x="105" y="134" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">generates SCL</text>
+<line x1="170" y1="110" x2="170" y2="95" stroke="#38bdf8" stroke-width="1.5"/>
+<line x1="170" y1="110" x2="170" y2="125" stroke="#2dd4bf" stroke-width="1.5"/>
+<line x1="170" y1="95" x2="550" y2="95" stroke="#38bdf8" stroke-width="2"/>
+<text x="360" y="88" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">SCL (clock)</text>
+<line x1="170" y1="125" x2="550" y2="125" stroke="#2dd4bf" stroke-width="2"/>
+<text x="360" y="140" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="monospace">SDA (data)</text>
+<rect x="200" y="170" width="100" height="55" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="250" y="195" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Slave 0x50</text>
+<text x="250" y="212" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">EEPROM</text>
+<rect x="340" y="170" width="100" height="55" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="390" y="195" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Slave 0x48</text>
+<text x="390" y="212" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">Temp sensor</text>
+<rect x="480" y="170" width="100" height="55" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="530" y="195" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Slave 0x68</text>
+<text x="530" y="212" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">IMU</text>
+<line x1="250" y1="170" x2="250" y2="125" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="390" y1="170" x2="390" y2="125" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="530" y1="170" x2="530" y2="125" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 2"/>
+<rect x="280" y="235" width="160" height="18" rx="4" fill="rgba(251,191,36,.1)" stroke="#fbbf24"/>
+<text x="360" y="248" fill="#fbbf24" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">External pull-ups Rp on SCL and SDA to VDD</text>
+</svg>
+<p class="diagram-caption">Every device connects SCL and SDA in parallel. Only the device driving low wins — wired-AND via open-drain.</p>
+</div>
+<table class="map-table">
+<tr><th>Role</th><th>Responsibility</th><th>Typical device</th></tr>
+<tr><td>Master</td><td>Generates SCL, initiates START/STOP, sends address</td><td>SoC I2C controller, MCU</td></tr>
+<tr><td>Slave</td><td>Responds when addressed; ACKs bytes; may clock-stretch</td><td>EEPROM, RTC, PMIC, sensor</td></tr>
+<tr><td>Bus</td><td>Shared SCL + SDA with pull-up resistors</td><td>PCB traces + Rp (2.2k–10k typical)</td></tr>
+</table>
+<div class="infobox"><p><strong>Analogy:</strong> I2C is a classroom where the teacher (master) calls roll by address. Only the student whose name is called may speak on SDA during the data phase — everyone else releases the line (high-Z) and listens.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Open-drain — why idle is high</h2></div>
+<p>Both SCL and SDA use <strong>open-drain (open-collector)</strong> pads: a device can only pull the line <em>low</em> or <em>release</em> it (high-Z). External pull-up resistors (<code>Rp</code>) pull the line to logic high when nobody drives low. This wired-AND property lets multiple devices share one wire without contention damage.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open-drain I2C pad model">
+<text x="350" y="22" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Open-drain pad — drive low or release (high-Z)</text>
+<rect x="60" y="50" width="120" height="70" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="120" y="78" fill="#38bdf8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">I2C pad cell</text>
+<text x="120" y="96" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">oe=1 → pull low</text>
+<text x="120" y="110" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">oe=0 → high-Z</text>
+<line x1="180" y1="85" x2="280" y2="85" stroke="#2dd4bf" stroke-width="2"/>
+<circle cx="320" cy="85" r="8" fill="none" stroke="#fbbf24" stroke-width="2"/>
+<text x="320" y="70" fill="#fbbf24" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Rp</text>
+<line x1="328" y1="85" x2="400" y2="85" stroke="#2dd4bf" stroke-width="2"/>
+<text x="360" y="78" fill="#2dd4bf" font-size="8" text-anchor="middle" font-family="monospace">SDA bus</text>
+<line x1="320" y1="93" x2="320" y2="130" stroke="#fbbf24" stroke-width="1.5"/>
+<text x="340" y="125" fill="#fbbf24" font-size="8" font-family="Outfit,sans-serif">VDD</text>
+<rect x="420" y="60" width="90" height="50" rx="6" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="465" y="82" fill="#a78bfa" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Other slave</text>
+<text x="465" y="98" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">same wire</text>
+<line x1="420" y1="90" x2="420" y2="85" stroke="#a78bfa" stroke-width="1.5"/>
+<line x1="420" y1="85" x2="560" y2="85" stroke="#a78bfa" stroke-width="1.5"/>
+<rect x="80" y="155" width="540" height="70" rx="8" fill="#0c1526" stroke="rgba(148,163,184,.2)"/>
+<text x="350" y="178" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">Logic levels on the bus</text>
+<text x="120" y="205" fill="#f87171" font-size="9" text-anchor="middle" font-family="monospace">LOW = any device pulls down</text>
+<text x="350" y="205" fill="#4ade80" font-size="9" text-anchor="middle" font-family="monospace">HIGH = all devices release</text>
+<text x="580" y="205" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="monospace">never drive HIGH</text>
+</svg>
+<p class="diagram-caption">RTL implication: your pad logic is <code>assign sda = oe ? 1'b0 : 1'bz;</code> — never actively drive high.</p>
+</div>
+<div class="reason-grid">
+<div class="reason-card"><div class="rc-icon">🔌</div><h4>Wired-AND</h4><p>If any device pulls low, the bus reads low. Multiple masters and slaves can coexist safely.</p></div>
+<div class="reason-card"><div class="rc-icon">⬆️</div><h4>Idle = high</h4><p>When no transaction is active, both SCL and SDA float high via Rp. This is the bus idle state.</p></div>
+<div class="reason-card"><div class="rc-icon">⚡</div><h4>Rp trade-off</h4><p>Smaller Rp → faster rise, more static current. Larger Rp → slower edges, limits max clock rate.</p></div>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Modeling I2C with push-pull outputs in simulation "works" until you hit multi-master or clock-stretch scenarios. Always use open-drain + pull-up in TB pad models.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>START and STOP conditions</h2></div>
+<p>START and STOP are <strong>signaling events</strong>, not data bytes. They frame every transaction and are the first things your waveform checker should assert.</p>
+<table class="map-table">
+<tr><th>Condition</th><th>Rule</th><th>Meaning</th></tr>
+<tr><td><strong>START (S)</strong></td><td><span class="must-tag must">MUST</span> SDA falls while SCL is high</td><td>Master claims the bus; a new transaction begins</td></tr>
+<tr><td><strong>STOP (P)</strong></td><td><span class="must-tag must">MUST</span> SDA rises while SCL is high</td><td>Transaction ends; bus returns to idle</td></tr>
+<tr><td><strong>Repeated START (Sr)</strong></td><td><span class="must-tag should">SHOULD</span> START without preceding STOP</td><td>Change direction or sub-address without releasing bus</td></tr>
+</table>
+<div class="wave-ascii">Idle (both high)
+SCL  ‾‾‾‾‾‾‾‾‾‾‾\___/‾‾\___/‾‾\___/‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+SDA  ‾‾‾‾\___________________________/‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+      S ↑                           P ↑
+      START                         STOP
+      (SDA↓, SCL=H)                 (SDA↑, SCL=H)</div>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C START STOP waveform">
+<text x="360" y="20" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">START, one byte + ACK, STOP</text>
+<text x="50" y="55" fill="#94a3b8" font-size="9" font-family="monospace">SCL</text>
+<polyline points="80,50 120,50 140,70 160,70 180,50 200,50 220,70 240,70 260,50 280,50 300,70 320,70 340,50 360,50 380,70 400,70 420,50 440,50 460,70 480,70 500,50 520,50 540,70 560,70 580,50 600,50 620,70 640,70 660,50" fill="none" stroke="#38bdf8" stroke-width="2"/>
+<text x="50" y="110" fill="#94a3b8" font-size="9" font-family="monospace">SDA</text>
+<polyline points="80,105 100,105 100,125 140,125 160,105 180,85 200,85 220,105 240,85 260,105 280,85 300,105 320,85 340,105 360,85 380,105 400,85 420,105 440,85 460,105 480,85 500,105 520,85 540,105 560,85 580,105 600,85 620,105 640,85 660,105" fill="none" stroke="#2dd4bf" stroke-width="2"/>
+<text x="95" y="145" fill="#f87171" font-size="8" font-family="Outfit,sans-serif">S</text>
+<text x="655" y="145" fill="#4ade80" font-size="8" font-family="Outfit,sans-serif">P</text>
+<text x="200" y="145" fill="#fbbf24" font-size="8" font-family="Outfit,sans-serif">MSB</text>
+<text x="480" y="145" fill="#fbbf24" font-size="8" font-family="Outfit,sans-serif">LSB</text>
+<text x="560" y="145" fill="#a78bfa" font-size="8" font-family="Outfit,sans-serif">ACK</text>
+<rect x="130" y="160" width="420" height="28" rx="5" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.3)"/>
+<text x="340" y="178" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Data valid while SCL is LOW; sample on SCL rising edge</text>
+</svg>
+<p class="diagram-caption">SDA may change only when SCL is low (except START/STOP). Receivers sample SDA on SCL rising edges.</p>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>A START followed immediately by STOP with no clock pulses is legal but useless. More common bug: changing SDA while SCL is high during a data byte — that creates a false START/STOP and corrupts the frame.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>Byte transfer — MSB first, 9 clocks</h2></div>
+<p>Each byte takes <strong>8 data bits + 1 ACK bit = 9 SCL pulses</strong>. Bits are transmitted <strong>MSB first</strong> (bit 7 down to bit 0). The master drives SCL for every bit; the data driver alternates between master and slave depending on transaction direction.</p>
+<div class="flow-rail">
+<span class="flow-chip accent">Bit 7 (MSB)</span><span class="flow-arrow">→</span><span class="flow-chip">Bit 6</span><span class="flow-arrow">→</span><span class="flow-chip">…</span><span class="flow-arrow">→</span><span class="flow-chip">Bit 0 (LSB)</span><span class="flow-arrow">→</span><span class="flow-chip accent">ACK (9th)</span>
+</div>
+<table class="map-table">
+<tr><th>Phase</th><th>SCL</th><th>SDA driver</th><th>Action</th></tr>
+<tr><td>Setup</td><td>Low</td><td>Transmitter</td><td>Set next data bit on SDA</td></tr>
+<tr><td>Sample</td><td>Rising edge</td><td>—</td><td>Receiver latches SDA bit</td></tr>
+<tr><td>Hold</td><td>High</td><td>Transmitter holds</td><td>SDA stable while SCL high</td></tr>
+<tr><td>ACK (9th)</td><td>9th pulse</td><td><strong>Receiver</strong></td><td>Pull low = ACK, leave high = NACK</td></tr>
+</table>
+<div class="wave-ascii">Byte 0xA5 = 10100101 (MSB first)
+SCL  _/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_
+SDA  ‾\___/‾‾‾\___/‾‾‾\___/‾‾‾\___/‾‾\____  (data)
+     1   0   1   0   0   1   0   1   ACK
+     b7  b6  b5  b4  b3  b2  b1  b0  (slave pulls low)</div>
+<div class="infobox"><p><strong>ACK vs NACK:</strong> After the master sends an address or write byte, the <em>slave</em> ACKs by pulling SDA low on the 9th clock. After the master reads a byte, the <em>master</em> ACKs (more data coming) or NACKs (last byte, stop next). A missing ACK usually means wrong address or slave not ready.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">5</div><h2>7-bit addressing + R/W bit</h2></div>
+<p>Immediately after START, the master sends a <strong>7-bit slave address</strong> followed by a <strong>1-bit direction flag</strong> (R/W̅). Together this is the address frame — 8 bits total, MSB of the 7-bit address goes first.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C 7-bit address frame">
+<text x="360" y="22" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Address frame after START — 7 bits address + 1 bit R/W</text>
+<rect x="60" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="87" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A6</text>
+<rect x="120" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="147" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A5</text>
+<rect x="180" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="207" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A4</text>
+<rect x="240" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="267" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A3</text>
+<rect x="300" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="327" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A2</text>
+<rect x="360" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="387" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A1</text>
+<rect x="420" y="50" width="55" height="40" rx="4" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/><text x="447" y="75" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="monospace">A0</text>
+<rect x="490" y="50" width="70" height="40" rx="4" fill="rgba(251,191,36,.15)" stroke="#fbbf24"/><text x="525" y="75" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="monospace">R/W</text>
+<rect x="580" y="50" width="70" height="40" rx="4" fill="rgba(167,139,250,.15)" stroke="#a78bfa"/><text x="615" y="75" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="monospace">ACK</text>
+<text x="87" y="110" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">MSB</text>
+<text x="447" y="110" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">LSB</text>
+<text x="525" y="110" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">0=write 1=read</text>
+<text x="615" y="110" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="Outfit,sans-serif">from slave</text>
+<rect x="80" y="135" width="560" height="50" rx="8" fill="#0c1526" stroke="rgba(148,163,184,.15)"/>
+<text x="360" y="158" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="monospace">Example: slave 0x50 write → bus byte = 0x50 &lt;&lt; 1 | 0 = 0xA0</text>
+<text x="360" y="175" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">Example: slave 0x50 read  → bus byte = 0x50 &lt;&lt; 1 | 1 = 0xA1</text>
+</svg>
+<p class="diagram-caption">Software datasheets give 7-bit address (e.g. 0x50). Hardware shifts left and appends R/W.</p>
+</div>
+<p>Common transaction patterns:</p>
+<ul>
+<li><strong>Write:</strong> START → addr+W → ACK → data byte(s) → ACK each → STOP</li>
+<li><strong>Read:</strong> START → addr+R → ACK → master receives bytes → master ACK/NACK each → STOP</li>
+<li><strong>Write-then-read:</strong> START → addr+W → reg addr → Sr → addr+R → read bytes → STOP</li>
+</ul>
+<div class="code-panel">
+<div class="code-panel-head"><span>EEPROM write-then-read — typical register access</span><button class="copy-btn" onclick="copyLabCode('m111-seq', this)">Copy</button></div>
+<pre id="m111-seq">// Slave 0x50 (7-bit), internal reg 0x0010, read 2 bytes
+// Phase 1: set pointer (write)
+S  +  0xA0  +  ACK  +  0x00  +  ACK  +  0x10  +  ACK
+// Phase 2: repeated START, read data
+Sr +  0xA1  +  ACK  +  D0  +  ACK  +  D1  +  NACK  +  P</pre>
+</div>
+<a class="sim-cta" href="/tools/verilog-simulator/">▶ Sketch I2C waveforms in simulator</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">6</div><h2>Read transactions — master drives final NACK</h2></div>
+<p>During a read, the <strong>slave drives data bits</strong> but the <strong>master drives ACK/NACK</strong> on the 9th bit of each byte. This is the most commonly inverted rule in student implementations.</p>
+<table class="map-table">
+<tr><th>Byte position</th><th>Data driver</th><th>9th bit driver</th><th>9th bit value</th></tr>
+<tr><td>Bytes 1 .. N-1</td><td>Slave</td><td>Master</td><td>ACK (SDA low) — "send more"</td></tr>
+<tr><td>Byte N (last)</td><td>Slave</td><td>Master</td><td>NACK (SDA high) — "I'm done"</td></tr>
+</table>
+<div class="wave-ascii">Read 2 bytes from slave:
+S  0xA1  ACK  D0  ACK  D1  NACK  P
+                  ↑         ↑
+            master ACK  master NACK (releases SDA high)</div>
+<div class="infobox"><p><strong>Why NACK the last byte?</strong> It signals the slave to stop driving. After NACK, the master generates STOP. Without NACK, the slave would prepare another byte the master does not want.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">7</div><h2>Speed modes and timing intuition</h2></div>
+<p>You do not need every number from the I2C spec memorized — but you need the <strong>relationships</strong> that drive RTL divider choices and pad timing constraints.</p>
+<table class="map-table">
+<tr><th>Mode</th><th>Max f<sub>SCL</sub></th><th>Intuition</th></tr>
+<tr><td>Standard-mode</td><td>100 kHz</td><td>Legacy sensors; generous setup/hold; slow Rp OK</td></tr>
+<tr><td>Fast-mode</td><td>400 kHz</td><td>Most common target for SoC masters</td></tr>
+<tr><td>Fast-mode Plus</td><td>1 MHz</td><td>Needs smaller Rp, shorter traces</td></tr>
+</table>
+<ul>
+<li><strong>t<sub>HD;STA</sub>:</strong> minimum LOW time on SCL after START before first clock — your FSM must hold SCL low long enough.</li>
+<li><strong>t<sub>SU;STA</sub>:</strong> setup time for repeated START — SDA setup before SCL rises.</li>
+<li><strong>t<sub>BUF</sub>:</strong> bus free time between STOP and next START — inter-transaction gap.</li>
+<li><strong>Rise time:</strong> limited by Rp and bus capacitance C<sub>b</sub> — large C<sub>b</sub> means you cannot run 400 kHz with 10k pull-ups.</li>
+</ul>
+<div class="infobox"><p><strong>RTL takeaway:</strong> your clock divider sets target SCL period; your bit FSM must stretch LOW/HIGH phases to meet t<sub>LOW</sub> and t<sub>HIGH</sub> minimums. We'll architect this in <a href="/premium-course/rtl-design/i2c-architecture/">Lesson 11.3</a> and size <code>DIV</code> per the <a href="/premium-course/rtl-design/i2c-one-page-spec/">11.2 CSR map</a>.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">8</div><h2>Repeated START — write-then-read without STOP</h2></div>
+<p>EEPROMs and sensors often need a <strong>register pointer write</strong> followed immediately by a <strong>read</strong>. Releasing the bus with STOP between phases risks another master stealing the bus or the slave losing its internal address pointer. <strong>Repeated START (Sr)</strong> solves this: issue a second START without an intervening STOP.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Repeated START transaction">
+<text x="360" y="20" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Write-then-read — S … data … Sr … read … P</text>
+<text x="50" y="55" fill="#94a3b8" font-size="9" font-family="monospace">SCL</text>
+<polyline points="80,50 600,50 620,70 640,70 660,50" fill="none" stroke="#38bdf8" stroke-width="2"/>
+<text x="50" y="95" fill="#94a3b8" font-size="9" font-family="monospace">SDA</text>
+<polyline points="80,90 95,90 95,110 200,110 220,90 400,90 415,110 415,90 430,90 550,90 565,110 600,110" fill="none" stroke="#2dd4bf" stroke-width="2"/>
+<text x="90" y="125" fill="#f87171" font-size="8" font-family="Outfit,sans-serif">S</text>
+<text x="410" y="125" fill="#f87171" font-size="8" font-family="Outfit,sans-serif">Sr</text>
+<text x="590" y="125" fill="#4ade80" font-size="8" font-family="Outfit,sans-serif">P</text>
+<rect x="100" y="140" width="180" height="28" rx="5" fill="rgba(56,189,248,.08)" stroke="#38bdf8"/>
+<text x="190" y="158" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Phase 1: addr+W, reg ptr</text>
+<rect x="420" y="140" width="180" height="28" rx="5" fill="rgba(167,139,250,.08)" stroke="#a78bfa"/>
+<text x="510" y="158" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">Phase 2: addr+R, read data</text>
+</svg>
+<p class="diagram-caption">Sr looks like START electrically — SDA↓ while SCL high — but occurs mid-transaction without bus idle gap.</p>
+</div>
+<table class="map-table">
+<tr><th>Step</th><th>Bus byte</th><th>Direction</th><th>Notes</th></tr>
+<tr><td>1. START</td><td>—</td><td>—</td><td>Claim bus</td></tr>
+<tr><td>2. Address + W</td><td><code>(0x50&lt;&lt;1)|0 = 0xA0</code></td><td>Master → slave</td><td>Slave ACKs if present</td></tr>
+<tr><td>3. Reg pointer</td><td><code>0x10</code> (example)</td><td>Master → slave</td><td>Sets internal address</td></tr>
+<tr><td>4. Repeated START</td><td>—</td><td>—</td><td>Bus stays busy — no STOP</td></tr>
+<tr><td>5. Address + R</td><td><code>(0x50&lt;&lt;1)|1 = 0xA1</code></td><td>Master → slave</td><td>Slave ACKs, prepares read</td></tr>
+<tr><td>6. Data byte(s)</td><td>D0, D1, …</td><td>Slave → master</td><td>Master NACKs last byte</td></tr>
+<tr><td>7. STOP</td><td>—</td><td>—</td><td>Release bus</td></tr>
+</table>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Using STOP then START instead of Sr works on a quiet bus but violates the spec intent and adds t<sub>BUF</sub> delay. Some slaves reset their pointer on STOP. Always use Sr for atomic write-then-read.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">9</div><h2>Multi-master awareness</h2></div>
+<p>Some buses have multiple masters (e.g. SoC + external tester). I2C handles this with <strong>arbitration</strong>: if two masters drive SDA differently during an address byte, the master reading '1' when it drove '0' loses and backs off. Clock stretching also interacts with multi-master — another reason open-drain modeling matters.</p>
+<p>For this capstone, your I2C master IP is <strong>single-master</strong>. Know that multi-master exists, but do not over-engineer arbitration unless the spec demands it.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">10</div><h2>Timing parameters — intuition table</h2></div>
+<p>These numbers come from the I2C specification (NXP UM10204). You do not memorize every picosecond — but your RTL divider and FSM phases must respect the relationships.</p>
+<table class="map-table">
+<tr><th>Symbol</th><th>Name</th><th>Fast-mode (400 kHz)</th><th>RTL impact</th></tr>
+<tr><td>t<sub>LOW</sub></td><td>SCL low period</td><td>≥ 1.3 µs</td><td>PH_SETUP + PH_FALL must sum ≥ t<sub>LOW</sub></td></tr>
+<tr><td>t<sub>HIGH</sub></td><td>SCL high period</td><td>≥ 0.6 µs</td><td>PH_RISE + PH_HIGH ≥ t<sub>HIGH</sub>; stretch extends this</td></tr>
+<tr><td>t<sub>SU;DAT</sub></td><td>SDA setup before SCL↑</td><td>≥ 100 ns</td><td>Set SDA in PH_SETUP before PH_RISE</td></tr>
+<tr><td>t<sub>HD;DAT</sub></td><td>SDA hold after SCL↓</td><td>≥ 0 ns (0.9 µs legacy)</td><td>Keep SDA stable through PH_FALL</td></tr>
+<tr><td>t<sub>BUF</sub></td><td>Bus free between transactions</td><td>≥ 1.3 µs</td><td>Idle gap after STOP before next START</td></tr>
+<tr><td>t<sub>SP</sub></td><td>Pulse width spikes suppressed</td><td>≤ 50 ns</td><td>Pad filtering — usually analog concern</td></tr>
+</table>
+<div class="code-panel">
+<div class="code-panel-head"><span>divider math — worked example</span><button class="copy-btn" onclick="copyLabCode('m111-div', this)">Copy</button></div>
+<pre id="m111-div">// pclk = 50 MHz → T_clk = 20 ns
+// Target Fast-mode: f_scl = 400 kHz → T_scl = 2500 ns
+// 4 phases per bit → T_phase = 625 ns → DIV = 625/20 = 31.25 → 31
+// Actual T_scl = 4 * 31 * 20 ns = 2480 ns → 403 kHz (within spec)
+
+// Standard-mode 100 kHz: DIV = 2500/20 = 125
+localparam DIV_100K = 125;
+localparam DIV_400K = 31;</pre>
+</div>
+<div class="reason-grid">
+<div class="reason-card"><div class="rc-icon">📐</div><h4>Rp and C<sub>b</sub></h4><p>Rise time t<sub>r</sub> ≈ 0.8473 × Rp × C<sub>b</sub>. Long traces + many slaves → slow edges → lower max frequency.</p></div>
+<div class="reason-card"><div class="rc-icon">⏱️</div><h4>Stretch extends t<sub>HIGH</sub></h4><p>Slave stretch is legal and unlimited (within reason). Master PH_HIGH must wait — no timeout in bare spec, but your IP SHOULD add one.</p></div>
+<div class="reason-card"><div class="rc-icon">🔬</div><h4>Sim vs silicon</h4><p>Ideal 0 ns edges in RTL sim pass easily. Annotate SDF or add artificial rise delay for confidence.</p></div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">11</div><h2>Beginner mistakes — learn these now</h2></div>
+<ul>
+<li><strong>8-bit vs 7-bit address confusion:</strong> writing <code>0xA0</code> to the ADDR register when the datasheet says <code>0x50</code> — store 7-bit, shift in hardware.</li>
+<li><strong>Forgetting the 9th bit:</strong> counting 8 clocks per byte and sampling ACK on the wrong edge.</li>
+<li><strong>Push-pull SDA in TB:</strong> masks clock-stretch and multi-drive bugs until silicon.</li>
+<li><strong>STOP after NACK on read:</strong> correct for last byte; wrong if you NACK an address — check slave power and wiring.</li>
+<li><strong>SDA glitch while SCL high:</strong> creates spurious START — often a FSM ordering bug (change data before SCL falls).</li>
+<li><strong>No bus-free after STOP:</strong> starting next transaction too fast violates t<sub>BUF</sub>.</li>
+</ul>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Simulation passes with ideal wires but fails in lab because pull-ups are missing or too large. Always include Rp and pad capacitance in timing-aware sims for sign-off confidence.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">12</div><h2>Protocol literacy checklist</h2></div>
+<ul class="check-list">
+<li>Draw START and STOP from memory (SDA transition while SCL high)</li>
+<li>Explain why I2C pads are open-drain and idle high</li>
+<li>Count 9 SCL pulses per byte including ACK</li>
+<li>Convert 7-bit address 0xNN to write/read bus bytes</li>
+<li>Describe write-then-read with repeated START</li>
+<li>State who drives ACK after address vs after read data</li>
+<li>Name at least two timing parameters and what they constrain</li>
+<li>Explain why master NACKs the last byte of a read</li>
+<li>Draw write-then-read with Sr between phases</li>
+</ul>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">13</div><h2>Self-check — protocol quiz</h2></div>
+<ol>
+<li>Bus is idle (SCL=H, SDA=H). Master pulls SDA low, then SCL low. Is this START? <em>Answer: yes — SDA fell while SCL was high.</em></li>
+<li>How many SCL pulses for one address byte including ACK? <em>Answer: 9.</em></li>
+<li>Slave address 0x34, read transaction — what is the first byte on SDA? <em>Answer: (0x34&lt;&lt;1)|1 = 0x69.</em></li>
+<li>Who drives SDA during the 9th bit of a write data byte? <em>Answer: the slave (ACK/NACK).</em></li>
+<li>Can SDA change while SCL is high during a data bit? <em>Answer: no — only during START, STOP, or Sr.</em></li>
+<li>What happens if no slave ACKs the address? <em>Answer: SDA stays high (NACK); master should STOP and report error.</em></li>
+</ol>
+<div class="infobox"><p>Score 6/6 before moving to <a href="/premium-course/rtl-design/i2c-one-page-spec/">Lesson 11.2</a>. If you miss the R/W bit or 9th-clock questions, re-read Sections 4 and 5.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">14</div><h2>Quick reference card</h2></div>
+<table class="map-table">
+<tr><th>Topic</th><th>Rule</th></tr>
+<tr><td>Idle bus</td><td>SCL=H, SDA=H (pull-ups)</td></tr>
+<tr><td>START</td><td>SDA↓ while SCL=H</td></tr>
+<tr><td>STOP</td><td>SDA↑ while SCL=H</td></tr>
+<tr><td>Data bit order</td><td>MSB (bit 7) first</td></tr>
+<tr><td>Bits per byte</td><td>8 data + 1 ACK = 9 clocks</td></tr>
+<tr><td>7-bit addr 0xNN write</td><td>First byte = (NN &lt;&lt; 1) | 0</td></tr>
+<tr><td>7-bit addr 0xNN read</td><td>First byte = (NN &lt;&lt; 1) | 1</td></tr>
+<tr><td>Write ACK driver</td><td>Slave pulls low on 9th bit</td></tr>
+<tr><td>Read last-byte ACK</td><td>Master NACKs (SDA high)</td></tr>
+<tr><td>Write-then-read</td><td>Use Sr, not STOP between phases</td></tr>
+<tr><td>Clock stretch</td><td>Slave holds SCL low; master waits</td></tr>
+<tr><td>Fast-mode</td><td>400 kHz max; t<sub>LOW</sub> ≥ 1.3 µs</td></tr>
+</table>
+</div>
+
+<div class="key-takeaway">
+<h3>🎯 What to remember</h3>
+<ul>
+<li>I2C = open-drain SCL/SDA, pull-ups, wired-AND, idle high.</li>
+<li>START: SDA↓ with SCL high. STOP: SDA↑ with SCL high.</li>
+<li>Bytes are MSB-first; every byte has a 9th ACK bit from the receiver.</li>
+<li>Address frame = 7-bit addr + R/W bit; store 7-bit in registers, shift in logic.</li>
+<li>Repeated START enables write-then-read without releasing the bus.</li>
+</ul>
+</div>
+
+<div class="lesson-nav">
+<a href="/premium-course/rtl-design/waveform-debug-method/">← Previous: Waveform debug method</a>
+<a href="/premium-course/rtl-design/i2c-one-page-spec/">Next: 1-page I2C spec →</a>
+</div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I2C Master Architecture — RTL Design | EcrioniX</title>
+<meta property="og:title" content="I2C Master Architecture — RTL Design | EcrioniX">
+<meta property="og:description" content="Byte FSM, quarter-phase bit engine, open-drain pad model, clock stretch, CSR bank, clock divider, and block hierarchy — Module 11.3 I2C capstone.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/i2c-architecture/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"I2C Architecture","item":"https://ecrionix.org/premium-course/rtl-design/i2c-architecture/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is clock stretching in I2C?","acceptedAnswer":{"@type":"Answer","text":"A slave holds SCL low to pause the master until it is ready. The master must not advance the bit counter while SCL is held low externally — it waits until scl_i reads high before completing the high phase."}},{"@type":"Question","name":"Why use a quarter-phase bit engine for I2C?","acceptedAnswer":{"@type":"Answer","text":"Each SCL period divides into four phases: drive SDA, SCL rise, hold high (sample), SCL fall. This cleanly separates setup/hold timing and clock-stretch wait points."}}]}]}</script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);const ADMIN_UID='aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user=>{if(!user){window.location.href='/premium-course/';return;}checkAccess(user);});
+function markLessonComplete(slug){const user=firebase.auth().currentUser;if(!user)return;firebase.firestore().collection('users').doc(user.uid).set({completedLessons:{rtl:firebase.firestore.FieldValue.arrayUnion(slug)}},{merge:true}).catch(err=>console.error('Could not record lesson progress:',err));}
+async function checkAccess(user){if(user.uid===ADMIN_UID){document.getElementById('authLoading').style.display='none';document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-architecture');return;}try{const doc=await firebase.firestore().collection('users').doc(user.uid).get();const data=doc.data();const wasApproved=data?.approvedCourses?.includes('rtl');const expiry=data?.courseExpiry?.rtl;const isExpired=wasApproved&&expiry&&expiry.toDate()<new Date();const hasAccess=wasApproved&&!isExpired;document.getElementById('authLoading').style.display='none';if(hasAccess){document.getElementById('lessonContent').style.display='block';markLessonComplete('i2c-architecture');}else{document.getElementById('noAccess').style.display='block';}}catch(error){console.error('Error checking access:',error);document.getElementById('authLoading').style.display='none';document.getElementById('noAccess').style.display='block';}}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}.back-link{color:var(--sl);font-size:0.9rem}.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}.lede .hl{color:var(--heading,#f8fafc);font-weight:600}.section{margin:2.4rem 0}.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}.section ul li,.section ol li{margin-bottom:0.5rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}.map-table td{color:var(--sl)}.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.trap-box p{margin:0;color:var(--text);font-size:0.92rem}.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.9rem;margin:1.3rem 0}.reason-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.1rem}.reason-card .rc-icon{font-size:1.3rem;margin-bottom:0.45rem}.reason-card h4{color:var(--heading,#f8fafc);font-size:0.92rem;margin-bottom:0.35rem}.reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+.flow-rail{display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:center;margin:1.2rem 0}.flow-chip{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.72rem;font-weight:700;color:var(--heading,#f8fafc);white-space:nowrap}.flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}.flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar"><div class="navbar-logo">🎓 EcrioniX Premium</div><div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div></div>
+<div id="noAccess" class="no-access" style="display:none;"><h1>🔒 No Access</h1><p>You don't have approved access to this course yet.</p><a href="/premium-course/">Go back and request access →</a></div>
+<div id="lessonContent" style="display:none;">
+<div class="container">
+<div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 11: Capstone — I2C Controller</div>
+<span class="lesson-tag">Lesson 11.3</span>
+<h1>I2C master architecture</h1>
+<p class="lede">Protocol knowledge from <a href="/premium-course/rtl-design/i2c-protocol-crash/">11.1</a> and the micro-spec from <a href="/premium-course/rtl-design/i2c-one-page-spec/">11.2</a> now become structure. A production I2C master splits into a <span class="hl">CSR bank</span> for software, a <span class="hl">byte-level FSM</span> for transactions, a <span class="hl">bit engine</span> for SCL timing, and an <span class="hl">open-drain pad wrapper</span> for the bus. This lesson defines every block, every interface, and the clock-stretch handshake that trips up first-time implementers.</p>
+<div class="def-box"><div class="def-label">Architecture principle</div><p><strong>Byte FSM thinks in transactions.</strong> Bit engine thinks in quarter-phases. Pads think in wired-AND. Keep these layers separate — mixing them produces unmaintainable RTL and untestable bugs.</p></div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Hierarchy and responsibilities</h2></div>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C master RTL hierarchy">
+<defs><marker id="m113-arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#38bdf8"/></marker><marker id="m113-teal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker></defs>
+<text x="360" y="22" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">i2c_master — RTL module hierarchy</text>
+<rect x="200" y="40" width="320" height="280" rx="12" fill="rgba(56,189,248,.04)" stroke="#38bdf8"/>
+<text x="360" y="62" fill="#38bdf8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">i2c_master (top)</text>
+<rect x="220" y="75" width="130" height="60" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="285" y="100" fill="#a78bfa" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">i2c_csr</text>
+<text x="285" y="118" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">APB → cfg/status</text>
+<rect x="370" y="75" width="130" height="60" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+<text x="435" y="100" fill="#2dd4bf" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">i2c_byte_fsm</text>
+<text x="435" y="118" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">transaction ctrl</text>
+<rect x="295" y="155" width="130" height="60" rx="8" fill="rgba(251,191,36,.12)" stroke="#fbbf24"/>
+<text x="360" y="180" fill="#fbbf24" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">i2c_bit_engine</text>
+<text x="360" y="198" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">quarter-phase SCL</text>
+<rect x="295" y="235" width="130" height="60" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="360" y="260" fill="#38bdf8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">i2c_od_pad</text>
+<text x="360" y="278" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">oen + pullup model</text>
+<rect x="30" y="95" width="120" height="55" rx="8" fill="rgba(148,163,184,.08)" stroke="#94a3b8"/>
+<text x="90" y="125" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">APB slave</text>
+<rect x="570" y="240" width="120" height="55" rx="8" fill="rgba(148,163,184,.08)" stroke="#94a3b8"/>
+<text x="630" y="270" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">SCL / SDA pads</text>
+<line x1="150" y1="122" x2="220" y2="105" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="350" y1="135" x2="400" y2="135" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<text x="375" y="128" fill="#2dd4bf" font-size="7" font-family="monospace">cmd</text>
+<line x1="435" y1="135" x2="435" y2="155" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<text x="448" y="148" fill="#fbbf24" font-size="7" font-family="monospace">bit_cmd</text>
+<line x1="360" y1="215" x2="360" y2="235" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="425" y1="265" x2="570" y2="265" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m113-teal)"/>
+<line x1="285" y1="105" x2="285" y2="200" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 2"/>
+<line x1="285" y1="200" x2="295" y2="185" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 2"/>
+<text x="255" y="195" fill="#a78bfa" font-size="7" font-family="monospace">div,addr</text>
+<rect x="220" y="310" width="280" height="22" rx="4" fill="rgba(251,191,36,.08)" stroke="#fbbf24"/>
+<text x="360" y="325" fill="#fbbf24" font-size="8" text-anchor="middle" font-family="Outfit,sans-serif">bit_done / ack_sample / stretch_wait flow upward to byte FSM</text>
+</svg>
+<p class="diagram-caption">Commands flow down; status and sampled ACK flow up. Pad module is the only block that touches bidirectional pins.</p>
+</div>
+<table class="map-table">
+<tr><th>Module</th><th>Clock domain</th><th>Responsibility</th></tr>
+<tr><td><code>i2c_csr</code></td><td><code>pclk</code></td><td>Decode APB; latch ADDR, TX, DIV; expose STAT, RX; pulse START</td></tr>
+<tr><td><code>i2c_byte_fsm</code></td><td><code>pclk</code></td><td>Sequence START → addr → data → ACK → STOP; byte counter</td></tr>
+<tr><td><code>i2c_bit_engine</code></td><td><code>pclk</code></td><td>Generate SCL quarter-phases; shift one bit; sample ACK</td></tr>
+<tr><td><code>i2c_od_pad</code></td><td>async pins</td><td>Open-drain drive + synthesizable pull-up for sim</td></tr>
+</table>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Byte FSM — transaction states</h2></div>
+<p>The byte FSM is the orchestrator. It knows <em>what</em> to send (address, TX data, read phase) but delegates <em>how</em> to wiggle pins to the bit engine.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="I2C byte FSM state diagram">
+<defs><marker id="m113-arr2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+<text x="360" y="22" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Byte FSM — main states</text>
+<rect x="300" y="45" width="120" height="40" rx="20" fill="rgba(45,212,191,.15)" stroke="#2dd4bf"/>
+<text x="360" y="70" fill="#2dd4bf" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">IDLE</text>
+<rect x="80" y="120" width="100" height="40" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="130" y="145" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">START</text>
+<rect x="220" y="120" width="100" height="40" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="270" y="145" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">ADDR</text>
+<rect x="360" y="120" width="100" height="40" rx="8" fill="rgba(251,191,36,.12)" stroke="#fbbf24"/>
+<text x="410" y="145" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">DATA</text>
+<rect x="500" y="120" width="100" height="40" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+<text x="550" y="145" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">ACK_CHK</text>
+<rect x="620" y="120" width="80" height="40" rx="8" fill="rgba(248,113,113,.12)" stroke="#f87171"/>
+<text x="660" y="145" fill="#f87171" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">STOP</text>
+<rect x="220" y="200" width="120" height="40" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="280" y="225" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">REP_START</text>
+<path d="M360,85 L360,110 L130,110 L130,120" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<text x="240" y="105" fill="#94a3b8" font-size="7" font-family="Outfit,sans-serif">cmd.start</text>
+<path d="M180,160 L220,160 L220,140" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<path d="M320,140 L360,140" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<text x="340" y="133" fill="#94a3b8" font-size="7" font-family="Outfit,sans-serif">8 bits</text>
+<path d="M460,140 L500,140" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<path d="M600,140 L620,140" fill="none" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<text x="610" y="133" fill="#94a3b8" font-size="7" font-family="Outfit,sans-serif">9th bit</text>
+<path d="M550,160 L550,185 L410,185 L410,160" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3 2" marker-end="url(#m113-arr2)"/>
+<text x="480" y="198" fill="#fbbf24" font-size="7" font-family="Outfit,sans-serif">more bytes</text>
+<path d="M660,160 L660,250 L360,250 L360,85" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="500" y="265" fill="#2dd4bf" font-size="7" font-family="Outfit,sans-serif">done → IDLE</text>
+<path d="M280,160 L280,200" fill="none" stroke="#38bdf8" stroke-width="1.2" marker-end="url(#m113-arr2)"/>
+<text x="295" y="182" fill="#38bdf8" font-size="7" font-family="Outfit,sans-serif">w-t-r</text>
+</svg>
+<p class="diagram-caption">ACK_CHK branches: NACK → STOP (error); more bytes → DATA; last byte + read → master drives ACK/NACK.</p>
+</div>
+<table class="map-table">
+<tr><th>State</th><th>Entry action</th><th>Exit condition</th></tr>
+<tr><td>IDLE</td><td>BUSY=0; release bus (oen=1)</td><td>CTRL.START pulse → START</td></tr>
+<tr><td>START</td><td>bit_cmd=GEN_START</td><td>bit_done → ADDR (load shifted addr byte)</td></tr>
+<tr><td>ADDR</td><td>Shift (addr&lt;&lt;1)|rd; 8 bits out</td><td>8 bits done → ACK_CHK</td></tr>
+<tr><td>DATA</td><td>Load TX or receive into shift reg</td><td>8 bits done → ACK_CHK</td></tr>
+<tr><td>ACK_CHK</td><td>Sample ack_bit on 9th rising edge</td><td>NACK → STOP; else byte_cnt-- → DATA or STOP</td></tr>
+<tr><td>REP_START</td><td>bit_cmd=GEN_REP_START; flip rd bit</td><td>bit_done → ADDR or DATA</td></tr>
+<tr><td>STOP</td><td>bit_cmd=GEN_STOP</td><td>bit_done → IDLE; DONE=1</td></tr>
+</table>
+<div class="code-panel">
+<div class="code-panel-head"><span>byte_fsm interface — contract to bit engine</span><button class="copy-btn" onclick="copyLabCode('m113-if', this)">Copy</button></div>
+<pre id="m113-if">// Byte FSM → Bit engine (command)
+output reg        bit_go;
+output reg [2:0]  bit_cmd;  // IDLE, START, STOP, REP_START, TX_BIT, RX_BIT
+output reg        bit_wr;   // 1=master drives SDA this bit
+output reg        tx_bit;   // data bit to transmit
+
+// Bit engine → Byte FSM (status)
+input  wire       bit_done;      // one bit (or START/STOP seq) complete
+input  wire       ack_sample;    // SDA at 9th rising edge
+input  wire       stretch_active; // SCL held low externally</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Bit engine — quarter-phase timing</h2></div>
+<p>Each SCL period divides into <strong>four phases</strong> counted by a divider loaded from CSR DIV. This gives precise control over setup, sample point, and clock-stretch wait.</p>
+<div class="wave-ascii">Quarter-phases within one bit (write data bit):
+Phase:  A        B         C          D
+        setup    SCL rise  SCL high   SCL fall
+SCL     ‾\___/‾‾‾‾‾‾‾‾‾‾‾‾\___
+SDA     &lt;set bit&gt;──────────────  (stable before rise)
+        ↑        ↑ sample   ↑
+        phase A  phase C    release for next bit</div>
+<div class="diagram-wrap">
+<svg viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Quarter phase bit engine">
+<text x="360" y="20" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Bit engine internal phase counter</text>
+<rect x="60" y="50" width="130" height="45" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="125" y="72" fill="#38bdf8" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">PH_SETUP</text>
+<text x="125" y="86" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">SDA valid, SCL low</text>
+<rect x="210" y="50" width="130" height="45" rx="8" fill="rgba(251,191,36,.12)" stroke="#fbbf24"/>
+<text x="275" y="72" fill="#fbbf24" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">PH_RISE</text>
+<text x="275" y="86" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">release SCL oen</text>
+<rect x="360" y="50" width="130" height="45" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="425" y="72" fill="#a78bfa" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">PH_HIGH</text>
+<text x="425" y="86" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">sample SDA; wait scl_i</text>
+<rect x="510" y="50" width="130" height="45" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+<text x="575" y="72" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">PH_FALL</text>
+<text x="575" y="86" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="monospace">pull SCL low</text>
+<line x1="190" y1="72" x2="210" y2="72" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="340" y1="72" x2="360" y2="72" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="490" y1="72" x2="510" y2="72" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<rect x="120" y="120" width="480" height="60" rx="8" fill="#0c1526" stroke="rgba(148,163,184,.15)"/>
+<text x="360" y="142" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="monospace">phase_cnt 0..DIV-1 per phase; full bit = 4 × DIV pclk cycles</text>
+<text x="360" y="162" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">f_scl ≈ pclk / (4 × DIV)  →  DIV = pclk / (4 × f_target)</text>
+</svg>
+<p class="diagram-caption">PH_HIGH is where clock stretch happens — phase counter pauses until scl_i == 1.</p>
+</div>
+<div class="code-panel">
+<div class="code-panel-head"><span>clock divider — 50 MHz → 400 kHz</span><button class="copy-btn" onclick="copyLabCode('m113-div', this)">Copy</button></div>
+<pre id="m113-div">// Target f_scl = 400 kHz, pclk = 50 MHz
+// DIV = 50_000_000 / (4 * 400_000) = 31.25 → use 31
+// Actual f = 50M / (4*31) ≈ 403 kHz
+
+localparam DIV_400K = 16'd31;
+
+// In PH_HIGH: wait for external SCL release (clock stretch)
+if (phase == PH_HIGH && !scl_i)
+  phase_cnt &lt;= phase_cnt;     // hold — do not advance
+else if (phase_cnt == div_r - 1)
+  phase_cnt &lt;= 0; phase &lt;= phase_next;
+else
+  phase_cnt &lt;= phase_cnt + 1;</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>Open-drain pad model</h2></div>
+<p>The pad wrapper is the boundary between synchronous RTL and the asynchronous bus. In synthesis, it maps to tristate IO cells; in simulation, it models pull-ups.</p>
+<div class="diagram-wrap">
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open drain pad RTL model">
+<text x="350" y="22" fill="#38bdf8" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">i2c_od_pad — drive low or release</text>
+<rect x="80" y="55" width="140" height="70" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+<text x="150" y="85" fill="#38bdf8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">bit_engine</text>
+<text x="150" y="105" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">sda_o, sda_oen_n</text>
+<rect x="280" y="55" width="140" height="70" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+<text x="350" y="85" fill="#2dd4bf" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">od_pad_cell</text>
+<text x="350" y="105" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">assign bus</text>
+<rect x="480" y="55" width="140" height="70" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="550" y="85" fill="#a78bfa" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">bus + Rp</text>
+<text x="550" y="105" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">sda_io</text>
+<line x1="220" y1="90" x2="280" y2="90" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="420" y1="90" x2="480" y2="90" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#m113-arr)"/>
+<line x1="480" y1="105" x2="420" y2="105" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#m113-arr)"/>
+<text x="450" y="118" fill="#a78bfa" font-size="7" font-family="monospace">sda_i</text>
+<rect x="100" y="150" width="500" height="55" rx="8" fill="#0c1526" stroke="rgba(148,163,184,.15)"/>
+<text x="350" y="172" fill="#e2e8f0" font-size="8" text-anchor="middle" font-family="monospace">assign sda_pad = sda_oen_n ? 1'bz : 1'b0;</text>
+<text x="350" y="190" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">assign sda_i = (sda_pad === 1'bz) ? 1'b1 : sda_pad;  // pull-up model</text>
+</svg>
+<p class="diagram-caption">oen_n active-low is common in pad libraries: 0 = drive low, 1 = high-Z.</p>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Using <code>assign sda_i = sda_pad</code> without resolving Z to 1 hides the fact that nobody is driving. Always model pull-ups in TB and pad wrapper for accurate ACK/NACK and stretch behavior.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">5</div><h2>Clock stretching — wait for SCL high</h2></div>
+<p>When a slave is not ready, it holds <code>SCL</code> low after the master releases it. The master <strong>must not</strong> advance to the next bit or sample SDA until <code>scl_i</code> returns high. Stretching can occur during any SCL high phase — most commonly during ACK or while the slave prepares read data.</p>
+<div class="wave-ascii">Clock stretch during ACK bit:
+SCL (out) ‾\___/‾‾‾‾\___________________/‾‾\___
+SCL (bus) ‾\___/‾‾‾‾\_____(held low)____/‾‾\___
+                      ↑ slave stretches
+master    waits in PH_HIGH — phase_cnt frozen</div>
+<ul>
+<li><strong>Detection:</strong> in PH_RISE or PH_HIGH, if master released SCL (oen=1) but <code>scl_i==0</code>, stretch is active.</li>
+<li><strong>Response:</strong> freeze phase counter; do not increment bit index; assert <code>stretch_active</code> for debug.</li>
+<li><strong>Timeout (SHOULD):</strong> if stretch exceeds 25 ms at 400 kHz, abort and set STAT.ERR — prevents permanent hang.</li>
+</ul>
+<div class="infobox"><p><strong>Verification tip:</strong> directed test A5 from the <a href="/premium-course/rtl-design/i2c-one-page-spec/">11.2 spec</a> deliberately holds SCL low in TB. If your master completes without waiting, the bit engine PH_HIGH logic is broken.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">6</div><h2>CSR bank and interrupt logic</h2></div>
+<p>The CSR block bridges CPU clock domain and the FSM. Register offsets match <a href="/premium-course/rtl-design/i2c-one-page-spec/">Lesson 11.2</a>; implementation lands in <a href="/premium-course/rtl-design/i2c-rtl-implementation/">11.4</a>.</p>
+<table class="map-table">
+<tr><th>Signal</th><th>Source</th><th>Consumer</th></tr>
+<tr><td><code>start_pulse</code></td><td>CTRL.START write-1</td><td>Byte FSM: IDLE → START</td></tr>
+<tr><td><code>addr_r[6:0]</code></td><td>ADDR CSR</td><td>Byte FSM: forms addr byte</td></tr>
+<tr><td><code>div_r[15:0]</code></td><td>DIV CSR</td><td>Bit engine: phase length</td></tr>
+<tr><td><code>tx_data</code></td><td>TX CSR</td><td>Byte FSM: write payload</td></tr>
+<tr><td><code>rx_data</code></td><td>Byte FSM shift reg</td><td>RX CSR readback</td></tr>
+<tr><td><code>busy, done, nack</code></td><td>Byte FSM</td><td>STAT CSR; W1C on done/nack</td></tr>
+</table>
+<div class="code-panel">
+<div class="code-panel-head"><span>irq glue — level-sensitive</span><button class="copy-btn" onclick="copyLabCode('m113-irq', this)">Copy</button></div>
+<pre id="m113-irq">assign irq = irq_en &amp; (stat_done | stat_nack | stat_timeout);
+
+// Firmware ISR:
+// 1. Read STAT
+// 2. If NACK → handle error path
+// 3. Write STAT to W1C clear done/nack
+// 4. Read RX if read transaction</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">7</div><h2>Interface contracts between blocks</h2></div>
+<p>Clear contracts let you unit-test each module in isolation before top-level integration.</p>
+<table class="map-table">
+<tr><th>Boundary</th><th>Producer guarantees</th><th>Consumer assumes</th></tr>
+<tr><td>CSR → FSM</td><td>START is a 1-cycle pulse; ADDR stable until BUSY</td><td>FSM ignores START when BUSY=1</td></tr>
+<tr><td>FSM → bit engine</td><td><code>bit_go</code> pulse per bit; <code>bit_cmd</code> stable during bit</td><td>Engine completes with exactly one <code>bit_done</code></td></tr>
+<tr><td>bit engine → pads</td><td>SDA only changes in PH_SETUP or START/STOP seq</td><td>Pad resolves Z; returns <code>scl_i/sda_i</code></td></tr>
+<tr><td>bit engine → FSM</td><td><code>ack_sample</code> valid only at end of 9th bit PH_HIGH</td><td>FSM latches ACK/NACK on <code>bit_done</code></td></tr>
+</table>
+<div class="reason-grid">
+<div class="reason-card"><div class="rc-icon">🧩</div><h4>Unit test bit engine</h4><p>Feed bit_cmd sequences; check SCL/SDA waveforms without CSR or FSM present.</p></div>
+<div class="reason-card"><div class="rc-icon">🔄</div><h4>Unit test FSM</h4><p>Stub bit_done/ack_sample; verify state transitions for A1–A4 scenarios.</p></div>
+<div class="reason-card"><div class="rc-icon">🔌</div><h4>Pad model TB</h4><p>Two masters driving — verify wired-AND and stretch with conflicting oen.</p></div>
+</div>
+<a class="sim-cta" href="/tools/verilog-simulator/">▶ Prototype bit engine FSM in simulator</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">8</div><h2>Read path — shift register and master ACK</h2></div>
+<p>Write and read share the bit engine but differ in who drives SDA during data bits and who drives the 9th bit. The byte FSM must track <code>rd_phase</code> to swap drivers correctly.</p>
+<table class="map-table">
+<tr><th>Phase</th><th>bit_wr</th><th>SDA driver (data bits)</th><th>9th bit driver</th></tr>
+<tr><td>ADDR (write)</td><td>1</td><td>Master</td><td>Slave ACK</td></tr>
+<tr><td>ADDR (read)</td><td>1</td><td>Master</td><td>Slave ACK</td></tr>
+<tr><td>DATA write</td><td>1</td><td>Master</td><td>Slave ACK</td></tr>
+<tr><td>DATA read</td><td>0</td><td>Slave</td><td>Master ACK/NACK</td></tr>
+</table>
+<div class="code-panel">
+<div class="code-panel-head"><span>read_shift — sample on PH_HIGH</span><button class="copy-btn" onclick="copyLabCode('m113-rx', this)">Copy</button></div>
+<pre id="m113-rx">// In bit engine PH_HIGH during RX_BIT:
+if (bit_cmd == RX_BIT)
+  shift_reg &lt;= {shift_reg[6:0], sda_i};  // MSB first
+
+// Byte FSM during read ACK_CHK on last byte:
+if (byte_cnt == 0)
+  bit_wr &lt;= 1; tx_bit &lt;= 1;  // master NACK (release SDA → high)
+else
+  bit_wr &lt;= 1; tx_bit &lt;= 0;  // master ACK (pull SDA low)</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">8</div><h2>START / STOP — bit engine sequences</h2></div>
+<p>START and STOP are not ordinary data bits — they violate the "change SDA only when SCL low" rule <em>on purpose</em>. The bit engine needs dedicated micro-sequences for these bus events.</p>
+<table class="map-table">
+<tr><th>Event</th><th>SCL sequence</th><th>SDA sequence</th><th>Phase count</th></tr>
+<tr><td>START</td><td>Hold high → fall → stay low</td><td>High → fall (while SCL high) → hold low</td><td>3–4 custom phases</td></tr>
+<tr><td>STOP</td><td>Rise → hold high</td><td>Low → rise (while SCL high)</td><td>3–4 custom phases</td></tr>
+<tr><td>REP_START</td><td>Same as START</td><td>Same as START (no prior STOP)</td><td>Reuse START seq</td></tr>
+<tr><td>Data bit</td><td>Standard 4-phase</td><td>Setup in PH_SETUP</td><td>4 × DIV</td></tr>
+</table>
+<div class="wave-ascii">START micro-sequence (conceptual):
+Step 1: SCL=H, SDA=H  (bus idle or mid-xfer setup)
+Step 2: SDA↓ while SCL=H  ← START condition
+Step 3: SCL↓
+Step 4: Begin first bit PH_SETUP</div>
+<div class="code-panel">
+<div class="code-panel-head"><span>start_stop_seq — bit engine states</span><button class="copy-btn" onclick="copyLabCode('m113-ss', this)">Copy</button></div>
+<pre id="m113-ss">typedef enum logic [2:0] {
+  BIT_IDLE,
+  BIT_START_SDA_FALL,  // SDA↓, SCL still high
+  BIT_START_SCL_FALL,  // SCL↓
+  BIT_PH_SETUP,
+  BIT_PH_RISE,
+  BIT_PH_HIGH,
+  BIT_PH_FALL,
+  BIT_STOP_SCL_RISE,   // SCL↑ first
+  BIT_STOP_SDA_RISE    // SDA↑ while SCL high → bit_done
+} bit_state_e;
+
+// START entry: from BIT_IDLE when bit_cmd == GEN_START
+// STOP entry: after last bit when bit_cmd == GEN_STOP</pre>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Reusing the data-bit FSM for START/STOP produces illegal intermediate states — SCL may fall before SDA, or SDA may glitch high during a data byte. Give START/STOP their own states.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">9</div><h2>Reset and bus-safe defaults</h2></div>
+<p>On reset, the I2C master must not leave the bus in an illegal state. A slave left mid-transaction may hang until it sees STOP.</p>
+<ul>
+<li><span class="must-tag must">MUST</span> Deassert all oen_n (release SCL and SDA) within 1 cycle of reset</li>
+<li><span class="must-tag must">MUST</span> Clear BUSY; byte FSM returns to IDLE</li>
+<li><span class="must-tag should">SHOULD</span> Optionally generate STOP if reset occurs mid-transaction (advanced — document if implemented)</li>
+<li><span class="must-tag may">MAY</span> Hold irq low during reset regardless of sticky STAT</li>
+</ul>
+<div class="code-panel">
+<div class="code-panel-head"><span>reset defaults — pad and FSM</span><button class="copy-btn" onclick="copyLabCode('m113-rst', this)">Copy</button></div>
+<pre id="m113-rst">always_ff @(posedge pclk or negedge preset_n) begin
+  if (!preset_n) begin
+    scl_oen_n &lt;= 1'b1;   // release SCL
+    sda_oen_n &lt;= 1'b1;   // release SDA
+    byte_state &lt;= IDLE;
+    busy       &lt;= 1'b0;
+  end
+end</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">10</div><h2>CDC note — async I2C pads</h2></div>
+<p><code>scl_i</code> and <code>sda_i</code> are asynchronous to <code>pclk</code> — they can change at any time relative to the CPU clock. For a master that <strong>samples on internally generated SCL edges</strong>, you typically sample in PH_HIGH after sufficient delay, which provides implicit synchrony to your own clock generation.</p>
+<ul>
+<li><strong>Do NOT</strong> double-flop <code>sda_i</code> for every bit without timing analysis — it adds metastability risk at the exact sample point.</li>
+<li><strong>DO</strong> sample only in PH_HIGH when your phase counter is near the end (stable bus after rise time).</li>
+<li><strong>DO</strong> treat <code>scl_i</code> stretch detection as async: if <code>scl_i==0</code> after release, wait — no edge sync needed.</li>
+<li>If the I2C block runs from a <strong>separate clock</strong> (i2c_clk), synchronize <code>start_pulse</code> and status back to pclk with pulse stretchers or APB handshake.</li>
+</ul>
+<div class="infobox"><p>For this capstone, everything runs on <code>pclk</code> — the bit engine generates SCL as a logical output, and pad feedback is sampled mid-phase. Full CDC to a divided i2c_clk domain is an optional stretch goal, not required for sign-off.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">11</div><h2>Synthesis and constraints notes</h2></div>
+<p>The I2C master is a slow serial interface — timing closure is usually easy on <code>pclk</code>. The critical paths to watch are APB decode and the divider counter, not the pad outputs.</p>
+<ul>
+<li><strong>False paths:</strong> <code>scl_i</code>, <code>sda_i</code> are async inputs — do not time them to pclk without sync registers (and we intentionally sample mid-phase).</li>
+<li><strong>IO timing:</strong> pad cell insertion happens at top level; your RTL outputs <code>oen_n</code> and <code>o</code> — constrain in PAD .sdc separately.</li>
+<li><strong>Clock gating:</strong> MAY gate pclk to bit engine when IDLE to save dynamic power — ensure BUSY=0 and FSM in IDLE before gate enable drops.</li>
+<li><strong>Lint:</strong> run clock-domain and reset checks; verify all FSM states have default recovery to IDLE on reset.</li>
+</ul>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Synthesizing push-pull on SCL/SDA because the tool "optimizes away" tristate — force open-drain IO cell mapping in constraints or the chip will fight the bus.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">12</div><h2>Architecture review checklist</h2></div>
+<ul class="check-list">
+<li>Four modules: csr, byte_fsm, bit_engine, od_pad — clean hierarchy</li>
+<li>Byte FSM states cover START, ADDR, DATA, ACK_CHK, REP_START, STOP, IDLE</li>
+<li>Bit engine uses 4 quarter-phases; DIV register sets frequency</li>
+<li>PH_HIGH waits for scl_i during clock stretch; timeout optional</li>
+<li>Open-drain: oen_n=1 releases; Z resolves to 1 with pull-up model</li>
+<li>ACK sampled on 9th bit; NACK sets STAT and triggers STOP path</li>
+<li>Interface contracts documented between every block pair</li>
+<li>irq driven by done | nack | timeout with enable mask</li>
+<li>START/STOP have dedicated bit-engine states — not reused data-bit phases</li>
+<li>Read path: slave drives data; master drives 9th-bit ACK/NACK</li>
+<li>Reset releases bus (oen_n=1); FSM returns to IDLE</li>
+</ul>
+</div>
+
+<div class="key-takeaway">
+<h3>🎯 What to remember</h3>
+<ul>
+<li>Layer separation: CSR (software), byte FSM (transactions), bit engine (timing), pads (electrical).</li>
+<li>Quarter-phase engine: setup → rise → high (sample + stretch wait) → fall.</li>
+<li>Clock stretch = freeze PH_HIGH until scl_i reads high — never skip this wait.</li>
+<li>Open-drain pads never drive high — only pull low or release to Z.</li>
+<li>Next lesson: <a href="/premium-course/rtl-design/i2c-rtl-implementation/">RTL implementation (11.4)</a> — turn this architecture into synthesizable Verilog.</li>
+</ul>
+</div>
+
+<div class="lesson-nav">
+<a href="/premium-course/rtl-design/i2c-one-page-spec/">← Previous: 1-page I2C spec</a>
+<a href="/premium-course/rtl-design/i2c-rtl-implementation/">Next: I2C RTL implementation →</a>
+</div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
