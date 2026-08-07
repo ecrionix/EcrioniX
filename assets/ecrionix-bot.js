@@ -21,7 +21,7 @@
       document.head.appendChild(link);
     }
     ensureStylesheet('/assets/theme-toggle.css');
-    ensureStylesheet('/assets/site-theme.css');
+    ensureStylesheet('/assets/site-theme.css?v=2');
 
     function ensureToggleScript() {
       if (document.getElementById('themeToggleBtn') || window.__ecxThemeToggleLoading) return;
