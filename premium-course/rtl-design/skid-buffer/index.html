@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Skid Buffer — Why Pipelines Need It — RTL Design | EcrioniX</title>
+<meta property="og:title" content="Skid Buffer — Why Pipelines Need It — RTL Design | EcrioniX">
+<meta property="og:description" content="Valid-ready elastic buffer: why skid buffers break combo loops, 1-deep RTL, waveforms, and pipeline back-pressure without stalling throughput.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/skid-buffer/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"Skid Buffer","item":"https://ecrionix.org/premium-course/rtl-design/skid-buffer/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a skid buffer?","acceptedAnswer":{"@type":"Answer","text":"A 1-deep elastic buffer between pipeline stages that lets the upstream stage accept one more beat while downstream is not ready, without creating a combinational loop between valid and ready."}},{"@type":"Question","name":"Why cannot ready depend on valid combinationally?","acceptedAnswer":{"@type":"Answer","text":"If ready is computed from valid and valid from ready in the same cycle, synthesis sees a combinational loop. Registered ready (from state or occupancy) breaks the loop while preserving handshake semantics."}}]}]}</script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);const ADMIN_UID='aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user=>{if(!user){window.location.href='/premium-course/';return;}checkAccess(user);});
+function markLessonComplete(slug){const user=firebase.auth().currentUser;if(!user)return;firebase.firestore().collection('users').doc(user.uid).set({completedLessons:{rtl:firebase.firestore.FieldValue.arrayUnion(slug)}},{merge:true}).catch(err=>console.error('Could not record lesson progress:',err));}
+async function checkAccess(user){if(user.uid===ADMIN_UID){document.getElementById('authLoading').style.display='none';document.getElementById('lessonContent').style.display='block';markLessonComplete('skid-buffer');return;}try{const doc=await firebase.firestore().collection('users').doc(user.uid).get();const data=doc.data();const wasApproved=data?.approvedCourses?.includes('rtl');const expiry=data?.courseExpiry?.rtl;const isExpired=wasApproved&&expiry&&expiry.toDate()<new Date();const hasAccess=wasApproved&&!isExpired;document.getElementById('authLoading').style.display='none';if(hasAccess){document.getElementById('lessonContent').style.display='block';markLessonComplete('skid-buffer');}else{document.getElementById('noAccess').style.display='block';}}catch(error){console.error('Error checking access:',error);document.getElementById('authLoading').style.display='none';document.getElementById('noAccess').style.display='block';}}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}.back-link{color:var(--sl);font-size:0.9rem}.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}.lede .hl{color:var(--heading,#f8fafc);font-weight:600}.section{margin:2.4rem 0}.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}.section ul li,.section ol li{margin-bottom:0.5rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}.map-table td{color:var(--sl)}.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.trap-box p{margin:0;color:var(--text);font-size:0.92rem}.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.angle-box p{margin:0;color:var(--text);font-size:0.92rem}.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.9rem;margin:1.3rem 0}.reason-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.1rem}.reason-card .rc-icon{font-size:1.3rem;margin-bottom:0.45rem}.reason-card h4{color:var(--heading,#f8fafc);font-size:0.92rem;margin-bottom:0.35rem}.reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+.flow-rail{display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:center;margin:1.2rem 0}.flow-chip{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.72rem;font-weight:700;color:var(--heading,#f8fafc);white-space:nowrap}.flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}.flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}.analogy-label{font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar"><div class="navbar-logo">🎓 EcrioniX Premium</div><div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div></div>
+<div id="noAccess" class="no-access" style="display:none;"><h1>🔒 No Access</h1><p>You don't have approved access to this course yet.</p><a href="/premium-course/">Go back and request access →</a></div>
+<div id="lessonContent" style="display:none;">
+<div class="container">
+<div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 7: Datapath &amp; Memory Systems</div>
+<span class="lesson-tag">Lesson 7.1</span>
+<h1>Skid buffer — why pipelines need it</h1>
+<p class="lede">A pipeline stage with registered outputs cannot accept a new beat the same cycle its downstream neighbor stalls — unless you add elasticity. The <span class="hl">skid buffer</span> is the smallest valid-ready elastic stage: one extra register slot that absorbs back-pressure without combinational loops between <code>valid</code> and <code>ready</code>.</p>
+<div class="def-box"><div class="def-label">Definition</div><p>A <strong>skid buffer</strong> (1-deep elastic buffer) sits between pipeline stages. It holds at most one extra beat when downstream is not ready, so upstream can still transfer on the stall cycle — preserving throughput for single-cycle bubbles.</p></div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>The pipeline stall problem</h2></div>
+<p>Consider two registered stages connected by valid-ready:</p>
+<div class="flow-rail">
+<span class="flow-chip">Stage A</span><span class="flow-arrow">valid/ready</span><span class="flow-chip accent">Stage B</span><span class="flow-arrow">valid/ready</span><span class="flow-chip">Stage C</span>
+</div>
+<p>Stage B registers its output on the clock edge. If Stage C deasserts <code>m_ready</code> on cycle <em>N</em>, Stage B cannot accept a new input on that same edge — its output register is still occupied. Without elasticity, Stage A must stall immediately, even if it had a valid beat ready.</p>
+<div class="analogy">
+<div class="analogy-label">Analogy</div>
+<p>Think of a conveyor belt with a single loading dock. If the next station's tray is full, the loader must stop — unless there's a <em>side shelf</em> (the skid) where one box can wait while the loader keeps working for exactly one more beat.</p>
+</div>
+<table class="map-table">
+<tr><th>Structure</th><th>Depth</th><th>Throughput when downstream stalls 1 cycle</th><th>Combo loop risk</th></tr>
+<tr><td>Direct wire (no buffer)</td><td>0</td><td>Upstream stalls same cycle</td><td>High if <code>ready</code> feeds back combo</td></tr>
+<tr><td>Simple register slice</td><td>1</td><td>Upstream stalls on stall cycle</td><td>Low if Moore outputs</td></tr>
+<tr><td>Skid buffer</td><td>1 + 1 skid slot</td><td>Upstream can xfer 1 more beat</td><td>Low — registered <code>ready</code></td></tr>
+<tr><td>Sync FIFO</td><td>N</td><td>Absorbs N stalls</td><td>Low</td></tr>
+</table>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Why ready cannot depend on valid (combo loop)</h2></div>
+<p>The classic mistake wires <code>s_ready</code> combinationally to downstream readiness AND upstream validity:</p>
+<div class="trap-box"><div class="trap-label">Trap — combinational loop</div><p><code>assign s_ready = m_ready &amp;&amp; !s_valid;</code> — if the sender's <code>valid</code> also depends on <code>s_ready</code> in the same cycle, synthesis reports a combinational loop. Even when simulation "works," timing closure fails.</p></div>
+<p>Valid-ready rule from Module 6: <strong>ready is a registered or state-derived signal</strong>; it must not be a function of the incoming <code>valid</code> in the same cycle. The skid buffer solves this by tracking occupancy in registers:</p>
+<ul>
+<li><strong>Main register</strong> — holds the beat presented to downstream (<code>m_valid</code>, <code>m_data</code>)</li>
+<li><strong>Skid register</strong> — catches one overflow beat when main is full and upstream still has data</li>
+<li><strong>ready</strong> — asserted when there is space (main empty OR skid empty with transfer happening)</li>
+</ul>
+<div class="diagram-wrap">
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Skid buffer internal structure">
+<defs>
+<marker id="m71-sk-arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#38bdf8"/></marker>
+<marker id="m71-sk-teal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2dd4bf"/></marker>
+<marker id="m71-sk-rd" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#38bdf8"/></marker>
+</defs>
+<text x="350" y="24" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">skid_buffer — 1-deep elastic stage</text>
+<rect x="30" y="80" width="90" height="60" rx="8" fill="rgba(56,189,248,.1)" stroke="#38bdf8"/>
+<text x="75" y="108" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Upstream</text>
+<text x="75" y="124" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">s_valid,data</text>
+<rect x="160" y="55" width="380" height="190" rx="12" fill="#0c1526" stroke="#a78bfa"/>
+<text x="350" y="82" fill="#a78bfa" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Elastic control + 2 registers</text>
+<rect x="190" y="100" width="130" height="55" rx="8" fill="#0c1526" stroke="#2dd4bf"/>
+<text x="255" y="122" fill="#2dd4bf" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">main_reg</text>
+<text x="255" y="140" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">m_valid, m_data</text>
+<rect x="360" y="100" width="130" height="55" rx="8" fill="#0c1526" stroke="#38bdf8"/>
+<text x="425" y="122" fill="#38bdf8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">skid_reg</text>
+<text x="425" y="140" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">overflow slot</text>
+<rect x="240" y="175" width="220" height="45" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+<text x="350" y="198" fill="#e2e8f0" font-size="9" text-anchor="middle" font-family="Outfit,sans-serif">s_ready = space available (registered)</text>
+<text x="350" y="212" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">no combo path s_valid → s_ready</text>
+<rect x="580" y="80" width="90" height="60" rx="8" fill="rgba(45,212,191,.1)" stroke="#2dd4bf"/>
+<text x="625" y="108" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Downstream</text>
+<text x="625" y="124" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="monospace">m_ready</text>
+<line x1="120" y1="100" x2="160" y2="100" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m71-sk-arr)"/>
+<line x1="160" y1="120" x2="120" y2="120" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m71-sk-rd)"/>
+<text x="140" y="92" fill="#38bdf8" font-size="8" font-family="Outfit,sans-serif">in</text>
+<text x="140" y="134" fill="#38bdf8" font-size="8" font-family="Outfit,sans-serif">s_ready</text>
+<line x1="540" y1="110" x2="580" y2="110" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#m71-sk-teal)"/>
+<line x1="580" y1="130" x2="540" y2="130" stroke="#2dd4bf" stroke-width="1.5" marker-end="url(#m71-sk-rd)"/>
+<text x="560" y="102" fill="#2dd4bf" font-size="8" font-family="Outfit,sans-serif">out</text>
+<text x="560" y="144" fill="#2dd4bf" font-size="8" font-family="Outfit,sans-serif">m_ready</text>
+</svg>
+<p class="diagram-caption">Main register drives downstream; skid catches one beat when main is full and upstream still transfers.</p>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Occupancy states</h2></div>
+<p>A minimal skid tracks two bits of state: whether main and skid slots are occupied.</p>
+<table class="map-table">
+<tr><th>main_full</th><th>skid_full</th><th>s_ready</th><th>m_valid</th><th>Meaning</th></tr>
+<tr><td>0</td><td>0</td><td>1</td><td>0</td><td>Empty — accept upstream</td></tr>
+<tr><td>1</td><td>0</td><td>1</td><td>1</td><td>One beat in main; skid free</td></tr>
+<tr><td>1</td><td>1</td><td>0</td><td>1</td><td>Full — must stall upstream</td></tr>
+<tr><td>0</td><td>1</td><td>0</td><td>1</td><td>Transient during skid→main move</td></tr>
+</table>
+<div class="angle-box"><div class="angle-label">Interview angle</div><p>"Why not just use a 2-entry FIFO?" — A skid is cheaper (2 regs + small control) and exactly matches the pipeline elasticity need. FIFOs generalize to depth N; skids are the 1-deep special case you'll instantiate between every pipe stage.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>1-deep skid buffer RTL</h2></div>
+<div class="code-panel">
+<div class="code-panel-head"><span>skid_buffer.v</span><button class="copy-btn" onclick="copyLabCode('m71-skid', this)">Copy</button></div>
+<pre id="m71-skid">// skid_buffer — 1-deep valid-ready elastic stage
+// WIDTH parameterizable; breaks valid/ready combo loops
+module skid_buffer #(
+  parameter WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  // Upstream (slave to source)
+  input  wire             s_valid,
+  input  wire [WIDTH-1:0] s_data,
+  output wire             s_ready,
+  // Downstream (master to sink)
+  output wire             m_valid,
+  output wire [WIDTH-1:0] m_data,
+  input  wire             m_ready
+);
+  reg             main_full, skid_full;
+  reg [WIDTH-1:0] main_data, skid_data;
+
+  wire s_xfer = s_valid &amp;&amp; s_ready;
+  wire m_xfer = m_valid &amp;&amp; m_ready;
+
+  // Registered ready — NOT a function of s_valid
+  assign s_ready = !main_full || (m_xfer &amp;&amp; !skid_full);
+  assign m_valid = main_full;
+  assign m_data  = main_data;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      main_full &lt;= 1'b0;
+      skid_full &lt;= 1'b0;
+      main_data &lt;= {WIDTH{1'b0}};
+      skid_data &lt;= {WIDTH{1'b0}};
+    end else begin
+      // Downstream xfer: shift skid → main if present
+      if (m_xfer) begin
+        if (skid_full) begin
+          main_data &lt;= skid_data;
+          skid_full &lt;= 1'b0;
+        end else
+          main_full &lt;= 1'b0;
+      end
+      // Upstream xfer: fill main or skid
+      if (s_xfer) begin
+        if (!main_full) begin
+          main_full &lt;= 1'b1;
+          main_data &lt;= s_data;
+        end else begin
+          skid_full &lt;= 1'b1;
+          skid_data &lt;= s_data;
+        end
+      end
+    end
+  end
+endmodule</pre>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Do not write <code>assign s_ready = !s_valid &amp;&amp; ...</code>. Occupancy flags must come from registers updated on the clock edge, not from the current beat's <code>valid</code>.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">5</div><h2>Waveform — skid absorbs one stall</h2></div>
+<div class="wave-ascii">Scenario: downstream stalls 1 cycle while upstream sends 2 beats
+clk        _/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_/‾\_
+s_valid    _______/‾‾‾‾‾‾‾‾‾‾‾‾\____________
+s_data     ------&lt; A &gt;--&lt; B &gt;--------------
+s_ready    ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\_______/‾‾‾‾‾‾‾‾‾
+m_valid    _____________/‾‾‾‾‾‾‾‾‾‾‾‾\______
+m_data     -------------&lt; A &gt;--&lt; B &gt;--------
+m_ready    ‾‾‾‾‾‾‾‾‾\___________/‾‾‾‾‾‾‾‾‾‾
+
+Cycle 4: m_ready=0 but s_ready=1 — beat B enters skid while A waits on m_data
+Cycle 5: m_ready=1 — A transfers; skid shifts B into main on next edge</div>
+<p>The key observation: without a skid, <code>s_ready</code> would drop the same cycle <code>m_ready</code> drops, losing the second upstream beat or creating a combo path through <code>valid</code>.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">6</div><h2>Instantiation pattern in pipelines</h2></div>
+<div class="code-panel">
+<div class="code-panel-head"><span>pipeline_slice.v</span><button class="copy-btn" onclick="copyLabCode('m71-pipe', this)">Copy</button></div>
+<pre id="m71-pipe">// Typical pattern: skid → compute → skid
+wire stage_valid, stage_ready;
+wire [31:0] stage_data;
+
+skid_buffer #(.WIDTH(32)) u_in_skid (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(up_valid), .s_data(up_data), .s_ready(up_ready),
+  .m_valid(stage_valid), .m_data(stage_data), .m_ready(stage_ready)
+);
+
+// Registered compute block (1-cycle latency)
+reg [31:0] result;
+reg        result_valid;
+always @(posedge clk) begin
+  if (stage_valid &amp;&amp; stage_ready) begin
+    result       &lt;= stage_data + 32'd1;  // example op
+    result_valid &lt;= 1'b1;
+  end else if (down_ready)
+    result_valid &lt;= 1'b0;
+end
+
+skid_buffer #(.WIDTH(32)) u_out_skid (
+  .clk(clk), .rst_n(rst_n),
+  .s_valid(result_valid), .s_data(result), .s_ready(stage_ready),
+  .m_valid(down_valid), .m_data(down_data), .m_ready(down_ready)
+);</pre>
+</div>
+<a class="sim-cta" href="/tools/verilog-simulator/">▶ Run skid buffer in simulator</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">7</div><h2>Skid vs register slice vs 2-entry FIFO</h2></div>
+<p>Engineers often confuse three similar structures. Here is when to use each:</p>
+<table class="map-table">
+<tr><th>Structure</th><th>Registers</th><th>Throughput under 1-cycle stall</th><th>Typical use</th></tr>
+<tr><td>Wire (no buffer)</td><td>0</td><td>Stalls immediately</td><td>Combo paths only</td></tr>
+<tr><td>Register slice</td><td>1</td><td>Stalls on stall cycle</td><td>Simple pipeline stage</td></tr>
+<tr><td>Skid buffer</td><td>2 (main + skid)</td><td>1 extra beat accepted</td><td>Between pipe stages with back-pressure</td></tr>
+<tr><td>2-entry FIFO</td><td>2 + ptr logic</td><td>2 beats buffered</td><td>Rate-matching, wider elasticity</td></tr>
+</table>
+<div class="angle-box"><div class="angle-label">Design trade-off</div><p>A skid costs roughly 2× the register bits of a plain slice but buys exactly one cycle of upstream immunity. If your downstream stall bursts are longer than 1 cycle, step up to a sync FIFO (Lesson 7.2). If stalls are rare single-cycle bubbles, skid is the sweet spot.</p></div>
+<div class="code-panel">
+<div class="code-panel-head"><span>skid_buffer_tb_snippet.v</span><button class="copy-btn" onclick="copyLabCode('m71-tb', this)">Copy</button></div>
+<pre id="m71-tb">// Minimal directed test: 2 beats in, 1-cycle m_ready stall
+initial begin
+  rst_n = 0; s_valid = 0; m_ready = 0;
+  #20 rst_n = 1; m_ready = 1;
+  @(posedge clk); s_valid = 1; s_data = 8'hAA;
+  @(posedge clk); s_data = 8'hBB;  // second beat same cycle m_ready drops
+  m_ready = 0;
+  @(posedge clk); s_valid = 0;
+  if (!s_ready) $display("FAIL: skid should accept B");
+  repeat(2) @(posedge clk);
+  m_ready = 1;
+  @(posedge clk);
+  if (m_data !== 8'hAA) $display("FAIL: first out should be AA");
+  @(posedge clk);
+  if (m_data !== 8'hBB) $display("FAIL: second out should be BB");
+  else $display("PASS: skid absorbed stall");
+end</pre>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">8</div><h2>Design checklist</h2></div>
+<ul class="check-list">
+<li>Verify <code>s_ready</code> is NOT a combinational function of <code>s_valid</code></li>
+<li>Confirm occupancy FSM covers all 4 states with safe reset (both empty)</li>
+<li>Test: downstream <code>m_ready=0</code> for exactly 1 cycle while 2 beats arrive</li>
+<li>Test: back-to-back transfers with <code>m_ready</code> always high (full throughput)</li>
+<li>Document WIDTH parameter and whether skid is on input, output, or both sides</li>
+</ul>
+</div>
+
+<div class="key-takeaway">
+<h3>🎯 What to remember</h3>
+<ul>
+<li>Skid buffers add 1 beat of elasticity between pipeline stages — the minimum fix for registered-stage stalls.</li>
+<li><code>ready</code> must be registered from occupancy/state, never combo from incoming <code>valid</code>.</li>
+<li>Main + skid registers = at most 2 beats in flight; upstream stalls only when both are full.</li>
+<li>Next up: sync FIFOs generalize this to depth N with full/empty flags.</li>
+</ul>
+</div>
+
+<div class="lesson-nav">
+<a href="/premium-course/rtl-design/protocol-fsm-lab/">← Previous: Protocol FSM lab</a>
+<a href="/premium-course/rtl-design/sync-fifo/">Next: Sync FIFO →</a>
+</div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
