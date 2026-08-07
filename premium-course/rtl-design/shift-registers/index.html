@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shift Registers &amp; Serial/Parallel Conversion — RTL Design | EcrioniX</title>
+<meta property="og:title" content="Shift Registers &amp; Serial/Parallel Conversion — RTL Design | EcrioniX">
+<meta property="og:description" content="SIPO, PISO, SISO, PIPO shift register modes, serial/parallel conversion, and a light LFSR introduction with diagrams and Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/shift-registers/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"Shift Registers","item":"https://ecrionix.org/premium-course/rtl-design/shift-registers/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the difference between SIPO and PISO?","acceptedAnswer":{"@type":"Answer","text":"SIPO (Serial-In Parallel-Out) shifts one bit in per clock and exposes the full word in parallel. PISO (Parallel-In Serial-Out) loads a full word in parallel then shifts it out one bit at a time."}},{"@type":"Question","name":"What is an LFSR used for in RTL?","acceptedAnswer":{"@type":"Answer","text":"Linear Feedback Shift Registers generate pseudo-random bit sequences for BIST pattern generation, scrambling, and lightweight PRBS sources. They are compact sequential circuits with XOR feedback."}}]}]}</script>
+<script>
+const firebaseConfig = {apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user => { if (!user) { window.location.href = '/premium-course/'; return; } checkAccess(user); });
+function markLessonComplete(slug) { const user = firebase.auth().currentUser; if (!user) return; firebase.firestore().collection('users').doc(user.uid).set({ completedLessons: { rtl: firebase.firestore.FieldValue.arrayUnion(slug) } }, { merge: true }).catch(err => console.error('Could not record lesson progress:', err)); }
+async function checkAccess(user) {
+  if (user.uid === ADMIN_UID) { document.getElementById('authLoading').style.display = 'none'; document.getElementById('lessonContent').style.display = 'block'; markLessonComplete('shift-registers'); return; }
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('rtl');
+    const expiry = data?.courseExpiry?.rtl;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+    document.getElementById('authLoading').style.display = 'none';
+    if (hasAccess) { document.getElementById('lessonContent').style.display = 'block'; markLessonComplete('shift-registers'); }
+    else { document.getElementById('noAccess').style.display = 'block'; }
+  } catch (error) { console.error('Error checking access:', error); document.getElementById('authLoading').style.display = 'none'; document.getElementById('noAccess').style.display = 'block'; }
+}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:var(--heading,#f8fafc);font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}
+.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}
+.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}
+.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}
+.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}
+.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}
+.map-table td{color:var(--sl)}
+.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}
+.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0;color:var(--text);font-size:0.92rem}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 5: Sequential Design from Scratch</div>
+    <span class="lesson-tag">Lesson 5.3</span>
+    <h1>Shift registers &amp; serial/parallel conversion</h1>
+
+    <p class="lede">
+      A <span class="hl">shift register</span> is a chain of flip-flops where each stage passes its value to the next on every clock edge.
+      By choosing what goes in (serial or parallel) and what you read out, you get four classic modes —
+      <span class="hl">SIPO</span>, <span class="hl">PISO</span>, <span class="hl">SISO</span>, and <span class="hl">PIPO</span> —
+      that underpin SPI, UART, scan chains, and delay lines.
+    </p>
+    <div class="def-box">
+      <div class="def-label">Core idea</div>
+      <p>Shift register RTL is a concatenation shift: <code>shift_reg &lt;= {shift_reg[WIDTH-2:0], serial_in}</code>. Load parallel data when <code>load</code> is asserted; otherwise shift.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>Four shift-register modes</h2></div>
+      <table class="map-table">
+        <tr><th>Mode</th><th>Data in</th><th>Data out</th><th>Typical use</th></tr>
+        <tr><td><strong>SIPO</strong></td><td>1 bit serial</td><td>N bits parallel</td><td>SPI slave receive, deserialize</td></tr>
+        <tr><td><strong>PISO</strong></td><td>N bits parallel</td><td>1 bit serial</td><td>SPI master transmit, serialize</td></tr>
+        <tr><td><strong>SISO</strong></td><td>1 bit</td><td>1 bit (other end)</td><td>Delay line, scan chain</td></tr>
+        <tr><td><strong>PIPO</strong></td><td>N bits</td><td>N bits (shifted)</td><td>Barrel shift, pipeline delay</td></tr>
+      </table>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="4-bit SIPO shift register">
+          <defs><marker id="arr53a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/></marker></defs>
+          <text x="350" y="24" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">4-bit SIPO — serial in, parallel out</text>
+          <text x="40" y="90" fill="#94a3b8" font-size="11" font-family="Outfit,sans-serif">sin</text>
+          <line x1="55" y1="87" x2="95" y2="87" stroke="#38bdf8" marker-end="url(#arr53a)"/>
+          <rect x="95" y="65" width="55" height="45" rx="6" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="122" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">FF0</text>
+          <line x1="150" y1="87" x2="185" y2="87" stroke="#94a3b8" marker-end="url(#arr53a)"/>
+          <rect x="185" y="65" width="55" height="45" rx="6" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="212" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">FF1</text>
+          <line x1="240" y1="87" x2="275" y2="87" stroke="#94a3b8" marker-end="url(#arr53a)"/>
+          <rect x="275" y="65" width="55" height="45" rx="6" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="302" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">FF2</text>
+          <line x1="330" y1="87" x2="365" y2="87" stroke="#94a3b8" marker-end="url(#arr53a)"/>
+          <rect x="365" y="65" width="55" height="45" rx="6" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="392" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">FF3</text>
+          <line x1="122" y1="110" x2="122" y2="155" stroke="#2dd4bf" marker-end="url(#arr53a)"/>
+          <line x1="212" y1="110" x2="212" y2="155" stroke="#2dd4bf" marker-end="url(#arr53a)"/>
+          <line x1="302" y1="110" x2="302" y2="155" stroke="#2dd4bf" marker-end="url(#arr53a)"/>
+          <line x1="392" y1="110" x2="392" y2="155" stroke="#2dd4bf" marker-end="url(#arr53a)"/>
+          <rect x="80" y="155" width="340" height="40" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+          <text x="250" y="180" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">parallel_out[3:0] — read full word after WIDTH shifts</text>
+          <text x="500" y="90" fill="#a78bfa" font-size="11" font-family="Outfit,sans-serif">clk → all FFs</text>
+<line x1="500" y1="95" x2="122" y2="55" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="500" y1="95" x2="392" y2="55" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="3,2"/>
+          <text x="350" y="225" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">MSB on left; each edge shifts sin into FF0, bits propagate right</text>
+        </svg>
+        <p class="diagram-caption">SIPO: shift in one bit per clock; after N cycles the full word is available in parallel.</p>
+      </div>
+      <div class="analogy">
+        <div class="analogy-label">Analogy</div>
+        <p>A shift register is a conveyor belt of boxes. SIPO drops one marble in at a time and reads all boxes at once. PISO loads all boxes at once and removes marbles one at a time from the end.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>SIPO &amp; PISO RTL</h2></div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>sipo.v</span><button class="copy-btn" onclick="copyLabCode('m53-sipo', this)">Copy</button></div>
+      <pre id="m53-sipo">module sipo #(
+  parameter WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             shift_en,
+  input  wire             serial_in,
+  output reg  [WIDTH-1:0] parallel_out
+);
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      parallel_out &lt;= {WIDTH{1'b0}};
+    else if (shift_en)
+      parallel_out &lt;= {parallel_out[WIDTH-2:0], serial_in};
+  end
+endmodule</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>piso.v</span><button class="copy-btn" onclick="copyLabCode('m53-piso', this)">Copy</button></div>
+      <pre id="m53-piso">module piso #(
+  parameter WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             load,       // parallel load
+  input  wire             shift_en,
+  input  wire [WIDTH-1:0] parallel_in,
+  output wire             serial_out
+);
+  reg [WIDTH-1:0] shift_reg;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      shift_reg &lt;= {WIDTH{1'b0}};
+    else if (load)
+      shift_reg &lt;= parallel_in;
+    else if (shift_en)
+      shift_reg &lt;= {shift_reg[WIDTH-2:0], 1'b0};
+  end
+
+  assign serial_out = shift_reg[WIDTH-1];  // MSB out first
+endmodule</pre>
+    </div>
+      <div class="trap-box">
+        <div class="trap-label">Trap</div>
+        <p>Define bit order (MSB-first vs LSB-first) in your spec. SPI and UART disagree — document which end <code>serial_out</code> taps.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Universal shift register (load + shift)</h2></div>
+      <p>Real designs combine parallel load and serial shift in one register — the pattern behind scan chains and configurable IO.</p>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>universal_shift.v</span><button class="copy-btn" onclick="copyLabCode('m53-uni', this)">Copy</button></div>
+      <pre id="m53-uni">module universal_shift #(
+  parameter WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             load,
+  input  wire             shift_en,
+  input  wire             serial_in,
+  input  wire [WIDTH-1:0] parallel_in,
+  output reg  [WIDTH-1:0] parallel_out,
+  output wire             serial_out
+);
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      parallel_out &lt;= {WIDTH{1'b0}};
+    else if (load)
+      parallel_out &lt;= parallel_in;
+    else if (shift_en)
+      parallel_out &lt;= {parallel_out[WIDTH-2:0], serial_in};
+  end
+  assign serial_out = parallel_out[WIDTH-1];
+endmodule</pre>
+    </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>LFSR — light introduction</h2></div>
+      <p>A <strong>Linear Feedback Shift Register</strong> XORs selected tap bits and feeds the result back into the serial input. With the right polynomial it cycles through 2<sup>N</sup>−1 states — a compact pseudo-random source for BIST and scrambling.</p>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>lfsr4.v — 4-bit, taps at bit 4 and 3 (maximal length)</span><button class="copy-btn" onclick="copyLabCode('m53-lfsr', this)">Copy</button></div>
+      <pre id="m53-lfsr">module lfsr4 (
+  input  wire       clk,
+  input  wire       rst_n,
+  input  wire       en,
+  output reg  [3:0] lfsr_out
+);
+  wire feedback = lfsr_out[3] ^ lfsr_out[2];  // polynomial x^4+x^3+1
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      lfsr_out &lt;= 4'b0001;   // non-zero seed required
+    else if (en)
+      lfsr_out &lt;= {lfsr_out[2:0], feedback};
+  end
+endmodule</pre>
+    </div>
+      <div class="angle-box">
+        <div class="angle-label">DFT connection</div>
+        <p>Scan chains (Module 1.6 DFT) are shift registers wired through every flip-flop. LFSRs generate test patterns fed into those chains. Same primitive, different application.</p>
+      </div>
+      <a class="sim-cta" href="/tools/verilog-simulator/">▶ Run shift register in simulator</a>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>Shift register checklist</h2></div>
+      <ul class="check-list">
+        <li>Document MSB-first vs LSB-first shift direction</li>
+        <li>Separate <code>load</code> and <code>shift_en</code> — never shift and load on same edge without spec clarity</li>
+        <li>Non-zero LFSR seed — all-zero state is a stuck point for standard XOR LFSRs</li>
+        <li>Count cycles: SIPO needs WIDTH shifts before parallel word is valid</li>
+        <li>PIPO is just a register with concatenation shift — no serial port needed</li>
+      </ul>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>Shift register = chained FFs + <code>{reg[MSB-1:0], sin}</code> concatenation.</li>
+        <li>SIPO deserializes; PISO serializes — the bridge between slow serial buses and wide parallel datapaths.</li>
+        <li>Universal shift = load OR shift — one module, two modes.</li>
+        <li>LFSR = shift register + XOR feedback — pseudo-random patterns for test and link scrambling.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/rtl-design/counters/">← Previous: Counters</a>
+      <a href="/premium-course/rtl-design/regfile-memories/">Next: Register files →</a>
+    </div>
+  </div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

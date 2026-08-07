@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Counters — Binary, Modulo-N &amp; Gray — RTL Design | EcrioniX</title>
+<meta property="og:title" content="Counters — Binary, Modulo-N &amp; Gray — RTL Design | EcrioniX">
+<meta property="og:description" content="Binary up/down counters, modulo-N wrap, Gray code counters and why Gray matters for CDC pointer sync — with synthesizable Verilog.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/counters/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"RTL Design","item":"https://ecrionix.org/premium-course/rtl-design/"},{"@type":"ListItem","position":2,"name":"Counters","item":"https://ecrionix.org/premium-course/rtl-design/counters/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How do I implement a modulo-N counter in Verilog?","acceptedAnswer":{"@type":"Answer","text":"Increment on each enabled clock edge; when count reaches N-1, wrap to 0 on the next increment. Use a parameter MAX=N and compare count == MAX-1 before resetting."}},{"@type":"Question","name":"Why use Gray code for counters crossing clock domains?","acceptedAnswer":{"@type":"Answer","text":"Binary counters can flip many bits at once (e.g. 0111 to 1000). A synchronizer sampling mid-transition reads garbage. Gray code changes only one bit per step, so even a mis-timed sample is off by at most one count."}}]}]}</script>
+<script>
+const firebaseConfig = {apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user => { if (!user) { window.location.href = '/premium-course/'; return; } checkAccess(user); });
+function markLessonComplete(slug) { const user = firebase.auth().currentUser; if (!user) return; firebase.firestore().collection('users').doc(user.uid).set({ completedLessons: { rtl: firebase.firestore.FieldValue.arrayUnion(slug) } }, { merge: true }).catch(err => console.error('Could not record lesson progress:', err)); }
+async function checkAccess(user) {
+  if (user.uid === ADMIN_UID) { document.getElementById('authLoading').style.display = 'none'; document.getElementById('lessonContent').style.display = 'block'; markLessonComplete('counters'); return; }
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('rtl');
+    const expiry = data?.courseExpiry?.rtl;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+    document.getElementById('authLoading').style.display = 'none';
+    if (hasAccess) { document.getElementById('lessonContent').style.display = 'block'; markLessonComplete('counters'); }
+    else { document.getElementById('noAccess').style.display = 'block'; }
+  } catch (error) { console.error('Error checking access:', error); document.getElementById('authLoading').style.display = 'none'; document.getElementById('noAccess').style.display = 'block'; }
+}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:var(--heading,#f8fafc);font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}
+.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li,.section ol li{margin-bottom:0.5rem}
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}
+.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}
+.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}
+.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}
+.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}
+.map-table td{color:var(--sl)}
+.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}
+.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}
+.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 5: Sequential Design from Scratch</div>
+    <span class="lesson-tag">Lesson 5.2</span>
+    <h1>Counters — binary, modulo-N &amp; Gray</h1>
+
+    <p class="lede">
+      A counter is a chain of flip-flops with feedback: each clock edge bumps a stored value.
+      <span class="hl">Binary counters</span> are the default for timers and addresses.
+      <span class="hl">Modulo-N counters</span> wrap at a fixed maximum.
+      <span class="hl">Gray counters</span> change one bit at a time — essential when a counter value
+      must cross a clock domain safely.
+    </p>
+    <div class="def-box">
+      <div class="def-label">Core idea</div>
+      <p>Counter RTL = registered state + next-state logic. <code>count &lt;= count + 1</code> is a binary up-counter; compare against <code>MAX-1</code> for modulo wrap; Gray encoding trades binary arithmetic for single-bit transitions.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>Binary up/down counter</h2></div>
+      <p>The simplest counter increments (or decrements) on every enabled clock edge. Synthesis builds an adder/subtractor feeding a register bank.</p>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 620 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Binary counter block diagram">
+          <defs><marker id="arr52a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/></marker></defs>
+          <text x="310" y="24" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">Binary up-counter datapath</text>
+          <rect x="40" y="70" width="90" height="50" rx="8" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="85" y="100" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">count[N-1:0]</text>
+          <rect x="180" y="60" width="100" height="70" rx="8" fill="rgba(45,212,191,.12)" stroke="#2dd4bf"/>
+          <text x="230" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">+1 / -1</text>
+          <text x="230" y="112" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">adder</text>
+          <rect x="330" y="70" width="90" height="50" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+          <text x="375" y="100" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">mux</text>
+          <text x="375" y="115" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">load/en</text>
+          <rect x="470" y="70" width="110" height="50" rx="8" fill="#0c1526" stroke="#38bdf8"/>
+          <text x="525" y="92" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">DFF bank</text>
+          <text x="525" y="110" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">posedge clk</text>
+          <line x1="130" y1="95" x2="180" y2="95" stroke="#94a3b8" marker-end="url(#arr52a)"/>
+          <line x1="280" y1="95" x2="330" y2="95" stroke="#94a3b8" marker-end="url(#arr52a)"/>
+          <line x1="420" y1="95" x2="470" y2="95" stroke="#94a3b8" marker-end="url(#arr52a)"/>
+          <path d="M 525 120 L 525 155 L 85 155 L 85 120" fill="none" stroke="#a78bfa" marker-end="url(#arr52a)"/>
+          <text x="310" y="175" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Feedback loop: registered count feeds adder next cycle</text>
+        </svg>
+        <p class="diagram-caption">Count register → increment logic → mux (load vs next) → DFFs → back to count.</p>
+      </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>bin_counter.v</span><button class="copy-btn" onclick="copyLabCode('m52-bin', this)">Copy</button></div>
+      <pre id="m52-bin">module bin_counter #(
+  parameter WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             en,
+  input  wire             up_down,  // 1=up, 0=down
+  output reg  [WIDTH-1:0] count
+);
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      count &lt;= {WIDTH{1'b0}};
+    else if (en)
+      count &lt;= up_down ? (count + 1'b1) : (count - 1'b1);
+  end
+endmodule</pre>
+    </div>
+      <div class="analogy">
+        <div class="analogy-label">Analogy</div>
+        <p>A binary counter is an odometer in base-2: each digit flips when the digit to its right rolls over. At 1111→0000, every bit changes at once — that's the CDC hazard Gray code solves.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Modulo-N counter</h2></div>
+      <p>Wrap at <code>N</code> instead of 2<sup>WIDTH</sup>. Common for baud-rate dividers, PWM periods, and round-robin arbiters.</p>
+      <table class="map-table">
+        <tr><th>MAX</th><th>Sequence (4-bit)</th><th>Use case</th></tr>
+        <tr><td>16 (full)</td><td>0→1→…→15→0</td><td>Free-running address</td></tr>
+        <tr><td>10</td><td>0→1→…→9→0</td><td>Decimal timer</td></tr>
+        <tr><td>5</td><td>0→1→2→3→4→0</td><td>5-phase state index</td></tr>
+      </table>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>modulo_counter.v</span><button class="copy-btn" onclick="copyLabCode('m52-mod', this)">Copy</button></div>
+      <pre id="m52-mod">module modulo_counter #(
+  parameter WIDTH = 4,
+  parameter MAX   = 10   // counts 0 .. MAX-1
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             en,
+  output reg  [WIDTH-1:0] count
+);
+  localparam [WIDTH-1:0] LAST = MAX - 1;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      count &lt;= {WIDTH{1'b0}};
+    else if (en) begin
+      if (count == LAST)
+        count &lt;= {WIDTH{1'b0}};
+      else
+        count &lt;= count + 1'b1;
+    end
+  end
+endmodule</pre>
+    </div>
+      <div class="trap-box">
+        <div class="trap-label">Trap</div>
+        <p>If <code>MAX</code> is not a power of 2, ensure <code>WIDTH</code> is wide enough to represent <code>MAX-1</code>. A modulo-10 counter needs at least 4 bits.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Gray code counter — why one bit changes</h2></div>
+        <p>Adjacent Gray codes differ by exactly one bit. When a pointer crosses clock domains via a 2-FF synchronizer, a binary value sampled mid-transition can be arbitrary garbage; a Gray value is at worst off by one.</p>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Binary vs Gray transition comparison">
+          <text x="160" y="28" fill="#f87171" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Binary: 3 → 4</text>
+          <text x="480" y="28" fill="#2dd4bf" font-size="12" text-anchor="middle" font-family="Outfit,sans-serif">Gray: 2 → 3</text>
+          <text x="60" y="70" fill="#94a3b8" font-size="11" font-family="JetBrains Mono,monospace">011</text>
+          <text x="200" y="70" fill="#94a3b8" font-size="11" font-family="JetBrains Mono,monospace">100</text>
+          <text x="130" y="68" fill="#f87171" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">3 bits flip!</text>
+          <line x1="90" y1="75" x2="190" y2="75" stroke="#f87171" stroke-width="2"/>
+          <text x="380" y="70" fill="#94a3b8" font-size="11" font-family="JetBrains Mono,monospace">010</text>
+          <text x="520" y="70" fill="#94a3b8" font-size="11" font-family="JetBrains Mono,monospace">011</text>
+          <text x="450" y="68" fill="#2dd4bf" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">1 bit flips</text>
+          <line x1="410" y1="75" x2="510" y2="75" stroke="#2dd4bf" stroke-width="2"/>
+          <rect x="40" y="100" width="260" height="90" rx="8" fill="#0c1526" stroke="#f87171"/>
+          <text x="170" y="130" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Sync sample may read</text>
+          <text x="170" y="150" fill="#f87171" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">010, 110, 000, … (invalid)</text>
+          <text x="170" y="175" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">FIFO full/empty corruption</text>
+          <rect x="340" y="100" width="260" height="90" rx="8" fill="#0c1526" stroke="#2dd4bf"/>
+          <text x="470" y="130" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Sync sample reads</text>
+          <text x="470" y="150" fill="#2dd4bf" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">010 or 011 only</text>
+          <text x="470" y="175" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Off-by-one is safe for FIFO</text>
+        </svg>
+        <p class="diagram-caption">Gray encoding is not magic — it constrains transitions so synchronizers see valid adjacent values.</p>
+      </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>gray_counter.v</span><button class="copy-btn" onclick="copyLabCode('m52-gray', this)">Copy</button></div>
+      <pre id="m52-gray">// Binary counter + Gray output (common FIFO pointer pattern)
+module gray_counter #(
+  parameter WIDTH = 4
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             en,
+  output reg  [WIDTH-1:0] bin_count,
+  output wire [WIDTH-1:0] gray_count
+);
+  function [WIDTH-1:0] bin2gray;
+    input [WIDTH-1:0] b;
+    bin2gray = (b &gt;&gt; 1) ^ b;
+  endfunction
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      bin_count &lt;= {WIDTH{1'b0}};
+    else if (en)
+      bin_count &lt;= bin_count + 1'b1;
+  end
+
+  assign gray_count = bin2gray(bin_count);
+endmodule</pre>
+    </div>
+      <div class="angle-box">
+        <div class="angle-label">CDC preview</div>
+        <p>Async FIFOs (Module 7) keep binary pointers internally but export Gray-encoded values across domains. You'll revisit this in the CDC course — for now, know <strong>why</strong> Gray exists.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Counter comparison table</h2></div>
+      <table class="map-table">
+        <tr><th>Type</th><th>Wrap point</th><th>Bits toggled/step</th><th>Best for</th></tr>
+        <tr><td>Binary up/down</td><td>2<sup>WIDTH</sup></td><td>1 to WIDTH</td><td>Addresses, timers in one domain</td></tr>
+        <tr><td>Modulo-N</td><td><code>MAX</code></td><td>1 to WIDTH</td><td>Fixed-period dividers</td></tr>
+        <tr><td>Gray (derived)</td><td>2<sup>WIDTH</sup></td><td>Exactly 1</td><td>CDC pointers, low-glitch buses</td></tr>
+      </table>
+      <a class="sim-cta" href="/tools/verilog-simulator/">▶ Run counter examples in simulator</a>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2>Counter checklist</h2></div>
+      <ul class="check-list">
+        <li>Reset brings count to known value (usually 0)</li>
+        <li><code>en</code> gates increments — don't burn power counting when idle</li>
+        <li>Modulo compare uses <code>MAX-1</code> as last valid value</li>
+        <li>Gray output derived from binary — don't increment Gray directly unless you know the math</li>
+        <li>Document whether count is synchronous to which clock domain</li>
+      </ul>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>Counters are registered state + increment/compare logic — the first real sequential building block.</li>
+        <li>Modulo-N = compare and wrap; parameterize <code>MAX</code> for reuse.</li>
+        <li>Binary rollovers flip many bits; Gray changes one — critical for CDC pointers.</li>
+        <li>Lesson 5.7 lab combines parameterized counter + clean reset into one integrated exercise.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/rtl-design/flip-flops-rtl/">← Previous: Flip-flops</a>
+      <a href="/premium-course/rtl-design/shift-registers/">Next: Shift registers →</a>
+    </div>
+  </div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
