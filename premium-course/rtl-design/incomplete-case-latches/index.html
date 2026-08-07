@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Incomplete Case &amp; Sensitivity → Latches — RTL Design | EcrioniX</title>
+<meta property="og:title" content="Incomplete Case &amp; Sensitivity → Latches — RTL Design | EcrioniX">
+<meta property="og:description" content="How incomplete if/case and wrong sensitivity lists infer latches, what lint tools flag, default-assignment patterns, and labs to write latch-free combinational RTL.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/rtl-design/incomplete-case-latches/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) { window.location.href = '/premium-course/'; return; }
+  checkAccess(user);
+});
+function markLessonComplete(slug) {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  firebase.firestore().collection('users').doc(user.uid).set({
+    completedLessons: { rtl: firebase.firestore.FieldValue.arrayUnion(slug) }
+  }, { merge: true }).catch(err => console.error('Could not record lesson progress:', err));
+}
+async function checkAccess(user) {
+  if (user.uid === ADMIN_UID) {
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('lessonContent').style.display = 'block';
+    markLessonComplete('incomplete-case-latches');
+    return;
+  }
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('rtl');
+    const expiry = data?.courseExpiry?.rtl;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+    document.getElementById('authLoading').style.display = 'none';
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+      markLessonComplete('incomplete-case-latches');
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error checking access:', error);
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}
+.back-link{color:var(--sl);font-size:0.9rem}
+.back-link:hover{color:var(--blue)}
+.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
+.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
+.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
+.crumb a{color:var(--sl)}.crumb a:hover{color:var(--blue)}
+h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}
+.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
+.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
+.lede .hl{color:var(--heading,#f8fafc);font-weight:600}
+.section{margin:2.4rem 0}
+.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
+.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
+.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}
+.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
+.section p strong,.section ul li strong{color:var(--heading,#f8fafc)}
+.section ul,.section ol{margin:0 0 1rem 1.2rem;color:var(--sl);font-size:0.95rem}
+.section ul li,.section ol li{margin-bottom:0.5rem}
+.analogy{background:linear-gradient(120deg,rgba(251,191,36,.08),rgba(167,139,250,.06));border:1px solid rgba(251,191,36,.22);border-left:3px solid #fbbf24;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.analogy-label{font-size:0.72rem;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.analogy p{color:var(--text);font-size:0.94rem;margin:0}
+.infobox{background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.infobox p{margin:0;color:var(--text);font-size:0.92rem}
+.warnbox{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.warnbox p{margin:0;color:var(--text);font-size:0.92rem}
+.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
+.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
+.reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.9rem;margin:1.3rem 0}
+.reason-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1.1rem}
+.reason-card .rc-icon{font-size:1.3rem;margin-bottom:0.45rem}
+.reason-card h4{color:var(--heading,#f8fafc);font-size:0.92rem;margin-bottom:0.35rem}
+.reason-card p{color:var(--sl);font-size:0.82rem;margin:0;line-height:1.55}
+.check-list{list-style:none;margin:1rem 0 0;padding:0}
+.check-list li{position:relative;padding:0.55rem 0.7rem 0.55rem 2rem;margin-bottom:0.45rem;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:0.9rem}
+.check-list li::before{content:'✓';position:absolute;left:0.7rem;color:#4ade80;font-weight:800}
+.map-table{width:100%;border-collapse:collapse;font-size:0.88rem;margin:1rem 0}
+.map-table th,.map-table td{border:1px solid var(--bdr);padding:0.65rem 0.75rem;text-align:left}
+.map-table th{background:var(--bg3);color:var(--heading,#f8fafc);font-weight:700}
+.map-table td{color:var(--sl)}
+.map-table code{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--teal)}
+.sim-cta{display:inline-flex;align-items:center;gap:0.45rem;margin-top:0.8rem;background:linear-gradient(135deg,#38bdf8,#2dd4bf);color:#020617;font-weight:700;padding:0.75rem 1.3rem;border-radius:10px;text-decoration:none !important}
+.sim-cta:hover{opacity:0.92;transform:translateY(-1px)}
+.key-takeaway{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.25);border-radius:12px;padding:1.3rem 1.4rem;margin:2rem 0}
+.key-takeaway h3{color:var(--blue);font-size:0.95rem;margin-bottom:0.6rem}
+.key-takeaway ul{margin-left:1.1rem;color:var(--text);font-size:0.9rem}
+.key-takeaway li{margin-bottom:0.4rem}
+.lesson-nav{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--bdr)}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.diagram-wrap{background:var(--bg3);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1rem;margin:1.4rem 0;overflow-x:auto}
+.diagram-wrap svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.diagram-caption{text-align:center;color:var(--sl);font-size:0.78rem;margin-top:0.75rem;line-height:1.45}
+.flow-rail{display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:center;margin:1.2rem 0}
+.flow-chip{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.72rem;font-weight:700;color:var(--heading,#f8fafc);white-space:nowrap}
+.flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}
+.flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
+.wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">🎓 EcrioniX Premium</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/rtl-design/" class="back-link">← Course Index</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access →</a>
+</div>
+<div id="lessonContent" style="display:none;">
+  <div class="container">
+    <div class="crumb"><a href="/premium-course/rtl-design/">RTL Design</a> / Module 4: Combinational Design from Scratch</div>
+    <span class="lesson-tag">Lesson 4.4</span>
+    <h1>Incomplete case / sensitivity → latches</h1>
+
+    <p class="lede">
+      You built muxes, adders, and ALU slices — all combinational. But one missing <span class="hl">else</span>,
+      one forgotten <span class="hl">default</span>, or one legacy <span class="hl">always @(a)</span> sensitivity list
+      and synthesis quietly inserts a <span class="hl">latch</span>. This lesson teaches you to see the pattern,
+      fix it with default assignments, and let lint catch it before tapeout.
+    </p>
+    <div class="def-box">
+      <div class="def-label">Core idea</div>
+      <p>Combinational logic must produce a defined output for <em>every</em> input combination, on <em>every</em> evaluation. If the tool cannot prove that, it keeps the old value — and that "memory" is a latch.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">1</div><h2>How a latch gets inferred</h2></div>
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Latch inference from incomplete RTL">
+          <text x="360" y="28" fill="#38bdf8" font-size="13" text-anchor="middle" font-family="Outfit,sans-serif">Incomplete combinational always → latch feedback loop</text>
+          <rect x="40" y="50" width="160" height="55" rx="8" fill="rgba(56,189,248,.12)" stroke="#38bdf8"/>
+          <text x="120" y="82" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Inputs: sel, a, b</text>
+          <text x="210" y="82" fill="#94a3b8" font-size="16" text-anchor="middle">→</text>
+          <rect x="230" y="50" width="180" height="55" rx="8" fill="rgba(248,113,113,.12)" stroke="#f87171"/>
+          <text x="320" y="72" fill="#f87171" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">always @(*) case(sel)</text>
+          <text x="320" y="90" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">missing default branch</text>
+          <text x="430" y="82" fill="#94a3b8" font-size="16" text-anchor="middle">→</text>
+          <rect x="450" y="50" width="120" height="55" rx="8" fill="rgba(167,139,250,.12)" stroke="#a78bfa"/>
+          <text x="510" y="72" fill="#e2e8f0" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">Synthesis</text>
+          <text x="510" y="90" fill="#f87171" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">infers latch</text>
+          <text x="590" y="82" fill="#94a3b8" font-size="16" text-anchor="middle">→</text>
+          <rect x="610" y="50" width="70" height="55" rx="8" fill="#0c1526" stroke="#94a3b8"/>
+          <text x="645" y="82" fill="#e2e8f0" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">out</text>
+          <path d="M 645 105 L 645 140 L 520 140 L 520 105" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="580" y="155" fill="#f87171" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">feedback = latch</text>
+          <rect x="80" y="175" width="560" height="70" rx="10" fill="rgba(45,212,191,.08)" stroke="#2dd4bf"/>
+          <text x="360" y="200" fill="#2dd4bf" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">Fix: default assignment at top OR default/else branch → pure combinational cloud</text>
+          <text x="360" y="222" fill="#94a3b8" font-size="10" text-anchor="middle" font-family="Outfit,sans-serif">out = ZERO; then override in case/if — no path leaves out unassigned</text>
+        </svg>
+        <p class="diagram-caption">A latch is not magic — it is the tool preserving a signal when your RTL forgot to drive it.</p>
+      </div>
+      <table class="map-table">
+        <tr><th>RTL pattern</th><th>What synthesis sees</th><th>Result</th></tr>
+        <tr><td><code>always @(*)</code> with full branches</td><td>Pure combinational cloud</td><td>✅ Gates only</td></tr>
+        <tr><td><code>case</code> missing <code>default</code></td><td>Output holds when sel hits uncovered value</td><td>❌ Latch on <code>out</code></td></tr>
+        <tr><td><code>if</code> without final <code>else</code></td><td>Output undefined for some input combos</td><td>❌ Latch on <code>out</code></td></tr>
+        <tr><td><code>always @(a)</code> — partial sensitivity</td><td>Re-evaluates only when <code>a</code> changes</td><td>❌ Latch + sim/synth mismatch</td></tr>
+        <tr><td>Default assign then override</td><td>Every path assigns <code>out</code></td><td>✅ Latch-free</td></tr>
+      </table>
+      <div class="analogy">
+        <div class="analogy-label">Analogy</div>
+        <p>Think of combinational logic as a vending machine: every coin combination must dispense <em>something</em>. An incomplete <code>case</code> is a machine that sometimes keeps the last snack in the slot because you never told it what to do — that "keeping" is the latch.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">2</div><h2>Incomplete <code>case</code> — bad vs good</h2></div>
+      <p>The most common latch bug in student RTL: a <code>case</code> that covers the opcodes you tested in sim, but not all bit patterns synthesis must handle.</p>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>bad_case_latch.v</span><button class="copy-btn" onclick="copyLabCode('m44-bad-case', this)">Copy</button></div>
+      <pre id="m44-bad-case">// BAD — latch when sel = 2'b11
+module bad_mux3 (
+  input  wire [1:0] sel,
+  input  wire [7:0] a, b, c,
+  output reg  [7:0] out
+);
+  always @(*) begin
+    case (sel)
+      2'b00: out = a;
+      2'b01: out = b;
+      2'b10: out = c;
+      // sel=11: out not assigned → latch inferred
+    endcase
+  end
+endmodule</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>good_case_default.v</span><button class="copy-btn" onclick="copyLabCode('m44-good-case', this)">Copy</button></div>
+      <pre id="m44-good-case">// GOOD — explicit default branch
+module good_mux3 (
+  input  wire [1:0] sel,
+  input  wire [7:0] a, b, c,
+  output reg  [7:0] out
+);
+  always @(*) begin
+    case (sel)
+      2'b00:   out = a;
+      2'b01:   out = b;
+      2'b10:   out = c;
+      default: out = 8'h00;  // safe known value
+    endcase
+  end
+endmodule</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>good_default_assign.v</span><button class="copy-btn" onclick="copyLabCode('m44-default-assign', this)">Copy</button></div>
+      <pre id="m44-default-assign">// GOOD — default assignment pattern (preferred in large case blocks)
+module good_mux3b (
+  input  wire [1:0] sel,
+  input  wire [7:0] a, b, c,
+  output reg  [7:0] out
+);
+  always @(*) begin
+    out = 8'h00;           // default FIRST — latch impossible
+    case (sel)
+      2'b00: out = a;
+      2'b01: out = b;
+      2'b10: out = c;
+    endcase
+  end
+endmodule</pre>
+    </div>
+      <div class="trap-box">
+        <div class="trap-label">Trap</div>
+        <p>Assigning inside only <em>some</em> branches of an <code>if/else if</code> chain without a final <code>else</code> creates the same latch. <code>if (en) out = a;</code> with no <code>else</code> is a classic interview question — and a real silicon bug.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">3</div><h2>Incomplete <code>if/else</code> chains</h2></div>
+      <p>Priority encoders and conditional muxes often use <code>if/else if</code>. Without a covering <code>else</code>, the last signal driven "sticks."</p>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>bad_if_chain.v</span><button class="copy-btn" onclick="copyLabCode('m44-bad-if', this)">Copy</button></div>
+      <pre id="m44-bad-if">// BAD — latch when req = 4'b0000
+always @(*) begin
+  if      (req[0]) grant = 4'b0001;
+  else if (req[1]) grant = 4'b0010;
+  else if (req[2]) grant = 4'b0100;
+  else if (req[3]) grant = 4'b1000;
+  // no else — grant holds when req=0
+end</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>good_if_chain.v</span><button class="copy-btn" onclick="copyLabCode('m44-good-if', this)">Copy</button></div>
+      <pre id="m44-good-if">// GOOD — default assignment covers all inputs
+always @(*) begin
+  grant = 4'b0000;                    // no request → no grant
+  if      (req[0]) grant = 4'b0001;
+  else if (req[1]) grant = 4'b0010;
+  else if (req[2]) grant = 4'b0100;
+  else if (req[3]) grant = 4'b1000;
+end</pre>
+    </div>
+      <div class="reason-grid">
+        <div class="reason-card">
+          <div class="rc-icon">🎯</div>
+          <h4>Default-at-top pattern</h4>
+          <p>Assign every output to a safe value first, then override in branches. Works for <code>case</code>, <code>if</code>, and FSM next-state logic.</p>
+        </div>
+        <div class="reason-card">
+          <div class="rc-icon">📋</div>
+          <h4>Named default branch</h4>
+          <p>Use <code>default:</code> in <code>case</code> or final <code>else</code> in <code>if</code> chains. Document whether default is error, idle, or don't-care.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">4</div><h2>Missing sensitivity — the legacy <code>always @(a)</code> bug</h2></div>
+      <p>Before <code>always @(*)</code>, engineers hand-wrote sensitivity lists. Miss one input and simulation lies while synthesis builds different hardware.</p>
+      <div class="warnbox"><p><strong>Golden rule:</strong> Use <code>always @(*)</code> or <code>always_comb</code> (SystemVerilog) for all combinational blocks. Never hand-pick signals unless you are writing a testbench.</p></div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>bad_sensitivity.v</span><button class="copy-btn" onclick="copyLabCode('m44-bad-sens', this)">Copy</button></div>
+      <pre id="m44-bad-sens">// BAD — only re-evaluates when 'a' changes; b and sel ignored in sensitivity
+always @(a) begin
+  if (sel) out = a + b;
+  else     out = a - b;
+end
+// Simulation: out stuck until 'a' toggles even if sel/b change
+// Synthesis:  may still infer combo logic OR latch depending on tool</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>good_sensitivity.v</span><button class="copy-btn" onclick="copyLabCode('m44-good-sens', this)">Copy</button></div>
+      <pre id="m44-good-sens">// GOOD — automatic full sensitivity
+always @(*) begin
+  if (sel) out = a + b;
+  else     out = a - b;
+end
+
+// SystemVerilog equivalent:
+// always_comb begin
+//   if (sel) out = a + b;
+//   else     out = a - b;
+// end</pre>
+    </div>
+      <table class="map-table">
+        <tr><th>Sensitivity style</th><th>Sim behavior</th><th>Synth behavior</th><th>Verdict</th></tr>
+        <tr><td><code>always @(a)</code></td><td>Misses updates when b/sel change</td><td>Tool-dependent; often warns</td><td>❌ Never in RTL</td></tr>
+        <tr><td><code>always @(a or b or sel)</code></td><td>Correct if list is complete</td><td>Usually OK</td><td>⚠️ Fragile — easy to forget new signal</td></tr>
+        <tr><td><code>always @(*)</code></td><td>Full automatic sensitivity</td><td>Combinational intent clear</td><td>✅ Default choice</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">5</div><h2><code>full_case</code> / <code>parallel_case</code> — myths, lightly</h2></div>
+      <p>Verilog pragmas <code>// synopsys full_case</code> and <code>// synopsys parallel_case</code> tell the synthesizer "trust me, this case is complete / non-overlapping." They do <em>not</em> fix incomplete RTL — they silence warnings.</p>
+      <div class="angle-box">
+        <div class="angle-label">Industry reality</div>
+        <p><strong>full_case</strong> says all input values are covered. If you lie, synthesis may optimize away "unreachable" logic that simulation still hits.</p>
+        <p><strong>parallel_case</strong> says branches don't overlap. Wrong pragma → priority logic you didn't intend.</p>
+        <p>Modern teams prefer provably full <code>case</code> with <code>default</code> over pragmas. Let formal/lint prove coverage instead of commenting your way past warnings.</p>
+      </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>pragma_trap.v</span><button class="copy-btn" onclick="copyLabCode('m44-pragma', this)">Copy</button></div>
+      <pre id="m44-pragma">// DANGEROUS — pragma hides latch warning but logic is still incomplete
+always @(*) begin
+  case (sel) // synopsys full_case
+    2'b00: out = a;
+    2'b01: out = b;
+    // 2'b10, 2'b11 uncovered — latch may still exist!
+  endcase
+end
+// Fix the RTL; don't silence the linter.</pre>
+    </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">6</div><h2>How lint tools catch latches</h2></div>
+      <p>Run lint on every commit. Latch inference is a high-severity finding because latches break timing closure and often indicate a logic bug.</p>
+      <table class="map-table">
+        <tr><th>Tool</th><th>Typical warning</th><th>What it means</th></tr>
+        <tr><td>SpyGlass / VC Lint</td><td><code>Latch inferred</code> / <code>INFERRED_LATCH</code></td><td>Combo block doesn't assign all outputs in all paths</td></tr>
+        <tr><td>Verilator lint</td><td><code>COMBLOOP</code> / incomplete assignment</td><td>Signal may retain value — check always block</td></tr>
+        <tr><td>Design Compiler</td><td><code>LINT-1</code> inferred latch on reg</td><td>Change to default-assign pattern or add branch</td></tr>
+        <tr><td>Vivado</td><td><code>[Synth 8-327]</code> latch inferred</td><td>Same root cause — incomplete assignment</td></tr>
+      </table>
+      <div class="flow-rail">
+        <span class="flow-chip">Write RTL</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip accent">Run lint</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">Fix latch warnings</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip accent">Re-lint until clean</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-chip">Synthesize</span>
+      </div>
+      <div class="infobox"><p><strong>Pro tip:</strong> Treat "latch inferred" as a blocking issue in code review — same severity as multiply-driven nets. Zero tolerance in combinational datapath modules.</p></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">7</div><h2>Mini-labs — find and fix the latch</h2></div>
+      <p>Paste each snippet into the simulator. Synthesis-oriented lint may not run in-browser, but you can reason about which signals are incomplete.</p>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>lab1_decoder.v</span><button class="copy-btn" onclick="copyLabCode('m44-lab1', this)">Copy</button></div>
+      <pre id="m44-lab1">// LAB 1 — Fix the latch in this 2-to-4 decoder
+module lab1_decoder (
+  input  wire [1:0] addr,
+  output reg  [3:0] dec
+);
+  always @(*) begin
+    case (addr)
+      2'b00: dec = 4'b0001;
+      2'b01: dec = 4'b0010;
+      2'b10: dec = 4'b0100;
+      // TODO: add missing branch or default
+    endcase
+  end
+endmodule
+// Fix: default dec = 4'b0000; OR 2'b11: dec = 4'b1000;</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>lab2_alu_slice.v</span><button class="copy-btn" onclick="copyLabCode('m44-lab2', this)">Copy</button></div>
+      <pre id="m44-lab2">// LAB 2 — ALU op decode with incomplete if chain
+module lab2_alu_slice (
+  input  wire [1:0] op,
+  input  wire [7:0] a, b,
+  output reg  [7:0] y
+);
+  always @(*) begin
+    if (op == 2'b00)      y = a + b;
+    else if (op == 2'b01) y = a - b;
+    else if (op == 2'b10) y = a &amp; b;
+    // op==11: y not assigned → latch
+  end
+endmodule
+// Fix: y = 8'h00; at top, or else y = a | b;</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>lab3_fixed.v</span><button class="copy-btn" onclick="copyLabCode('m44-lab3', this)">Copy</button></div>
+      <pre id="m44-lab3">// LAB 3 — Reference solution pattern for lab2
+localparam OP_ADD = 2'b00, OP_SUB = 2'b01, OP_AND = 2'b10, OP_OR = 2'b11;
+
+always @(*) begin
+  y = 8'h00;
+  case (op)
+    OP_ADD: y = a + b;
+    OP_SUB: y = a - b;
+    OP_AND: y = a &amp; b;
+    OP_OR:  y = a | b;
+    default: y = 8'h00;
+  endcase
+end</pre>
+    </div>
+      <a class="sim-cta" href="/tools/verilog-simulator/">▶ Fix latches in the simulator</a>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-num">8</div><h2>Latch-free combinational checklist</h2></div>
+      <ul class="check-list">
+        <li>Every combo block uses <code>always @(*)</code> — never partial sensitivity lists</li>
+        <li>Every <code>reg</code> output in combo logic has a value on every path</li>
+        <li>Default assignment at top of block OR <code>default</code>/<code>else</code> on every branch structure</li>
+        <li>No <code>full_case</code> pragma as a substitute for real coverage</li>
+        <li>Lint run shows zero inferred-latch warnings before review</li>
+        <li>Simulation and synthesis see the same combinational behavior</li>
+        <li>FSM next-state logic uses the same default-assign discipline</li>
+      </ul>
+    </div>
+
+    <div class="key-takeaway">
+      <h3>🎯 What to remember</h3>
+      <ul>
+        <li>Latches appear when combinational logic fails to assign every output for every input.</li>
+        <li>Default-at-top (<code>out = 0;</code> then override) is the safest latch-prevention pattern.</li>
+        <li><code>always @(*)</code> fixes sensitivity; it does not fix incomplete branches — you need both.</li>
+        <li>Pragmas silence warnings; they don't fix hardware. Write full case instead.</li>
+        <li>Next up: Lab 4.5 integrates mux + ALU + decode into one clean datapath slice.</li>
+      </ul>
+    </div>
+
+    <div class="lesson-nav">
+      <a href="/premium-course/rtl-design/combo-alu-blocks/">← Previous</a>
+      <a href="/premium-course/rtl-design/combo-datapath-lab/">Next: Combo Datapath Lab →</a>
+    </div>
+  </div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
