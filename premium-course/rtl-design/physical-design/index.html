@@ -139,6 +139,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 .flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}
 .flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
 .wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
 
 </style>
 </head>
@@ -200,6 +207,18 @@ hold: data must NOT change too soon after the edge</div>
         <li><strong>Routing</strong> — connect pins with metal wires.</li>
         <li><strong>Optimization / timing closure</strong> — iterate until paths meet constraints.</li>
       </ol>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Each step — deeper</h3>
+      <table class="map-table">
+        <thead><tr><th>Step</th><th>What happens</th><th>RTL impact</th></tr></thead>
+        <tbody>
+          <tr><td>Floorplan</td><td>Die size, macro slots, power straps</td><td>IO-heavy blocks near pads</td></tr>
+          <tr><td>Placement</td><td>Cells placed in rows</td><td>Hierarchy guides locality</td></tr>
+          <tr><td>CTS</td><td>Clock tree balanced for skew</td><td>Fewer clock domains = simpler CTS</td></tr>
+          <tr><td>Routing</td><td>Metal layers connect pins</td><td>Wide buses → congestion</td></tr>
+          <tr><td>ECO</td><td>Late metal-only fixes</td><td>RTL change avoided if possible ($$$)</td></tr>
+        </tbody>
+      </table>
     
     </div>
     
@@ -208,6 +227,16 @@ hold: data must NOT change too soon after the edge</div>
 
       <p>In advanced nodes, wire delay and congestion can dominate. A “perfect” RTL path can fail because two blocks were placed far apart.</p>
       <div class="infobox"><p>Architecture + hierarchy influence PD. Giant flat modules are harder to floorplan than clean hierarchies.</p></div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Wire delay intuition</h3>
+      <p>Gate delay was king at old nodes. Today, a signal may spend more time traveling on <strong>metal</strong> than switching a transistor. Long unregistered paths crossing the die are timing killers.</p>
+      <div class="trap-box">
+        <div class="trap-label">⚠ Trap</div>
+        <p>“It met timing in synthesis” — pre-layout estimates omit real wire RC. Post-route STA is the truth for ASIC.</p>
+      </div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Congestion</h3>
+      <p>Too many wires in one region → router cannot finish → PD asks for RTL pipelining or floorplan change. Symptoms: high utilization + timing fail on unrelated paths.</p>
     
     </div>
     
@@ -242,6 +271,33 @@ endmodule
 // Why: PD can place this flop as a timing "pressure valve"
 // between distant regions of the chip.</pre>
     </div>
+
+    <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Pipelining example — 2-stage adder path</h3>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>pipelined_add.v</span><button class="copy-btn" onclick="copyLabCode('code-pd-pipe2', this)">Copy</button></div>
+      <pre id="code-pd-pipe2">module pipelined_add (
+  input  wire        clk, rst_n,
+  input  wire [31:0] a, b,
+  output wire [32:0] sum
+);
+  reg [31:0] a_r, b_r;
+  reg [32:0] sum_r;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin a_r &lt;= 0; b_r &lt;= 0; sum_r &lt;= 0; end
+    else begin
+      a_r   &lt;= a;           // stage 1: register inputs
+      b_r   &lt;= b;
+      sum_r &lt;= a_r + b_r;   // stage 2: add registered operands
+    end
+  end
+  assign sum = sum_r;
+endmodule</pre>
+    </div>
+    <div class="angle-box">
+      <div class="angle-label">🎤 Meeting angle</div>
+      <p>PD asks for “a pipeline flop on the CSR read path” — they need shorter combo delay after placement, not a lecture on Verilog.</p>
+    </div>
     
     </div>
     
@@ -256,6 +312,31 @@ endmodule
       <div class="analogy">
         <div class="analogy-label">💡 Train schedule analogy</div>
         <p>Setup is “arrive before departure.” Hold is “don’t leave the platform too early and take the wrong suitcase.” Slack is how many minutes early you are.</p>
+      </div>
+
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 620 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Setup hold timing">
+          <text x="80" y="25" fill="#38bdf8" font-size="11" font-family="Outfit,sans-serif">Launch flop</text>
+          <text x="480" y="25" fill="#2dd4bf" font-size="11" font-family="Outfit,sans-serif">Capture flop</text>
+          <rect x="60" y="35" width="50" height="40" rx="6" fill="rgba(56,189,248,.15)" stroke="#38bdf8"/>
+          <rect x="480" y="35" width="50" height="40" rx="6" fill="rgba(45,212,191,.15)" stroke="#2dd4bf"/>
+          <path d="M110 55 H480" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="295" y="48" fill="#fbbf24" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">combo + wire delay</text>
+          <text x="310" y="95" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">setup: data stable before capture edge ──►</text>
+          <text x="310" y="115" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="Outfit,sans-serif">hold: data must not change too soon after capture edge</text>
+        </svg>
+        <p class="diagram-caption">PD + STA prove every path has positive setup and hold slack.</p>
+      </div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">How RTL hierarchy helps PD</h3>
+      <ul>
+        <li><strong>Placement regions:</strong> Synthesis preserves hierarchy; PD can guide blocks near related macros.</li>
+        <li><strong>Incremental closure:</strong> Fix timing block-by-block instead of flat 2M-instance chaos.</li>
+        <li><strong>Reuse:</strong> Verified I2C IP drops into next chip with known PD footprint.</li>
+      </ul>
+      <div class="angle-box">
+        <div class="angle-label">💼 Interview angle</div>
+        <p>“Setup vs hold?” — Setup = data too late before clock edge. Hold = data changes too soon after edge. Fix methods differ (pipeline vs buffer delay).</p>
       </div>
     
     </div>

@@ -139,6 +139,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 .flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}
 .flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
 .wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
 
 </style>
 </head>
@@ -204,6 +211,23 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <li>SHOULD support clock stretching</li>
         <li>Acceptance: directed TB proves START → address → data → STOP</li>
       </ul>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Spec detail — who owns what</h3>
+      <table class="map-table">
+        <thead><tr><th>Artifact</th><th>Owner</th><th>Skip risk</th></tr></thead>
+        <tbody>
+          <tr><td>I2C timing MUST lines</td><td>Systems + RTL lead</td><td>Bus violations, sensor reads fail</td></tr>
+          <tr><td>CSR register ABI</td><td>Architect + firmware</td><td>Driver rewrites every week</td></tr>
+          <tr><td>Acceptance tests A1–A4</td><td>DV + designer</td><td>“Works in sim once” ships</td></tr>
+        </tbody>
+      </table>
+      <div class="code-panel">
+        <div class="code-panel-head"><span>i2c_case_spec_excerpt.txt</span><button class="copy-btn" onclick="copyLabCode('code-case-spec', this)">Copy</button></div>
+        <pre id="code-case-spec">MUST M6: On ABORT during BUSY, release SCL/SDA to idle within 1 byte time
+MUST M7: STAT.NACK sticky until software write-1-to-clear
+
+ACCEPTANCE A5: Write 0x3A, slave NACK → STAT.NACK=1, BUSY=0, SDA released</pre>
+      </div>
     
     </div>
     
@@ -213,6 +237,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       <p>Blocks: CSR bank, byte FSM, bit engine (SCL/SDA timing), APB/AXI-lite slave port, interrupt line.</p>
       <p>Clocks: system clock domain for CSR/FSM; note open-drain pad domain considerations.</p>
       <div class="infobox"><p>Draw CDC if any async inputs exist (e.g. external stretch events sampled carefully).</p></div>
+
+      <p><strong>SoC narrative:</strong> CPU writes CSR to kick a transfer. Byte FSM sequences address + data bytes. Bit engine toggles SCL and samples SDA at the right micro-delays. IRQ fires on DONE so firmware does not poll forever. PD places I2C near pad ring; STA checks paths from FSM flops to SCL output buffer.</p>
+
+      <div class="trap-box">
+        <div class="trap-label">⚠ If architecture skipped</div>
+        <p>One engineer codes “everything in one module” — reviews take days, unit tests impossible, PD cannot pipeline pad path.</p>
+      </div>
     
     </div>
     
@@ -270,6 +301,22 @@ endmodule</pre>
     </div>
     <p><a class="sim-cta" href="/tools/verilog-simulator/" target="_blank">▶ Experiment with the FSM skeleton</a></p>
 
+    <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">CSR expanded — software contract</h3>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>i2c_csr_detail.txt</span><button class="copy-btn" onclick="copyLabCode('code-case-csr2', this)">Copy</button></div>
+      <pre id="code-case-csr2">CTRL [0] START   — write 1 to begin (self-clear or pulse)
+CTRL [1] ABORT   — force bus recovery
+CTRL [2] IRQ_EN  — mask DONE interrupt
+STAT [0] BUSY    — read-only, 1 during transfer
+STAT [1] NACK    — sticky, W1C (write 1 to clear)
+STAT [2] DONE    — sticky, W1C
+PRESCALE — divider for SCL from clk_sys</pre>
+    </div>
+    <div class="trap-box">
+      <div class="trap-label">⚠ If RTL skipped proper CSR</div>
+      <p>Firmware polls wrong bits; “driver bug” debates hide missing sticky NACK spec.</p>
+    </div>
+
     
     </div>
     
@@ -282,6 +329,26 @@ endmodule</pre>
         <li>NACK path sets sticky status</li>
         <li>Back-to-back transfers don’t hang</li>
       </ul>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Verification plan bullets</h3>
+      <ul>
+        <li><strong>Smoke:</strong> reset, single byte write, wave review</li>
+        <li><strong>Directed:</strong> A1–A5 from spec (ACK, NACK, abort, stretch)</li>
+        <li><strong>Corner:</strong> START during BUSY (illegal — must ignore or error)</li>
+        <li><strong>Regression:</strong> run on every RTL commit</li>
+        <li><strong>Coverage goal:</strong> all FSM states + NACK + DONE IRQ path</li>
+      </ul>
+      <div class="code-panel">
+        <div class="code-panel-head"><span>tb_i2c_plan.txt</span><button class="copy-btn" onclick="copyLabCode('code-case-vplan', this)">Copy</button></div>
+        <pre id="code-case-vplan">TEST smoke_reset:     rst_n low → BUSY=0, STAT=0
+TEST directed_write:  START, addr 0x50, data 0xAB, STOP, expect ACK
+TEST nack_addr:       slave NACK on addr → STAT.NACK=1
+TEST abort_mid:       ABORT during byte 3 → bus idle, BUSY=0</pre>
+      </div>
+      <div class="trap-box">
+        <div class="trap-label">⚠ If verification skipped</div>
+        <p>Silicon returns from fab; first board test finds NACK never clears — 8-week debug while competitors ship.</p>
+      </div>
     
     </div>
     
@@ -297,6 +364,25 @@ endmodule</pre>
       <div class="analogy">
         <div class="analogy-label">💡 Movie production analogy</div>
         <p>Spec is the script. Architecture is storyboarding. RTL is filming scenes. Verification is editing. DFT/PD/sign-off are VFX + theatrical release checks. Skipping early stages makes the premiere a disaster.</p>
+      </div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">What goes wrong if a stage is skipped</h3>
+      <table class="map-table">
+        <thead><tr><th>Skipped stage</th><th>I2C-specific failure</th></tr></thead>
+        <tbody>
+          <tr><td>Spec</td><td>No abort behavior — hung bus needs chip reset</td></tr>
+          <tr><td>Arch</td><td>Bit timing mixed into CSR — unmaintainable</td></tr>
+          <tr><td>RTL</td><td>Nothing to integrate</td></tr>
+          <tr><td>Verify</td><td>NACK corner ships broken</td></tr>
+          <tr><td>DFT</td><td>Low scan coverage — factory scrap</td></tr>
+          <tr><td>Synth</td><td>No timed netlist for PD</td></tr>
+          <tr><td>PD</td><td>Pad path fails setup — slow or dead I2C</td></tr>
+          <tr><td>Sign-off</td><td>Foundry reject or field failures</td></tr>
+        </tbody>
+      </table>
+      <div class="angle-box">
+        <div class="angle-label">💼 Interview angle</div>
+        <p>“Tell me about a block you designed” — Use I2C: spec MUST lines → arch blocks → FSM states → tests run → how PD/sign-off would touch pad timing.</p>
       </div>
     
     </div>

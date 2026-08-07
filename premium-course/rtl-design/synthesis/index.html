@@ -139,6 +139,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 .flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}
 .flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
 .wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
 
 </style>
 </head>
@@ -191,6 +198,23 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <li><strong>Out:</strong> netlist + reports (area, timing estimates) + sometimes mapped scan</li>
       </ul>
       <div class="infobox"><p>In learning mode you may use open tools (e.g. Yosys concepts). In industry: Design Compiler, Genus, etc. The ideas match.</p></div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Constraints intro — defining clocks (SDC)</h3>
+      <div class="code-panel">
+        <div class="code-panel-head"><span>constraints.sdc (snippet)</span><button class="copy-btn" onclick="copyLabCode('code-synth-sdc', this)">Copy</button></div>
+        <pre id="code-synth-sdc"># Tell synthesis the clock exists and its period
+create_clock -name clk_sys -period 10.0 [get_ports clk]
+
+# Input delay: data arrives 2ns after clock edge (example)
+set_input_delay  2.0 -clock clk_sys [get_ports csr_wdata*]
+set_output_delay 2.0 -clock clk_sys [get_ports csr_rdata*]
+
+# False paths / multicycle exceptions added later with care</pre>
+      </div>
+      <p>Without <code>create_clock</code>, the tool does not know how fast to optimize — timing reports are meaningless.</p>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Technology library idea</h3>
+      <p>Synthesis maps RTL to <strong>standard cells</strong> from a foundry library (e.g. 7nm, 28nm). Each cell has area, delay, and power characteristics. You do not pick individual AND gates in RTL — the tool chooses from the library under constraints.</p>
     
     </div>
     
@@ -201,6 +225,22 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <div class="reason-card"><div class="rc-icon">⏱️</div><h4>Timing</h4><p>Meet setup (and later hold via other steps) for target clocks.</p></div>
         <div class="reason-card"><div class="rc-icon">📐</div><h4>Area</h4><p>Prefer smaller implementations when timing allows.</p></div>
         <div class="reason-card"><div class="rc-icon">🔋</div><h4>Power</h4><p>Clock gating and cell choices (depth grows later).</p></div>
+      </div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">QoR levers (quality of results)</h3>
+      <table class="map-table">
+        <thead><tr><th>Lever</th><th>RTL / constraint action</th></tr></thead>
+        <tbody>
+          <tr><td>Pipeline</td><td>Break long combo paths with registers</td></tr>
+          <tr><td>Retiming</td><td>Tool moves logic across flops (advanced)</td></tr>
+          <tr><td>Resource sharing</td><td>One multiplier time-multiplexed vs many</td></tr>
+          <tr><td>Clock gating</td><td>Stop toggling idle flops</td></tr>
+          <tr><td>Constraint tightness</td><td>10 ns period vs 8 ns — harder but faster chip</td></tr>
+        </tbody>
+      </table>
+      <div class="angle-box">
+        <div class="angle-label">🎤 Meeting angle</div>
+        <p>When timing fails, ask: “Is it RTL structure, missing pipeline, wrong constraint, or placement?” — blame category before blame person.</p>
       </div>
     
     </div>
@@ -252,6 +292,28 @@ module priority_cloud (
   end
 endmodule</pre>
     </div>
+
+    <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Latch inference — bad vs full case</h3>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>latch_infer_bad.v</span><button class="copy-btn" onclick="copyLabCode('code-synth-latch-bad', this)">Copy</button></div>
+      <pre id="code-synth-latch-bad">always @(*) begin
+  if (en) q = d;  // else branch missing → latch
+end</pre>
+    </div>
+    <div class="code-panel">
+      <div class="code-panel-head"><span>latch_infer_good.v</span><button class="copy-btn" onclick="copyLabCode('code-synth-latch-good', this)">Copy</button></div>
+      <pre id="code-synth-latch-good">always @(*) begin
+  if (en) q = d;
+  else    q = 1'b0;  // full case → mux, not latch
+end</pre>
+    </div>
+
+    <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Area vs timing tradeoff</h3>
+    <p>Pipelining adds flops (area ↑) but shortens combo paths (timing ↑). A 32-bit adder in one cycle may fail at 500 MHz; two pipelined stages often pass. Synthesis alone cannot always fix a bad micro-architecture.</p>
+    <div class="angle-box">
+      <div class="angle-label">💼 Interview angle</div>
+      <p>“What is QoR?” — Quality of Results: how well synthesis met timing, area, and power goals for the constraints given.</p>
+    </div>
     
     </div>
     
@@ -262,7 +324,19 @@ endmodule</pre>
         <li>Write RTL as if a synthesizer is reading over your shoulder</li>
         <li>Keep a mental “critical path” for big combo clouds</li>
         <li>Read reports later in Module 9 — today just respect that they exist</li>
+        <li>Ask for synthesis trial run before claiming “timing will be fine”</li>
       </ul>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Synthesis report vocabulary</h3>
+      <table class="map-table">
+        <thead><tr><th>Report line</th><th>What it tells you</th></tr></thead>
+        <tbody>
+          <tr><td>Total cell area</td><td>Silicon cost proxy</td></tr>
+          <tr><td>Worst negative slack (WNS)</td><td>How far from timing goal</td></tr>
+          <tr><td>Inferred latches</td><td>RTL bug — fix before PD</td></tr>
+          <tr><td>Unmapped logic</td><td>Constructs synthesis cannot handle</td></tr>
+        </tbody>
+      </table>
     
     </div>
     

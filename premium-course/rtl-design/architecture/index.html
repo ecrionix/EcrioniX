@@ -139,6 +139,13 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
 .flow-chip.accent{border-color:rgba(56,189,248,.45);background:rgba(56,189,248,.1);color:var(--blue)}
 .flow-arrow{color:var(--sl);font-size:0.85rem;font-weight:700}
 .wave-ascii{font-family:'JetBrains Mono',monospace;font-size:0.78rem;line-height:1.35;color:#c8d3e8;background:#0c1526;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:1rem;overflow-x:auto;margin:1.2rem 0;white-space:pre}
+.trap-box{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-left:3px solid #f87171;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.trap-box p{margin:0;color:var(--text);font-size:0.92rem}
+.trap-label{font-size:0.72rem;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
+.angle-box{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.28);border-left:3px solid #a78bfa;border-radius:10px;padding:1.1rem 1.3rem;margin:1.4rem 0}
+.angle-box p{margin:0 0 0.5rem;color:var(--text);font-size:0.92rem}
+.angle-box p:last-child{margin-bottom:0}
+.angle-label{font-size:0.72rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
 
 </style>
 </head>
@@ -203,6 +210,23 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <li><strong>CSR / register map</strong> — software-visible knobs</li>
       </ul>
       <div class="infobox"><p>Rule of thumb: if two teams can argue about ownership of a signal, draw a block boundary and name the interface.</p></div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Hierarchy decisions — when to split blocks</h3>
+      <table class="map-table">
+        <thead><tr><th>Split when…</th><th>Keep together when…</th></tr></thead>
+        <tbody>
+          <tr><td>Different owners or reuse (I2C IP in many chips)</td><td>Tight feedback loop (&lt; 5 cycles) and one reviewer</td></tr>
+          <tr><td>Clear protocol boundary (CSR vs bit engine)</td><td>Splitting adds latency you cannot afford</td></tr>
+          <tr><td>PD needs a register slice between regions</td><td>Block is tiny (&lt; 500 lines) and stable</td></tr>
+          <tr><td>Verification can unit-test in isolation</td><td>Interface would be wider than the logic inside</td></tr>
+        </tbody>
+      </table>
+      <p>Our I2C master splits into <strong>CSR</strong> (software contract), <strong>byte FSM</strong> (transaction sequencing), and <strong>bit engine</strong> (line timing) — three reviewable pieces.</p>
+
+      <div class="angle-box">
+        <div class="angle-label">🎤 Meeting angle</div>
+        <p>Architects draw boxes so RTL leads can <strong>parallelize</strong>. If your diagram has one giant “logic” blob, schedule risk is hidden until week 20.</p>
+      </div>
     
     </div>
     
@@ -213,6 +237,33 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
       <div class="reason-grid">
         <div class="reason-card"><div class="rc-icon">🔌</div><h4>Named ports</h4><p>Document width, direction, reset value, and clock domain on the diagram.</p></div>
         <div class="reason-card"><div class="rc-icon">📦</div><h4>Skid / FIFO</h4><p>Decouple producers and consumers so timing and rate differ safely.</p></div>
+      </div>
+
+      <p>Valid/ready handshake — the most common on-chip streaming interface:</p>
+      <div class="code-panel">
+        <div class="code-panel-head"><span>valid_ready_sketch.v</span><button class="copy-btn" onclick="copyLabCode('code-arch-vr', this)">Copy</button></div>
+        <pre id="code-arch-vr">// Transfer occurs when BOTH are high (same cycle)
+// valid: source has data
+// ready: sink can accept
+//
+//   valid __|‾‾|________|‾‾|
+//   ready ______|‾‾|________|‾‾|
+//   data  ----&lt;D0&gt;--------&lt;D1&gt;----
+//
+// Rule: once valid=1, data must stay stable until handshake (ready=1)
+
+module valid_ready_sink (
+  input  wire       clk,
+  input  wire       valid,
+  output reg        ready,
+  input  wire [7:0] data
+);
+  // Architecture doc should say: clk_sys domain, no back-pressure on I2C CSR path
+endmodule</pre>
+      </div>
+      <div class="trap-box">
+        <div class="trap-label">⚠ Trap</div>
+        <p>Mixing req/ack and valid/ready on the same bus without documenting semantics — DV will write tests for the wrong protocol.</p>
       </div>
     
     </div>
@@ -227,6 +278,19 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <li>If a signal crosses domains, name the synchronizer strategy (Module 9 + CDC course).</li>
       </ul>
       <div class="warnbox"><p><strong>Beginner trap:</strong> “We’ll just sample it; it’s slow.” Slow multi-bit buses still tear. Architecture must admit CDC early.</p></div>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Clock domain documentation template</h3>
+      <div class="code-panel">
+        <div class="code-panel-head"><span>clock_domain_table.txt</span><button class="copy-btn" onclick="copyLabCode('code-arch-cdc', this)">Copy</button></div>
+        <pre id="code-arch-cdc">Clock      Source      Frequency   Blocks in domain
+clk_sys    PLL div2    50 MHz      CPU, CSR, I2C FSM, bit engine
+clk_aon    XTAL        32 kHz      RTC, wake timer
+pad_async  external    async       SCL/SDA inputs (sample in clk_sys)
+
+CDC crossings:
+  C1: stretch_detect (pad_async → clk_sys) — 2-flop sync, single-bit
+  C2: (none) CSR and FSM share clk_sys — no CDC between them</pre>
+      </div>
     
     </div>
     
@@ -240,11 +304,37 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
         <li>Isolation / retention needs (you’ll meet these words again in DFT/PD).</li>
       </ul>
       <p>You do not need UPF mastery yet — you need to <strong>not be surprised</strong> when power shows up in reviews.</p>
+
+      <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">Floorplan-aware architecture</h3>
+      <p>PD teams place <strong>IO macros</strong> near package pins. If I2C talks to board sensors, architect the master near the I2C pad ring — not on the opposite corner from the CPU with a 5 mm wide CSR bus snaking across the die.</p>
+      <ul>
+        <li>Keep high-toggle buses local or pipelined.</li>
+        <li>Separate always-on wake logic from power-gated compute.</li>
+        <li>Note which blocks need retention flops when power-gated.</li>
+      </ul>
     
     </div>
     
     <div class="section">
-      <div class="section-head"><div class="section-num">5</div><h2>Deliverable of architecture</h2></div>
+      <div class="section-head"><div class="section-num">5</div><h2>Architecture anti-patterns</h2></div>
+      <table class="map-table">
+        <thead><tr><th>Anti-pattern</th><th>Why it hurts</th><th>Better</th></tr></thead>
+        <tbody>
+          <tr><td>“Global state” wire fanout</td><td>Timing + verification explosion</td><td>CSR + explicit handshakes</td></tr>
+          <tr><td>Undocumented CDC</td><td>Metastability, random bugs</td><td>CDC table + synchronizer per crossing</td></tr>
+          <tr><td>One mega-FSM</td><td>Unreviewable, untestable</td><td>Layer FSMs (byte + bit)</td></tr>
+          <tr><td>Ad-hoc scratch registers</td><td>Software ABI chaos</td><td>Versioned register map doc</td></tr>
+        </tbody>
+      </table>
+      <div class="angle-box">
+        <div class="angle-label">💼 Interview angle</div>
+        <p>“Walk me through your block diagram” — practice narrating <strong>data flow, clocks, and one CDC point</strong> in under 90 seconds.</p>
+      </div>
+    
+    </div>
+    
+    <div class="section">
+      <div class="section-head"><div class="section-num">6</div><h2>Deliverable of architecture</h2></div>
 
       <ul class="check-list">
         <li>One block diagram with clocks labeled</li>
@@ -278,6 +368,17 @@ footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:
   // - Document any CDC if pads/events are async
 endmodule</pre>
     </div>
+
+    <h3 style="color:var(--heading,#f8fafc);font-size:1.05rem;margin:1.5rem 0 0.75rem;">SoC diagram narrative — read the arrows</h3>
+    <p>Follow one write transaction through the diagram above:</p>
+    <ol>
+      <li>CPU issues APB write to CSR CTRL.START</li>
+      <li>CSR block pulses <code>start_cmd</code> to byte FSM (same clock domain)</li>
+      <li>Byte FSM requests bit periods from bit engine</li>
+      <li>Bit engine drives SCL/SDA pads (open-drain, timing-critical)</li>
+      <li>On DONE, CSR sets STAT and optionally asserts IRQ to CPU</li>
+    </ol>
+    <p>Every arrow should have a label: signal name, width, protocol, clock domain. If it does not fit on the diagram, the architecture is not finished.</p>
     
     </div>
     
