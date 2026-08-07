@@ -37,6 +37,8 @@
 
   // ---- curated topic index ----
   var IDX = [
+    {t:"Topics Directory", u:"/topics/", s:"Navigate", k:"topics directory category browse hubs courses tools"},
+    {t:"All Courses Roadmap", u:"/courses/", s:"Navigate", k:"courses roadmap learning path"},
     // VLSI / physical
     {t:"VLSI Hub — all chip-design topics", u:"/vlsi/", s:"VLSI", k:"vlsi chip design asic soc semiconductor"},
     {t:"Physical Design — netlist to GDSII", u:"/physical-design/", s:"VLSI", k:"physical design floorplan placement routing pnr gdsii backend"},
