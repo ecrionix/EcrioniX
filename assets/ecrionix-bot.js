@@ -4,6 +4,37 @@
 (function(){
   if (window.__ecxBot) return; window.__ecxBot = true;
 
+  // ---- Theme: apply saved preference + load shared CSS/toggle on public pages ----
+  (function(){
+    try {
+      var t = localStorage.getItem('ecrionix-theme')
+        || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+
+    function ensureStylesheet(href) {
+      if ([].some.call(document.styleSheets, function (s) { return s.href && s.href.indexOf(href) !== -1; })) return;
+      if (document.querySelector('link[href="' + href + '"]')) return;
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      document.head.appendChild(link);
+    }
+    ensureStylesheet('/assets/theme-toggle.css');
+    ensureStylesheet('/assets/site-theme.css');
+
+    function ensureToggleScript() {
+      if (document.getElementById('themeToggleBtn') || window.__ecxThemeToggleLoading) return;
+      if ([].some.call(document.scripts, function (s) { return s.src && s.src.indexOf('theme-toggle.js') !== -1; })) return;
+      window.__ecxThemeToggleLoading = true;
+      var s = document.createElement('script');
+      s.src = '/assets/theme-toggle.js';
+      s.defer = true;
+      document.head.appendChild(s);
+    }
+    ensureToggleScript();
+  })();
+
   // ---- curated topic index ----
   var IDX = [
     // VLSI / physical
