@@ -146,6 +146,9 @@
       }
       currentUser = user;
       bootUI();
+      if (window.EcrioniXProblems?.ensureLeaderboardMember) {
+        window.EcrioniXProblems.ensureLeaderboardMember(user);
+      }
       await markSolvedIfDone(user);
     });
   };

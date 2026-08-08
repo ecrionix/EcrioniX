@@ -155,6 +155,63 @@
     return { displayName, photoURL };
   }
 
+  /** Ensure every signed-in user appears on the leaderboard (0 pts until they solve). */
+  async function ensureLeaderboardMember(user) {
+    if (!user || !global.firebase) return null;
+    try {
+      const db = firebase.firestore();
+      const uref = db.collection('users').doc(user.uid);
+      let data = {};
+      try {
+        const snap = await uref.get();
+        data = snap.data() || {};
+      } catch (_) { /* may not have a user doc yet */ }
+
+      const done = Array.isArray(data.completedChallenges) ? data.completedChallenges : [];
+      const stats = recomputeStats(done);
+      const displayName = user.displayName || data.displayName || data.name || 'Member';
+      const photoURL = user.photoURL || data.photoURL || null;
+
+      // Keep user profile name in sync for board display
+      try {
+        await uref.set({
+          displayName,
+          photoURL,
+          email: user.email || data.email || null,
+          problemStats: {
+            solvedCount: stats.solvedCount,
+            points: stats.points,
+            lastSolvedAt: data.problemStats?.lastSolvedAt || null
+          }
+        }, { merge: true });
+      } catch (_) { /* ignore */ }
+
+      const lref = db.collection('leaderboard').doc(user.uid);
+      let existing = null;
+      try {
+        const lsnap = await lref.get();
+        existing = lsnap.exists ? lsnap.data() : null;
+      } catch (_) { /* ignore */ }
+
+      const points = Math.max(stats.points, existing?.points || 0);
+      const solvedCount = Math.max(stats.solvedCount, existing?.solvedCount || 0);
+
+      await lref.set({
+        uid: user.uid,
+        name: displayName,
+        photoURL,
+        solvedCount,
+        points,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      return { solvedCount, points, displayName };
+    } catch (err) {
+      console.warn('ensureLeaderboardMember failed:', err);
+      return null;
+    }
+  }
+
   async function recordSolve(user, slug, difficulty) {
     if (!user || !global.firebase) return { firstSolve: false, points: 0 };
     try {
@@ -327,6 +384,9 @@
     parseVCDSignals,
     renderTimingDiagram,
     pointsFor,
+    recomputeStats,
+    upsertLeaderboard,
+    ensureLeaderboardMember,
     recordSolve,
     bumpAttempt,
     highlight,
