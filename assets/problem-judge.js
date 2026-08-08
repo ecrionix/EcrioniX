@@ -129,6 +129,32 @@
     return POINTS[d] || POINTS.easy;
   }
 
+  function recomputeStats(completedSlugs) {
+    const catalog = global.ECRIONIX_PROBLEMS || [];
+    let points = 0;
+    const list = Array.isArray(completedSlugs) ? completedSlugs : [];
+    list.forEach(slug => {
+      const p = catalog.find(x => x.slug === slug);
+      if (p) points += Number(p.points) || pointsFor(p.difficulty);
+      else points += POINTS.easy;
+    });
+    return { solvedCount: list.length, points };
+  }
+
+  async function upsertLeaderboard(user, data, solvedCount, points) {
+    const displayName = user.displayName || data.displayName || data.name || 'Member';
+    const photoURL = user.photoURL || data.photoURL || null;
+    await firebase.firestore().collection('leaderboard').doc(user.uid).set({
+      uid: user.uid,
+      name: displayName,
+      photoURL,
+      solvedCount,
+      points,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return { displayName, photoURL };
+  }
+
   async function recordSolve(user, slug, difficulty) {
     if (!user || !global.firebase) return { firstSolve: false, points: 0 };
     try {
@@ -136,7 +162,7 @@
       const uref = db.collection('users').doc(user.uid);
       const snap = await uref.get();
       const data = snap.data() || {};
-      const done = data.completedChallenges || [];
+      const done = Array.isArray(data.completedChallenges) ? data.completedChallenges.slice() : [];
       const firstSolve = !done.includes(slug);
       const pts = pointsFor(difficulty);
 
@@ -146,7 +172,7 @@
       try {
         const attemptSnap = await attemptRef.get();
         prevAttempts = attemptSnap.exists ? (attemptSnap.data().attempts || 0) : 0;
-      } catch (_) { /* first read may fail on old rules */ }
+      } catch (_) { /* ignore */ }
 
       try {
         await attemptRef.set({
@@ -160,41 +186,34 @@
         console.warn('problemAttempts write failed:', err);
       }
 
-      if (!firstSolve) {
-        return { firstSolve: false, points: 0 };
-      }
-
-      const prevStats = data.problemStats || {};
-      const newSolved = (prevStats.solvedCount || done.length || 0) + 1;
-      const newPoints = (prevStats.points || 0) + pts;
-      const displayName = user.displayName || data.displayName || 'Member';
-      const photoURL = user.photoURL || data.photoURL || null;
+      if (firstSolve) done.push(slug);
+      const stats = recomputeStats(done);
 
       await uref.set({
-        completedChallenges: firebase.firestore.FieldValue.arrayUnion(slug),
-        displayName,
-        photoURL,
+        completedChallenges: firstSolve
+          ? firebase.firestore.FieldValue.arrayUnion(slug)
+          : done,
+        displayName: user.displayName || data.displayName || data.name || 'Member',
+        photoURL: user.photoURL || data.photoURL || null,
         problemStats: {
-          solvedCount: newSolved,
-          points: newPoints,
+          solvedCount: stats.solvedCount,
+          points: stats.points,
           lastSolvedAt: firebase.firestore.FieldValue.serverTimestamp()
         }
       }, { merge: true });
 
       try {
-        await db.collection('leaderboard').doc(user.uid).set({
-          uid: user.uid,
-          name: displayName,
-          photoURL,
-          solvedCount: newSolved,
-          points: newPoints,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        await upsertLeaderboard(user, data, stats.solvedCount, stats.points);
       } catch (err) {
         console.warn('leaderboard write failed:', err);
       }
 
-      return { firstSolve: true, points: pts, solvedCount: newSolved, totalPoints: newPoints };
+      return {
+        firstSolve,
+        points: firstSolve ? pts : 0,
+        solvedCount: stats.solvedCount,
+        totalPoints: stats.points
+      };
     } catch (err) {
       console.error('recordSolve failed:', err);
       return { firstSolve: false, points: 0, error: err };
