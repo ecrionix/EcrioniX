@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>False Paths & Multicycle Paths | EcrioniX STA Premium Course</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --text-main: #c9d1d9;
+            --blue: #58a6ff;
+            --border: #30363d;
+            --panel-bg: #161b22;
+            --heading: #ffffff;
+            --accent: #238636;
+            --warning: #d29922;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        h1, h2, h3, h4 {
+            color: var(--heading);
+        }
+        .header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+        }
+        .subtitle {
+            color: var(--blue);
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        .section {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        .section-head {
+            color: var(--blue);
+            font-size: 1.6em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+        .code-panel {
+            background-color: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 15px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin: 20px 0;
+            color: #e6edf3;
+        }
+        .keyword { color: #ff7b72; }
+        .string { color: #a5d6ff; }
+        .comment { color: #8b949e; font-style: italic; }
+        .param { color: #79c0ff; }
+        
+        .diagram-container {
+            background-color: #ffffff;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .note-box {
+            border-left: 4px solid var(--warning);
+            background-color: rgba(210, 153, 34, 0.1);
+            padding: 15px 20px;
+            border-radius: 0 6px 6px 0;
+            margin: 20px 0;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>False Paths & Multicycle Paths</h1>
+            <div class="subtitle">Module 3, Lesson 1 • EcrioniX STA Premium Course</div>
+        </div>
+
+        <p>In standard Static Timing Analysis (STA), the timing engine assumes that data launched from a flip-flop on one clock edge must be captured by the destination flip-flop on the very next clock edge. However, real-world designs often exhibit behaviors that violate this strict 1-cycle assumption. To prevent the STA engine from unnecessarily optimizing these paths—or reporting false violations—we use <strong>Timing Exceptions</strong>.</p>
+        
+        <p>The two most critical timing exceptions every Silicon Engineer must master are <strong>False Paths</strong> and <strong>Multicycle Paths (MCPs)</strong>.</p>
+
+        <!-- FALSE PATHS SECTION -->
+        <div class="section">
+            <div class="section-head">1. False Paths</div>
+            
+            <h3>What is a False Path?</h3>
+            <p>A False Path is a topological path in the design that exists structurally, but will <em>never</em> be sensitized or used during actual operation in a way that requires timing closure. Since data never legitimately flows through this path, any timing violation reported on it is "false."</p>
+            
+            <h3>Common Scenarios for False Paths</h3>
+            <ul>
+                <li><strong>Static Logic:</strong> Paths driven by static configuration registers. Once the system boots, these registers hold a constant value, so there is no active switching during normal operation.</li>
+                <li><strong>Logically Impossible Paths:</strong> Paths gated by mutually exclusive multiplexer select lines where the hardware cannot physically route the logic concurrently.</li>
+                <li><strong>Crossing Asynchronous Domains:</strong> Paths between two clock domains that have no known phase relationship (e.g., crossing from a 100MHz clock to an unaligned 133MHz clock). Instead of standard setup/hold checks, these paths must be handled using robust structural synchronizers (like a 2-flop synchronizer or async FIFO), making synchronous STA rules irrelevant.</li>
+            </ul>
+
+            <h3>Why do we use <code>set_false_path</code>?</h3>
+            <p>If we don't explicitly declare these paths as false, the STA tool will waste significant computational resources, silicon area, and power trying to optimize them. It might try to insert buffers or upsize cells to fix a setup violation on a path that is impossible to trigger. Applying <code>set_false_path</code> safely removes these paths from the timing graph.</p>
+
+            <div class="code-panel">
+<span class="comment"># Ignore paths crossing from the APB clock domain to the AXI clock domain</span>
+<span class="keyword">set_false_path</span> <span class="param">-from</span> [<span class="keyword">get_clocks</span> clk_apb] <span class="param">-to</span> [<span class="keyword">get_clocks</span> clk_axi]
+
+<span class="comment"># Ignore timing through static configuration registers</span>
+<span class="keyword">set_false_path</span> <span class="param">-through</span> [<span class="keyword">get_pins</span> u_config_reg/Q]
+            </div>
+        </div>
+
+        <!-- MULTICYCLE PATHS SECTION -->
+        <div class="section">
+            <div class="section-head">2. Multicycle Paths (MCP)</div>
+
+            <h3>What is a Multicycle Path?</h3>
+            <p>A Multicycle Path (MCP) is a path where data is intentionally designed to take <em>more than one clock cycle</em> to propagate from the launch register to the capture register. This is a common architectural decision in complex arithmetic operations (like MAC units or heavy crypto pipelines) where the combinatorial logic depth is simply too large to fit in a single clock period, and deep pipelining is constrained.</p>
+
+            <h3>Why do we use <code>set_multicycle_path</code>?</h3>
+            <p>By default, STA enforces a 1-cycle requirement for the setup check. If your combinational logic takes 1.5 cycles, STA will report a massive setup violation. By using <code>set_multicycle_path</code>, we relax the setup constraint to N cycles, allowing the data enough time to arrive naturally without forcing the synthesis tool to aggressively insert low-Vt (high leakage) cells to crunch the logic into 1 cycle.</p>
+
+            <h3>The Setup and Hold Relationship (The Tricky Part)</h3>
+            <p>When you define a Multicycle Path of 2 cycles, you shift the <strong>Setup Capture Edge</strong> forward by 1 cycle (from edge 1 to edge 2). However, in industry STA engines, moving the setup edge automatically shifts the <strong>Hold Check Edge</strong> forward as well (to one cycle before the new setup edge, which is edge 1). This default behavior is almost never what you want in silicon design!</p>
+
+            <div class="note-box">
+                <strong>Crucial STA Rule:</strong> In an MCP where data takes 2 cycles to propagate, the launch register is usually only updated every 2 cycles (often via a clock enable). Therefore, you must hold the data against the <em>original</em> launch edge (edge 0). You must explicitly bring the hold check back to edge 0 using <code>-hold 1</code>.
+            </div>
+
+            <div class="code-panel">
+<span class="comment"># 1. Relax the Setup check to 2 cycles</span>
+<span class="keyword">set_multicycle_path</span> <span class="param">-setup</span> <span class="string">2</span> <span class="param">-from</span> [<span class="keyword">get_pins</span> launch_reg/Q] <span class="param">-to</span> [<span class="keyword">get_pins</span> capture_reg/D]
+
+<span class="comment"># 2. Shift the Hold check back by 1 cycle (back to the launch edge)</span>
+<span class="keyword">set_multicycle_path</span> <span class="param">-hold</span> <span class="string">1</span> <span class="param">-from</span> [<span class="keyword">get_pins</span> launch_reg/Q] <span class="param">-to</span> [<span class="keyword">get_pins</span> capture_reg/D]
+            </div>
+        </div>
+
+        <!-- VISUALIZATION SECTION -->
+        <div class="section">
+            <div class="section-head">3. Visualizing Setup and Hold on an MCP</div>
+            
+            <p>The WaveDrom diagram below illustrates exactly how applying an MCP of 2 cycles affects the edges used for setup and hold timing checks.</p>
+
+            <div class="diagram-container">
+                <script type="WaveDrom">
+                {
+                  "signal": [
+                    {"name": "Clock", "wave": "p.......", "node": ".L......"},
+                    {"name": "Data Path", "wave": "x2..x...", "data": ["Combinational Delay (>1 Cycle)"]},
+                    {},
+                    ["Default 1-Cycle",
+                      {"name": "Setup Capture", "node": "..s....."},
+                      {"name": "Hold Capture", "node": ".h......"}
+                    ],
+                    ["MCP -setup 2",
+                      {"name": "Setup Capture", "node": "...S...."},
+                      {"name": "Hold Capture", "node": "..H....."},
+                      {"name": "Hold (-hold 1)", "node": ".R......"}
+                    ]
+                  ],
+                  "edge": [
+                    "L~>s 1-cycle",
+                    "L~>h 0-cycle",
+                    "L~>S 2-cycle",
+                    "L~>H default for MCP 2",
+                    "L~>R back to 0-cycle"
+                  ],
+                  "config": {
+                    "skin": "default"
+                  }
+                }
+                </script>
+            </div>
+            
+            <p><strong>Breaking down the timeline:</strong></p>
+            <ul>
+                <li><strong>Launch Edge (L):</strong> Data is launched out of the driving flip-flop at clock cycle 0.</li>
+                <li><strong>Default Setup (s):</strong> By default, STA checks setup at cycle 1.</li>
+                <li><strong>MCP Setup (S):</strong> Applying <code>-setup 2</code> correctly moves the capture edge to cycle 2, giving the data more time to propagate through the deep combinational logic.</li>
+                <li><strong>Default Hold for MCP (H):</strong> STA automatically moves the hold check to cycle 1. If left uncorrected, fast paths might violate hold against this new edge!</li>
+                <li><strong>Corrected Hold (R):</strong> Applying <code>-hold 1</code> pulls the hold check safely back to cycle 0, ensuring short paths don't trample the previous data.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- WaveDrom scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js" type="text/javascript"></script>
+    <script>WaveDrom.ProcessAll();</script>
+</body>
+</html>
