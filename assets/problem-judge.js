@@ -131,73 +131,98 @@
 
   async function recordSolve(user, slug, difficulty) {
     if (!user || !global.firebase) return { firstSolve: false, points: 0 };
-    const db = firebase.firestore();
-    const uref = db.collection('users').doc(user.uid);
-    const snap = await uref.get();
-    const data = snap.data() || {};
-    const done = data.completedChallenges || [];
-    const firstSolve = !done.includes(slug);
-    const pts = pointsFor(difficulty);
+    try {
+      const db = firebase.firestore();
+      const uref = db.collection('users').doc(user.uid);
+      const snap = await uref.get();
+      const data = snap.data() || {};
+      const done = data.completedChallenges || [];
+      const firstSolve = !done.includes(slug);
+      const pts = pointsFor(difficulty);
 
-    const attemptId = `${user.uid}_${slug}`;
-    const attemptRef = db.collection('problemAttempts').doc(attemptId);
-    const attemptSnap = await attemptRef.get();
-    const prevAttempts = attemptSnap.exists ? (attemptSnap.data().attempts || 0) : 0;
+      const attemptId = `${user.uid}_${slug}`;
+      const attemptRef = db.collection('problemAttempts').doc(attemptId);
+      let prevAttempts = 0;
+      try {
+        const attemptSnap = await attemptRef.get();
+        prevAttempts = attemptSnap.exists ? (attemptSnap.data().attempts || 0) : 0;
+      } catch (_) { /* first read may fail on old rules */ }
 
-    await attemptRef.set({
-      uid: user.uid,
-      slug,
-      attempts: prevAttempts + 1,
-      passed: true,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    if (!firstSolve) {
-      return { firstSolve: false, points: 0 };
-    }
-
-    const prevStats = data.problemStats || {};
-    const newSolved = (prevStats.solvedCount || done.length || 0) + 1;
-    const newPoints = (prevStats.points || 0) + pts;
-    const displayName = user.displayName || data.displayName || 'Member';
-    const photoURL = user.photoURL || data.photoURL || null;
-
-    await uref.set({
-      completedChallenges: firebase.firestore.FieldValue.arrayUnion(slug),
-      displayName,
-      photoURL,
-      problemStats: {
-        solvedCount: newSolved,
-        points: newPoints,
-        lastSolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+      try {
+        await attemptRef.set({
+          uid: user.uid,
+          slug,
+          attempts: prevAttempts + 1,
+          passed: true,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.warn('problemAttempts write failed:', err);
       }
-    }, { merge: true });
 
-    await db.collection('leaderboard').doc(user.uid).set({
-      uid: user.uid,
-      name: displayName,
-      photoURL,
-      solvedCount: newSolved,
-      points: newPoints,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+      if (!firstSolve) {
+        return { firstSolve: false, points: 0 };
+      }
 
-    return { firstSolve: true, points: pts, solvedCount: newSolved, totalPoints: newPoints };
+      const prevStats = data.problemStats || {};
+      const newSolved = (prevStats.solvedCount || done.length || 0) + 1;
+      const newPoints = (prevStats.points || 0) + pts;
+      const displayName = user.displayName || data.displayName || 'Member';
+      const photoURL = user.photoURL || data.photoURL || null;
+
+      await uref.set({
+        completedChallenges: firebase.firestore.FieldValue.arrayUnion(slug),
+        displayName,
+        photoURL,
+        problemStats: {
+          solvedCount: newSolved,
+          points: newPoints,
+          lastSolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
+      }, { merge: true });
+
+      try {
+        await db.collection('leaderboard').doc(user.uid).set({
+          uid: user.uid,
+          name: displayName,
+          photoURL,
+          solvedCount: newSolved,
+          points: newPoints,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.warn('leaderboard write failed:', err);
+      }
+
+      return { firstSolve: true, points: pts, solvedCount: newSolved, totalPoints: newPoints };
+    } catch (err) {
+      console.error('recordSolve failed:', err);
+      return { firstSolve: false, points: 0, error: err };
+    }
   }
 
   async function bumpAttempt(user, slug) {
     if (!user || !global.firebase) return;
-    const attemptId = `${user.uid}_${slug}`;
-    const ref = firebase.firestore().collection('problemAttempts').doc(attemptId);
-    const snap = await ref.get();
-    const prev = snap.exists ? (snap.data().attempts || 0) : 0;
-    await ref.set({
-      uid: user.uid,
-      slug,
-      attempts: prev + 1,
-      passed: snap.exists ? !!snap.data().passed : false,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    try {
+      const attemptId = `${user.uid}_${slug}`;
+      const ref = firebase.firestore().collection('problemAttempts').doc(attemptId);
+      let prev = 0;
+      let passed = false;
+      try {
+        const snap = await ref.get();
+        prev = snap.exists ? (snap.data().attempts || 0) : 0;
+        passed = snap.exists ? !!snap.data().passed : false;
+      } catch (_) { /* ignore */ }
+      await ref.set({
+        uid: user.uid,
+        slug,
+        attempts: prev + 1,
+        passed,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('bumpAttempt failed:', err);
+    }
   }
 
   /* ── Syntax highlight ── */
