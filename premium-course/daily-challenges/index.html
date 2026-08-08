@@ -292,8 +292,10 @@ function renderWaveformsHtml(id, challenge) {
   const list = normalizeWavedromList(challenge);
   if (list.length) {
     return list.map((entry, i) => {
-      const elId = `wd-${id}-${i}`;
-      pendingWavedroms.push({ elId, source: entry.source });
+      // WaveDrom.RenderWaveForm(index, source, prefix) looks up getElementById(prefix + index)
+      const prefix = `wd-${id}-`;
+      const elId = prefix + i;
+      pendingWavedroms.push({ prefix, index: i, elId, source: entry.source });
       return `<div class="challenge-waveform"><div class="challenge-waveform-label">${escapeHtml(entry.label)}</div><div class="wavedrom-mount" id="${elId}"></div></div>`;
     }).join('');
   }
@@ -305,12 +307,24 @@ function renderWaveformsHtml(id, challenge) {
 
 function paintWavedroms() {
   if (typeof WaveDrom === 'undefined' || !WaveDrom.RenderWaveForm) return;
-  pendingWavedroms.forEach((item, index) => {
+  // Global WaveDrom index must be unique across all mounts on the page
+  // (context-menu / display helpers key off the numeric index).
+  let globalIndex = 0;
+  pendingWavedroms.forEach((item) => {
+    const prefix = `wdg${globalIndex}_`;
+    const elId = prefix + '0';
     const host = document.getElementById(item.elId);
     if (!host) return;
+    host.id = elId;
     host.innerHTML = '';
     try {
-      WaveDrom.RenderWaveForm(index, item.source, item.elId);
+      // Deep-clone so empty spacer lanes from Firestore stay plain objects
+      const source = JSON.parse(JSON.stringify(item.source));
+      if (Array.isArray(source.signal)) {
+        source.signal = source.signal.map(lane => (lane && Object.keys(lane).length === 0) ? {} : lane);
+      }
+      WaveDrom.RenderWaveForm(0, source, prefix);
+      globalIndex += 1;
     } catch (err) {
       console.error('WaveDrom render failed for', item.elId, err);
       host.innerHTML = '<div class="empty-state">Could not render waveform.</div>';
