@@ -18,6 +18,8 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="/favicon1.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -82,6 +84,9 @@ a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
 .challenge-diagram svg{max-width:100%;height:auto}
 .challenge-waveform{background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin-bottom:0.9rem;overflow-x:auto}
 .challenge-waveform-label{font-size:0.72rem;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.65rem}
+.challenge-waveform + .challenge-waveform{margin-top:-0.35rem}
+.wavedrom-mount{background:#fff;border-radius:8px;padding:0.75rem;overflow-x:auto}
+.wavedrom-mount svg{max-width:100%;height:auto;display:block}
 .challenge-waveform svg{max-width:100%;height:auto;display:block;margin:0 auto}
 .challenge-table-wrap{overflow-x:auto;margin-bottom:0.9rem;border:1px solid var(--bdr);border-radius:10px}
 .challenge-table-wrap table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.82rem}
@@ -206,6 +211,7 @@ let isAdminUser = false;
 let openChallengeId = null;
 let commentUnsub = null;
 let replyingTo = null; // { commentId, authorName, text }
+let pendingWavedroms = []; // { elId, source } rendered after challenge list paints
 
 async function checkAccess(user) {
   currentUser = user;
@@ -267,6 +273,51 @@ async function postChallenge() {
   }
 }
 
+function normalizeWavedromList(challenge) {
+  // Prefer WaveDrom JSON (array of {label, source} or a single source object).
+  // Falls back to legacy hand-drawn waveformSvg only when wavedrom is absent.
+  if (Array.isArray(challenge.wavedrom) && challenge.wavedrom.length) {
+    return challenge.wavedrom.map((entry, i) => ({
+      label: entry.label || (i === 0 ? (challenge.waveformLabel || 'Expected waveform') : 'Waveform'),
+      source: entry.source || entry,
+    })).filter(e => e.source);
+  }
+  if (challenge.wavedrom && typeof challenge.wavedrom === 'object') {
+    return [{ label: challenge.waveformLabel || 'Expected waveform', source: challenge.wavedrom }];
+  }
+  return [];
+}
+
+function renderWaveformsHtml(id, challenge) {
+  const list = normalizeWavedromList(challenge);
+  if (list.length) {
+    return list.map((entry, i) => {
+      const elId = `wd-${id}-${i}`;
+      pendingWavedroms.push({ elId, source: entry.source });
+      return `<div class="challenge-waveform"><div class="challenge-waveform-label">${escapeHtml(entry.label)}</div><div class="wavedrom-mount" id="${elId}"></div></div>`;
+    }).join('');
+  }
+  if (challenge.waveformSvg) {
+    return `<div class="challenge-waveform"><div class="challenge-waveform-label">${escapeHtml(challenge.waveformLabel || 'Expected waveform')}</div>${challenge.waveformSvg}</div>`;
+  }
+  return '';
+}
+
+function paintWavedroms() {
+  if (typeof WaveDrom === 'undefined' || !WaveDrom.RenderWaveForm) return;
+  pendingWavedroms.forEach((item, index) => {
+    const host = document.getElementById(item.elId);
+    if (!host) return;
+    host.innerHTML = '';
+    try {
+      WaveDrom.RenderWaveForm(index, item.source, item.elId);
+    } catch (err) {
+      console.error('WaveDrom render failed for', item.elId, err);
+      host.innerHTML = '<div class="empty-state">Could not render waveform.</div>';
+    }
+  });
+}
+
 function listenToChallenges() {
   firebase.firestore().collection('dailyChallenges')
     .orderBy('createdAt', 'desc')
@@ -276,7 +327,9 @@ function listenToChallenges() {
         list.innerHTML = '<div class="empty-state">No challenges posted yet. Check back soon!</div>';
         return;
       }
+      pendingWavedroms = [];
       list.innerHTML = snapshot.docs.map((doc, i) => renderChallengeCard(doc.id, doc.data(), i === 0)).join('');
+      paintWavedroms();
     }, error => {
       console.error('Challenge listener error:', error);
       document.getElementById('challengeList').innerHTML = '<div class="empty-state">Unable to load challenges.</div>';
@@ -303,7 +356,7 @@ function renderChallengeCard(id, challenge, isLatest) {
       ${challenge.tableHtml ? `<div class="challenge-table-wrap">${challenge.tableHtml}</div>` : ''}
       <div class="challenge-text">${linkify(escapeHtml(challenge.text))}</div>
       ${challenge.portsHtml ? `<div class="challenge-table-wrap">${challenge.portsHtml}</div>` : ''}
-      ${challenge.waveformSvg ? `<div class="challenge-waveform"><div class="challenge-waveform-label">${escapeHtml(challenge.waveformLabel || 'Expected waveform')}</div>${challenge.waveformSvg}</div>` : ''}
+      ${renderWaveformsHtml(id, challenge)}
       ${challenge.outroText ? `<div class="challenge-text">${linkify(escapeHtml(challenge.outroText))}</div>` : ''}
       <div class="challenge-footer">
         <button class="challenge-toggle" onclick="toggleThread('${id}')">${isOpen ? 'Hide discussion ▲' : '💬 View & discuss ▼'}</button>
