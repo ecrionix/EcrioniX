@@ -349,6 +349,11 @@
         out += kwSpan(word) || hlEsc(word);
         i = j; continue;
       }
+      const opMatch = line.slice(i).match(/^(<=|>=|===|!==|==|!=|&&|\|\||<<|>>|\+=|-=|=>|=)/);
+      if (opMatch) {
+        out += `<span class="hl-op">${hlEsc(opMatch[0])}</span>`;
+        i += opMatch[0].length; continue;
+      }
       out += hlEsc(ch); i++;
     }
     return out;
