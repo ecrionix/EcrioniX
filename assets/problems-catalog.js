@@ -2951,6 +2951,1331 @@ endmodule
       }
     },
     {
+      slug: 'odd-parity-checker',
+      title: '8-Bit Odd Parity Checker',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'parity'],
+      category: 'Combinational Design',
+      lede: 'Check whether a received byte plus its parity bit together carry an odd number of 1s — the receiving half of an odd-parity error-detection scheme.',
+      concept: '<b>Concept:</b> <code>error = ~(^data ^ parity_bit)</code>. XOR-reducing data and parity_bit together gives 1 exactly when the total count of 1s is odd; inverting that tells you when the odd-parity rule was violated.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>data</td><td>input</td><td>8</td><td>Received data byte</td></tr>
+<tr><td>parity_bit</td><td>input</td><td>1</td><td>Received odd-parity bit</td></tr>
+<tr><td>error</td><td>output</td><td>1</td><td>1 if data+parity_bit has an even (invalid) count of 1s</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] data,
+  input        parity_bit,
+  output       error
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] data;
+  reg parity_bit;
+  wire error;
+  integer errors = 0;
+  top_module dut(.data(data), .parity_bit(parity_bit), .error(error));
+  task check;
+    input [7:0] d; input p; input ee;
+    begin
+      data = d; parity_bit = p; #1;
+      if (error !== ee) begin
+        errors = errors + 1;
+        $display("FAIL data=%b p=%b expected=%b got=%b", d, p, ee, error);
+      end else $display("PASS data=%b p=%b error=%b", d, p, error);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(8'b00000000, 1, 0);
+    check(8'b00000000, 0, 1);
+    check(8'b00000011, 0, 1);
+    check(8'b00000011, 1, 0);
+    check(8'b11111111, 0, 1);
+    check(8'b11111111, 1, 0);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['data', 'parity_bit', 'error'],
+      wavedrom: {
+        signal: [
+          { name: 'data[7:0]', wave: '2.3.4.', data: ['00000000', '00000011', '11111111'] },
+          { name: 'parity_bit', wave: '1.0.1.' },
+          { name: 'error', wave: '0.1.0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'excess3-converter',
+      title: 'BCD to Excess-3 Converter',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'code-converter'],
+      category: 'Combinational Design',
+      lede: 'Convert a BCD digit (0-9) into Excess-3 code, a self-complementing code once used in early decimal computers.',
+      concept: '<b>Concept:</b> Excess-3 is defined as the BCD value plus 3 — <code>excess3 = bcd + 3</code>. That is the entire circuit: one 4-bit adder with a constant operand.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>bcd</td><td>input</td><td>4</td><td>BCD digit, 0-9</td></tr>
+<tr><td>excess3</td><td>output</td><td>4</td><td>bcd + 3</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] bcd,
+  output [3:0] excess3
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] bcd;
+  wire [3:0] excess3;
+  integer errors = 0;
+  top_module dut(.bcd(bcd), .excess3(excess3));
+  task check;
+    input [3:0] b; input [3:0] ee;
+    begin
+      bcd = b; #1;
+      if (excess3 !== ee) begin
+        errors = errors + 1;
+        $display("FAIL bcd=%d expected=%d got=%d", b, ee, excess3);
+      end else $display("PASS bcd=%d excess3=%d", b, excess3);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(0, 3);
+    check(1, 4);
+    check(5, 8);
+    check(9, 12);
+    check(4, 7);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['bcd', 'excess3'],
+      wavedrom: {
+        signal: [
+          { name: 'bcd[3:0]', wave: '2.3.4.', data: ['0', '5', '9'] },
+          { name: 'excess3[3:0]', wave: '2.3.4.', data: ['3', '8', '12'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'add-sub-unit',
+      title: '4-Bit Add/Subtract Unit',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: "One adder, two operations: a single control bit selects between a+b and a-b using the standard invert-and-add-one trick.",
+      concept: '<b>Concept:</b> <code>{cout,result} = a + (b ^ {4{sub}}) + sub</code>. When <code>sub=0</code>, b passes through unchanged and this is a plain add. When <code>sub=1</code>, every bit of b is inverted and a 1 is added — the classic two\'s-complement subtraction trick, reusing the same adder hardware.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4</td><td>First operand</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>Second operand</td></tr>
+<tr><td>sub</td><td>input</td><td>1</td><td>0 = add, 1 = subtract (a - b)</td></tr>
+<tr><td>result</td><td>output</td><td>4</td><td>a+b or a-b, wrapped</td></tr>
+<tr><td>cout</td><td>output</td><td>1</td><td>Carry out (add) / NOT-borrow (subtract)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] a,
+  input  [3:0] b,
+  input        sub,
+  output [3:0] result,
+  output       cout
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] a, b;
+  reg sub;
+  wire [3:0] result;
+  wire cout;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .sub(sub), .result(result), .cout(cout));
+  task check;
+    input [3:0] ia, ib; input isub; input [3:0] er; input ec;
+    begin
+      a = ia; b = ib; sub = isub; #1;
+      if (result !== er || cout !== ec) begin
+        errors = errors + 1;
+        $display("FAIL a=%d b=%d sub=%b expected result=%d cout=%b got result=%d cout=%b", ia, ib, isub, er, ec, result, cout);
+      end else $display("PASS a=%d b=%d sub=%b result=%d cout=%b", ia, ib, isub, result, cout);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(4'd3, 4'd4, 0, 4'd7, 0);
+    check(4'd7, 4'd3, 1, 4'd4, 1);
+    check(4'd3, 4'd7, 1, 4'd12, 0);
+    check(4'd15, 4'd1, 0, 4'd0, 1);
+    check(4'd5, 4'd5, 1, 4'd0, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'sub', 'result', 'cout'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.', data: ['3', '7', '3'] },
+          { name: 'b[3:0]', wave: '2.3.4.', data: ['4', '3', '7'] },
+          { name: 'sub', wave: '0.1...' },
+          { name: 'result[3:0]', wave: '2.3.4.', data: ['7', '4', '12'] },
+          { name: 'cout', wave: '0.1.0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'mux8to1',
+      title: '8-to-1 Multiplexer',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'mux'],
+      category: 'Combinational Design',
+      lede: 'The next step up from 2:1 and 4:1 — select one of eight inputs using a 3-bit select line.',
+      concept: '<b>Concept:</b> <code>out = in[sel];</code> — Verilog\'s bit-select operator with a variable index already implements the entire multiplexer in one line.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>in</td><td>input</td><td>8</td><td>Input bits</td></tr>
+<tr><td>sel</td><td>input</td><td>3</td><td>Select index, 0-7</td></tr>
+<tr><td>out</td><td>output</td><td>1</td><td>in[sel]</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] in,
+  input  [2:0] sel,
+  output       out
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] in;
+  reg [2:0] sel;
+  wire out;
+  integer errors = 0;
+  top_module dut(.in(in), .sel(sel), .out(out));
+  task check;
+    input [7:0] i; input [2:0] s; input eo;
+    begin
+      in = i; sel = s; #1;
+      if (out !== eo) begin
+        errors = errors + 1;
+        $display("FAIL in=%b sel=%d expected=%b got=%b", i, s, eo, out);
+      end else $display("PASS in=%b sel=%d out=%b", i, s, out);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(8'b10110010, 0, 0);
+    check(8'b10110010, 1, 1);
+    check(8'b10110010, 4, 1);
+    check(8'b10110010, 7, 1);
+    check(8'b10110010, 3, 0);
+    check(8'b00000001, 0, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['in', 'sel', 'out'],
+      wavedrom: {
+        signal: [
+          { name: 'in[7:0]', wave: '2.....', data: ['10110010'] },
+          { name: 'sel[2:0]', wave: '2.3.4.', data: ['0', '1', '4'] },
+          { name: 'out', wave: '0.1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'decoder-3to8',
+      title: '3-to-8 Line Decoder',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'decoder'],
+      category: 'Combinational Design',
+      lede: 'The 3-bit sibling of the 2-to-4 decoder — turn a 3-bit address into a one-hot 8-bit select line, gated by enable.',
+      concept: '<b>Concept:</b> Same shift-a-hot-bit idiom as the 2-to-4 decoder, one bit wider: <code>out = en ? (8\'b1 &lt;&lt; in) : 8\'b0;</code>.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>in</td><td>input</td><td>3</td><td>Address to decode</td></tr>
+<tr><td>en</td><td>input</td><td>1</td><td>Active-high enable</td></tr>
+<tr><td>out</td><td>output</td><td>8</td><td>One-hot output, all 0 when en=0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [2:0] in,
+  input        en,
+  output [7:0] out
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [2:0] in;
+  reg en;
+  wire [7:0] out;
+  integer errors = 0;
+  top_module dut(.in(in), .en(en), .out(out));
+  task check;
+    input [2:0] i; input e; input [7:0] eo;
+    begin
+      in = i; en = e; #1;
+      if (out !== eo) begin
+        errors = errors + 1;
+        $display("FAIL in=%d en=%b expected=%b got=%b", i, e, eo, out);
+      end else $display("PASS in=%d en=%b out=%b", i, e, out);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(0, 1, 8'b00000001);
+    check(3, 1, 8'b00001000);
+    check(7, 1, 8'b10000000);
+    check(0, 0, 8'b00000000);
+    check(7, 0, 8'b00000000);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['in', 'en', 'out'],
+      wavedrom: {
+        signal: [
+          { name: 'in[2:0]', wave: '2.3.4.', data: ['0', '3', '7'] },
+          { name: 'en', wave: '1.....' },
+          { name: 'out[7:0]', wave: '2.3.4.', data: ['00000001', '00001000', '10000000'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'carry-lookahead-adder4',
+      title: '4-Bit Carry Lookahead Adder',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Compute all four carries in parallel from generate/propagate signals instead of rippling them one bit at a time — the classic fix for ripple-carry\'s O(N) delay.',
+      concept: '<b>Concept:</b> For each bit, define generate <code>g=a&amp;b</code> (this bit always produces a carry) and propagate <code>p=a^b</code> (this bit passes an incoming carry through). Each carry <code>c[i+1] = g[i] | (p[i]&amp;c[i])</code> can be expanded algebraically into a flat OR-of-ANDs expression depending only on the original a/b bits and cin — computable in parallel, not sequentially.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4</td><td>First operand</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>Second operand</td></tr>
+<tr><td>cin</td><td>input</td><td>1</td><td>Carry in</td></tr>
+<tr><td>sum</td><td>output</td><td>4</td><td>a + b + cin, low 4 bits</td></tr>
+<tr><td>cout</td><td>output</td><td>1</td><td>Carry out</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] a,
+  input  [3:0] b,
+  input        cin,
+  output [3:0] sum,
+  output       cout
+);
+
+  // Your code here — compute g[i]=a[i]&b[i], p[i]=a[i]^b[i], then expand each carry from g/p/cin directly (no rippling).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] a, b;
+  reg cin;
+  wire [3:0] sum;
+  wire cout;
+  reg [4:0] expected;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+  task check;
+    input [3:0] ia, ib; input ic;
+    begin
+      a = ia; b = ib; cin = ic; #1;
+      expected = ia + ib + ic;
+      if (sum !== expected[3:0] || cout !== expected[4]) begin
+        errors = errors + 1;
+        $display("FAIL a=%d b=%d cin=%b expected sum=%d cout=%b got sum=%d cout=%b", ia, ib, ic, expected[3:0], expected[4], sum, cout);
+      end else $display("PASS a=%d b=%d cin=%b sum=%d cout=%b", ia, ib, ic, sum, cout);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(4'd3, 4'd4, 0);
+    check(4'd15, 4'd1, 0);
+    check(4'd7, 4'd8, 1);
+    check(4'd5, 4'd5, 1);
+    check(4'd0, 4'd0, 1);
+    check(4'd15, 4'd15, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'cin', 'sum', 'cout'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.', data: ['3', '15', '7'] },
+          { name: 'b[3:0]', wave: '2.3.4.', data: ['4', '1', '8'] },
+          { name: 'cin', wave: '0...1.' },
+          { name: 'sum[3:0]', wave: '2.3.4.', data: ['7', '0', '0'] },
+          { name: 'cout', wave: '0.1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'equality-checker-8bit',
+      title: '8-Bit Equality Checker',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'comparator'],
+      category: 'Combinational Design',
+      lede: 'A dedicated equal-only comparator for two 8-bit buses — the cheap end of the comparator family, no subtractor required.',
+      concept: '<b>Concept:</b> <code>eq = (a == b);</code>. Synthesis turns this into an XNOR-per-bit-plus-AND-tree — much shallower logic than a less-than compare, which needs a subtractor.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>8</td><td>First operand</td></tr>
+<tr><td>b</td><td>input</td><td>8</td><td>Second operand</td></tr>
+<tr><td>eq</td><td>output</td><td>1</td><td>1 if a == b</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] a,
+  input  [7:0] b,
+  output       eq
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] a, b;
+  wire eq;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .eq(eq));
+  task check;
+    input [7:0] ia, ib; input ee;
+    begin
+      a = ia; b = ib; #1;
+      if (eq !== ee) begin
+        errors = errors + 1;
+        $display("FAIL a=%b b=%b expected=%b got=%b", ia, ib, ee, eq);
+      end else $display("PASS a=%b b=%b eq=%b", ia, ib, eq);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(8'b00000000, 8'b00000000, 1);
+    check(8'b00001111, 8'b00001111, 1);
+    check(8'b00010000, 8'b00000000, 0);
+    check(8'b10000000, 8'b00000000, 0);
+    check(8'b11111111, 8'b11111111, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'eq'],
+      wavedrom: {
+        signal: [
+          { name: 'a[7:0]', wave: '2.3.4.', data: ['00000000', '00010000', '11111111'] },
+          { name: 'b[7:0]', wave: '2...3.', data: ['00000000', '11111111'] },
+          { name: 'eq', wave: '1.0..1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'array-multiplier-4bit',
+      title: '4-Bit Array Multiplier',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Multiply two 4-bit numbers into an 8-bit product — the operation an array multiplier builds from a grid of AND gates and adders.',
+      concept: '<b>Concept:</b> <code>product = a * b;</code>. Verilog\'s <code>*</code> operator infers a multiplier at synthesis (an array of partial-product AND gates summed by adder rows) — the same structure you\'d build by hand, just described behaviorally instead of gate-by-gate.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4</td><td>First operand</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>Second operand</td></tr>
+<tr><td>product</td><td>output</td><td>8</td><td>a &times; b</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] a,
+  input  [3:0] b,
+  output [7:0] product
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] a, b;
+  wire [7:0] product;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .product(product));
+  task check;
+    input [3:0] ia, ib; input [7:0] ep;
+    begin
+      a = ia; b = ib; #1;
+      if (product !== ep) begin
+        errors = errors + 1;
+        $display("FAIL a=%d b=%d expected=%d got=%d", ia, ib, ep, product);
+      end else $display("PASS a=%d b=%d product=%d", ia, ib, product);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(4'd3, 4'd4, 8'd12);
+    check(4'd15, 4'd15, 8'd225);
+    check(4'd0, 4'd5, 8'd0);
+    check(4'd7, 4'd7, 8'd49);
+    check(4'd1, 4'd9, 8'd9);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'product'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.', data: ['3', '15', '7'] },
+          { name: 'b[3:0]', wave: '2.3.4.', data: ['4', '15', '7'] },
+          { name: 'product[7:0]', wave: '2.3.4.', data: ['12', '225', '49'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'bcd-adder',
+      title: 'BCD Digit Adder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Add two BCD digits (0-9) plus a carry-in and produce a valid BCD digit result — binary addition alone isn\'t enough once the sum exceeds 9.',
+      concept: '<b>Concept:</b> First add normally in binary: <code>bin_sum = a + b + cin</code>. If that exceeds 9, it\'s not a valid BCD digit — add 6 to skip over the 6 unused 4-bit codes (10-15) and land back on a valid digit with a decimal carry: <code>cout = (bin_sum &gt; 9); corrected = cout ? bin_sum+6 : bin_sum;</code>.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4</td><td>BCD digit, 0-9</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>BCD digit, 0-9</td></tr>
+<tr><td>cin</td><td>input</td><td>1</td><td>Carry in</td></tr>
+<tr><td>sum</td><td>output</td><td>4</td><td>Result BCD digit</td></tr>
+<tr><td>cout</td><td>output</td><td>1</td><td>Decimal carry out</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] a,
+  input  [3:0] b,
+  input        cin,
+  output [3:0] sum,
+  output       cout
+);
+
+  // Your code here — binary add, then add 6 and set cout if the result exceeds 9.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] a, b;
+  reg cin;
+  wire [3:0] sum;
+  wire cout;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .cin(cin), .sum(sum), .cout(cout));
+  task check;
+    input [3:0] ia, ib; input ic; input [3:0] es; input ec;
+    begin
+      a = ia; b = ib; cin = ic; #1;
+      if (sum !== es || cout !== ec) begin
+        errors = errors + 1;
+        $display("FAIL a=%d b=%d cin=%b expected sum=%d cout=%b got sum=%d cout=%b", ia, ib, ic, es, ec, sum, cout);
+      end else $display("PASS a=%d b=%d cin=%b sum=%d cout=%b", ia, ib, ic, sum, cout);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(4'd3, 4'd4, 0, 4'd7, 0);
+    check(4'd5, 4'd6, 0, 4'd1, 1);
+    check(4'd9, 4'd9, 1, 4'd9, 1);
+    check(4'd0, 4'd0, 0, 4'd0, 0);
+    check(4'd4, 4'd5, 1, 4'd0, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'cin', 'sum', 'cout'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.', data: ['3', '5', '9'] },
+          { name: 'b[3:0]', wave: '2.3.4.', data: ['4', '6', '9'] },
+          { name: 'cin', wave: '0...1.' },
+          { name: 'sum[3:0]', wave: '2.3.4.', data: ['7', '1', '9'] },
+          { name: 'cout', wave: '0.1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'compressor-4to2',
+      title: '4:2 Carry-Save Compressor',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Reduce five weight-1 inputs (four data bits plus a carry-in) down to a sum bit and two weight-2 outputs — the building block that makes fast multiplier reduction trees possible.',
+      concept: '<b>Concept:</b> A 4:2 compressor doesn\'t need to be thought of gate-by-gate — it just needs to preserve total value: <code>a+b+c+d+cin = sum + 2×(carry+cout)</code>. Count the total number of 1s among the five inputs (0-5); the low bit of that count is <code>sum</code>, and the upper two bits split across <code>carry</code> and <code>cout</code>.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>1</td><td>Data bit</td></tr>
+<tr><td>b</td><td>input</td><td>1</td><td>Data bit</td></tr>
+<tr><td>c</td><td>input</td><td>1</td><td>Data bit</td></tr>
+<tr><td>d</td><td>input</td><td>1</td><td>Data bit</td></tr>
+<tr><td>cin</td><td>input</td><td>1</td><td>Carry in from a neighboring compressor</td></tr>
+<tr><td>sum</td><td>output</td><td>1</td><td>Weight-1 output</td></tr>
+<tr><td>carry</td><td>output</td><td>1</td><td>Weight-2 output</td></tr>
+<tr><td>cout</td><td>output</td><td>1</td><td>Weight-2 output (carries to the next compressor)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  a,
+  input  b,
+  input  c,
+  input  d,
+  input  cin,
+  output sum,
+  output carry,
+  output cout
+);
+
+  // Your code here — total = a+b+c+d+cin (0..5); sum=total[0], carry=total[1], cout=total[2].
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg a, b, c, d, cin;
+  wire sum, carry, cout;
+  reg [2:0] total;
+  integer errors = 0;
+  top_module dut(.a(a), .b(b), .c(c), .d(d), .cin(cin), .sum(sum), .carry(carry), .cout(cout));
+  task check;
+    input ia, ib, ic, id, icin;
+    begin
+      a = ia; b = ib; c = ic; d = id; cin = icin; #1;
+      total = ia + ib + ic + id + icin;
+      if (sum !== total[0] || carry !== total[1] || cout !== total[2]) begin
+        errors = errors + 1;
+        $display("FAIL a=%b b=%b c=%b d=%b cin=%b expected total=%d got sum=%b carry=%b cout=%b", ia, ib, ic, id, icin, total, sum, carry, cout);
+      end else $display("PASS a=%b b=%b c=%b d=%b cin=%b total=%d", ia, ib, ic, id, icin, total);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    check(0, 0, 0, 0, 0);
+    check(1, 0, 0, 0, 0);
+    check(1, 1, 0, 0, 0);
+    check(1, 1, 1, 0, 0);
+    check(1, 1, 1, 1, 0);
+    check(1, 1, 1, 1, 1);
+    check(0, 1, 0, 1, 1);
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'c', 'd', 'cin', 'sum', 'carry', 'cout'],
+      wavedrom: {
+        signal: [
+          { name: 'a', wave: '0.1.1.1.' },
+          { name: 'b', wave: '0.0.1.1.' },
+          { name: 'c', wave: '0.0.0.1.' },
+          { name: 'd', wave: '0.0.0.0.' },
+          { name: 'cin', wave: '0.......' },
+          { name: 'sum', wave: '0.1.0.1.' },
+          { name: 'carry', wave: '0...1...' },
+          { name: 'cout', wave: '0.......' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'sr-flip-flop',
+      title: 'SR Flip-Flop',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'flip-flop'],
+      category: 'Sequential Design',
+      lede: 'A set/reset flip-flop with a well-defined answer for the "both asserted" case that the classic SR latch leaves undefined.',
+      concept: '<b>Concept:</b> Give reset priority: <code>if (r) q&lt;=0; else if (s) q&lt;=1;</code>. Whichever input you check first in the if-chain automatically wins when both are asserted — no invalid/undefined state, unlike a level-sensitive SR latch.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>s</td><td>input</td><td>1</td><td>Set</td></tr>
+<tr><td>r</td><td>input</td><td>1</td><td>Reset (priority over set)</td></tr>
+<tr><td>q</td><td>output</td><td>1</td><td>Stored bit</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input      clk,
+  input      s,
+  input      r,
+  output reg q
+);
+
+  // Your code here — give r priority over s.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, s, r;
+  wire q;
+  integer errors = 0;
+  top_module dut(.clk(clk), .s(s), .r(r), .q(q));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input eq; input [127:0] label;
+    begin
+      if (q !== eq) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, eq, q);
+      end else $display("PASS %0s q=%b", label, q);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    s = 1; r = 0; @(posedge clk); #1; check(1, "set");
+    s = 0; r = 0; @(posedge clk); #1; check(1, "hold");
+    s = 0; r = 1; @(posedge clk); #1; check(0, "reset");
+    s = 1; r = 1; @(posedge clk); #1; check(0, "both-r-wins");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 's', 'r', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 's', wave: '1.0...1.' },
+          { name: 'r', wave: '0...1...' },
+          { name: 'q', wave: '1...0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'd-latch',
+      title: 'D Latch (Level-Sensitive)',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'latch'],
+      category: 'Sequential Design',
+      lede: 'A transparent latch: while enable is high, the output follows the input instantly; once enable drops, the last value is held — no clock edge involved.',
+      concept: '<b>Concept:</b> <code>always @(*) if (en) q = d;</code> — deliberately omitting an else branch. Verilog then infers a latch that retains its previous value whenever the condition is false, which is exactly the level-sensitive hold behavior a latch needs (unlike a flip-flop, there is no clock here at all).',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>en</td><td>input</td><td>1</td><td>Enable — transparent when high</td></tr>
+<tr><td>d</td><td>input</td><td>1</td><td>Data in</td></tr>
+<tr><td>q</td><td>output</td><td>1</td><td>Follows d while en=1, holds otherwise</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input      en,
+  input      d,
+  output reg q
+);
+
+  // Your code here — no else branch: that's what makes it a latch.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg en, d;
+  wire q;
+  integer errors = 0;
+  top_module dut(.en(en), .d(d), .q(q));
+  task check;
+    input eq; input [127:0] label;
+    begin
+      if (q !== eq) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, eq, q);
+      end else $display("PASS %0s q=%b", label, q);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    en = 1; d = 1; #1; check(1, "transparent1");
+    en = 0; d = 0; #1; check(1, "hold-after-close");
+    en = 1; d = 0; #1; check(0, "transparent0");
+    en = 0; d = 1; #1; check(0, "hold-again");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['en', 'd', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'en', wave: '1.0.1.0.' },
+          { name: 'd', wave: '1.0...1.' },
+          { name: 'q', wave: '1...0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'johnson-counter',
+      title: '4-Bit Johnson Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter'],
+      category: 'Sequential Design',
+      lede: 'A twisted-ring counter that walks through 2N unique states by shifting in the inverted MSB each cycle — a different rhythm from a plain ring or binary counter.',
+      concept: '<b>Concept:</b> <code>q &lt;= {q[2:0], ~q[3]};</code> — shift left, feeding the complement of the outgoing MSB back into the LSB. Starting from 0000, this walks 0001, 0011, 0111, 1111, then back down 1110, 1100, 1000, before returning to 0000 — 8 unique states from a 4-bit register.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (clears to 0000)</td></tr>
+<tr><td>q</td><td>output</td><td>4</td><td>Johnson counter state</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input            clk,
+  input            rst,
+  output reg [3:0] q
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst;
+  wire [3:0] q;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .q(q));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input [3:0] eq; input [127:0] label;
+    begin
+      if (q !== eq) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, eq, q);
+      end else $display("PASS %0s q=%b", label, q);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; @(posedge clk); #1; check(4'b0000, "reset");
+    rst = 0;
+    @(posedge clk); #1; check(4'b0001, "s1");
+    @(posedge clk); #1; check(4'b0011, "s2");
+    @(posedge clk); #1; check(4'b0111, "s3");
+    @(posedge clk); #1; check(4'b1111, "s4");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '10........' },
+          { name: 'q[3:0]', wave: '2.3.4.5.6.', data: ['0000', '0001', '0011', '0111', '1111'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'ring-counter',
+      title: '4-Bit Ring Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter'],
+      category: 'Sequential Design',
+      lede: 'A single active bit walks around a 4-bit register, wrapping back to the start — the one-hot counter used to sequence states with zero decode logic.',
+      concept: '<b>Concept:</b> <code>q &lt;= {q[2:0], q[3]};</code> — a rotate-left, not a plain shift. The outgoing MSB feeds straight back into the LSB, which is what makes the single 1 circulate forever instead of shifting out and leaving the register at all-zeros.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (seeds q to 0001)</td></tr>
+<tr><td>q</td><td>output</td><td>4</td><td>One-hot walking bit</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input            clk,
+  input            rst,
+  output reg [3:0] q
+);
+
+  // Your code here — rotate left, wrapping the MSB back to the LSB.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst;
+  wire [3:0] q;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .q(q));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input [3:0] eq; input [127:0] label;
+    begin
+      if (q !== eq) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, eq, q);
+      end else $display("PASS %0s q=%b", label, q);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; @(posedge clk); #1; check(4'b0001, "reset");
+    rst = 0;
+    @(posedge clk); #1; check(4'b0010, "s1");
+    @(posedge clk); #1; check(4'b0100, "s2");
+    @(posedge clk); #1; check(4'b1000, "s3");
+    @(posedge clk); #1; check(4'b0001, "wrap");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '10........' },
+          { name: 'q[3:0]', wave: '2.3.4.5.6.', data: ['0001', '0010', '0100', '1000', '0001'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'saturating-counter',
+      title: '4-Bit Saturating Up/Down Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter'],
+      category: 'Sequential Design',
+      lede: 'A counter that clamps at its limits instead of wrapping — pushing further up at 15 or further down at 0 simply has no effect.',
+      concept: '<b>Concept:</b> Guard each direction with a boundary check before incrementing: <code>q &lt;= (q==15) ? q : q+1;</code> for up, and the mirror check for down. Saturation arithmetic like this shows up constantly in DSP and control logic where wraparound would be a real bug (a volume level "counter" should not wrap from max back to 0).',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>en</td><td>input</td><td>1</td><td>Count enable</td></tr>
+<tr><td>up_down</td><td>input</td><td>1</td><td>1 = count up, 0 = count down</td></tr>
+<tr><td>q</td><td>output</td><td>4</td><td>Counter value, clamped to 0-15</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input            clk,
+  input            rst,
+  input            en,
+  input            up_down,
+  output reg [3:0] q
+);
+
+  // Your code here — clamp at 15 going up, clamp at 0 going down.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, en, up_down;
+  wire [3:0] q;
+  integer errors = 0;
+  integer i;
+  top_module dut(.clk(clk), .rst(rst), .en(en), .up_down(up_down), .q(q));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input [3:0] eq; input [127:0] label;
+    begin
+      if (q !== eq) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%d got=%d", label, eq, q);
+      end else $display("PASS %0s q=%d", label, q);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; en = 0; up_down = 1; @(posedge clk); #1; check(0, "reset");
+    rst = 0; en = 1; up_down = 1;
+    for (i = 0; i < 15; i = i + 1) begin @(posedge clk); #1; end
+    check(15, "reached-max");
+    @(posedge clk); #1; check(15, "saturate-at-max");
+    @(posedge clk); #1; check(15, "still-saturated");
+    up_down = 0;
+    for (i = 0; i < 15; i = i + 1) begin @(posedge clk); #1; end
+    check(0, "reached-min");
+    @(posedge clk); #1; check(0, "saturate-at-min");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'en', 'up_down', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'up_down', wave: '1.....0.' },
+          { name: 'q[3:0]', wave: '2.3.4.5.', data: ['0', '14', '15', '15'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'watchdog-timer',
+      title: 'Watchdog Timer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'timer'],
+      category: 'Sequential Design',
+      lede: 'A timeout that fires unless it keeps getting "kicked" — the safety-net circuit that resets a hung system when its heartbeat stops arriving.',
+      concept: '<b>Concept:</b> A free-running counter resets to 0 every time <code>kick</code> pulses, and otherwise counts up until it hits its limit: <code>timeout = (cnt == LIMIT)</code>. As long as something kicks the dog before the counter reaches the limit, timeout never fires — miss too many kicks in a row, and it does.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>kick</td><td>input</td><td>1</td><td>Resets the timeout counter when pulsed</td></tr>
+<tr><td>timeout</td><td>output</td><td>1</td><td>1 once 4 cycles pass without a kick</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  kick,
+  output timeout
+);
+
+  // Your code here — a counter that resets on kick, and asserts timeout once it reaches 4.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, kick;
+  wire timeout;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .kick(kick), .timeout(timeout));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input et; input [127:0] label;
+    begin
+      if (timeout !== et) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, et, timeout);
+      end else $display("PASS %0s timeout=%b", label, timeout);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; kick = 0; @(posedge clk); #1; check(0, "reset");
+    rst = 0;
+    @(posedge clk); #1; check(0, "c1");
+    @(posedge clk); #1; check(0, "c2");
+    kick = 1; @(posedge clk); #1; check(0, "kicked-resets");
+    kick = 0;
+    @(posedge clk); #1; check(0, "c1-again");
+    @(posedge clk); #1; check(0, "c2-again");
+    @(posedge clk); #1; check(0, "c3-again");
+    @(posedge clk); #1; check(1, "timeout-fires");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'kick', 'timeout'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...............' },
+          { name: 'rst', wave: '10..............' },
+          { name: 'kick', wave: '0.....1.0.......' },
+          { name: 'timeout', wave: '0.............1.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'serial-parity-checker',
+      title: 'Streaming Frame Parity Checker',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'parity'],
+      category: 'Sequential Design',
+      lede: 'Accumulate the running parity of a serial bit stream one bit per clock, resetting cleanly at the start of every 8-bit frame.',
+      concept: '<b>Concept:</b> A 3-bit counter tracks position within the frame. The first bit of a new frame (<code>cnt==0</code>) loads the accumulator directly; every other bit XORs in. <code>frame_done</code> must be a <em>registered</em> flag driven by the counter\'s value from the previous cycle — computing it straight off the live counter fires one cycle too early, before the frame\'s last bit has even been captured.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>bit_in</td><td>input</td><td>1</td><td>Serial bit, one per clock</td></tr>
+<tr><td>parity_out</td><td>output</td><td>1</td><td>Running XOR parity of the current frame</td></tr>
+<tr><td>frame_done</td><td>output</td><td>1</td><td>1 for one cycle after the 8th bit of a frame</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input      clk,
+  input      rst,
+  input      bit_in,
+  output reg parity_out,
+  output reg frame_done
+);
+
+  // Your code here — 3-bit position counter; reset the accumulator at the start of each frame.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, bit_in;
+  wire parity_out, frame_done;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .bit_in(bit_in), .parity_out(parity_out), .frame_done(frame_done));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input ep; input ed; input [127:0] label;
+    begin
+      if (parity_out !== ep || frame_done !== ed) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected parity=%b done=%b got parity=%b done=%b", label, ep, ed, parity_out, frame_done);
+      end else $display("PASS %0s parity=%b done=%b", label, parity_out, frame_done);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; bit_in = 0; @(posedge clk); #1; check(0, 0, "reset");
+    rst = 0;
+    bit_in = 1; @(posedge clk); #1; check(1, 0, "b1");
+    bit_in = 0; @(posedge clk); #1; check(1, 0, "b2");
+    bit_in = 1; @(posedge clk); #1; check(0, 0, "b3");
+    bit_in = 0; @(posedge clk); #1; check(0, 0, "b4");
+    bit_in = 0; @(posedge clk); #1; check(0, 0, "b5");
+    bit_in = 0; @(posedge clk); #1; check(0, 0, "b6");
+    bit_in = 0; @(posedge clk); #1; check(0, 0, "b7");
+    bit_in = 1; @(posedge clk); #1; check(1, 1, "b8-frame-done");
+    bit_in = 1; @(posedge clk); #1; check(1, 0, "new-frame-b1");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'bit_in', 'parity_out', 'frame_done'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...............' },
+          { name: 'bit_in', wave: '2.3.4.5.6.7.8.9.', data: ['1', '0', '1', '0', '0', '0', '0', '1'] },
+          { name: 'parity_out', wave: '2.3.4.5.6.7.8.9.', data: ['1', '1', '0', '0', '0', '0', '0', '1'] },
+          { name: 'frame_done', wave: '0.............1.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'programmable-clock-divider',
+      title: 'Programmable Clock Divider',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'clock'],
+      category: 'Sequential Design',
+      lede: 'A generalized version of divide-by-3: the division amount is set by a runtime input instead of being hardwired into the design.',
+      concept: '<b>Concept:</b> <code>cnt</code> wraps at <code>div-1</code> instead of a fixed constant: <code>if (cnt &gt;= div-1) cnt&lt;=0; else cnt&lt;=cnt+1;</code>. The <code>-1</code> matters — comparing against <code>div</code> instead gives a period one cycle longer than requested, the exact off-by-one that divide-by-3 warns about generalized to any N.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Input clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>div</td><td>input</td><td>4</td><td>Divide value (period in input clocks), &ge;1</td></tr>
+<tr><td>pulse_out</td><td>output</td><td>1</td><td>High for 1 cycle out of every div cycles</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [3:0] div,
+  output pulse_out
+);
+
+  // Your code here — counter wraps at div-1, not a fixed constant.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst;
+  reg [3:0] div;
+  wire pulse_out;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .div(div), .pulse_out(pulse_out));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input ep; input [127:0] label;
+    begin
+      if (pulse_out !== ep) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, ep, pulse_out);
+      end else $display("PASS %0s pulse_out=%b", label, pulse_out);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; div = 4'd4; @(posedge clk); #1; check(1, "reset-cnt0");
+    rst = 0;
+    @(posedge clk); #1; check(0, "c1");
+    @(posedge clk); #1; check(0, "c2");
+    @(posedge clk); #1; check(0, "c3");
+    @(posedge clk); #1; check(1, "wrap-div4");
+    rst = 1; @(posedge clk); #1; rst = 0; div = 4'd2;
+    @(posedge clk); #1; check(0, "div2-c1");
+    @(posedge clk); #1; check(1, "div2-wrap");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'div', 'pulse_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '10........' },
+          { name: 'pulse_out', wave: '1.0...1.0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'stack-pointer-updown',
+      title: 'Push/Pop Stack Pointer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'pointer'],
+      category: 'Sequential Design',
+      lede: 'A 4-bit stack pointer that moves up on push and down on pop, refusing to overflow past 15 or underflow past 0.',
+      concept: '<b>Concept:</b> Guard both operations against their boundary: <code>if (push &amp;&amp; !full) sp&lt;=sp+1; else if (pop &amp;&amp; !empty) sp&lt;=sp-1;</code>. Without those guards, a push at full (or pop at empty) silently wraps the pointer around — corrupting whatever memory the pointer indexes into.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>push</td><td>input</td><td>1</td><td>Increment sp (ignored if full)</td></tr>
+<tr><td>pop</td><td>input</td><td>1</td><td>Decrement sp (ignored if empty)</td></tr>
+<tr><td>sp</td><td>output</td><td>4</td><td>Stack pointer, 0-15</td></tr>
+<tr><td>full</td><td>output</td><td>1</td><td>1 when sp == 15</td></tr>
+<tr><td>empty</td><td>output</td><td>1</td><td>1 when sp == 0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input            clk,
+  input            rst,
+  input            push,
+  input            pop,
+  output reg [3:0] sp,
+  output           full,
+  output           empty
+);
+
+  // Your code here
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, push, pop;
+  wire [3:0] sp;
+  wire full, empty;
+  integer errors = 0;
+  integer i;
+  top_module dut(.clk(clk), .rst(rst), .push(push), .pop(pop), .sp(sp), .full(full), .empty(empty));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input [3:0] es; input ef; input ee; input [127:0] label;
+    begin
+      if (sp !== es || full !== ef || empty !== ee) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected sp=%d full=%b empty=%b got sp=%d full=%b empty=%b", label, es, ef, ee, sp, full, empty);
+      end else $display("PASS %0s sp=%d full=%b empty=%b", label, sp, full, empty);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; push = 0; pop = 0; @(posedge clk); #1; check(0, 0, 1, "reset");
+    rst = 0; push = 1;
+    for (i = 0; i < 15; i = i + 1) begin @(posedge clk); #1; end
+    check(15, 1, 0, "pushed-to-full");
+    @(posedge clk); #1; check(15, 1, 0, "push-blocked-at-full");
+    push = 0; pop = 1;
+    for (i = 0; i < 15; i = i + 1) begin @(posedge clk); #1; end
+    check(0, 0, 1, "popped-to-empty");
+    @(posedge clk); #1; check(0, 0, 1, "pop-blocked-at-empty");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'push', 'pop', 'sp'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'push', wave: '0.1...0.' },
+          { name: 'pop', wave: '0.....1.' },
+          { name: 'sp[3:0]', wave: '2.3.4.5.', data: ['0', '1', '2', '1'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
