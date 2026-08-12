@@ -184,10 +184,10 @@ endmodule
       waveSignals: ['a', 'b', 'sel', 'out'],
       wavedrom: {
         signal: [
-          { name: 'a', wave: '0.1...' },
-          { name: 'b', wave: '1.0...' },
-          { name: 'sel', wave: '0.1.0.1' },
-          { name: 'out', wave: '0.0.1.0' }
+          { name: 'a', wave: '0...1...' },
+          { name: 'b', wave: '1...0...' },
+          { name: 'sel', wave: '0.1.0.1.' },
+          { name: 'out', wave: '0.1.1.0.' }
         ],
         config: { hscale: 2 }
       }
@@ -249,11 +249,11 @@ endmodule
       waveSignals: ['a', 'b', 'cin', 'sum', 'cout'],
       wavedrom: {
         signal: [
-          { name: 'a', wave: '0.1.0.1' },
-          { name: 'b', wave: '0.0.1.1' },
+          { name: 'a', wave: '00001111' },
+          { name: 'b', wave: '00110011' },
           { name: 'cin', wave: '01010101' },
-          { name: 'sum', wave: '0.1.1.0.1.0.0.1' },
-          { name: 'cout', wave: '0...1.1.1' }
+          { name: 'sum', wave: '01101001' },
+          { name: 'cout', wave: '00010111' }
         ],
         config: { hscale: 1 }
       }
@@ -398,9 +398,9 @@ endmodule
       waveSignals: ['in', 'valid', 'out'],
       wavedrom: {
         signal: [
-          { name: 'in[3:0]', wave: '2.3.4.5.6', data: ['0001', '0010', '0100', '1000', '1111'] },
-          { name: 'valid', wave: '0.1......' },
-          { name: 'out[1:0]', wave: 'x.2.3.4.5', data: ['0', '1', '2', '3'] }
+          { name: 'in[3:0]', wave: '2.3.4.5.6.', data: ['0000', '0001', '0010', '0100', '1000'] },
+          { name: 'valid', wave: '0.1.......' },
+          { name: 'out[1:0]', wave: 'x.2.3.4.5.', data: ['0', '1', '2', '3'] }
         ],
         config: { hscale: 1 }
       }
@@ -466,10 +466,10 @@ endmodule
       waveSignals: ['clk', 'rst_n', 'd', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p........' },
-          { name: 'rst_n', wave: '0.1......' },
-          { name: 'd', wave: 'x.0.1.0..' },
-          { name: 'q', wave: 'x0...1.0.' }
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst_n', wave: '0.1.....0.' },
+          { name: 'd', wave: '0.1.0.1...' },
+          { name: 'q', wave: '0.1.0.1.0.' }
         ],
         config: { hscale: 1 }
       }
@@ -1072,10 +1072,10 @@ endmodule
       waveSignals: ['clk', 'rst', 'up_down', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.......' },
-          { name: 'rst', wave: '10......' },
-          { name: 'up_down', wave: '1.....0.' },
-          { name: 'q[3:0]', wave: '2.3.4.5.', data: ['0', '1', '2', '1'] }
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '10........' },
+          { name: 'up_down', wave: '1.....0...' },
+          { name: 'q[3:0]', wave: '2.3.4.5.6.', data: ['0', '1', '2', '1', '0'] }
         ],
         config: { hscale: 1 }
       }
@@ -1142,9 +1142,9 @@ endmodule
       waveSignals: ['clk', 'rst', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.........' },
-          { name: 'rst', wave: '10........' },
-          { name: 'q[2:0]', wave: '2.3.4.5.6.', data: ['0', '3', '4', '5', '0'] }
+          { name: 'clk', wave: 'p.............' },
+          { name: 'rst', wave: '10............' },
+          { name: 'q[2:0]', wave: '2.3.4.5.6.7.8.', data: ['0', '1', '2', '3', '4', '5', '0'] }
         ],
         config: { hscale: 1 }
       }
@@ -1480,9 +1480,9 @@ endmodule
       waveSignals: ['in', 'valid', 'out'],
       wavedrom: {
         signal: [
-          { name: 'in[7:0]', wave: '2.3.4.', data: ['00000001', '10000000', '00011000'] },
-          { name: 'valid', wave: '1.......' },
-          { name: 'out[2:0]', wave: '2.3.4.', data: ['0', '7', '4'] }
+          { name: 'in[7:0]', wave: '2.3.4.5.', data: ['00000000', '00000001', '10000000', '00011000'] },
+          { name: 'valid', wave: '0.1.....' },
+          { name: 'out[2:0]', wave: 'x.2.3.4.', data: ['0', '7', '4'] }
         ],
         config: { hscale: 1 }
       }
@@ -1617,7 +1617,7 @@ endmodule
       waveSignals: ['data', 'shamt', 'out'],
       wavedrom: {
         signal: [
-          { name: 'data[7:0]', wave: '2...', data: ['10110001'] },
+          { name: 'data[7:0]', wave: '2.....', data: ['10110001'] },
           { name: 'shamt[2:0]', wave: '2.3.4.', data: ['0', '1', '3'] },
           { name: 'out[7:0]', wave: '2.3.4.', data: ['10110001', '01100011', '10001101'] }
         ],
@@ -1963,7 +1963,7 @@ endmodule
       waveSignals: ['clk', 'rst', 'mode', 'sin', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.........' },
+          { name: 'clk', wave: 'p.......' },
           { name: 'mode[1:0]', wave: '2.3.4.5.', data: ['11', '01', '10', '00'] },
           { name: 'q[3:0]', wave: '2.3.4.5.', data: ['1010', '0101', '1010', '1010'] }
         ],
@@ -2313,8 +2313,8 @@ endmodule
       waveSignals: ['clk', 'rst', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p........' },
-          { name: 'rst', wave: '10.......' },
+          { name: 'clk', wave: 'p..........' },
+          { name: 'rst', wave: '10.........' },
           { name: 'q[3:0]', wave: 'x.2.3.4.5.6', data: ['0', '1', '2', '3', '4'] }
         ],
         config: { hscale: 1 }
@@ -2385,9 +2385,10 @@ endmodule
       waveSignals: ['clk', 'rst', 'din', 'out'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p........' },
-          { name: 'din', wave: '0..1..0.1' },
-          { name: 'out', wave: '0...10..10' }
+          { name: 'clk', wave: 'p...........' },
+          { name: 'rst', wave: '1.0.........' },
+          { name: 'din', wave: '0...1...0.1.' },
+          { name: 'out', wave: '0...1.0...1.' }
         ],
         config: { hscale: 1 }
       }
@@ -2454,9 +2455,10 @@ endmodule
       waveSignals: ['clk', 'rst', 't', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p......' },
-          { name: 't', wave: '0.1.0.1' },
-          { name: 'q', wave: '0.1.0..1' }
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '1.0.......' },
+          { name: 't', wave: '0.1...0.1.' },
+          { name: 'q', wave: '0.1.0...1.' }
         ],
         config: { hscale: 1 }
       }
