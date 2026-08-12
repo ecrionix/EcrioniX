@@ -4276,6 +4276,80 @@ endmodule
       }
     },
     {
+      slug: 'debounce-circuit',
+      title: 'Button Debouncer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'debounce'],
+      category: 'Sequential Design',
+      lede: 'Filter out mechanical switch bounce: only pass a button input through once it has held the same value for 3 consecutive clock cycles.',
+      concept: '<b>Concept:</b> Track a candidate value and a run-length counter. Any time the input disagrees with the current candidate, immediately adopt it as the new candidate and restart the counter at 1 (that sample itself is the first match). Only once the counter reaches the stability threshold does the committed output actually update — a glitch that reverses before reaching the threshold never reaches the output at all.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>btn_in</td><td>input</td><td>1</td><td>Raw, potentially bouncing button input</td></tr>
+<tr><td>btn_out</td><td>output</td><td>1</td><td>Debounced output, updates after 3 stable cycles</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input      clk,
+  input      rst,
+  input      btn_in,
+  output reg btn_out
+);
+
+  // Your code here — track a candidate value + a run-length counter (any mismatch resets the count to 1, not 0).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, btn_in;
+  wire btn_out;
+  integer errors = 0;
+  top_module dut(.clk(clk), .rst(rst), .btn_in(btn_in), .btn_out(btn_out));
+  initial clk = 0;
+  always #5 clk = ~clk;
+  task check;
+    input eb; input [127:0] label;
+    begin
+      if (btn_out !== eb) begin
+        errors = errors + 1;
+        $display("FAIL %0s expected=%b got=%b", label, eb, btn_out);
+      end else $display("PASS %0s btn_out=%b", label, btn_out);
+    end
+  endtask
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb);
+    rst = 1; btn_in = 0; @(posedge clk); #1; check(0, "reset");
+    rst = 0;
+    btn_in = 1; @(posedge clk); #1; check(0, "glitch1-c1");
+    btn_in = 0; @(posedge clk); #1; check(0, "glitch-back-to-0");
+    btn_in = 1; @(posedge clk); #1; check(0, "stable1-c1");
+    btn_in = 1; @(posedge clk); #1; check(0, "stable1-c2");
+    btn_in = 1; @(posedge clk); #1; check(1, "stable1-c3-commits");
+    btn_in = 1; @(posedge clk); #1; check(1, "stays-1");
+    btn_in = 0; @(posedge clk); #1; check(1, "drop-c1");
+    btn_in = 0; @(posedge clk); #1; check(1, "drop-c2");
+    btn_in = 0; @(posedge clk); #1; check(0, "drop-c3-commits");
+    if (errors == 0) $display("ALL_TESTS_PASSED");
+    else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'btn_in', 'btn_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...................' },
+          { name: 'rst', wave: '1.0.................' },
+          { name: 'btn_in', wave: '0.1.0.1.......0.....' },
+          { name: 'btn_out', wave: '0.........1.......0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
