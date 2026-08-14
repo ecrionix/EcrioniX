@@ -6353,6 +6353,617 @@ endmodule
       }
     },
     {
+      slug: 'gearbox-narrow-to-wide',
+      title: '4-to-8 Bit Gearbox',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'datapath'],
+      category: 'Sequential Design',
+      lede: 'Pack two 4-bit nibbles arriving one per cycle into a single 8-bit word, pulsing valid only once the pair is complete — the narrow-to-wide half of a SerDes gearbox.',
+      concept: '<b>Concept:</b> A gearbox bridges two datapaths running at different widths (and therefore different word rates) without dropping data. Here, the first nibble is latched and held; when the second nibble arrives, it combines with the held nibble into a full byte, <code>{first_nibble, in_data}</code>, and <code>out_valid</code> pulses for exactly the one cycle the byte is ready — first nibble becomes the upper bits, since it arrived first.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>in_valid</td><td>input</td><td>1</td><td>1 when in_data carries a new nibble</td></tr>
+<tr><td>in_data</td><td>input</td><td>4</td><td>Incoming nibble</td></tr>
+<tr><td>out_valid</td><td>output</td><td>1</td><td>Pulses for 1 cycle when a full byte is assembled</td></tr>
+<tr><td>out_data</td><td>output</td><td>8</td><td>Assembled byte: first nibble in bits[7:4], second in bits[3:0]</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  in_valid,
+  input  [3:0] in_data,
+  output reg out_valid,
+  output reg [7:0] out_data
+);
+
+  // Your code here — latch the first nibble; on the second, pack {first, second} and pulse out_valid.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,in_valid; reg [3:0] in_data; wire out_valid; wire [7:0] out_data; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.in_valid(in_valid),.in_data(in_data),.out_valid(out_valid),.out_data(out_data));
+  initial clk=0; always #5 clk=~clk;
+  task checkv; input ev; input [127:0] label; begin
+    if(out_valid!==ev) begin errors=errors+1; $display("FAIL %0s expected valid=%b got=%b",label,ev,out_valid); end
+    else $display("PASS %0s valid=%b",label,out_valid);
+  end endtask
+  task checkd; input [7:0] ed; input [127:0] label; begin
+    if(out_data!==ed) begin errors=errors+1; $display("FAIL %0s expected data=%h got=%h",label,ed,out_data); end
+    else $display("PASS %0s data=%h",label,out_data);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;in_valid=0; @(posedge clk); #1; checkv(0,"reset");
+    rst=0;
+    in_valid=1;in_data=4'hA; @(posedge clk); #1; checkv(0,"first-nibble-no-output");
+    in_valid=1;in_data=4'h5; @(posedge clk); #1; checkv(1,"byte-assembled"); checkd(8'hA5,"byte-value");
+    in_valid=0; @(posedge clk); #1; checkv(0,"deasserts");
+    in_valid=1;in_data=4'h3; @(posedge clk); #1; checkv(0,"third-nibble-first-of-next-pair");
+    in_valid=1;in_data=4'hC; @(posedge clk); #1; checkv(1,"second-byte-assembled"); checkd(8'h3C,"second-byte-value");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'in_valid', 'in_data', 'out_valid', 'out_data'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'in_data[3:0]', wave: '2.3.....', data: ['A', '5'] },
+          { name: 'out_valid', wave: '0..1.0..' },
+          { name: 'out_data[7:0]', wave: '2..3....', data: ['xx', 'A5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'gearbox-wide-to-narrow',
+      title: '8-to-4 Bit Gearbox',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'datapath'],
+      category: 'Sequential Design',
+      lede: 'Split an 8-bit word into two 4-bit nibbles, emitting the high nibble one cycle and the low nibble the next — the wide-to-narrow half of a SerDes gearbox.',
+      concept: '<b>Concept:</b> The mirror image of the narrow-to-wide gearbox: one wide word must fan out over two narrow-word cycles. On the cycle a byte arrives, emit the high nibble (<code>in_data[7:4]</code>) immediately and remember the low nibble; on the very next cycle, emit the held low nibble (<code>hold[3:0]</code>) with <code>out_valid</code> pulsing both times.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>in_valid</td><td>input</td><td>1</td><td>1 when in_data carries a new byte</td></tr>
+<tr><td>in_data</td><td>input</td><td>8</td><td>Incoming byte</td></tr>
+<tr><td>out_valid</td><td>output</td><td>1</td><td>Pulses for 1 cycle per emitted nibble (2 pulses per byte)</td></tr>
+<tr><td>out_data</td><td>output</td><td>4</td><td>High nibble first, then low nibble</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  in_valid,
+  input  [7:0] in_data,
+  output reg out_valid,
+  output reg [3:0] out_data
+);
+
+  // Your code here — emit in_data[7:4] the cycle a byte arrives, then in_data[3:0] the cycle after.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,in_valid; reg [7:0] in_data; wire out_valid; wire [3:0] out_data; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.in_valid(in_valid),.in_data(in_data),.out_valid(out_valid),.out_data(out_data));
+  initial clk=0; always #5 clk=~clk;
+  task checkv; input ev; input [127:0] label; begin
+    if(out_valid!==ev) begin errors=errors+1; $display("FAIL %0s expected valid=%b got=%b",label,ev,out_valid); end
+    else $display("PASS %0s valid=%b",label,out_valid);
+  end endtask
+  task checkd; input [3:0] ed; input [127:0] label; begin
+    if(out_data!==ed) begin errors=errors+1; $display("FAIL %0s expected data=%h got=%h",label,ed,out_data); end
+    else $display("PASS %0s data=%h",label,out_data);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;in_valid=0; @(posedge clk); #1; checkv(0,"reset");
+    rst=0;
+    in_valid=1;in_data=8'hA5; @(posedge clk); #1; checkv(1,"high-nibble"); checkd(4'hA,"high-nibble-value");
+    in_valid=0; @(posedge clk); #1; checkv(1,"low-nibble"); checkd(4'h5,"low-nibble-value");
+    @(posedge clk); #1; checkv(0,"idle-after");
+    in_valid=1;in_data=8'h3C; @(posedge clk); #1; checkv(1,"high-nibble2"); checkd(4'h3,"high-nibble-value2");
+    in_valid=0; @(posedge clk); #1; checkv(1,"low-nibble2"); checkd(4'hC,"low-nibble-value2");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'in_valid', 'in_data', 'out_valid', 'out_data'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'in_data[7:0]', wave: '2.......', data: ['A5'] },
+          { name: 'out_valid', wave: '0.11.0..' },
+          { name: 'out_data[3:0]', wave: '2.3.4...', data: ['xx', 'A', '5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'crc4-generator',
+      title: 'CRC-4 Generator',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['combinational', 'protocol'],
+      category: 'Combinational Design',
+      lede: 'Compute the 4-bit CRC remainder of an 8-bit message using the CRC-4 (poly x⁴+x+1) bit-serial algorithm, entirely in combinational logic.',
+      concept: '<b>Concept:</b> A CRC is the remainder of polynomial division. The classic bit-serial method processes one message bit at a time, MSB first: feed back <code>fb = crc[3] ^ bit</code>, shift the register left, and if <code>fb</code> was set, XOR in the generator polynomial\'s low bits (<code>4\'b0011</code> for x⁴+x+1). Unrolling this loop over all 8 input bits in an <code>always @*</code> block (or a function) gives a pure-combinational CRC generator — get the polynomial constant wrong and every non-trivial input produces a silently corrupted checksum.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>data</td><td>input</td><td>8</td><td>Message byte</td></tr>
+<tr><td>crc</td><td>output</td><td>4</td><td>CRC-4 remainder (poly x⁴+x+1), MSB-first, zero-initialized</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] data,
+  output [3:0] crc
+);
+
+  // Your code here — bit-serial CRC-4 (poly x^4+x+1): fb=crc[3]^bit; crc<<=1; if(fb) crc^=4'b0011.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] data; wire [3:0] crc; integer errors=0;
+  top_module dut(.data(data), .crc(crc));
+  task check; input [7:0] d; input [3:0] ec; begin
+    data=d;#1;
+    if(crc!==ec) begin errors=errors+1; $display("FAIL data=%h expected crc=%h got=%h",d,ec,crc); end
+    else $display("PASS data=%h crc=%h",d,crc);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'h00, 4'h0);
+    check(8'hFF, 4'h4);
+    check(8'hA5, 4'hB);
+    check(8'h3C, 4'h8);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['data', 'crc'],
+      wavedrom: {
+        signal: [
+          { name: 'data[7:0]', wave: '2.3.4.5.', data: ['00', 'FF', 'A5', '3C'] },
+          { name: 'crc[3:0]', wave: '2.3.4.5.', data: ['0', '4', 'B', '8'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'crc4-checker',
+      title: 'CRC-4 Checker',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['combinational', 'protocol'],
+      category: 'Combinational Design',
+      lede: 'Recompute the CRC-4 remainder of a received message and compare it against the appended CRC field to flag transmission errors.',
+      concept: '<b>Concept:</b> A receiver validates a frame by running the exact same CRC-4 algorithm the sender used and comparing results: <code>error = (crc_in != compute_crc(data))</code>. Getting the comparison backwards — flagging <code>error</code> when the CRCs <em>match</em> — silently accepts every corrupted frame and rejects every good one, which is far more dangerous than no checking at all.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>data</td><td>input</td><td>8</td><td>Received message byte</td></tr>
+<tr><td>crc_in</td><td>input</td><td>4</td><td>Received CRC-4 field</td></tr>
+<tr><td>error</td><td>output</td><td>1</td><td>1 when the recomputed CRC doesn't match crc_in</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] data,
+  input  [3:0] crc_in,
+  output error
+);
+
+  // Your code here — recompute CRC-4 (poly x^4+x+1) over data, error = (crc_in != recomputed).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] data; reg [3:0] crc_in; wire error; integer errors=0;
+  top_module dut(.data(data), .crc_in(crc_in), .error(error));
+  task check; input [7:0] d; input [3:0] c; input ee; begin
+    data=d;crc_in=c;#1;
+    if(error!==ee) begin errors=errors+1; $display("FAIL data=%h crc_in=%h expected error=%b got=%b",d,c,ee,error); end
+    else $display("PASS data=%h crc_in=%h error=%b",d,c,error);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'h00, 4'h0, 0);
+    check(8'hFF, 4'h4, 0);
+    check(8'hA5, 4'hB, 0);
+    check(8'hA5, 4'hC, 1);
+    check(8'h3C, 4'h0, 1);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['data', 'crc_in', 'error'],
+      wavedrom: {
+        signal: [
+          { name: 'data[7:0]', wave: '2.3.4...', data: ['A5', 'A5', '3C'] },
+          { name: 'crc_in[3:0]', wave: '2.3.4...', data: ['B', 'C', '0'] },
+          { name: 'error', wave: '0.1.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'additive-scrambler',
+      title: 'Additive LFSR Scrambler',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'lfsr', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Whiten a data stream by XORing it with a free-running LFSR keystream — the same circuit that descrambles it, since XOR is its own inverse.',
+      concept: '<b>Concept:</b> Line codes avoid long runs of identical bits by scrambling data with a pseudo-random keystream from a free-running 7-bit LFSR (<code>fb = lfsr[6]^lfsr[0]</code>, shifting every cycle regardless of the data). The output is simply <code>data_in ^ lfsr[6]</code>. Because XOR is its own inverse, feeding the scrambled output back through an identically-seeded LFSR recovers the original data — descrambling needs no separate circuit.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (seeds LFSR to 7'h7F)</td></tr>
+<tr><td>data_in</td><td>input</td><td>1</td><td>Raw data bit</td></tr>
+<tr><td>scrambled_out</td><td>output</td><td>1</td><td>data_in XORed with the current LFSR keystream bit</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  data_in,
+  output scrambled_out
+);
+
+  // Your code here — 7-bit LFSR, seed 7'h7F, fb=lfsr[6]^lfsr[0], free-running; scrambled_out = data_in ^ lfsr[6].
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,data_in; wire scrambled_out; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.data_in(data_in),.scrambled_out(scrambled_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ed; input eo; input [127:0] label; begin
+    data_in=ed;#1;
+    if(scrambled_out!==eo) begin errors=errors+1; $display("FAIL %0s data_in=%b expected=%b got=%b",label,ed,eo,scrambled_out); end
+    else $display("PASS %0s data_in=%b out=%b",label,ed,scrambled_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; @(posedge clk); check(0,1,"t0");
+    rst=0;
+    @(posedge clk); check(1,0,"t1");
+    @(posedge clk); check(0,1,"t2");
+    @(posedge clk); check(1,0,"t3");
+    @(posedge clk); check(1,0,"t4");
+    @(posedge clk); check(0,1,"t5");
+    @(posedge clk); check(1,0,"t6");
+    @(posedge clk); check(0,0,"t7");
+    @(posedge clk); check(1,0,"t8");
+    @(posedge clk); check(1,1,"t9");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'data_in', 'scrambled_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.....' },
+          { name: 'data_in', wave: '2.3.4.', data: ['0', '1', '0'] },
+          { name: 'scrambled_out', wave: '2.3.4.', data: ['1', '0', '1'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'run-length-bit-stuffer',
+      title: 'Run-Length Bit Stuffer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Flag when a stuff bit must be inserted after five consecutive 1s in a serial stream — the core rule behind CAN bus bit stuffing.',
+      concept: '<b>Concept:</b> Protocols like CAN insert a complementary bit after every 5 identical bits in a row so receivers never lose bit-sync during long runs. Track a running count of consecutive 1s; the moment it would hit 5 (<code>run==4</code> and the current bit is also 1), raise <code>stuff_needed</code> for one cycle and reset the run — the inserted 0 breaks the streak, so counting must restart from zero rather than continuing.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock (one stream bit per cycle)</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>bit_in</td><td>input</td><td>1</td><td>Next bit of the outgoing stream</td></tr>
+<tr><td>stuff_needed</td><td>output</td><td>1</td><td>Pulses for 1 cycle right after the 5th consecutive 1</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  bit_in,
+  output reg stuff_needed
+);
+
+  // Your code here — count consecutive 1s; pulse stuff_needed and reset the count after the 5th.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,bit_in; wire stuff_needed; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.bit_in(bit_in),.stuff_needed(stuff_needed));
+  initial clk=0; always #5 clk=~clk;
+  task check; input es; input [127:0] label; begin
+    if(stuff_needed!==es) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,es,stuff_needed); end
+    else $display("PASS %0s stuff_needed=%b",label,stuff_needed);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;bit_in=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;bit_in=1;
+    @(posedge clk); #1; check(0,"run1");
+    @(posedge clk); #1; check(0,"run2");
+    @(posedge clk); #1; check(0,"run3");
+    @(posedge clk); #1; check(0,"run4");
+    @(posedge clk); #1; check(1,"stuff-after-5-ones");
+    @(posedge clk); #1; check(0,"run-reset-after-stuff");
+    bit_in=0;
+    @(posedge clk); #1; check(0,"zero-breaks-run");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'bit_in', 'stuff_needed'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'bit_in', wave: '01......' },
+          { name: 'stuff_needed', wave: '0....10.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'axi-stream-handshake-counter',
+      title: 'AXI-Stream Handshake Counter',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Count how many beats have actually transferred across a valid/ready handshake — a transfer only happens when both sides agree, not whenever the source merely asserts valid.',
+      concept: '<b>Concept:</b> In a ready/valid streaming interface, data only moves on a cycle where <em>both</em> <code>valid</code> and <code>ready</code> are high simultaneously; <code>valid</code> alone just means the source has data waiting, and can sit high for many stalled cycles. Counting on <code>valid</code> without gating on <code>ready</code> overcounts every stall as if it were a real transfer.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (count=0)</td></tr>
+<tr><td>valid</td><td>input</td><td>1</td><td>Source has data ready</td></tr>
+<tr><td>ready</td><td>input</td><td>1</td><td>Sink can accept data this cycle</td></tr>
+<tr><td>count</td><td>output</td><td>8</td><td>Number of completed valid&amp;ready transfers</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  valid,
+  input  ready,
+  output reg [7:0] count
+);
+
+  // Your code here — increment count only on cycles where valid AND ready are both high.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,valid,ready; wire [7:0] count; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.valid(valid),.ready(ready),.count(count));
+  initial clk=0; always #5 clk=~clk;
+  task check; input [7:0] ec; input [127:0] label; begin
+    if(count!==ec) begin errors=errors+1; $display("FAIL %0s expected=%d got=%d",label,ec,count); end
+    else $display("PASS %0s count=%d",label,count);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;valid=0;ready=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    valid=1;ready=0; @(posedge clk); #1; check(0,"valid-no-ready-no-count");
+    valid=1;ready=1; @(posedge clk); #1; check(1,"transfer1");
+    valid=0;ready=1; @(posedge clk); #1; check(1,"no-valid-no-count");
+    valid=1;ready=1; @(posedge clk); #1; check(2,"transfer2");
+    valid=1;ready=1; @(posedge clk); #1; check(3,"transfer3");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'valid', 'ready', 'count'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'valid', wave: '01......' },
+          { name: 'ready', wave: '0.1.0.1.' },
+          { name: 'count[7:0]', wave: '2...3.4.', data: ['0', '1', '2'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'byte-sync-detector',
+      title: 'Byte Sync Detector',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Lock onto a known sync byte in an incoming byte stream and stay locked afterward — the framing step every byte-oriented receiver needs before it can trust word boundaries.',
+      concept: '<b>Concept:</b> Once a framer spots the sync pattern (<code>8\'hA5</code> here), it should latch <code>locked</code> and hold it — later bytes that don\'t happen to match shouldn\'t drop the lock, since a real receiver only re-syncs on an explicit resync condition (like reset), not on every non-matching byte. Making the assignment unconditional instead of sticky (<code>locked &lt;= match</code> instead of <code>if(match) locked&lt;=1</code>) causes spurious loss of lock the very next cycle.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (locked=0)</td></tr>
+<tr><td>byte_in</td><td>input</td><td>8</td><td>Next byte from the stream</td></tr>
+<tr><td>byte_valid</td><td>input</td><td>1</td><td>1 when byte_in is valid this cycle</td></tr>
+<tr><td>locked</td><td>output</td><td>1</td><td>1 once the sync byte (8'hA5) has been seen; stays 1</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [7:0] byte_in,
+  input  byte_valid,
+  output reg locked
+);
+
+  // Your code here — set locked=1 the first time byte_in==8'hA5 while byte_valid; stay locked afterward.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,byte_valid; reg [7:0] byte_in; wire locked; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.byte_in(byte_in),.byte_valid(byte_valid),.locked(locked));
+  initial clk=0; always #5 clk=~clk;
+  task check; input el; input [127:0] label; begin
+    if(locked!==el) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,el,locked); end
+    else $display("PASS %0s locked=%b",label,locked);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;byte_valid=0;byte_in=8'h00; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    byte_valid=1;byte_in=8'h11; @(posedge clk); #1; check(0,"not-sync-byte");
+    byte_valid=1;byte_in=8'hA5; @(posedge clk); #1; check(1,"sync-byte-locks");
+    byte_valid=1;byte_in=8'h22; @(posedge clk); #1; check(1,"stays-locked-on-other-byte");
+    byte_valid=0;byte_in=8'h00; @(posedge clk); #1; check(1,"stays-locked-no-valid");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'byte_valid', 'byte_in', 'locked'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'byte_in[7:0]', wave: '2.3.4...', data: ['11', 'A5', '22'] },
+          { name: 'locked', wave: '0..1....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'endianness-swapper',
+      title: '16-Bit Endianness Swapper',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'datapath'],
+      category: 'Combinational Design',
+      lede: 'Swap the byte order of a 16-bit word — the wiring fix needed whenever two datapaths disagree on big-endian vs little-endian byte order.',
+      concept: '<b>Concept:</b> Endianness swapping is pure rewiring, not arithmetic: move the low byte to the high position and vice versa with <code>{word_in[7:0], word_in[15:8]}</code>. It\'s an easy copy-paste trap to instead write the bytes back in their original order (<code>{word_in[15:8], word_in[7:0]}</code>), which silently compiles and simulates as a no-op.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>word_in</td><td>input</td><td>16</td><td>Input word</td></tr>
+<tr><td>word_out</td><td>output</td><td>16</td><td>word_in with its two bytes swapped</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [15:0] word_in,
+  output [15:0] word_out
+);
+
+  // Your code here — word_out = {low_byte, high_byte}.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [15:0] word_in; wire [15:0] word_out; integer errors=0;
+  top_module dut(.word_in(word_in), .word_out(word_out));
+  task check; input [15:0] w; input [15:0] ew; begin
+    word_in=w;#1;
+    if(word_out!==ew) begin errors=errors+1; $display("FAIL word_in=%h expected=%h got=%h",w,ew,word_out); end
+    else $display("PASS word_in=%h word_out=%h",w,word_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(16'h1234, 16'h3412);
+    check(16'hABCD, 16'hCDAB);
+    check(16'h00FF, 16'hFF00);
+    check(16'h0000, 16'h0000);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['word_in', 'word_out'],
+      wavedrom: {
+        signal: [
+          { name: 'word_in[15:0]', wave: '2.3.4.5.', data: ['1234', 'ABCD', '00FF', '0000'] },
+          { name: 'word_out[15:0]', wave: '2.3.4.5.', data: ['3412', 'CDAB', 'FF00', '0000'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'packet-length-counter',
+      title: 'Packet Length Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Count how many cycles a frame stayed active and latch that length the moment the frame ends — resetting cleanly so the next frame\'s length isn\'t polluted by the last one.',
+      concept: '<b>Concept:</b> While <code>frame_active</code> is high, tally cycles in a running counter; the instant it drops, latch that tally into <code>length</code> and — critically — reset the running counter back to zero so the next frame starts clean. Forgetting the reset leaves the internal counter holding its old value, so the next frame\'s reported length silently includes cycles from the frame before it.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (length=0)</td></tr>
+<tr><td>frame_active</td><td>input</td><td>1</td><td>1 while a frame is being received</td></tr>
+<tr><td>length</td><td>output</td><td>8</td><td>Cycle count of the most recently completed frame</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  frame_active,
+  output reg [7:0] length
+);
+
+  // Your code here — count cycles while frame_active is high; latch into length when it drops, then reset the counter.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk,rst,frame_active; wire [7:0] length; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.frame_active(frame_active),.length(length));
+  initial clk=0; always #5 clk=~clk;
+  task check; input [7:0] el; input [127:0] label; begin
+    if(length!==el) begin errors=errors+1; $display("FAIL %0s expected=%d got=%d",label,el,length); end
+    else $display("PASS %0s length=%d",label,length);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1;frame_active=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    frame_active=1; @(posedge clk); #1;
+    @(posedge clk); #1;
+    @(posedge clk); #1;
+    frame_active=0; @(posedge clk); #1; check(3,"first-frame-length-3");
+    frame_active=1; @(posedge clk); #1;
+    @(posedge clk); #1;
+    frame_active=0; @(posedge clk); #1; check(2,"second-frame-length-2-not-cumulative");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'frame_active', 'length'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'frame_active', wave: '01110...' },
+          { name: 'length[7:0]', wave: '2......3', data: ['0', '3'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
