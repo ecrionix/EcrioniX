@@ -6964,6 +6964,631 @@ endmodule
       }
     },
     {
+      slug: 'async-reset-synchronizer',
+      title: 'Async-Assert / Sync-Deassert Reset',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc'],
+      category: 'Sequential Design',
+      lede: 'Assert reset the instant it goes active, but only release it once it has been clean for 2 clock edges — the standard reset architecture for any real design.',
+      concept: '<b>Concept:</b> Reset assertion must reach every flop immediately, even mid-cycle, so it belongs in the sensitivity list itself: <code>always @(posedge clk or negedge async_rst_n)</code>. Release, though, must not land on a clock edge and risk a recovery/removal violation — so deassertion is synchronized through two flops before <code>sync_rst_n</code> ever goes high, exactly like a normal 2-flop CDC chain but seeded by an asynchronous reset instead of a data input.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>async_rst_n</td><td>input</td><td>1</td><td>Asynchronous, active-low reset source</td></tr>
+<tr><td>sync_rst_n</td><td>output</td><td>1</td><td>Asserts immediately with async_rst_n; deasserts 2 clk cycles after release</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  async_rst_n,
+  output reg sync_rst_n
+);
+
+  // Your code here — assert sync_rst_n asynchronously with async_rst_n; release through a 2-flop chain.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, async_rst_n; wire sync_rst_n; integer errors=0;
+  top_module dut(.clk(clk), .async_rst_n(async_rst_n), .sync_rst_n(sync_rst_n));
+  initial clk=0; always #5 clk=~clk;
+  task check; input es; input [127:0] label; begin
+    if(sync_rst_n!==es) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,es,sync_rst_n); end
+    else $display("PASS %0s sync_rst_n=%b",label,sync_rst_n);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    async_rst_n=0; #1; check(0,"async-assert-immediate");
+    @(posedge clk); #1; check(0,"still-asserted-during-reset");
+    async_rst_n=1;
+    @(posedge clk); #1; check(0,"cyc1-after-release-not-yet");
+    @(posedge clk); #1; check(1,"cyc2-after-release-now-deasserted");
+    #2; async_rst_n=0; #1; check(0,"async-reassert-immediate-mid-cycle");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'async_rst_n', 'sync_rst_n'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p........' },
+          { name: 'async_rst_n', wave: '0.1......' },
+          { name: 'sync_rst_n', wave: '0....1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'three-flop-synchronizer',
+      title: '3-Flop CDC Synchronizer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'cdc'],
+      category: 'Sequential Design',
+      lede: 'A deeper 3-stage synchronizer for signals that need extra MTBF margin beyond the standard 2-flop chain.',
+      concept: '<b>Concept:</b> More synchronizer stages exponentially improve mean-time-between-failures at the cost of extra latency: <code>meta1&lt;=async_in; meta2&lt;=meta1; sync_out&lt;=meta2;</code> gives 3 cycles of latency instead of 2. Stopping one stage short (using <code>meta1</code> directly as the output) saves a cycle of latency but gives up the extra metastability margin — a real tradeoff, not just a bug.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>async_in</td><td>input</td><td>1</td><td>Signal from another clock domain</td></tr>
+<tr><td>sync_out</td><td>output</td><td>1</td><td>async_in, synchronized (3 cycles of latency)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  async_in,
+  output reg sync_out
+);
+
+  // Your code here — 3 cascaded flops: meta1 <- async_in, meta2 <- meta1, sync_out <- meta2.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, async_in; wire sync_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .async_in(async_in), .sync_out(sync_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input es; input [127:0] label; begin
+    if(sync_out!==es) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,es,sync_out); end
+    else $display("PASS %0s sync_out=%b",label,sync_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; async_in=0; @(posedge clk); #1; check(0,"reset");
+    rst=0; async_in=1;
+    @(posedge clk); #1; check(0,"cyc1-not-yet");
+    @(posedge clk); #1; check(0,"cyc2-not-yet");
+    @(posedge clk); #1; check(1,"cyc3-now-synced");
+    async_in=0;
+    @(posedge clk); #1; check(1,"cyc4-still-1-delayed");
+    @(posedge clk); #1; check(1,"cyc5-still-1-delayed");
+    @(posedge clk); #1; check(0,"cyc6-now-0");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'async_in', 'sync_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.............' },
+          { name: 'async_in', wave: '0.1.......0...' },
+          { name: 'sync_out', wave: '0.....1.......' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'level-cross-edge-detector',
+      title: 'Synchronized Rising-Edge Detector',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'cdc', 'edge-detect'],
+      category: 'Sequential Design',
+      lede: 'Safely synchronize an asynchronous level signal, then produce a clean single-cycle pulse the moment it rises in the local clock domain.',
+      concept: '<b>Concept:</b> First synchronize the raw level with the usual 2-flop chain (<code>sync1</code>, <code>sync2</code>), then compare consecutive synchronized samples to find the edge: <code>pulse_out &lt;= sync1 &amp; ~sync2</code>. Comparing against the raw <em>synchronized</em> signal only (skipping the second delayed sample and just registering <code>sync1</code> itself) produces a signal that stays high for the whole duration instead of a single clean pulse.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>async_in</td><td>input</td><td>1</td><td>Asynchronous level signal from another domain</td></tr>
+<tr><td>pulse_out</td><td>output</td><td>1</td><td>Pulses for 1 cycle on each synchronized rising edge</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  async_in,
+  output reg pulse_out
+);
+
+  // Your code here — 2-flop synchronize async_in, then pulse on the rising edge of the synchronized signal.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, async_in; wire pulse_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .async_in(async_in), .pulse_out(pulse_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ep; input [127:0] label; begin
+    if(pulse_out!==ep) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ep,pulse_out); end
+    else $display("PASS %0s pulse_out=%b",label,pulse_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; async_in=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    @(posedge clk); #1; check(0,"cyc1-still-0");
+    async_in=1;
+    @(posedge clk); #1; check(0,"cyc2-meta-only");
+    @(posedge clk); #1; check(0,"cyc3-sync1-only");
+    @(posedge clk); #1; check(1,"cyc4-pulse-fires");
+    @(posedge clk); #1; check(0,"cyc5-pulse-gone");
+    @(posedge clk); #1; check(0,"cyc6-still-0-no-retrigger");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'async_in', 'pulse_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.............' },
+          { name: 'async_in', wave: '0..1..........' },
+          { name: 'pulse_out', wave: '0......10.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'pulse-toggle-synchronizer',
+      title: 'Toggle-Based Pulse Synchronizer',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc'],
+      category: 'Sequential Design',
+      lede: 'Cross a single-cycle pulse safely between clock domains by toggle-encoding it — a plain 2-flop level synchronizer would simply miss it if the destination clock is slower.',
+      concept: '<b>Concept:</b> A pulse from another domain can\'t be trusted to survive a plain level synchronizer, since a fast pulse can come and go between destination clock edges. Toggle-encoding fixes this: the source flips a toggle bit for every pulse instead of pulsing directly (that flip happens upstream and is assumed already done here — <code>tog_in</code> is the toggled signal). The destination double-flops that toggle, then XORs two consecutive synchronized samples: <code>pulse_out &lt;= sync1 ^ sync2</code>. Because a toggle only ever changes state (never returns to a matching value on its own), this reconstructs exactly one clean pulse per source event, no matter how the clocks relate. Using AND instead of XOR misses every toggle-back-to-0 transition.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>tog_in</td><td>input</td><td>1</td><td>Toggle-encoded pulse signal from another domain</td></tr>
+<tr><td>pulse_out</td><td>output</td><td>1</td><td>Pulses for 1 cycle on every toggle transition</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  tog_in,
+  output reg pulse_out
+);
+
+  // Your code here — 2-flop synchronize tog_in, then XOR consecutive synced samples to regenerate a pulse.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, tog_in; wire pulse_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .tog_in(tog_in), .pulse_out(pulse_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ep; input [127:0] label; begin
+    if(pulse_out!==ep) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ep,pulse_out); end
+    else $display("PASS %0s pulse_out=%b",label,pulse_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; tog_in=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    tog_in=1;
+    @(posedge clk); #1; check(0,"cyc1-meta-only");
+    @(posedge clk); #1; check(0,"cyc2-sync1-only");
+    @(posedge clk); #1; check(1,"cyc3-pulse-fires");
+    @(posedge clk); #1; check(0,"cyc4-pulse-gone");
+    tog_in=0;
+    @(posedge clk); #1; check(0,"cyc5-tog-back-meta-only");
+    @(posedge clk); #1; check(0,"cyc6-sync1-only");
+    @(posedge clk); #1; check(1,"cyc7-second-pulse-on-toggle-back");
+    @(posedge clk); #1; check(0,"cyc8-pulse-gone");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'tog_in', 'pulse_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.................' },
+          { name: 'tog_in', wave: '0.1.......0.......' },
+          { name: 'pulse_out', wave: '0.....1.....1.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'handshake-ack-responder',
+      title: 'CDC Handshake Acknowledge Responder',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Synchronize an asynchronous request line and fire exactly one acknowledge pulse per request — never re-acking while the request is still held, only re-arming once it drops.',
+      concept: '<b>Concept:</b> A 4-phase handshake responder synchronizes <code>req</code> with the usual 2-flop chain, then edge-detects the synchronized request to fire a single <code>ack</code> pulse: <code>ack &lt;= sync_req &amp; ~req_prev</code>. The extra <code>req_prev</code> register (a 3rd stage beyond the 2-flop sync) is what prevents re-acking every cycle the request stays high — without it, <code>ack</code> would just mirror the level and fire continuously for as long as <code>req</code> is asserted.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>req</td><td>input</td><td>1</td><td>Asynchronous request level from another domain</td></tr>
+<tr><td>ack</td><td>output</td><td>1</td><td>Pulses for 1 cycle once per synchronized request rising edge</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  req,
+  output reg ack
+);
+
+  // Your code here — 2-flop sync req, then a 3rd stage to edge-detect and pulse ack once per request.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, req; wire ack; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .req(req), .ack(ack));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ea; input [127:0] label; begin
+    if(ack!==ea) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ea,ack); end
+    else $display("PASS %0s ack=%b",label,ack);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; req=0; @(posedge clk); #1; check(0,"reset");
+    rst=0; req=1;
+    @(posedge clk); #1; check(0,"cyc1-meta-only");
+    @(posedge clk); #1; check(0,"cyc2-sync_req-only");
+    @(posedge clk); #1; check(1,"cyc3-ack-fires");
+    @(posedge clk); #1; check(0,"cyc4-ack-gone-req-still-high");
+    @(posedge clk); #1; check(0,"cyc5-no-reack-while-req-held");
+    req=0;
+    @(posedge clk); #1; @(posedge clk); #1; @(posedge clk); #1; check(0,"req-dropped-no-ack");
+    req=1;
+    @(posedge clk); #1; @(posedge clk); #1; check(0,"re-req-cyc2-not-yet");
+    @(posedge clk); #1; check(1,"re-req-ack-fires-again");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'req', 'ack'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......................' },
+          { name: 'req', wave: '0.1.......0...1.........' },
+          { name: 'ack', wave: '0.....10..........10....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'pulse-stretch-and-sync',
+      title: 'Stretch-and-Synchronize Pulse',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc'],
+      category: 'Sequential Design',
+      lede: 'Widen a fast, possibly very short pulse to guarantee it\'s caught by a much slower destination clock, then synchronize the stretched level cleanly across domains.',
+      concept: '<b>Concept:</b> If the source pulse can be shorter than one destination clock period, a synchronizer might sample right between edges and miss it entirely. Stretching fixes this: latch a small counter on <code>fast_pulse</code> and hold an internal <code>stretched</code> flag high until it expires, guaranteeing at least a few destination-clock cycles of visibility. Only then does the usual 2-flop-sync-plus-edge-detect pipeline turn it back into a single clean pulse. Skipping the stretch stage (synchronizing <code>fast_pulse</code> directly) works fine in simulation but is exactly the kind of shortcut that misses real pulses on real silicon.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination (slower) clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>fast_pulse</td><td>input</td><td>1</td><td>Possibly very short pulse from a faster/unrelated domain</td></tr>
+<tr><td>sync_pulse</td><td>output</td><td>1</td><td>Clean 1-cycle pulse in the destination domain, guaranteed not to be missed</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  fast_pulse,
+  output reg sync_pulse
+);
+
+  // Your code here — stretch fast_pulse with a small counter, then 2-flop sync + edge-detect the stretched level.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, fast_pulse; wire sync_pulse; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .fast_pulse(fast_pulse), .sync_pulse(sync_pulse));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ep; input [127:0] label; begin
+    if(sync_pulse!==ep) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ep,sync_pulse); end
+    else $display("PASS %0s sync_pulse=%b",label,sync_pulse);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; fast_pulse=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    fast_pulse=1; @(posedge clk); #1; check(0,"cyc1-stretched-set-meta-not-yet");
+    fast_pulse=0;
+    @(posedge clk); #1; check(0,"cyc2-meta-set-sync1-not-yet");
+    @(posedge clk); #1; check(0,"cyc3-sync1-set-sync2-not-yet");
+    @(posedge clk); #1; check(1,"cyc4-sync_pulse-fires-even-though-fast_pulse-long-gone");
+    @(posedge clk); #1; check(0,"cyc5-pulse-gone");
+    @(posedge clk); #1; check(0,"cyc6-no-retrigger");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'fast_pulse', 'sync_pulse'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.................' },
+          { name: 'fast_pulse', wave: '0.10..............' },
+          { name: 'sync_pulse', wave: '0........10.......' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'cdc-bus-hold-register',
+      title: 'CDC Bus Hold Register',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'cdc', 'datapath'],
+      category: 'Sequential Design',
+      lede: 'Capture a data bus only on a valid strobe and hold it steady otherwise — never let an unregistered async bus pass straight through to downstream logic.',
+      concept: '<b>Concept:</b> A multi-bit bus crossing domains can\'t just be wired through combinationally — different bits can settle at slightly different times, so any glitch or skew on the source side becomes visible immediately downstream. The fix is to only ever update the output register when a (separately synchronized) <code>valid</code> strobe says the bus is stable: <code>if (valid) data_out &lt;= data_in;</code>, holding the old value the rest of the time. Wiring <code>data_out</code> straight to <code>data_in</code> with no register at all defeats the entire point — every glitch on the input rides straight through.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Destination clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>valid</td><td>input</td><td>1</td><td>1 when data_in is stable and safe to capture</td></tr>
+<tr><td>data_in</td><td>input</td><td>8</td><td>Incoming bus, only trustworthy while valid is high</td></tr>
+<tr><td>data_out</td><td>output</td><td>8</td><td>Captured value, held steady between valid strobes</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  valid,
+  input  [7:0] data_in,
+  output reg [7:0] data_out
+);
+
+  // Your code here — capture data_in into data_out only when valid is high; hold otherwise.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, valid; reg [7:0] data_in; wire [7:0] data_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .valid(valid), .data_in(data_in), .data_out(data_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input [7:0] ed; input [127:0] label; begin
+    if(data_out!==ed) begin errors=errors+1; $display("FAIL %0s expected=%h got=%h",label,ed,data_out); end
+    else $display("PASS %0s data_out=%h",label,data_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; valid=0; data_in=8'h00; @(posedge clk); #1; check(8'h00,"reset");
+    rst=0;
+    valid=1; data_in=8'hA5; @(posedge clk); #1; check(8'hA5,"captured-on-valid");
+    valid=0; data_in=8'hFF; #1; check(8'hA5,"holds-ignoring-glitch-before-clock");
+    @(posedge clk); #1; check(8'hA5,"holds-through-clock-no-valid");
+    @(posedge clk); #1; check(8'hA5,"still-holding");
+    valid=1; data_in=8'h3C; @(posedge clk); #1; check(8'h3C,"captures-new-value");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'valid', 'data_in', 'data_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'valid', wave: '01.0..1.' },
+          { name: 'data_in[7:0]', wave: '2.3.4.5.', data: ['00', 'A5', 'FF', '3C'] },
+          { name: 'data_out[7:0]', wave: '2..3.4..', data: ['00', 'A5', '3C'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'sync-enable-counter-snapshot',
+      title: 'Synchronized-Enable Counter Snapshot',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'cdc'],
+      category: 'Sequential Design',
+      lede: 'Snapshot a free-running counter\'s value only when an asynchronous sample request has been safely synchronized — synchronizing the control signal, not the fast-changing data, is the trick.',
+      concept: '<b>Concept:</b> The right CDC pattern here is to synchronize the slow-changing <em>control</em> signal (<code>sample_en</code>) rather than trying to synchronize the free-running counter itself, which changes every cycle. Once <code>sample_en</code> is safely double-flopped and edge-detected, use that clean local pulse to gate a normal capture register. Gating the capture directly off the raw, unsynchronized <code>sample_en</code> input instead risks capturing the counter mid-transition or re-triggering unpredictably.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Local clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>sample_en</td><td>input</td><td>1</td><td>Asynchronous sample-request level</td></tr>
+<tr><td>snapshot</td><td>output</td><td>8</td><td>Free-running counter value, captured once per synchronized sample_en edge</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  sample_en,
+  output reg [7:0] snapshot
+);
+
+  // Your code here — free-run an 8-bit counter; 2-flop sync + edge-detect sample_en; capture the counter on that pulse.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, sample_en; wire [7:0] snapshot; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .sample_en(sample_en), .snapshot(snapshot));
+  initial clk=0; always #5 clk=~clk;
+  task check; input [7:0] es; input [127:0] label; begin
+    if(snapshot!==es) begin errors=errors+1; $display("FAIL %0s expected=%d got=%d",label,es,snapshot); end
+    else $display("PASS %0s snapshot=%d",label,snapshot);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; sample_en=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    @(posedge clk); #1; check(0,"cyc1-count-now-1-no-snap");
+    @(posedge clk); #1; check(0,"cyc2-count-now-2-no-snap");
+    sample_en=1;
+    @(posedge clk); #1; check(0,"cyc3-meta-only-no-snap-yet");
+    @(posedge clk); #1; check(0,"cyc4-sync_en-only-no-snap-yet");
+    @(posedge clk); #1; check(4,"cyc5-snapshot-captured");
+    @(posedge clk); #1; check(4,"cyc6-snapshot-held-no-resnap");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'sample_en', 'snapshot'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.............' },
+          { name: 'sample_en', wave: '0..1..........' },
+          { name: 'snapshot[7:0]', wave: '2.......3.....', data: ['0', '4'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'fifo-empty-flag-synchronizer',
+      title: 'Async-FIFO Empty Flag Synchronizer',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Synchronize a Gray-coded write pointer into the read domain and compare it against the local read pointer to generate a reliable empty flag — the core of every async FIFO.',
+      concept: '<b>Concept:</b> An async FIFO\'s write pointer lives in the write clock domain but the empty flag is needed in the read domain, so the pointer must cross safely — Gray coding ensures only one bit ever changes per increment, so even a partially-synchronized value during a transition is never wildly wrong. Double-flop the incoming Gray pointer (<code>meta</code>, then <code>wptr_gray_sync</code>), then compare it against the local read pointer: <code>empty &lt;= (wptr_gray_sync == rptr_gray)</code>. Comparing the raw unsynchronized pointer directly against the local one skips the synchronizer chain entirely, reintroducing metastability risk into the empty flag.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Read-domain clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (empty=1)</td></tr>
+<tr><td>wptr_gray_in</td><td>input</td><td>4</td><td>Gray-coded write pointer from the write domain</td></tr>
+<tr><td>rptr_gray</td><td>input</td><td>4</td><td>Local Gray-coded read pointer (already in this domain)</td></tr>
+<tr><td>empty</td><td>output</td><td>1</td><td>1 when the synchronized write pointer matches the read pointer</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [3:0] wptr_gray_in,
+  input  [3:0] rptr_gray,
+  output reg empty
+);
+
+  // Your code here — 2-flop sync wptr_gray_in, then empty = (synced value == rptr_gray).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst; reg [3:0] wptr_gray_in, rptr_gray; wire empty; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .wptr_gray_in(wptr_gray_in), .rptr_gray(rptr_gray), .empty(empty));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ee; input [127:0] label; begin
+    if(empty!==ee) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ee,empty); end
+    else $display("PASS %0s empty=%b",label,empty);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; wptr_gray_in=4'h0; rptr_gray=4'h0; @(posedge clk); #1; check(1,"reset-empty");
+    rst=0;
+    wptr_gray_in=4'h3; rptr_gray=4'h0;
+    @(posedge clk); #1; check(1,"cyc1-meta-updated-still-empty");
+    @(posedge clk); #1; check(1,"cyc2-wptr_gray_sync-updated-still-empty");
+    @(posedge clk); #1; check(0,"cyc3-empty-flag-catches-up-not-empty");
+    rptr_gray=4'h3;
+    @(posedge clk); #1; check(1,"cyc4-rptr-matches-empty-again");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'wptr_gray_in', 'rptr_gray', 'empty'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'wptr_gray_in[3:0]', wave: '2.3.......', data: ['0', '3'] },
+          { name: 'rptr_gray[3:0]', wave: '2.......3.', data: ['0', '3'] },
+          { name: 'empty', wave: '1....0..1.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'fifo-full-flag-synchronizer',
+      title: 'Async-FIFO Full Flag Synchronizer',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'cdc', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Synchronize a Gray-coded read pointer into the write domain and compare it against the local write pointer to detect full — including the extra wrap-bit check the empty flag never needs.',
+      concept: '<b>Concept:</b> The full flag mirrors the empty flag\'s synchronizer structure — double-flop the incoming Gray read pointer, then compare — but the comparison itself is different: full means the write pointer has wrapped exactly one lap ahead of the read pointer, which in Gray code shows up as the two MSBs inverted while the low bits match: <code>(wptr[3]!=rsync[3]) &amp;&amp; (wptr[2]!=rsync[2]) &amp;&amp; (wptr[1:0]==rsync[1:0])</code>. Reusing the empty flag\'s plain equality check here would report full only when the pointers are exactly equal — which is what <em>empty</em> looks like, not full.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Write-domain clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (full=0)</td></tr>
+<tr><td>rptr_gray_in</td><td>input</td><td>4</td><td>Gray-coded read pointer from the read domain</td></tr>
+<tr><td>wptr_gray</td><td>input</td><td>4</td><td>Local Gray-coded write pointer (already in this domain)</td></tr>
+<tr><td>full</td><td>output</td><td>1</td><td>1 when the write pointer has wrapped exactly one lap ahead of the synchronized read pointer</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [3:0] rptr_gray_in,
+  input  [3:0] wptr_gray,
+  output reg full
+);
+
+  // Your code here — 2-flop sync rptr_gray_in, then full = (top 2 bits inverted, bottom 2 bits equal) vs wptr_gray.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst; reg [3:0] rptr_gray_in, wptr_gray; wire full; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .rptr_gray_in(rptr_gray_in), .wptr_gray(wptr_gray), .full(full));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ef; input [127:0] label; begin
+    if(full!==ef) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ef,full); end
+    else $display("PASS %0s full=%b",label,full);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; rptr_gray_in=4'h0; wptr_gray=4'h0; @(posedge clk); #1; check(0,"reset-not-full");
+    rst=0;
+    wptr_gray=4'b1100; rptr_gray_in=4'b0000;
+    @(posedge clk); #1; check(1,"cyc1-full-from-local-wptr-jump");
+    rptr_gray_in=4'b0100;
+    @(posedge clk); #1; check(1,"cyc2-meta-updated-still-full");
+    @(posedge clk); #1; check(1,"cyc3-rptr_gray_sync-updated-still-full");
+    @(posedge clk); #1; check(0,"cyc4-full-flag-catches-up-not-full");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'rptr_gray_in', 'wptr_gray', 'full'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'wptr_gray[3:0]', wave: '2.3.......', data: ['0', 'C'] },
+          { name: 'rptr_gray_in[3:0]', wave: '2...3.....', data: ['0', '4'] },
+          { name: 'full', wave: '0.1....0..' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
