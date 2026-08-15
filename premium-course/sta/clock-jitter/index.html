@@ -4,11 +4,17 @@
 <script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <link rel="stylesheet" href="/assets/theme-toggle.css">
 <link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
 <meta charset="UTF-8">
 <meta name="robots" content="noindex,follow">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Clock Jitter | EcrioniX</title>
+<title>Clock Jitter (Deterministic vs. Random) | EcrioniX Premium STA</title>
+<meta property="og:title" content="Clock Jitter (Deterministic vs. Random) - EcrioniX Premium STA">
+<meta property="og:description" content="Deep dive into clock jitter for STA sign-off: deterministic vs. random jitter, physical sources, why jitter is modeled as clock uncertainty, and how PLL jitter specs translate into set_clock_uncertainty values.">
+<link rel="icon" href="/favicon1.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -66,77 +72,104 @@ async function checkAccess(user) {
 .auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:#38bdf8;border-radius:50%;animation:ecrxspin .7s linear infinite}
 @keyframes ecrxspin{to{transform:rotate(360deg)}}
 .no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
-.preview-banner{background:linear-gradient(120deg,rgba(251,191,36,.12),rgba(56,189,248,.08));border:1px solid rgba(251,191,36,.35);border-radius:12px;padding:1rem 1.2rem;margin:0 0 1.4rem;font-size:0.9rem;color:var(--text,#e2e8f0);line-height:1.55;overflow-wrap:anywhere}
-.preview-banner strong{color:#fbbf24}
-.preview-banner a{font-weight:700}
-
-
-:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
-a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
-.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
-.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}
-.back-link{color:var(--sl);font-size:0.9rem}
-.container{max-width:760px;margin:0 auto;padding:2rem 1rem}
-.crumb{font-size:0.8rem;color:var(--sl);margin-bottom:1rem}
-h1{font-size:1.7rem;margin-bottom:0.5rem;color:var(--heading,#f8fafc)}
-.lesson-tag{display:inline-block;font-size:0.72rem;font-weight:800;color:var(--blue);background:rgba(56,189,248,.12);padding:0.3rem 0.8rem;border-radius:20px;text-transform:uppercase;margin-bottom:1rem}
-.lede{font-size:1.05rem;color:var(--text);line-height:1.75;margin-bottom:1.5rem}
-.section{margin:2.4rem 0}
-.section-head{display:flex;align-items:center;gap:0.7rem;margin-bottom:1rem}
-.section-num{background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#020617;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.95rem;flex-shrink:0}
-.section-head h2{font-size:1.25rem;color:var(--heading,#f8fafc);margin:0}
-.section p{color:var(--sl);font-size:0.96rem;margin-bottom:1rem}
-.def-box{background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(45,212,191,.1));border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:1.3rem 1.4rem;margin:1.5rem 0}
-.def-box .def-label{font-size:0.72rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem}
-.def-box p{margin:0;color:var(--heading,#f8fafc);font-size:1.02rem;font-weight:500;line-height:1.6}
-footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:0.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
 </style>
 </head>
-<body onload="WaveDrom.ProcessAll()">
+<body>
 <div id="authLoading"><div class="auth-spinner"></div></div>
-<div class="navbar">
-  <div class="navbar-logo">🎓 EcrioniX Premium</div>
-  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/sta/" class="back-link">← Course Index</a></div>
-</div>
+<nav class="navbar">
+  <div class="navbar-logo">EcrioniX</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/sta/" class="back-link">← STA Course Map</a></div>
+</nav>
 <div id="noAccess" class="no-access" style="display:none;">
   <h1>🔒 No Access</h1>
   <p>You don't have approved access to this course yet.</p>
   <a href="/premium-course/">Go back and request access →</a>
 </div>
 
-<div id="lessonContent" style="display:none;">
-  <div class="container">
+    <div id="lessonContent" style="display:none;">
+<div class="container">
     <div class="crumb"><a href="/premium-course/sta/">STA</a> / Module 4: Advanced Clocking</div>
     <span class="lesson-tag">Lesson 4.3</span>
-    <h1>Clock Jitter (Deterministic vs. Random)</h1>
-    <p class="lede">Jitter is the short-term variation of a digital signal's significant instants from their ideal positions in time.</p>
-    
-    <div class="section">
-      <div class="section-head"><div class="section-num">1</div><h2>Deterministic Jitter (DJ)</h2></div>
-      <p>DJ is bounded and predictable. Sources include:</p>
-      <ul>
-        <li>Power supply noise (SSN)</li>
-        <li>Crosstalk from adjacent signals</li>
-        <li>Duty cycle distortion</li>
-      </ul>
+        <h1>Clock Jitter (Deterministic vs. Random)</h1>
+        <p class="lede">Jitter is the short-term, cycle-to-cycle variation of a clock edge's actual position relative to where it should ideally be. Unlike skew, which is a fixed spatial difference between two flops, jitter is a temporal uncertainty on a single clock edge itself — and because it can never be fully characterized or eliminated, STA handles it not by modeling it exactly, but by budgeting for its worst case as uncertainty.</p>
+
+
+        <div class="section">
+            <div class="section-head">1. What jitter actually is</div>
+            <p>An ideal clock has every rising edge separated from the next by exactly the same period, forever. Real clocks — especially those generated by an on-chip PLL — do not. The PLL's voltage-controlled oscillator (VCO), reference clock noise, and loop-filter dynamics all introduce small, cycle-to-cycle timing errors. The result is that edge <em>N</em> might arrive 8 picoseconds early, edge <em>N+1</em> might arrive 3 picoseconds late, and so on, in a way that is not predictable cycle-by-cycle but is bounded statistically over a long observation window.</p>
+            <p>Jitter is normally specified as a peak-to-peak or RMS (root-mean-square) value in the PLL's datasheet, for example "12ps RMS period jitter" or "45ps peak-to-peak cycle-to-cycle jitter." STA does not simulate the PLL — it consumes this datasheet number and folds it into the timing margin at every flop the clock reaches.</p>
+        </div>
+
+        <div class="section">
+            <div class="section-head">2. Deterministic Jitter (DJ) — bounded and traceable</div>
+            <p>Deterministic jitter has an identifiable, repeatable cause and — critically — a <strong>bounded, finite peak-to-peak value</strong>. If you know the cause, you can (in principle) predict its magnitude. Common sources:</p>
+            <ul>
+              <li><strong>Power supply noise / simultaneous switching noise (SSN)</strong> — every time a large block of logic switches, it draws a current spike from the supply rail, causing a small transient voltage droop. Because gate delay (including the PLL's own internal delay stages) depends on supply voltage, this droop directly perturbs the clock edge timing. This is usually the single largest DJ contributor on a digital SoC.</li>
+              <li><strong>Crosstalk-induced jitter</strong> — aggressor nets switching near the clock distribution network couple charge onto clock wires, shifting the effective threshold-crossing time of the clock edge (see Lesson 9 on crosstalk delay).</li>
+              <li><strong>Duty cycle distortion (DCD)</strong> — asymmetric rise/fall characteristics in clock buffers cause the high and low phases of the clock to differ slightly from the ideal 50/50 split, which shows up as a periodic jitter component correlated with the clock pattern itself.</li>
+              <li><strong>Inter-symbol interference (ISI) / data-dependent jitter</strong> — more relevant to high-speed serial I/O clocks than core clocks, but present in SerDes reference clock distribution.</li>
+            </ul>
+            <div class="note"><strong>Why DJ is "bounded":</strong> Because each DJ source has a physical maximum (maximum possible IR drop, maximum crosstalk coupling for a given aggressor swing), the sum of all DJ sources has a hard peak-to-peak ceiling. This matters enormously for signoff — a bounded quantity can be added directly (worst-case, deterministically) to the timing budget.</div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">3. Random Jitter (RJ) — unbounded and statistical</div>
+            <p>Random jitter arises from fundamental physical noise processes that have no hard maximum: thermal noise in the PLL's VCO transistors, flicker (1/f) noise, and shot noise. RJ is typically modeled as a Gaussian-distributed random variable, characterized by its standard deviation (σ, "sigma"), not a peak-to-peak bound.</p>
+            <div class="note"><strong>The core problem with RJ:</strong> a true Gaussian distribution has non-zero probability density stretching to infinity in both directions. There is, strictly speaking, no finite peak-to-peak value for random jitter — a sufficiently rare (but non-zero-probability) event could in principle produce an arbitrarily large jitter excursion. STA needs a single worst-case number to add to the timing budget, so the industry converts RJ into an effective peak-to-peak value using a chosen confidence level, almost always expressed as a multiple of sigma.</div>
+            <table>
+              <tr><th>Confidence multiplier</th><th>Probability of exceeding bound</th><th>Typical use</th></tr>
+              <tr><td>±3σ</td><td>~2.7 × 10⁻³</td><td>Loose consumer-grade margin — rarely used for sign-off alone</td></tr>
+              <tr><td>±7σ</td><td>~2.6 × 10⁻¹²</td><td>Common minimum for enterprise/networking ASIC signoff</td></tr>
+              <tr><td>±14σ</td><td>~1.6 × 10⁻⁴⁴</td><td>Very common convention in modern PLL datasheets and high-reliability signoff</td></tr>
+            </table>
+            <p>The RJ peak-to-peak value used in timing budgets is therefore: <code>RJ_pp = N × σ</code> for whatever N-sigma confidence the project's signoff methodology requires. This N-sigma number is then combined with DJ (usually by direct addition, sometimes root-sum-square depending on methodology conservatism) to arrive at a single total peak-to-peak jitter figure, <strong>Total Jitter (TJ)</strong>.</p>
+        </div>
+
+        <div class="section">
+            <div class="section-head">4. How STA actually consumes jitter: set_clock_uncertainty</div>
+            <p>STA does not model jitter as a probability distribution during path tracing — that would make the analysis non-deterministic, defeating the entire point of <em>static</em> timing analysis. Instead, the total jitter number (TJ, derived above) is folded into a single fixed derating value applied uniformly to every path launched or captured by that clock, using the <code>set_clock_uncertainty</code> SDC command:</p>
+            <div class="code-panel"># TJ = DJ + N*sigma(RJ), e.g. 45ps DJ + 14*3ps RJ = 45 + 42 = 87ps total jitter
+# Clock period = 1000ps (1GHz)
+set_clock_uncertainty -setup 0.087 [get_clocks CLK]
+set_clock_uncertainty -hold  0.020 [get_clocks CLK]</div>
+            <p>Notice the setup and hold uncertainty values are usually different. Setup uncertainty typically includes the full jitter budget plus margin for OCV/skew pessimism, because setup checks against a full clock period and jitter directly eats into that period. Hold uncertainty is often a smaller, separately-derived number because hold checks operate within a single edge and different components of jitter (particularly period jitter vs. cycle-to-cycle jitter) apply differently to same-edge vs. next-edge relationships.</p>
+            <div class="note"><strong>Cycle-to-cycle jitter vs. period jitter:</strong> These are not the same number and using the wrong one is a classic sign-off mistake. <em>Period jitter</em> measures deviation of a single period from the ideal — relevant to setup, which spans one full period. <em>Cycle-to-cycle jitter</em> measures the difference between two <em>consecutive</em> periods — this is the number that matters for back-to-back edge relationships and is usually the correct one to apply for hold-adjacent uncertainty terms. PLL datasheets report both; picking the wrong column is a real, recurring error in early-career STA work.</div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">5. Why jitter erodes both setup and hold slack — never helps</div>
+            <p>Unlike skew (which trades setup margin for hold margin depending on sign), clock uncertainty from jitter is applied as a pure subtraction on <em>both</em> checks:</p>
+            <div class="code-panel">Setup Slack = (T_clk - Uncertainty_setup - T_setup) - T_data_path
+Hold  Slack = T_data_path - (T_hold + Uncertainty_hold)</div>
+            <p>This is because jitter represents genuine unpredictability in edge position — it can move the capture edge earlier (hurting setup, since less time is available) or later (hurting hold, since the data-invalid window after the launch edge grows) on any given real cycle, and STA must guard against the worst case in <em>both</em> directions simultaneously. This is exactly why jitter is treated so differently from skew in the margin equations: skew has a known sign per path; jitter's sign is unknown and must be assumed adversarial on every check.</p>
+        </div>
+
+        <div class="section">
+            <div class="section-head">6. Where jitter budget comes from in a real SoC</div>
+            <ol>
+              <li><strong>PLL datasheet</strong> supplies raw period jitter and cycle-to-cycle jitter numbers (RMS and/or peak-to-peak) at a given reference frequency and loop bandwidth setting.</li>
+              <li><strong>Clock distribution network</strong> adds its own jitter contribution as the clock propagates through buffers — each buffer stage adds a small amount of additive jitter from its own supply noise sensitivity, which accumulates (root-sum-square, generally) with distance from the PLL.</li>
+              <li><strong>Signal integrity / crosstalk analysis</strong> contributes the deterministic jitter component from coupling onto clock nets, computed separately (Lesson 9) and folded into the DJ budget.</li>
+              <li><strong>The final combined number</strong> is handed to the STA team, who apply it via <code>set_clock_uncertainty</code> — closing the loop from silicon-level PLL characterization all the way to a single SDC constraint.</li>
+            </ol>
+        </div>
+
+
     </div>
 
-    <div class="section">
-      <div class="section-head"><div class="section-num">2</div><h2>Random Jitter (RJ)</h2></div>
-      <p>RJ is unbounded and typically follows a Gaussian distribution. It stems from fundamental physical phenomena like thermal noise in the PLL oscillator.</p>
     </div>
+<!-- WaveDrom Scripts for Timing Diagrams -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js" type="text/javascript"></script>
+    <script>
+        window.onload = function() { WaveDrom.ProcessAll(); };
+    </script>
 
-    <div class="section">
-      <div class="section-head"><div class="section-num">3</div><h2>Modeling in STA</h2></div>
-      <p>STA handles jitter via the <code>set_clock_uncertainty</code> command. Since RJ is unbounded, we use a statistical peak-to-peak value (like 14-sigma) for timing signoff.</p>
-    </div>
-  </div>
-</div>
-<footer>© 2026 EcrioniX</footer>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
 <script defer src="/assets/theme-toggle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.3.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.3.0/wavedrom.min.js"></script>
+<script>window.addEventListener('load', () => WaveDrom.ProcessAll());</script>
 </body>
 </html>
