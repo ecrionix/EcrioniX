@@ -7013,7 +7013,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p........' },
-          { name: 'async_rst_n', wave: '0.1......' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p........', phase: 0.5 },
+          { name: 'async_rst_n', wave: '0.1......', phase: 0.5 },
           { name: 'sync_rst_n', wave: '0....1...' }
         ],
         config: { hscale: 1 }
@@ -7075,7 +7076,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.............' },
-          { name: 'async_in', wave: '0.1.......0...' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.............', phase: 0.5 },
+          { name: 'async_in', wave: '0.1.......0...', phase: 0.5 },
           { name: 'sync_out', wave: '0.....1.......' }
         ],
         config: { hscale: 1 }
@@ -7137,7 +7139,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.............' },
-          { name: 'async_in', wave: '0..1..........' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.............', phase: 0.5 },
+          { name: 'async_in', wave: '0..1..........', phase: 0.5 },
           { name: 'pulse_out', wave: '0......10.....' }
         ],
         config: { hscale: 1 }
@@ -7202,7 +7205,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.................' },
-          { name: 'tog_in', wave: '0.1.......0.......' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.................', phase: 0.5 },
+          { name: 'tog_in', wave: '0.1.......0.......', phase: 0.5 },
           { name: 'pulse_out', wave: '0.....1.....1.....' }
         ],
         config: { hscale: 1 }
@@ -7267,7 +7271,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.......................' },
-          { name: 'req', wave: '0.1.......0...1.........' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.......................', phase: 0.5 },
+          { name: 'req', wave: '0.1.......0...1.........', phase: 0.5 },
           { name: 'ack', wave: '0.....10..........10....' }
         ],
         config: { hscale: 1 }
@@ -7329,7 +7334,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.................' },
-          { name: 'fast_pulse', wave: '0.10..............' },
+          { name: 'src_clk (async/fast domain, illustrative)', wave: 'p.................', phase: 0.5 },
+          { name: 'fast_pulse', wave: '0.10..............', phase: 0.5 },
           { name: 'sync_pulse', wave: '0........10.......' }
         ],
         config: { hscale: 1 }
@@ -7391,8 +7397,9 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.......' },
-          { name: 'valid', wave: '01.0..1.' },
-          { name: 'data_in[7:0]', wave: '2.3.4.5.', data: ['00', 'A5', 'FF', '3C'] },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.......', phase: 0.5 },
+          { name: 'valid', wave: '01.0..1.', phase: 0.5 },
+          { name: 'data_in[7:0]', wave: '2.3.4.5.', data: ['00', 'A5', 'FF', '3C'], phase: 0.5 },
           { name: 'data_out[7:0]', wave: '2..3.4..', data: ['00', 'A5', '3C'] }
         ],
         config: { hscale: 1 }
@@ -7454,7 +7461,8 @@ endmodule
       wavedrom: {
         signal: [
           { name: 'clk', wave: 'p.............' },
-          { name: 'sample_en', wave: '0..1..........' },
+          { name: 'src_clk (async domain, illustrative)', wave: 'p.............', phase: 0.5 },
+          { name: 'sample_en', wave: '0..1..........', phase: 0.5 },
           { name: 'snapshot[7:0]', wave: '2.......3.....', data: ['0', '4'] }
         ],
         config: { hscale: 1 }
@@ -7516,8 +7524,9 @@ endmodule
       waveSignals: ['clk', 'rst', 'wptr_gray_in', 'rptr_gray', 'empty'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.........' },
-          { name: 'wptr_gray_in[3:0]', wave: '2.3.......', data: ['0', '3'] },
+          { name: 'clk (read domain)', wave: 'p.........' },
+          { name: 'wr_clk (write domain, illustrative)', wave: 'p.........', phase: 0.5 },
+          { name: 'wptr_gray_in[3:0]', wave: '2.3.......', data: ['0', '3'], phase: 0.5 },
           { name: 'rptr_gray[3:0]', wave: '2.......3.', data: ['0', '3'] },
           { name: 'empty', wave: '1....0..1.' }
         ],
@@ -7580,9 +7589,10 @@ endmodule
       waveSignals: ['clk', 'rst', 'rptr_gray_in', 'wptr_gray', 'full'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.........' },
+          { name: 'clk (write domain)', wave: 'p.........' },
+          { name: 'rd_clk (read domain, illustrative)', wave: 'p.........', phase: 0.5 },
           { name: 'wptr_gray[3:0]', wave: '2.3.......', data: ['0', 'C'] },
-          { name: 'rptr_gray_in[3:0]', wave: '2...3.....', data: ['0', '4'] },
+          { name: 'rptr_gray_in[3:0]', wave: '2...3.....', data: ['0', '4'], phase: 0.5 },
           { name: 'full', wave: '0.1....0..' }
         ],
         config: { hscale: 1 }
