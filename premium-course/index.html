@@ -941,6 +941,26 @@ const COURSE_LINKS = {
   'sta': '/premium-course/sta/',
 };
 
+let pendingCourseIds = new Set();
+
+function updateCourseSelectOptions() {
+  const select = document.getElementById('courseSelect');
+  if (!select) return;
+  const prevValue = select.value;
+  Array.from(select.options).forEach(opt => {
+    const isPending = pendingCourseIds.has(opt.value);
+    opt.disabled = isPending;
+    const baseLabel = (opt.dataset.baseLabel = opt.dataset.baseLabel || opt.textContent);
+    opt.textContent = isPending ? `${baseLabel} — request pending` : baseLabel;
+  });
+  if (select.options[select.selectedIndex]?.disabled) {
+    const firstAvailable = Array.from(select.options).find(opt => !opt.disabled);
+    if (firstAvailable) select.value = firstAvailable.value;
+  } else {
+    select.value = prevValue;
+  }
+}
+
 function isCourseActive(courseId, userData) {
   if (!userData?.approvedCourses?.includes(courseId)) return false;
   const expiry = userData.courseExpiry?.[courseId];
@@ -1163,6 +1183,8 @@ async function loadPurchaseHistory(uid) {
     if (snapshot.empty) {
       historyDiv.innerHTML = '<p style="font-size:0.85rem">No purchase history yet.</p>';
       renderLatestRequestBanner([]);
+      pendingCourseIds = new Set();
+      updateCourseSelectOptions();
       return;
     }
 
@@ -1171,6 +1193,9 @@ async function loadPurchaseHistory(uid) {
     requests.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 
     renderLatestRequestBanner(requests);
+
+    pendingCourseIds = new Set(requests.filter(r => r.status === 'pending').map(r => r.courseId));
+    updateCourseSelectOptions();
 
     historyDiv.innerHTML = requests.map(req => {
       const courseName = COURSE_NAMES[req.courseId] || req.courseId;
@@ -1221,6 +1246,11 @@ async function submitAccessRequest() {
     return;
   }
 
+  if (pendingCourseIds.has(courseId)) {
+    alert(`You already have a pending request for ${COURSE_NAMES[courseId] || courseId}. Please wait for it to be reviewed before submitting another.`);
+    return;
+  }
+
   const submitBtn = document.querySelector('#requestAccessForm .modal-button-primary');
   const statusDiv = document.getElementById('formStatus');
   if (submitBtn) {
@@ -1229,6 +1259,22 @@ async function submitAccessRequest() {
   }
 
   try {
+    // Re-check for a pending request right before writing (guards against a
+    // second tab/device submitting between page load and this click — the
+    // local pendingCourseIds set could otherwise be stale).
+    const dupSnap = await firebase.firestore().collection('paymentRequests')
+      .where('userId', '==', user.uid)
+      .where('courseId', '==', courseId)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+    if (!dupSnap.empty) {
+      pendingCourseIds.add(courseId);
+      updateCourseSelectOptions();
+      alert(`You already have a pending request for ${COURSE_NAMES[courseId] || courseId}. Please wait for it to be reviewed before submitting another.`);
+      return;
+    }
+
     // 1. Write to Firestore
     const docRef = firebase.firestore().collection('paymentRequests').doc();
     await docRef.set({
