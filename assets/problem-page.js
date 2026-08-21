@@ -37,11 +37,40 @@
     }
   }
 
+  async function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try {
+      const cred = await firebase.auth().signInWithPopup(provider);
+      currentUser = cred.user;
+      await markSolvedIfDone(currentUser);
+      return currentUser;
+    } catch (e) {
+      console.warn('sign-in failed or cancelled:', e);
+      return null;
+    }
+  }
+
   async function runSubmit() {
     const J = window.EcrioniXProblems;
     const editor = qs('editor');
     const out = qs('console');
     const btn = qs('submit-btn');
+
+    if (!currentUser) {
+      btn.disabled = true;
+      btn.textContent = 'Sign in...';
+      out.innerHTML = '<span class="info">Sign in with Google to run tests and save your progress...</span>\n';
+      const user = await signInWithGoogle();
+      btn.disabled = false;
+      btn.textContent = 'Run tests';
+      if (!user) {
+        out.innerHTML = '<span class="warn">Sign-in was cancelled — sign in to run tests and track solves on the leaderboard.</span>';
+        return;
+      }
+      out.innerHTML = '<span class="ok">Signed in! Click Run tests again.</span>';
+      return;
+    }
+
     const combined = editor.value + '\n' + problem.hiddenTb;
 
     btn.disabled = true;
@@ -320,13 +349,14 @@
       return;
     }
 
+    // The problem statement, concept, ports, and expected waveform are free
+    // to view — no login wall. Signing in is only required to run tests and
+    // track solves on the leaderboard (prompted from runSubmit()).
+    bootUI();
+
     firebase.auth().onAuthStateChanged(async user => {
-      if (!user) {
-        window.location.href = '/premium-course/';
-        return;
-      }
+      if (!user) return;
       currentUser = user;
-      bootUI();
       if (window.EcrioniXProblems?.ensureLeaderboardMember) {
         window.EcrioniXProblems.ensureLeaderboardMember(user);
       }
