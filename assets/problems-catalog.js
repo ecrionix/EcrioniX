@@ -8187,6 +8187,662 @@ endmodule
       }
     },
     {
+      slug: 'uart-transmitter',
+      title: 'UART Transmitter',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'protocol', 'fsm'],
+      category: 'Sequential Design',
+      lede: 'Frame a byte onto a UART line: start bit, 8 data bits LSB-first, stop bit — the transmit-side complement to this catalog\'s UART frame assembler.',
+      concept: '<b>Concept:</b> A UART transmitter is a small FSM: idle high, drop the line low for one bit (START), shift out all 8 data bits LSB-first while a bit counter tracks progress, then release the line high again for one bit (STOP). Shifting <code>shreg[7]</code> and shifting left instead of <code>shreg[0]</code> and shifting right silently reverses the bit order — UART is defined as LSB-first, unlike some other serial protocols that go MSB-first, and mixing the two conventions up is a very real, very common bug.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Bit clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (idle, tx=1)</td></tr>
+<tr><td>start</td><td>input</td><td>1</td><td>Pulse for 1 cycle to begin transmitting tx_data</td></tr>
+<tr><td>tx_data</td><td>input</td><td>8</td><td>Byte to transmit</td></tr>
+<tr><td>tx</td><td>output</td><td>1</td><td>Serial line: idle high, start bit low, 8 data bits LSB-first, stop bit high</td></tr>
+<tr><td>busy</td><td>output</td><td>1</td><td>1 while a frame is being transmitted</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  start,
+  input  [7:0] tx_data,
+  output reg tx,
+  output reg busy
+);
+
+  // Your code here — IDLE(tx=1) -> START(tx=0) -> DATA(8 bits, LSB-first) -> STOP(tx=1) -> IDLE.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, start; reg [7:0] tx_data; wire tx, busy; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .start(start), .tx_data(tx_data), .tx(tx), .busy(busy));
+  initial clk=0; always #5 clk=~clk;
+  task check; input et; input eb; input [127:0] label; begin
+    if(tx!==et || busy!==eb) begin errors=errors+1; $display("FAIL %0s expected tx=%b busy=%b got tx=%b busy=%b",label,et,eb,tx,busy); end
+    else $display("PASS %0s tx=%b busy=%b",label,tx,busy);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; start=0; tx_data=8'h00; @(posedge clk); #1; check(1,0,"reset-idle");
+    rst=0; tx_data=8'h4B; start=1;
+    @(posedge clk); #1; check(1,1,"cyc1-start-consumed-busy-high");
+    start=0;
+    @(posedge clk); #1; check(0,1,"cyc2-start-bit-on-wire");
+    @(posedge clk); #1; check(1,1,"data-bit0");
+    @(posedge clk); #1; check(1,1,"data-bit1");
+    @(posedge clk); #1; check(0,1,"data-bit2");
+    @(posedge clk); #1; check(1,1,"data-bit3");
+    @(posedge clk); #1; check(0,1,"data-bit4");
+    @(posedge clk); #1; check(0,1,"data-bit5");
+    @(posedge clk); #1; check(1,1,"data-bit6");
+    @(posedge clk); #1; check(0,1,"data-bit7");
+    @(posedge clk); #1; check(1,0,"stop-bit-busy-clears");
+    @(posedge clk); #1; check(1,0,"back-to-idle");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'start', 'tx_data', 'tx', 'busy'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.....................' },
+          { name: 'start', wave: '0.10..................' },
+          { name: 'tx', wave: '1..0.2.3.4.5.6.7.8.9.1', data: ['1', '1', '0', '1', '0', '0', '1', '0'] },
+          { name: 'busy', wave: '0.1................0..' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'signed-multiplier-4bit',
+      title: '4-Bit Signed Multiplier',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Multiply two 4-bit two\'s-complement numbers into a correctly-signed 8-bit product — the exact same * operator as an unsigned multiplier, but only if every operand and the output are actually declared signed.',
+      concept: '<b>Concept:</b> Verilog\'s <code>*</code> operator performs true signed multiplication automatically, but only when <em>every</em> operand involved is declared <code>signed</code> — if even one operand in the expression is unsigned, the entire multiplication silently falls back to unsigned arithmetic. Re-declaring the inputs as plain (unsigned) wires before multiplying, even with identical bit widths and the exact same <code>*</code> operator, throws away the sign information and produces a completely different (and wrong) result for any negative operand.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4 (signed)</td><td>First operand</td></tr>
+<tr><td>b</td><td>input</td><td>4 (signed)</td><td>Second operand</td></tr>
+<tr><td>product</td><td>output</td><td>8 (signed)</td><td>a &times; b, correctly signed</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  signed [3:0] a,
+  input  signed [3:0] b,
+  output signed [7:0] product
+);
+
+  // Your code here — product = a * b (both operands must stay signed for Verilog to do signed multiplication).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg signed [3:0] a, b; wire signed [7:0] product; integer errors=0;
+  top_module dut(.a(a), .b(b), .product(product));
+  task check; input signed [3:0] ta, tb_; input signed [7:0] ep; begin
+    a=ta; b=tb_; #1;
+    if(product!==ep) begin errors=errors+1; $display("FAIL a=%d b=%d expected=%d got=%d",ta,tb_,ep,product); end
+    else $display("PASS a=%d b=%d product=%d",ta,tb_,product);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(-3, 2, -6);
+    check(-8, -1, 8);
+    check(5, 3, 15);
+    check(-1, -1, 1);
+    check(0, 7, 0);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'product'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.5.', data: ['-3', '-8', '5', '-1'] },
+          { name: 'b[3:0]', wave: '2.3.4.5.', data: ['2', '-1', '3', '-1'] },
+          { name: 'product[7:0]', wave: '2.3.4.5.', data: ['-6', '8', '15', '1'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'median-of-three',
+      title: 'Median of Three',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'comparator'],
+      category: 'Combinational Design',
+      lede: 'Find the median (middle) value of three unsigned bytes — a classic three-way comparison building block used everywhere from sorting networks to median filters.',
+      concept: '<b>Concept:</b> The median is whichever value sits between the other two: <code>a</code> is the median if it\'s between <code>b</code> and <code>c</code> (in either order), and likewise for <code>b</code>; otherwise <code>c</code> must be the median. A tempting shortcut — just find the max of the three — looks similar but answers a completely different question; median and max only coincide by accident on specific inputs, not in general.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>8</td><td>First value</td></tr>
+<tr><td>b</td><td>input</td><td>8</td><td>Second value</td></tr>
+<tr><td>c</td><td>input</td><td>8</td><td>Third value</td></tr>
+<tr><td>median</td><td>output</td><td>8</td><td>The middle value of the three</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] a,
+  input  [7:0] b,
+  input  [7:0] c,
+  output reg [7:0] median
+);
+
+  // Your code here — median is whichever of a/b/c sits between the other two.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] a,b,c; wire [7:0] median; integer errors=0;
+  top_module dut(.a(a),.b(b),.c(c),.median(median));
+  task check; input [7:0] ta,tb_,tc; input [7:0] em; begin
+    a=ta;b=tb_;c=tc;#1;
+    if(median!==em) begin errors=errors+1; $display("FAIL a=%d b=%d c=%d expected=%d got=%d",ta,tb_,tc,em,median); end
+    else $display("PASS a=%d b=%d c=%d median=%d",ta,tb_,tc,median);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(5,9,2,5);
+    check(1,2,3,2);
+    check(10,10,5,10);
+    check(7,7,7,7);
+    check(0,255,128,128);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'c', 'median'],
+      wavedrom: {
+        signal: [
+          { name: 'a[7:0]', wave: '2.3.4.5.', data: ['5', '1', '10', '0'] },
+          { name: 'b[7:0]', wave: '2.3.4.5.', data: ['9', '2', '10', '255'] },
+          { name: 'c[7:0]', wave: '2.3.4.5.', data: ['2', '3', '5', '128'] },
+          { name: 'median[7:0]', wave: '2.3.4.5.', data: ['5', '2', '10', '128'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'min-max-finder',
+      title: 'Min/Max Finder',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'comparator'],
+      category: 'Combinational Design',
+      lede: 'Find both the minimum and maximum of three unsigned bytes at once — the basic building block of any sorting network or range check.',
+      concept: '<b>Concept:</b> A nested-comparison tree finds the max in two comparisons: compare <code>a</code> and <code>b</code> first, then compare the winner against <code>c</code>. The min follows the mirror-image tree using <code>&lt;=</code> instead of <code>&gt;=</code>. Swapping which tree feeds which output — computing the max tree but wiring it to <code>min_val</code>, and vice versa — compiles fine and even passes on inputs where all three values happen to be equal, but is backwards everywhere else.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>8</td><td>First value</td></tr>
+<tr><td>b</td><td>input</td><td>8</td><td>Second value</td></tr>
+<tr><td>c</td><td>input</td><td>8</td><td>Third value</td></tr>
+<tr><td>min_val</td><td>output</td><td>8</td><td>Smallest of the three</td></tr>
+<tr><td>max_val</td><td>output</td><td>8</td><td>Largest of the three</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] a,
+  input  [7:0] b,
+  input  [7:0] c,
+  output [7:0] min_val,
+  output [7:0] max_val
+);
+
+  // Your code here — a 2-comparison tree for max, and the mirror-image tree for min.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] a,b,c; wire [7:0] min_val, max_val; integer errors=0;
+  top_module dut(.a(a),.b(b),.c(c),.min_val(min_val),.max_val(max_val));
+  task check; input [7:0] ta,tb_,tc; input [7:0] emin,emax; begin
+    a=ta;b=tb_;c=tc;#1;
+    if(min_val!==emin || max_val!==emax) begin errors=errors+1; $display("FAIL a=%d b=%d c=%d expected min=%d max=%d got min=%d max=%d",ta,tb_,tc,emin,emax,min_val,max_val); end
+    else $display("PASS a=%d b=%d c=%d min=%d max=%d",ta,tb_,tc,min_val,max_val);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(5,9,2,2,9);
+    check(10,10,5,5,10);
+    check(7,7,7,7,7);
+    check(0,255,128,0,255);
+    check(200,50,200,50,200);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'c', 'min_val', 'max_val'],
+      wavedrom: {
+        signal: [
+          { name: 'a[7:0]', wave: '2.3.4.5.', data: ['5', '10', '7', '0'] },
+          { name: 'b[7:0]', wave: '2.3.4.5.', data: ['9', '10', '7', '255'] },
+          { name: 'c[7:0]', wave: '2.3.4.5.', data: ['2', '5', '7', '128'] },
+          { name: 'min_val[7:0]', wave: '2.3.4.5.', data: ['2', '5', '7', '0'] },
+          { name: 'max_val[7:0]', wave: '2.3.4.5.', data: ['9', '10', '7', '255'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'bcd-subtractor',
+      title: 'BCD Subtractor',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Subtract two BCD digits and produce a valid BCD result plus a borrow flag — the complement to this catalog\'s BCD adder.',
+      concept: '<b>Concept:</b> Plain binary subtraction of two BCD digits works fine when the result stays non-negative, but when <code>a &lt; b</code> the binary result would be negative — BCD has no representation for that, so the correction is to add 10 back: <code>diff = a - b + 10</code>, and raise a <code>borrow</code> flag. Skipping the +10 correction (just computing <code>a - b</code> unconditionally, relying on binary wraparound) produces a value that looks superficially plausible but is not the correct BCD digit — plain two\'s-complement wraparound and \'add 10\' correction are not the same arithmetic.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>4</td><td>Minuend BCD digit, 0-9</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>Subtrahend BCD digit, 0-9</td></tr>
+<tr><td>diff</td><td>output</td><td>4</td><td>a - b as a valid BCD digit</td></tr>
+<tr><td>borrow</td><td>output</td><td>1</td><td>1 when a &lt; b (a borrow was needed)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] a,
+  input  [3:0] b,
+  output [3:0] diff,
+  output borrow
+);
+
+  // Your code here — borrow = (a<b); diff = borrow ? (a-b+10) : (a-b).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] a,b; wire [3:0] diff; wire borrow; integer errors=0;
+  top_module dut(.a(a),.b(b),.diff(diff),.borrow(borrow));
+  task check; input [3:0] ta,tb_; input [3:0] ed; input eb; begin
+    a=ta;b=tb_;#1;
+    if(diff!==ed || borrow!==eb) begin errors=errors+1; $display("FAIL a=%d b=%d expected diff=%d borrow=%b got diff=%d borrow=%b",ta,tb_,ed,eb,diff,borrow); end
+    else $display("PASS a=%d b=%d diff=%d borrow=%b",ta,tb_,diff,borrow);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(7,3,4,0);
+    check(3,7,6,1);
+    check(9,9,0,0);
+    check(0,9,1,1);
+    check(9,0,9,0);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'diff', 'borrow'],
+      wavedrom: {
+        signal: [
+          { name: 'a[3:0]', wave: '2.3.4.5.', data: ['7', '3', '9', '0'] },
+          { name: 'b[3:0]', wave: '2.3.4.5.', data: ['3', '7', '9', '9'] },
+          { name: 'diff[3:0]', wave: '2.3.4.5.', data: ['4', '6', '0', '1'] },
+          { name: 'borrow', wave: '0.1.0.1.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'shift-add-multiplier',
+      title: 'Shift-Add Multiplier',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'datapath'],
+      category: 'Sequential Design',
+      lede: 'Multiply two unsigned 4-bit numbers using the classic shift-add algorithm — one bit of the multiplier examined per cycle, exactly how early CPUs implemented multiplication in hardware before dedicated multiplier arrays.',
+      concept: '<b>Concept:</b> Shift-add multiplication processes the multiplier one bit at a time: if the current LSB of the multiplier is 1, add the (progressively left-shifted) multiplicand into an accumulating product; either way, shift the multiplicand left and the multiplier right, and repeat for every bit. Forgetting to shift the multiplier means the same LSB is examined every cycle instead of advancing through the bits — the multiplicand still grows correctly, but the decision of when to add it is stuck testing the same (increasingly stale) bit forever.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>start</td><td>input</td><td>1</td><td>Pulse for 1 cycle to begin multiplying a &times; b</td></tr>
+<tr><td>a</td><td>input</td><td>4</td><td>Multiplicand</td></tr>
+<tr><td>b</td><td>input</td><td>4</td><td>Multiplier</td></tr>
+<tr><td>product</td><td>output</td><td>8</td><td>a &times; b, valid once done pulses</td></tr>
+<tr><td>done</td><td>output</td><td>1</td><td>Pulses for 1 cycle when the product is ready</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  start,
+  input  [3:0] a,
+  input  [3:0] b,
+  output reg [7:0] product,
+  output reg done
+);
+
+  // Your code here — 4 iterations: if multiplier LSB is 1, add multiplicand into product; then shift multiplicand left, multiplier right.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, start; reg [3:0] a, b; wire [7:0] product; wire done; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .start(start), .a(a), .b(b), .product(product), .done(done));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ed; input [7:0] ep; input [127:0] label; begin
+    if(done!==ed || product!==ep) begin errors=errors+1; $display("FAIL %0s expected done=%b product=%d got done=%b product=%d",label,ed,ep,done,product); end
+    else $display("PASS %0s done=%b product=%d",label,done,product);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; start=0; a=0; b=0; @(posedge clk); #1; check(0,0,"reset");
+    rst=0; a=5; b=3; start=1;
+    @(posedge clk); #1; check(0,0,"load-cycle");
+    start=0;
+    @(posedge clk); #1; check(0,5,"iter0");
+    @(posedge clk); #1; check(0,15,"iter1");
+    @(posedge clk); #1; check(0,15,"iter2-no-add");
+    @(posedge clk); #1; check(1,15,"iter3-done-product-15");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'start', 'a', 'b', 'product', 'done'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'start', wave: '0.10......' },
+          { name: 'product[7:0]', wave: '2...3.4...', data: ['0', '5', '15'] },
+          { name: 'done', wave: '0........1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'auto-repeat-button',
+      title: 'Auto-Repeat Button',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'control'],
+      category: 'Sequential Design',
+      lede: 'Fire an immediate pulse the instant a button is pressed, then keep firing repeat pulses at a steady interval for as long as it stays held — the key-repeat behavior behind every keyboard.',
+      concept: '<b>Concept:</b> A fresh press (rising edge, tracked with a registered previous-value comparison) fires one pulse immediately and resets a cycle counter. While the button stays held, that counter counts up and fires another pulse every time it reaches the repeat interval, then resets — releasing the button resets the counter so a later press always starts with a fresh, immediate pulse rather than continuing a stale count. Getting the repeat-interval comparison off by one (checking one cycle too early) makes every repeat fire faster than intended, silently changing the whole timing feel of the interface.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>btn</td><td>input</td><td>1</td><td>Button level (already clean/debounced)</td></tr>
+<tr><td>pulse</td><td>output</td><td>1</td><td>Pulses for 1 cycle on press, then every 3 cycles while held</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  btn,
+  output reg pulse
+);
+
+  // Your code here — pulse once on the rising edge of btn, then every 3 cycles while it stays held; release resets the timer.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, btn; wire pulse; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .btn(btn), .pulse(pulse));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ep; input [127:0] label; begin
+    if(pulse!==ep) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ep,pulse); end
+    else $display("PASS %0s pulse=%b",label,pulse);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; btn=0; @(posedge clk); #1; check(0,"reset");
+    rst=0; btn=1;
+    @(posedge clk); #1; check(1,"cyc1-fresh-press");
+    @(posedge clk); #1; check(0,"cyc2-counting");
+    @(posedge clk); #1; check(0,"cyc3-counting");
+    @(posedge clk); #1; check(1,"cyc4-first-repeat");
+    @(posedge clk); #1; check(0,"cyc5-counting");
+    @(posedge clk); #1; check(0,"cyc6-counting");
+    @(posedge clk); #1; check(1,"cyc7-second-repeat");
+    btn=0;
+    @(posedge clk); #1; check(0,"released-no-repeat");
+    btn=1;
+    @(posedge clk); #1; check(1,"re-press-fresh-again");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'btn', 'pulse'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'btn', wave: '01........' },
+          { name: 'pulse', wave: '0.10.010.1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'gray-code-sequence-checker',
+      title: 'Gray Code Sequence Checker',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'checker'],
+      category: 'Sequential Design',
+      lede: 'Watch a stream of 4-bit values and flag whether each new sample really is a valid Gray-code step from the last one — exactly one bit changed, no more, no less.',
+      concept: '<b>Concept:</b> The defining property of a Gray-code sequence is that consecutive values differ in exactly one bit. XOR the current sample against the registered previous one, then test whether that difference has exactly one bit set using the classic power-of-two trick: <code>(diff != 0) && ((diff & (diff-1)) == 0)</code> — a value with exactly one bit set becomes zero when ANDed with itself minus one. Replacing that check with a plain inequality (<code>code != prev</code>) only verifies that <em>something</em> changed, not that the change respects the one-bit-at-a-time rule — it would wave through a jump like 0110 to 0101 (two bits flipped) as if it were valid.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>code</td><td>input</td><td>4</td><td>Next sample in the sequence</td></tr>
+<tr><td>valid</td><td>output</td><td>1</td><td>1 if code differs from the previous sample by exactly one bit</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [3:0] code,
+  output reg valid
+);
+
+  // Your code here — register the previous code; valid = exactly one bit differs from it (Hamming distance 1).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst; reg [3:0] code; wire valid; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .code(code), .valid(valid));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ev; input [127:0] label; begin
+    if(valid!==ev) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ev,valid); end
+    else $display("PASS %0s valid=%b",label,valid);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; code=4'b0000; @(posedge clk); #1; check(1,"reset-first-sample");
+    rst=0;
+    code=4'b0001; @(posedge clk); #1; check(1,"0-to-1-valid");
+    code=4'b0011; @(posedge clk); #1; check(1,"1-to-3-valid");
+    code=4'b0010; @(posedge clk); #1; check(1,"3-to-2-valid");
+    code=4'b0110; @(posedge clk); #1; check(1,"2-to-6-valid");
+    code=4'b0101; @(posedge clk); #1; check(0,"6-to-5-INVALID-two-bits");
+    code=4'b0111; @(posedge clk); #1; check(1,"5-to-7-valid-again");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'code', 'valid'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...........' },
+          { name: 'code[3:0]', wave: '2.3.4.5.6.7.', data: ['0', '1', '3', '2', '6', '5'] },
+          { name: 'valid', wave: '1.........0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'one-shot-pulse-generator',
+      title: 'One-Shot Pulse Generator',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'control'],
+      category: 'Sequential Design',
+      lede: 'Turn a trigger into a clean pulse of a fixed, programmable width — a classic monostable ("one-shot") that ignores any retrigger attempts until the current pulse finishes.',
+      concept: '<b>Concept:</b> A one-shot latches an <code>active</code> flag on trigger, counts down for <code>width</code> cycles, and only accepts a new trigger once it\'s back to idle: <code>if (!active && trigger)</code> is the guard that makes retriggering impossible mid-pulse. Dropping the <code>!active</code> half of that guard (just checking <code>trigger</code> alone) lets a retrigger reload the countdown while a pulse is already running, silently stretching the output well past its intended, fixed width — defeating the entire point of a one-shot.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>trigger</td><td>input</td><td>1</td><td>Pulse for 1 cycle to fire a new one-shot (ignored while already active)</td></tr>
+<tr><td>width</td><td>input</td><td>4</td><td>Pulse width in cycles</td></tr>
+<tr><td>pulse_out</td><td>output</td><td>1</td><td>High for exactly width cycles after each accepted trigger</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  trigger,
+  input  [3:0] width,
+  output reg pulse_out
+);
+
+  // Your code here — on an accepted trigger (only when not already active), go high for exactly width cycles.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, trigger; reg [3:0] width; wire pulse_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .trigger(trigger), .width(width), .pulse_out(pulse_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input ep; input [127:0] label; begin
+    if(pulse_out!==ep) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ep,pulse_out); end
+    else $display("PASS %0s pulse_out=%b",label,pulse_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; trigger=0; width=4'd3; @(posedge clk); #1; check(0,"reset");
+    rst=0; trigger=1;
+    @(posedge clk); #1; check(1,"cyc1-pulse-starts");
+    trigger=0;
+    @(posedge clk); #1; check(1,"cyc2-still-high");
+    @(posedge clk); #1; check(1,"cyc3-still-high");
+    @(posedge clk); #1; check(0,"cyc4-pulse-ends-after-width-3");
+    trigger=1;
+    @(posedge clk); #1; check(1,"new-trigger-works");
+    trigger=0;
+    @(posedge clk); #1; check(1,"cyc2-of-second-pulse");
+    trigger=1;
+    @(posedge clk); #1; check(1,"cyc3-retrigger-attempt-should-be-ignored");
+    trigger=0;
+    @(posedge clk); #1; check(0,"pulse-ends-on-schedule-not-extended");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'trigger', 'width', 'pulse_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'trigger', wave: '0.10..1.0.' },
+          { name: 'pulse_out', wave: '0.111.0111' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'serial-to-parallel-with-parity',
+      title: 'Serial-to-Parallel Receiver with Parity',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Receive an 8-bit word one bit at a time, MSB first, followed by an even-parity check bit — and flag a mismatch instead of silently trusting corrupted data.',
+      concept: '<b>Concept:</b> After a framing pulse, shift in 8 data bits MSB-first (<code>shreg &lt;= {shreg[6:0], bit_in}</code>), then treat the 9th bit as an even-parity check: for even parity, the correct check bit always equals the XOR of the 8 data bits, so <code>parity_error = (^shreg) != bit_in</code>. Inverting that comparison (<code>==</code> instead of <code>!=</code>) flips the entire meaning of the flag — every good frame gets reported as corrupted and every actually-corrupted frame sails through as clean, which is far more dangerous than having no parity check at all.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>bit_in</td><td>input</td><td>1</td><td>Next serial bit (data, then the parity bit)</td></tr>
+<tr><td>frame_start</td><td>input</td><td>1</td><td>Pulse for 1 cycle: the next 9 bits are a new frame</td></tr>
+<tr><td>data_out</td><td>output</td><td>8</td><td>Assembled byte, valid when data_valid pulses</td></tr>
+<tr><td>parity_error</td><td>output</td><td>1</td><td>1 if the received parity bit doesn't match even parity over data_out</td></tr>
+<tr><td>data_valid</td><td>output</td><td>1</td><td>Pulses for 1 cycle once a full 9-bit frame has been received</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  bit_in,
+  input  frame_start,
+  output reg [7:0] data_out,
+  output reg parity_error,
+  output reg data_valid
+);
+
+  // Your code here — shift in 8 data bits MSB-first, then check the 9th bit against even parity (XOR of the 8 data bits).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, bit_in, frame_start; wire [7:0] data_out; wire parity_error, data_valid; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .bit_in(bit_in), .frame_start(frame_start), .data_out(data_out), .parity_error(parity_error), .data_valid(data_valid));
+  initial clk=0; always #5 clk=~clk;
+  task check; input [7:0] ed; input ee; input [127:0] label; begin
+    if(data_out!==ed || parity_error!==ee) begin errors=errors+1; $display("FAIL %0s expected data=%h err=%b got data=%h err=%b",label,ed,ee,data_out,parity_error); end
+    else $display("PASS %0s data=%h err=%b",label,data_out,parity_error);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; bit_in=0; frame_start=0; @(posedge clk); #1;
+    rst=0;
+    frame_start=1; @(posedge clk); #1; frame_start=0;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1; check(8'h4B,0,"valid-frame-even-parity-matches");
+    frame_start=1; @(posedge clk); #1; frame_start=0;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=0; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1;
+    bit_in=1; @(posedge clk); #1; check(8'h4B,1,"invalid-frame-parity-mismatch");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'bit_in', 'frame_start', 'data_out', 'parity_error', 'data_valid'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......................' },
+          { name: 'frame_start', wave: '0.10....................' },
+          { name: 'bit_in', wave: '0..2.3.4.5.6.7.8.9......', data: ['0', '1', '0', '0', '1', '0', '1', '1'] },
+          { name: 'data_valid', wave: '0..........1............' },
+          { name: 'parity_error', wave: '0..........2............', data: ['0'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
