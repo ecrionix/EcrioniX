@@ -7599,6 +7599,594 @@ endmodule
       }
     },
     {
+      slug: 'bit-reversal',
+      title: '8-Bit Reversal',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'datapath'],
+      category: 'Combinational Design',
+      lede: 'Reverse the bit order of an 8-bit word so the LSB becomes the MSB and vice versa — pure rewiring, no arithmetic.',
+      concept: '<b>Concept:</b> Bit reversal is a straight cross-wiring job: <code>out = {in[0],in[1],...,in[7]}</code> maps every bit to its mirror position. Confusing this with a byte/nibble swap (<code>{in[3:0],in[7:4]}</code>) reorders groups of bits but leaves each 4-bit half internally unreversed — a very different, and very common, mistake.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>in</td><td>input</td><td>8</td><td>Input byte</td></tr>
+<tr><td>out</td><td>output</td><td>8</td><td>in with its bit order fully reversed</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] in,
+  output [7:0] out
+);
+
+  // Your code here — out[i] = in[7-i] for every bit.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] in; wire [7:0] out; integer errors=0;
+  top_module dut(.in(in), .out(out));
+  task check; input [7:0] i; input [7:0] eo; begin
+    in=i;#1;
+    if(out!==eo) begin errors=errors+1; $display("FAIL in=%b expected=%b got=%b",i,eo,out); end
+    else $display("PASS in=%b out=%b",i,out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'b10110000, 8'b00001101);
+    check(8'b00000001, 8'b10000000);
+    check(8'b11111111, 8'b11111111);
+    check(8'b00000000, 8'b00000000);
+    check(8'b11010010, 8'b01001011);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['in', 'out'],
+      wavedrom: {
+        signal: [
+          { name: 'in[7:0]', wave: '2.3.4.5.', data: ['B0', '01', 'FF', 'D2'] },
+          { name: 'out[7:0]', wave: '2.3.4.5.', data: ['0D', '80', 'FF', '4B'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'leading-zero-counter',
+      title: 'Leading Zero Counter (CLZ)',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'encoder'],
+      category: 'Combinational Design',
+      lede: 'Count how many leading zero bits sit above the highest set bit in an 8-bit value — the CLZ primitive behind floating-point normalization and priority schedulers.',
+      concept: '<b>Concept:</b> CLZ (count-leading-zeros) reports how far the highest \'1\' bit sits from the MSB: <code>in[7]?0:in[6]?1:...:in[0]?7:8</code>. It\'s easy to confuse this with a priority-encoder <em>index</em> (which counts from the LSB upward) — CLZ instead counts leading zeros from the top, and needs a distinct value (8, not 7) for the special all-zero case, since there\'s no set bit to reference at all.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>in</td><td>input</td><td>8</td><td>Input value</td></tr>
+<tr><td>count</td><td>output</td><td>4</td><td>Number of leading zero bits (0-8; 8 means in is all-zero)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] in,
+  output [3:0] count
+);
+
+  // Your code here — count zero bits above the highest set bit; count=8 if in is all-zero.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] in; wire [3:0] count; integer errors=0;
+  top_module dut(.in(in), .count(count));
+  task check; input [7:0] i; input [3:0] ec; begin
+    in=i;#1;
+    if(count!==ec) begin errors=errors+1; $display("FAIL in=%b expected=%d got=%d",i,ec,count); end
+    else $display("PASS in=%b count=%d",i,count);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'b10000000, 4'd0);
+    check(8'b01000000, 4'd1);
+    check(8'b00010000, 4'd3);
+    check(8'b00000001, 4'd7);
+    check(8'b00000000, 4'd8);
+    check(8'b00100101, 4'd2);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['in', 'count'],
+      wavedrom: {
+        signal: [
+          { name: 'in[7:0]', wave: '2.3.4.5.', data: ['80', '40', '10', '00'] },
+          { name: 'count[3:0]', wave: '2.3.4.5.', data: ['0', '1', '3', '8'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'hex-7segment-decoder',
+      title: 'Hex 7-Segment Decoder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'display'],
+      category: 'Combinational Design',
+      lede: 'Extend a BCD 7-segment decoder to the full hexadecimal range 0-F — the driver every FPGA dev-board hex display actually needs.',
+      concept: '<b>Concept:</b> This is the same <code>seg[6:0]={a,b,c,d,e,f,g}</code> active-high lookup table as a BCD decoder, just extended past 9: 0xA-0xF get their own standard segment patterns (A=1110111, b=0011111, C=1001110, d=0111101, E=1001111, F=1000111 — lowercase b/d because those digits render better with the segments available). A decoder that only implements <code>case</code> branches for 0-9 and lets A-F fall through to a default (usually blank) silently breaks the moment a real hex value above 9 reaches the display.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>hex</td><td>input</td><td>4</td><td>Hex digit, 0x0-0xF</td></tr>
+<tr><td>seg</td><td>output</td><td>7</td><td>{a,b,c,d,e,f,g} segments, active-high</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input      [3:0] hex,
+  output reg [6:0] seg
+);
+
+  // Your code here — a case statement over all 16 hex values, 0-9 and A-F.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] hex; wire [6:0] seg; integer errors=0;
+  top_module dut(.hex(hex), .seg(seg));
+  task check; input [3:0] h; input [6:0] es; begin
+    hex=h;#1;
+    if(seg!==es) begin errors=errors+1; $display("FAIL hex=%h expected=%b got=%b",h,es,seg); end
+    else $display("PASS hex=%h seg=%b",h,seg);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(4'h0, 7'b1111110);
+    check(4'h5, 7'b1011011);
+    check(4'h9, 7'b1111011);
+    check(4'hA, 7'b1110111);
+    check(4'hB, 7'b0011111);
+    check(4'hF, 7'b1000111);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['hex', 'seg'],
+      wavedrom: {
+        signal: [
+          { name: 'hex[3:0]', wave: '2.3.4.5.', data: ['0', '9', 'A', 'F'] },
+          { name: 'seg[6:0]', wave: '2.3.4.5.', data: ['7E', '7B', '77', '47'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'thermometer-to-binary',
+      title: 'Thermometer-to-Binary Encoder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'encoder'],
+      category: 'Combinational Design',
+      lede: 'Convert a thermometer-coded value (a run of 1s from the LSB, as produced by a flash ADC comparator bank) into its binary magnitude.',
+      concept: '<b>Concept:</b> A thermometer code (like <code>00011111</code>) fills in 1s from the bottom up to the represented value — exactly what a bank of flash-ADC comparators naturally produces. Converting it back to binary is a priority search for the topmost set bit: <code>in[7]?8:in[6]?7:...:in[0]?1:0</code>. Off-by-one here (checking <code>in[7]?7:...</code> instead of <code>8</code>) undercounts every single non-zero input by exactly one.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>therm</td><td>input</td><td>8</td><td>Thermometer code: a contiguous run of 1s starting at bit 0</td></tr>
+<tr><td>count</td><td>output</td><td>4</td><td>Binary count of set bits (0-8)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] therm,
+  output [3:0] count
+);
+
+  // Your code here — find the position of the highest set bit, +1 (0 if therm is all-zero).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] therm; wire [3:0] count; integer errors=0;
+  top_module dut(.therm(therm), .count(count));
+  task check; input [7:0] t; input [3:0] ec; begin
+    therm=t;#1;
+    if(count!==ec) begin errors=errors+1; $display("FAIL therm=%b expected=%d got=%d",t,ec,count); end
+    else $display("PASS therm=%b count=%d",t,count);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'b00000000, 4'd0);
+    check(8'b00000001, 4'd1);
+    check(8'b00000111, 4'd3);
+    check(8'b00011111, 4'd5);
+    check(8'b11111111, 4'd8);
+    check(8'b00111111, 4'd6);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['therm', 'count'],
+      wavedrom: {
+        signal: [
+          { name: 'therm[7:0]', wave: '2.3.4.5.', data: ['00', '07', '1F', 'FF'] },
+          { name: 'count[3:0]', wave: '2.3.4.5.', data: ['0', '3', '5', '8'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'binary-to-thermometer',
+      title: 'Binary-to-Thermometer Decoder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'decoder'],
+      category: 'Combinational Design',
+      lede: 'Convert a binary magnitude into a thermometer code — the decoder behind every LED bar-graph level meter.',
+      concept: '<b>Concept:</b> A thermometer decoder needs exactly <code>bin</code> ones starting from bit 0 — the classic bit-trick for "N ones" is <code>(1&lt;&lt;N)-1</code>: <code>therm = (9\'d1 &lt;&lt; bin) - 1</code> (widened to 9 bits so <code>bin=8</code> correctly yields all 8 bits set instead of overflowing). Filling bits from the <em>top</em> down instead of the bottom up produces a mirror-image pattern that looks plausible but lights the wrong end of the bar graph.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>bin</td><td>input</td><td>4</td><td>Binary magnitude, 0-8</td></tr>
+<tr><td>therm</td><td>output</td><td>8</td><td>Thermometer code: bin ones starting from bit 0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] bin,
+  output [7:0] therm
+);
+
+  // Your code here — therm = (1 << bin) - 1, i.e. bin ones starting from bit 0.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] bin; wire [7:0] therm; integer errors=0;
+  top_module dut(.bin(bin), .therm(therm));
+  task check; input [3:0] b; input [7:0] et; begin
+    bin=b;#1;
+    if(therm!==et) begin errors=errors+1; $display("FAIL bin=%d expected=%b got=%b",b,et,therm); end
+    else $display("PASS bin=%d therm=%b",b,therm);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(4'd0, 8'b00000000);
+    check(4'd1, 8'b00000001);
+    check(4'd3, 8'b00000111);
+    check(4'd5, 8'b00011111);
+    check(4'd8, 8'b11111111);
+    check(4'd6, 8'b00111111);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['bin', 'therm'],
+      wavedrom: {
+        signal: [
+          { name: 'bin[3:0]', wave: '2.3.4.5.', data: ['0', '3', '5', '8'] },
+          { name: 'therm[7:0]', wave: '2.3.4.5.', data: ['00', '07', '1F', 'FF'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'bcd-digit-validator',
+      title: 'BCD Digit Validator',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'arithmetic'],
+      category: 'Combinational Design',
+      lede: 'Flag whether a 4-bit nibble is a legal BCD digit (0-9) or one of the six unused patterns (10-15) — the guard every BCD datapath needs before trusting its input.',
+      concept: '<b>Concept:</b> A 4-bit nibble can represent 0-15, but BCD only uses 0-9 — the top six codes (1010-1111) are illegal. The check is a plain magnitude comparison, <code>valid = (nibble &lt;= 9)</code>. A tempting shortcut, <code>valid = ~nibble[3]</code> ("valid if the top bit is 0"), looks like it works for small numbers but wrongly rejects 8 and 9 (both have their MSB set) while wrongly accepting nothing above 7 — it\'s checking the wrong thing entirely.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>nibble</td><td>input</td><td>4</td><td>4-bit value to check</td></tr>
+<tr><td>valid</td><td>output</td><td>1</td><td>1 if nibble is 0-9 (a legal BCD digit), 0 otherwise</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] nibble,
+  output valid
+);
+
+  // Your code here — valid = (nibble <= 9).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] nibble; wire valid; integer errors=0;
+  top_module dut(.nibble(nibble), .valid(valid));
+  task check; input [3:0] n; input ev; begin
+    nibble=n;#1;
+    if(valid!==ev) begin errors=errors+1; $display("FAIL nibble=%d expected=%b got=%b",n,ev,valid); end
+    else $display("PASS nibble=%d valid=%b",n,valid);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(4'd0, 1);
+    check(4'd7, 1);
+    check(4'd9, 1);
+    check(4'd8, 1);
+    check(4'd10, 0);
+    check(4'd15, 0);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['nibble', 'valid'],
+      wavedrom: {
+        signal: [
+          { name: 'nibble[3:0]', wave: '2.3.4.5.', data: ['0', '9', 'A', 'F'] },
+          { name: 'valid', wave: '1.1.0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'spi-shift-register',
+      title: 'SPI Full-Duplex Shift Register',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Build the core shift register behind SPI: transmit a byte MSB-first while simultaneously receiving one, both directions moving on the same clock edge.',
+      concept: '<b>Concept:</b> SPI\'s shift register does two things on every clock edge at once: the top bit shifts out on <code>miso</code>, and a new bit shifts in from <code>mosi</code> at the bottom — <code>shreg &lt;= {shreg[6:0], mosi}</code>, with <code>miso</code> reading <code>shreg[7]</code> combinationally. A <code>load</code> pulse parallel-loads a fresh byte to transmit. Shifting the wrong direction (<code>{mosi, shreg[7:1]}</code>) swaps which end transmits first and which end receives — a mirror-image bug that still compiles and still shifts, just not the way SPI actually works.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>SPI shift clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>load</td><td>input</td><td>1</td><td>Parallel-load tx_data into the shift register</td></tr>
+<tr><td>mosi</td><td>input</td><td>1</td><td>Serial data in (Master Out Slave In)</td></tr>
+<tr><td>tx_data</td><td>input</td><td>8</td><td>Byte to transmit on the next load</td></tr>
+<tr><td>miso</td><td>output</td><td>1</td><td>Serial data out (Master In Slave Out) — current top bit</td></tr>
+<tr><td>shreg</td><td>output</td><td>8</td><td>Live shift register contents</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  load,
+  input  mosi,
+  input  [7:0] tx_data,
+  output miso,
+  output reg [7:0] shreg
+);
+
+  // Your code here — on load, shreg<=tx_data; otherwise shift left, shreg<={shreg[6:0],mosi}. miso=shreg[7].
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, load, mosi; reg [7:0] tx_data; wire miso; wire [7:0] shreg; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .load(load), .mosi(mosi), .tx_data(tx_data), .miso(miso), .shreg(shreg));
+  initial clk=0; always #5 clk=~clk;
+  task checkm; input em; input [127:0] label; begin
+    if(miso!==em) begin errors=errors+1; $display("FAIL %0s expected miso=%b got=%b",label,em,miso); end
+    else $display("PASS %0s miso=%b",label,miso);
+  end endtask
+  task checks; input [7:0] es; input [127:0] label; begin
+    if(shreg!==es) begin errors=errors+1; $display("FAIL %0s expected shreg=%h got=%h",label,es,shreg); end
+    else $display("PASS %0s shreg=%h",label,shreg);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; load=0; mosi=0; tx_data=8'h00; @(posedge clk); #1; checks(8'h00,"reset");
+    rst=0; load=1; tx_data=8'hA5; @(posedge clk); #1; checkm(1,"bit7-after-load");
+    load=0; mosi=1; @(posedge clk); #1; checkm(0,"bit6");
+    mosi=0; @(posedge clk); #1; checkm(1,"bit5");
+    mosi=1; @(posedge clk); #1; checkm(0,"bit4");
+    mosi=0; @(posedge clk); #1; checkm(0,"bit3");
+    mosi=1; @(posedge clk); #1; checkm(1,"bit2");
+    mosi=0; @(posedge clk); #1; checkm(0,"bit1");
+    mosi=1; @(posedge clk); #1; checkm(1,"bit0"); checks(8'hD5,"final-shreg-matches-fed-mosi-bits");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'load', 'mosi', 'tx_data', 'miso', 'shreg'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'load', wave: '01........' },
+          { name: 'miso', wave: '2.3.4.5...', data: ['1', '0', '1', '0'] },
+          { name: 'shreg[7:0]', wave: '2.........', data: ['A5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'i2c-start-stop-detector',
+      title: 'I2C Start/Stop Condition Detector',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'protocol', 'i2c'],
+      category: 'Sequential Design',
+      lede: 'Detect the two conditions that frame every I2C transaction: SDA falling while SCL is high (START) and SDA rising while SCL is high (STOP) — the one rule that makes I2C\'s bus protocol work at all.',
+      concept: '<b>Concept:</b> I2C is unique among serial buses: data (SDA) is only allowed to change while the clock (SCL) is <em>low</em> — every SDA transition while SCL is <em>high</em> is a special framing signal, not a data bit. Falling SDA while SCL stays high marks START; rising SDA while SCL stays high marks STOP. Detecting this needs registered previous samples of both signals: <code>start &lt;= scl && scl_prev && sda_prev && !sda</code>. Swapping which edge means start and which means stop is a genuinely easy mix-up (both rules look almost identical at a glance) — and it inverts the meaning of every transaction boundary in the bus trace.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Sampling clock (oversamples the bus)</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>sda</td><td>input</td><td>1</td><td>I2C data line</td></tr>
+<tr><td>scl</td><td>input</td><td>1</td><td>I2C clock line</td></tr>
+<tr><td>start_detected</td><td>output</td><td>1</td><td>Pulses for 1 cycle on a START condition</td></tr>
+<tr><td>stop_detected</td><td>output</td><td>1</td><td>Pulses for 1 cycle on a STOP condition</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  sda,
+  input  scl,
+  output reg start_detected,
+  output reg stop_detected
+);
+
+  // Your code here — register sda/scl; start=SDA falls while SCL held high; stop=SDA rises while SCL held high.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst, sda, scl; wire start_detected, stop_detected; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .sda(sda), .scl(scl), .start_detected(start_detected), .stop_detected(stop_detected));
+  initial clk=0; always #5 clk=~clk;
+  task check; input es; input ep; input [127:0] label; begin
+    if(start_detected!==es || stop_detected!==ep) begin
+      errors=errors+1; $display("FAIL %0s expected start=%b stop=%b got start=%b stop=%b",label,es,ep,start_detected,stop_detected);
+    end else $display("PASS %0s start=%b stop=%b",label,start_detected,stop_detected);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; sda=1; scl=1; @(posedge clk); #1; check(0,0,"reset-idle");
+    rst=0;
+    @(posedge clk); #1; check(0,0,"idle-no-change");
+    sda=0; @(posedge clk); #1; check(1,0,"start-condition-sda-falls-scl-high");
+    @(posedge clk); #1; check(0,0,"start-pulse-clears");
+    scl=0; @(posedge clk); #1; check(0,0,"scl-drops-for-data-phase");
+    sda=1; @(posedge clk); #1; check(0,0,"data-bit-change-while-scl-low-ignored");
+    scl=1; @(posedge clk); #1; check(0,0,"scl-rises-again-no-sda-edge-this-cycle");
+    sda=0; @(posedge clk); #1; check(1,0,"repeated-start-sda-falls-scl-high");
+    sda=1; @(posedge clk); #1; check(0,1,"stop-condition-sda-rises-scl-high");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'sda', 'scl', 'start_detected', 'stop_detected'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.................' },
+          { name: 'scl', wave: '1....0.1..........' },
+          { name: 'sda', wave: '1.0.....1..0.1....' },
+          { name: 'start_detected', wave: '0.10...........10.' },
+          { name: 'stop_detected', wave: '0.............1.0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'thermostat-hysteresis-controller',
+      title: 'Thermostat with Hysteresis',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'fsm'],
+      category: 'Sequential Design',
+      lede: 'Control a heater with a dead-band between the on and off thresholds, so it doesn\'t chatter on and off every time the temperature crosses a single setpoint.',
+      concept: '<b>Concept:</b> A single-threshold thermostat oscillates rapidly whenever the temperature hovers right at the setpoint — every tiny fluctuation flips the heater. Hysteresis fixes this with two thresholds: turn on at or below a LOW point, turn off at or above a HIGH point, and <em>hold the current state</em> anywhere in between: <code>if(temp&lt;=LOW) on&lt;=1; else if(temp&gt;=HIGH) on&lt;=0;</code> (no else — the deadband case falls through and keeps the old value). Collapsing this to one threshold (<code>on &lt;= temp&lt;70</code>) throws away the memory that makes hysteresis work, so the heater flips state on every single sample near 70 instead of holding steady.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (heater_on=0)</td></tr>
+<tr><td>temp</td><td>input</td><td>8</td><td>Current temperature reading</td></tr>
+<tr><td>heater_on</td><td>output</td><td>1</td><td>1 while the heater should be running</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [7:0] temp,
+  output reg heater_on
+);
+
+  // Your code here — turn on at temp<=68, turn off at temp>=72, hold state in the deadband (69-71).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst; reg [7:0] temp; wire heater_on; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .temp(temp), .heater_on(heater_on));
+  initial clk=0; always #5 clk=~clk;
+  task check; input eh; input [127:0] label; begin
+    if(heater_on!==eh) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,eh,heater_on); end
+    else $display("PASS %0s heater_on=%b",label,heater_on);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; temp=75; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    @(posedge clk); #1; check(0,"above-high-stays-off");
+    temp=68; @(posedge clk); #1; check(1,"at-low-turns-on");
+    temp=70; @(posedge clk); #1; check(1,"deadband-holds-on");
+    temp=71; @(posedge clk); #1; check(1,"deadband-still-holds-on");
+    temp=72; @(posedge clk); #1; check(0,"at-high-turns-off");
+    temp=70; @(posedge clk); #1; check(0,"deadband-holds-off");
+    temp=68; @(posedge clk); #1; check(1,"back-to-low-turns-on-again");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'temp', 'heater_on'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...............' },
+          { name: 'temp[7:0]', wave: '2...3.4.5.6.7...', data: ['75', '68', '70', '71', '72', '68'] },
+          { name: 'heater_on', wave: '0...1.......0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'fir-filter-3tap',
+      title: '3-Tap FIR Filter',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'datapath'],
+      category: 'Sequential Design',
+      lede: 'Implement a fixed-coefficient 3-tap FIR filter (1,2,1) over a signed input stream — the multiply-accumulate structure behind every digital smoothing/anti-aliasing filter.',
+      concept: '<b>Concept:</b> A 3-tap FIR filter computes a weighted sum of the current and two previous samples: <code>y[n] = 1&middot;x[n] + 2&middot;x[n-1] + 1&middot;x[n-2]</code>. Keep the last two samples in shift registers (<code>x1</code>, <code>x2</code>), multiply the center tap by 2 with a cheap left-shift (<code>x1&lt;&lt;&lt;1</code>), and register the sum. Dropping the center tap\'s weight (<code>x_in+x1+x2</code> instead of <code>x_in+2*x1+x2</code>) silently turns a binomial-weighted smoothing filter into a plain 3-sample average — same shape of circuit, different frequency response entirely.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>x_in</td><td>input</td><td>8 (signed)</td><td>Current input sample</td></tr>
+<tr><td>y_out</td><td>output</td><td>11 (signed)</td><td>Filtered output: x[n] + 2&middot;x[n-1] + x[n-2]</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  signed [7:0] x_in,
+  output reg signed [10:0] y_out
+);
+
+  // Your code here — keep x[n-1], x[n-2] in shift registers; y_out <= x_in + 2*x1 + x2.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, rst; reg signed [7:0] x_in; wire signed [10:0] y_out; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .x_in(x_in), .y_out(y_out));
+  initial clk=0; always #5 clk=~clk;
+  task check; input signed [10:0] ey; input [127:0] label; begin
+    if(y_out!==ey) begin errors=errors+1; $display("FAIL %0s expected=%d got=%d",label,ey,y_out); end
+    else $display("PASS %0s y_out=%d",label,y_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; x_in=0; @(posedge clk); #1; check(0,"reset");
+    rst=0;
+    x_in=10; @(posedge clk); #1; check(10,"sample1");
+    x_in=20; @(posedge clk); #1; check(40,"sample2");
+    x_in=5;  @(posedge clk); #1; check(55,"sample3");
+    x_in=0;  @(posedge clk); #1; check(30,"sample4");
+    x_in=-10; @(posedge clk); #1; check(-5,"sample5-negative");
+    x_in=30; @(posedge clk); #1; check(10,"sample6");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'x_in', 'y_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.............' },
+          { name: 'x_in[7:0]', wave: '2.3.4.5.6.....', data: ['10', '20', '5', '0', '-10'] },
+          { name: 'y_out[10:0]', wave: '2.3.4.5.6.....', data: ['10', '40', '55', '30', '-5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
       slug: 'binary-counter',
       title: '4-Bit Binary Counter',
       difficulty: 'medium',
