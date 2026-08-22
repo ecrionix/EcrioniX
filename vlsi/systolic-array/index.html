@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Systolic Array Dataflows — Weight, Output & Input Stationary Explained | EcrioniX</title>
+  <meta name="description" content="Why does a TPU hold weights still while a matrix streams past them? A deep dive into the three systolic array dataflow strategies — weight-stationary, output-stationary, and input-stationary — with real chip examples, energy tradeoffs, and diagrams.">
+  <meta name="keywords" content="systolic array dataflow, weight stationary, output stationary, input stationary, row stationary, TPU MXU, Eyeriss dataflow, systolic array energy efficiency, PE array reuse">
+  <link rel="canonical" href="https://ecrionix.org/vlsi/systolic-array/">
+  <meta property="og:title" content="Systolic Array Dataflows — Weight, Output & Input Stationary Explained">
+  <meta property="og:description" content="The three ways to feed a systolic array, and why the choice determines a chip's energy efficiency more than raw MAC count does.">
+  <meta property="og:url" content="https://ecrionix.org/vlsi/systolic-array/">
+  <meta property="og:image" content="https://ecrionix.org/favicon1.png">
+  <meta property="og:type" content="article">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://ecrionix.org/favicon1.png">
+  <link rel="icon" href="/favicon1.png">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","datePublished":"2026-08-21","dateModified":"2026-08-21","author":{"@type":"Organization","name":"EcrioniX"},"headline":"Systolic Array Dataflows — Weight, Output & Input Stationary Explained","description":"A deep dive into the three systolic array dataflow strategies — weight-stationary, output-stationary, and input-stationary — with real chip examples and energy tradeoffs.","url":"https://ecrionix.org/vlsi/systolic-array/","publisher":{"@type":"Organization","name":"EcrioniX"}},
+    {"@type":"BreadcrumbList","itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://ecrionix.org/"},
+      {"@type":"ListItem","position":2,"name":"VLSI","item":"https://ecrionix.org/vlsi/"},
+      {"@type":"ListItem","position":3,"name":"Systolic Array Dataflows","item":"https://ecrionix.org/vlsi/systolic-array/"}
+    ]},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"What is a systolic array dataflow?",
+       "acceptedAnswer":{"@type":"Answer","text":"It's the strategy that decides which operand (weights, inputs, or partial sums) stays fixed inside each processing element while the others stream through. The choice determines how many times each value has to be re-fetched from memory, which dominates a chip's energy consumption far more than the raw number of MAC units does."}},
+      {"@type":"Question","name":"Why does Google's TPU use weight-stationary dataflow?",
+       "acceptedAnswer":{"@type":"Answer","text":"Neural network weights are reused across every input in a batch, so loading each weight into its PE once and streaming thousands of activation vectors past it amortizes that one expensive weight-fetch over massive reuse — exactly the access pattern TPU workloads (large-batch inference and training) produce."}},
+      {"@type":"Question","name":"What is output-stationary dataflow?",
+       "acceptedAnswer":{"@type":"Answer","text":"Each PE accumulates one output value locally across the entire reduction (the full dot product), so the partial sum never has to leave the PE or round-trip through memory — only the smaller weight and input operands stream through. It minimizes partial-sum traffic at the cost of re-streaming inputs and weights more often."}},
+      {"@type":"Question","name":"What is input-stationary dataflow and when is it used?",
+       "acceptedAnswer":{"@type":"Answer","text":"Input-stationary holds an activation value fixed in a PE while different weight filters stream past it — useful when the same input feature map is convolved against many different filters, as in early convolutional layers with few input channels but many output channels."}},
+      {"@type":"Question","name":"Is row-stationary the same as output-stationary?",
+       "acceptedAnswer":{"@type":"Answer","text":"No. Row-stationary (used in MIT's Eyeriss chip) is a more sophisticated hybrid that keeps 1D convolution rows stationary and reuses all three operand types (weights, inputs, and partial sums) simultaneously across the PE array, rather than picking just one operand to hold fixed. It was designed specifically to minimize total data movement, not just one traffic category."}}
+    ]}
+  ]}
+  </script>
+
+  <style>
+    :root{
+      --bg:#020617;--bg2:#0c1220;--bg3:#111827;
+      --border:rgba(148,163,184,.1);
+      --blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;
+      --amber:#f59e0b;--red:#f87171;--indigo:#818cf8;
+      --slate:#94a3b8;--text:#e2e8f0;
+      --mono:'JetBrains Mono',monospace;
+      --ws:#38bdf8;--os:#4ade80;--is:#f59e0b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.65}
+
+    .nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100}
+    .nav-logo{font-family:'Orbitron',sans-serif;font-size:.95rem;font-weight:700;color:#fff;text-decoration:none}
+    .nav-links{display:flex;gap:1.5rem}
+    .nav-links a{color:var(--slate);text-decoration:none;font-size:.82rem;transition:.2s}
+    .nav-links a:hover{color:var(--text)}
+
+    .breadcrumb{padding:.55rem 1.5rem;font-size:.74rem;color:var(--slate);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg2)}
+    .breadcrumb a{color:var(--slate);text-decoration:none}.breadcrumb a:hover{color:var(--blue)}.breadcrumb span{opacity:.45}
+
+    .hero{padding:3rem 1.5rem 2rem;text-align:center;max-width:860px;margin:0 auto}
+    .hero-badge{display:inline-flex;gap:.4rem;align-items:center;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:99px;padding:.28rem .9rem;font-size:.72rem;font-weight:600;color:#38bdf8;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1rem}
+    .hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(1.4rem,4vw,2.3rem);font-weight:700;line-height:1.2;margin-bottom:.85rem}
+    .hero p{color:var(--slate);font-size:1rem;max-width:660px;margin:0 auto;line-height:1.7}
+    .byline{font-size:.78rem;color:#64748b;margin-top:1rem}
+    .byline a{color:var(--blue);font-weight:600;text-decoration:none}
+
+    .section{padding:2.5rem 1.5rem;max-width:1060px;margin:0 auto}
+    .section-title{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:.35rem}
+    .section-sub{color:var(--slate);font-size:.88rem;margin-bottom:1.75rem}
+    .section p{color:var(--slate);font-size:.92rem;margin-bottom:1rem;max-width:800px}
+    .section p b{color:var(--text)}
+    .section code{font-family:var(--mono);background:rgba(15,23,42,.8);padding:.1rem .4rem;border-radius:4px;font-size:.85em;color:#7dd3fc}
+
+    .recap-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0;max-width:800px}
+    .recap-box .tag{font-size:.68rem;font-weight:800;color:var(--indigo);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+
+    .flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.2rem;margin-bottom:1rem}
+    .flow-card{border-radius:12px;padding:1.3rem;border:1px solid;transition:.3s}
+    .flow-card:hover{transform:translateY(-3px)}
+    .flow-card.ws{border-color:rgba(56,189,248,.28);background:linear-gradient(135deg,rgba(56,189,248,.06) 0%,rgba(2,6,23,.8) 100%)}
+    .flow-card.os{border-color:rgba(74,222,128,.28);background:linear-gradient(135deg,rgba(74,222,128,.06) 0%,rgba(2,6,23,.8) 100%)}
+    .flow-card.is{border-color:rgba(245,158,11,.28);background:linear-gradient(135deg,rgba(245,158,11,.06) 0%,rgba(2,6,23,.8) 100%)}
+    .flow-tag{font-size:.64rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem}
+    .flow-name{font-family:'Orbitron',sans-serif;font-size:1.15rem;font-weight:700;margin-bottom:.65rem}
+    .flow-desc{font-size:.85rem;color:var(--slate);line-height:1.65;margin-bottom:.9rem}
+    .flow-fixed{font-size:.74rem;background:rgba(148,163,184,.06);border-radius:8px;padding:.55rem .7rem;margin-bottom:.75rem}
+    .flow-fixed b{color:var(--text)}
+    .flow-examples{font-size:.74rem;color:var(--slate)}
+    .flow-examples strong{color:var(--text)}
+
+    .pe-diagram{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem;text-align:center;margin-bottom:.85rem}
+    .pe-diagram svg{width:100%;max-width:260px}
+    .pe-diagram p{font-size:.7rem;color:var(--slate);margin-top:.5rem;max-width:none}
+
+    .tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin:1.5rem 0}
+    table{width:100%;border-collapse:collapse;font-size:.8rem}
+    thead{background:var(--bg2)}
+    th{padding:.75rem 1rem;text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);border-bottom:1px solid var(--border);white-space:nowrap}
+    td{padding:.7rem 1rem;border-bottom:1px solid rgba(148,163,184,.06);vertical-align:top;line-height:1.5;color:var(--slate)}
+    td b{color:var(--text)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(148,163,184,.03)}
+    .th-ws{color:var(--ws)} .th-os{color:var(--os)} .th-is{color:var(--is)}
+    .cell-good{color:#4ade80;font-weight:600}
+    .cell-mid{color:#fbbf24;font-weight:600}
+    .cell-low{color:#f87171;font-weight:600}
+
+    .chip-map{background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:2.5rem 1.5rem}
+    .chip-wrap{max-width:1060px;margin:0 auto}
+    .chip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.9rem;margin-top:1.5rem}
+    .chip-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:1rem}
+    .chip-title{font-size:.85rem;font-weight:700;margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem}
+    .chip-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+    .chip-strategy{font-size:.65rem;font-weight:700;padding:.15rem .5rem;border-radius:5px;letter-spacing:.05em;text-transform:uppercase;display:inline-block;margin-bottom:.6rem}
+    .chip-card p{font-size:.78rem;color:var(--slate);line-height:1.55;max-width:none}
+
+    .deepdive{padding:2.5rem 1.5rem;max-width:860px;margin:0 auto}
+    .deepdive h2{font-family:'Orbitron',sans-serif;font-size:1.1rem;margin-bottom:1.5rem}
+    .dive-item{border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden}
+    .dive-hdr{padding:.9rem 1.1rem;display:flex;align-items:center;gap:.75rem;cursor:pointer;background:var(--bg2)}
+    .dive-hdr:hover{background:rgba(148,163,184,.04)}
+    .dive-chip{font-family:'Orbitron',sans-serif;font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:5px;flex-shrink:0}
+    .dive-q{font-size:.88rem;font-weight:500;flex:1}
+    .dive-arrow{flex-shrink:0;transition:.25s;color:var(--slate)}
+    .dive-body{display:none;padding:1rem 1.1rem;font-size:.84rem;color:var(--slate);line-height:1.7;background:var(--bg3)}
+    .dive-body p+p{margin-top:.65rem}
+    .dive-item.open .dive-arrow{transform:rotate(180deg)}
+    .dive-item.open .dive-body{display:block}
+    .dive-body code{font-family:var(--mono);font-size:.78rem;background:rgba(15,23,42,.8);padding:.1rem .35rem;border-radius:3px;color:#c0cae0}
+
+    .faq-section{padding:1.5rem 1.5rem 3rem;max-width:860px;margin:0 auto}
+    .faq-section h2{font-family:'Orbitron',sans-serif;font-size:1.1rem;margin-bottom:1rem}
+    .faq-item{border:1px solid var(--border);border-radius:8px;margin-bottom:.6rem;overflow:hidden}
+    .faq-q{display:flex;justify-content:space-between;align-items:center;padding:.9rem 1.1rem;cursor:pointer;font-size:.86rem;font-weight:500;gap:.75rem;background:var(--bg2)}
+    .faq-q:hover{background:rgba(148,163,184,.04)}
+    .faq-arr{flex-shrink:0;transition:.2s;color:var(--slate)}
+    .faq-a{display:none;padding:.8rem 1.1rem;font-size:.83rem;color:var(--slate);line-height:1.65;background:var(--bg3)}
+    .faq-item.open .faq-arr{transform:rotate(180deg)}
+    .faq-item.open .faq-a{display:block}
+
+    .related-box{background:rgba(56,189,248,.05);border:1px solid rgba(56,189,248,.2);border-radius:12px;padding:1.2rem 1.4rem;margin:1.5rem 0;max-width:800px}
+    .related-box .tag{font-size:.68rem;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.65rem}
+    .related-box ul{list-style:none;display:flex;flex-direction:column;gap:.6rem}
+    .related-box li{font-size:.86rem;color:var(--slate);line-height:1.6;padding-left:1.3rem;position:relative}
+    .related-box li::before{content:"→";color:var(--blue);position:absolute;left:0}
+    .related-box a{color:var(--text);text-decoration:none;font-weight:600}
+    .related-box a:hover{color:var(--blue)}
+
+    footer{border-top:1px solid var(--border);padding:1.25rem 1.5rem;text-align:center;font-size:.75rem;color:var(--slate);background:var(--bg2)}
+    footer a{color:var(--slate)}
+    #btt{position:fixed;bottom:1.25rem;right:1.25rem;background:rgba(56,189,248,.15);border:1px solid rgba(56,189,248,.3);color:#38bdf8;border-radius:8px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;display:none;z-index:999}
+    #btt:hover{background:rgba(56,189,248,.28)}
+    @media(max-width:600px){.flow-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links">
+    <a href="/vlsi/">VLSI</a>
+    <a href="/tools/systolic-array-lab/">Systolic Lab</a>
+    <a href="/tools/">Tools</a>
+  </div>
+</nav>
+
+<div class="breadcrumb">
+  <a href="/">Home</a><span>&#8250;</span>
+  <a href="/vlsi/">VLSI</a><span>&#8250;</span>
+  <span>Systolic Array Dataflows</span>
+</div>
+
+<div style="background:linear-gradient(180deg,rgba(56,189,248,.05) 0%,transparent 100%);border-bottom:1px solid var(--border)">
+<div class="hero">
+  <div class="hero-badge">Architecture Deep Dive</div>
+  <h1>Systolic Array Dataflows: Why Does a TPU Hold Its Weights Still?</h1>
+  <p>A systolic array is just a grid of multiply-accumulate cells passing data to their neighbors — but <em>which</em> operand each cell holds fixed, and which ones stream through, is a real design decision with a name, a tradeoff, and a chip built around each choice. This is the taxonomy nobody explains when they show you the grid diagram.</p>
+  <div class="byline">By <a href="/about/">EcrioniX</a> &middot; Updated August 2026</div>
+</div>
+</div>
+
+<div class="section">
+  <div class="recap-box">
+    <div class="tag">Quick recap, if you're new here</div>
+    <p style="margin-bottom:0">A systolic array is a grid of processing elements (PEs), each doing one multiply-accumulate per cycle, wired so that operands flow from PE to PE like a heartbeat pumping blood (hence the name — coined by H.T. Kung in 1978, from the Greek <i>systole</i>, the heart's contraction). Instead of a single MAC unit fetching operands from memory every cycle, a systolic array loads data once at the edges and lets it ripple through hundreds or thousands of PEs, reusing it along the way. If you want the full mechanics — cycle-by-cycle dataflow, wavefronts, a 4&times;4 worked example, even an <a href="/tools/systolic-array-lab/">interactive lab</a> you can step through — that's covered in depth elsewhere on this site. This page picks up where those leave off: once you have the grid, <b>which operand do you actually choose to hold fixed inside each cell?</b></p>
+  </div>
+
+  <p>Every systolic array computes a matrix multiply, which means three operands are in play at every PE: a <b>weight</b>, an <b>input activation</b>, and a running <b>partial sum</b>. Memory access is the single biggest energy cost in any accelerator — an off-chip DRAM fetch can cost 100&times; to 1000&times; more energy than the MAC operation itself. So the entire point of a systolic array is to minimize how often each operand has to be re-fetched, by picking <em>one</em> of the three to park inside a PE and reuse across many cycles, while the other two stream past it. That single design choice is called the <b>dataflow</b>, and it is arguably a bigger factor in a chip's energy efficiency than its raw MAC count.</p>
+</div>
+
+<div class="section" style="padding-top:0">
+  <div class="section-title">The Three Classic Dataflows</div>
+  <div class="section-sub">What each strategy holds fixed inside a PE, and what pays the price for it</div>
+
+  <div class="flow-grid">
+
+    <div class="flow-card ws">
+      <div class="flow-tag" style="color:var(--ws)">Weight Stationary</div>
+      <div class="flow-name" style="color:var(--ws)">WS</div>
+      <div class="pe-diagram">
+        <svg viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg">
+          <rect width="220" height="130" rx="8" fill="#0c1220"/>
+          <rect x="70" y="35" width="80" height="60" rx="6" fill="rgba(56,189,248,.14)" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="110" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#38bdf8" font-weight="700">W</text>
+          <text x="110" y="74" text-anchor="middle" font-family="Outfit" font-size="7" fill="rgba(56,189,248,.7)">fixed in PE</text>
+          <line x1="10" y1="65" x2="65" y2="65" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a1)"/>
+          <text x="38" y="58" text-anchor="middle" font-family="Outfit" font-size="7.5" fill="#4ade80">in</text>
+          <line x1="155" y1="65" x2="210" y2="65" stroke="#4ade80" stroke-width="1.5" marker-end="url(#a1)"/>
+          <text x="182" y="58" text-anchor="middle" font-family="Outfit" font-size="7.5" fill="#4ade80">out</text>
+          <line x1="110" y1="10" x2="110" y2="30" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#a2)"/>
+          <line x1="110" y1="100" x2="110" y2="120" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#a2)"/>
+          <text x="110" y="20" text-anchor="middle" font-family="Outfit" font-size="7" fill="#f59e0b">partial sum</text>
+          <defs>
+            <marker id="a1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#4ade80"/></marker>
+            <marker id="a2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#f59e0b"/></marker>
+          </defs>
+        </svg>
+      </div>
+      <div class="flow-desc">Each weight is loaded into a PE once and stays there for the entire computation. Activations stream horizontally through the array; partial sums accumulate vertically.</div>
+      <div class="flow-fixed"><b>Fixed:</b> weight &nbsp;|&nbsp; <b>Streams:</b> activations, partial sums</div>
+      <div class="flow-examples"><strong>Best for:</strong> large batch sizes, where one weight is reused across thousands of inputs — inference and training on big models.</div>
+    </div>
+
+    <div class="flow-card os">
+      <div class="flow-tag" style="color:var(--os)">Output Stationary</div>
+      <div class="flow-name" style="color:var(--os)">OS</div>
+      <div class="pe-diagram">
+        <svg viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg">
+          <rect width="220" height="130" rx="8" fill="#0c1220"/>
+          <rect x="70" y="35" width="80" height="60" rx="6" fill="rgba(74,222,128,.14)" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="110" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#4ade80" font-weight="700">SUM</text>
+          <text x="110" y="74" text-anchor="middle" font-family="Outfit" font-size="7" fill="rgba(74,222,128,.7)">fixed in PE</text>
+          <line x1="10" y1="55" x2="65" y2="55" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#b1)"/>
+          <text x="38" y="48" text-anchor="middle" font-family="Outfit" font-size="7.5" fill="#38bdf8">weight</text>
+          <line x1="10" y1="78" x2="65" y2="78" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#b2)"/>
+          <text x="38" y="93" text-anchor="middle" font-family="Outfit" font-size="7.5" fill="#f59e0b">input</text>
+          <defs>
+            <marker id="b1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#38bdf8"/></marker>
+            <marker id="b2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#f59e0b"/></marker>
+          </defs>
+        </svg>
+      </div>
+      <div class="flow-desc">Each PE owns one output element for its entire lifetime — the accumulating dot product never leaves the cell. Weights and inputs both stream through to feed it.</div>
+      <div class="flow-fixed"><b>Fixed:</b> partial sum (output) &nbsp;|&nbsp; <b>Streams:</b> weights, activations</div>
+      <div class="flow-examples"><strong>Best for:</strong> workloads where partial sums are wide (high precision accumulation) and re-reading them from memory would be expensive.</div>
+    </div>
+
+    <div class="flow-card is">
+      <div class="flow-tag" style="color:var(--is)">Input Stationary</div>
+      <div class="flow-name" style="color:var(--is)">IS</div>
+      <div class="pe-diagram">
+        <svg viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg">
+          <rect width="220" height="130" rx="8" fill="#0c1220"/>
+          <rect x="70" y="35" width="80" height="60" rx="6" fill="rgba(245,158,11,.14)" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="110" y="60" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#f59e0b" font-weight="700">IN</text>
+          <text x="110" y="74" text-anchor="middle" font-family="Outfit" font-size="7" fill="rgba(245,158,11,.7)">fixed in PE</text>
+          <line x1="10" y1="65" x2="65" y2="65" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#c1)"/>
+          <text x="38" y="58" text-anchor="middle" font-family="Outfit" font-size="7.5" fill="#38bdf8">weight</text>
+          <line x1="155" y1="65" x2="210" y2="65" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#c1)"/>
+          <line x1="110" y1="10" x2="110" y2="30" stroke="#4ade80" stroke-width="1.5" marker-end="url(#c2)"/>
+          <line x1="110" y1="100" x2="110" y2="120" stroke="#4ade80" stroke-width="1.5" marker-end="url(#c2)"/>
+          <text x="110" y="20" text-anchor="middle" font-family="Outfit" font-size="7" fill="#4ade80">partial sum</text>
+          <defs>
+            <marker id="c1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#38bdf8"/></marker>
+            <marker id="c2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#4ade80"/></marker>
+          </defs>
+        </svg>
+      </div>
+      <div class="flow-desc">One activation stays parked in a PE while many different weight filters stream past it, each producing a different output channel from the same input.</div>
+      <div class="flow-fixed"><b>Fixed:</b> input activation &nbsp;|&nbsp; <b>Streams:</b> weights, partial sums</div>
+      <div class="flow-examples"><strong>Best for:</strong> early CNN layers — few input channels, but many output filters convolved against the same small input patch.</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="padding-top:0">
+  <div class="section-title" style="margin-bottom:.3rem">The Tradeoff, In One Table</div>
+  <div class="section-sub">No dataflow wins on every axis — that's precisely why three of them exist</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Property</th>
+          <th class="th-ws">Weight Stationary</th>
+          <th class="th-os">Output Stationary</th>
+          <th class="th-is">Input Stationary</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>Weight reads from memory</b></td><td class="cell-good">1 per weight (best)</td><td class="cell-low">Repeated per output</td><td class="cell-mid">Repeated per input reuse</td></tr>
+        <tr><td><b>Partial-sum traffic</b></td><td class="cell-mid">Streams through array</td><td class="cell-good">Zero — stays in PE (best)</td><td class="cell-mid">Streams through array</td></tr>
+        <tr><td><b>Activation reuse</b></td><td class="cell-low">Re-read every pass</td><td class="cell-low">Re-read every pass</td><td class="cell-good">1 per activation (best)</td></tr>
+        <tr><td><b>Ideal workload shape</b></td><td>Large batch, weight-heavy</td><td>Wide accumulators, few reuses</td><td>Few input channels, many filters</td></tr>
+        <tr><td><b>Real chip</b></td><td>Google TPU (MXU)</td><td>Many DSP-style accelerators</td><td>Some early-CNN edge accelerators</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Notice the pattern: <b>every dataflow optimizes exactly one operand's traffic to zero (or near it) and pays for it with the other two.</b> There is no free lunch here — a chip architect picks the dataflow that matches their dominant workload's reuse pattern, not the one that sounds theoretically best in isolation.</p>
+</div>
+
+<div class="chip-map">
+  <div class="chip-wrap">
+    <div class="section-title" style="margin-bottom:.3rem">Real Silicon, Real Dataflow Choices</div>
+    <div class="section-sub">This isn't just academic taxonomy — production chips are named partly by which dataflow they picked</div>
+    <div class="chip-grid">
+
+      <div class="chip-card">
+        <div class="chip-title"><span class="chip-dot" style="background:var(--ws)"></span>Google TPU (MXU)</div>
+        <span class="chip-strategy" style="background:rgba(56,189,248,.12);color:var(--ws)">Weight Stationary</span>
+        <p>The 128&times;128 Matrix Multiply Unit loads a full weight matrix once, then streams activation batches through it for as long as that weight matrix is needed — exactly the access pattern of large-batch transformer inference.</p>
+      </div>
+
+      <div class="chip-card">
+        <div class="chip-title"><span class="chip-dot" style="background:var(--purple)"></span>MIT Eyeriss</div>
+        <span class="chip-strategy" style="background:rgba(167,139,250,.12);color:var(--purple)">Row Stationary (hybrid)</span>
+        <p>Doesn't pick just one operand. Row-stationary keeps a 1D convolution row fixed and reuses weights, inputs, <em>and</em> partial sums simultaneously across the PE array — a more complex but more globally energy-optimal scheme, published specifically to beat pure WS/OS/IS designs on real CNN workloads.</p>
+      </div>
+
+      <div class="chip-card">
+        <div class="chip-title"><span class="chip-dot" style="background:var(--os)"></span>Output-Stationary DSP arrays</div>
+        <span class="chip-strategy" style="background:rgba(74,222,128,.12);color:var(--os)">Output Stationary</span>
+        <p>Common in accelerators doing high-precision accumulation (e.g. FP32 partial sums from INT8 inputs) — keeping that wide accumulator local avoids constantly writing and re-reading a bit-width-inflated intermediate value.</p>
+      </div>
+
+      <div class="chip-card">
+        <div class="chip-title"><span class="chip-dot" style="background:var(--is)"></span>Early-layer CNN edge accelerators</div>
+        <span class="chip-strategy" style="background:rgba(245,158,11,.12);color:var(--is)">Input Stationary</span>
+        <p>A first convolutional layer might have 3 input channels (RGB) but 64 output filters — parking that one small input and streaming 64 different weight kernels past it avoids re-fetching the input 64 times.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="deepdive">
+  <h2>Deep Dive: The Details That Actually Matter</h2>
+
+  <div class="dive-item">
+    <div class="dive-hdr" onclick="toggleDive(this)">
+      <span class="dive-chip" style="background:rgba(56,189,248,.12);color:var(--ws)">WS</span>
+      <span class="dive-q">Why is weight-stationary the TPU's choice specifically?</span>
+      <span class="dive-arrow">&#9660;</span>
+    </div>
+    <div class="dive-body">
+      <p>TPUs are built for exactly one dominant access pattern: run the same trained model (fixed weights) against a large batch of different inputs, over and over. Once a weight matrix is loaded into the MXU's 128&times;128 grid, it can stay resident for every activation vector in that batch — potentially thousands of reuses per weight load. That amortization is what makes weight-stationary the obvious choice when your workload is "one model, many inputs," which describes the overwhelming majority of both training minibatches and inference serving.</p>
+      <p>The cost is that activations and partial sums now have to move through the array every single cycle — but activations are typically far smaller than the full weight matrix, so this trade is favorable at TPU's target scale.</p>
+    </div>
+  </div>
+
+  <div class="dive-item">
+    <div class="dive-hdr" onclick="toggleDive(this)">
+      <span class="dive-chip" style="background:rgba(74,222,128,.12);color:var(--os)">OS</span>
+      <span class="dive-q">If output-stationary avoids partial-sum traffic, why isn't it the default?</span>
+      <span class="dive-arrow">&#9660;</span>
+    </div>
+    <div class="dive-body">
+      <p>Because avoiding partial-sum movement only pays off when partial sums are expensive to move in the first place — wide accumulators (32-bit sums from 8-bit multiplies, for instance) genuinely cost more per byte transferred than a compact weight or activation. But if your weights are the operand with the least reuse (small batches, constantly-changing model), output-stationary forces you to re-stream those weights every cycle instead, which can be worse overall. The right dataflow is a function of <em>which operand has the least natural reuse</em> in your specific workload — there's no dataflow that's unconditionally best.</p>
+    </div>
+  </div>
+
+  <div class="dive-item">
+    <div class="dive-hdr" onclick="toggleDive(this)">
+      <span class="dive-chip" style="background:rgba(167,139,250,.12);color:var(--purple)">Hybrid</span>
+      <span class="dive-q">Why did Eyeriss bother inventing a fourth category (row-stationary)?</span>
+      <span class="dive-arrow">&#9660;</span>
+    </div>
+    <div class="dive-body">
+      <p>The MIT team behind Eyeriss (Chen, Emer, Sze) observed that picking just one operand to hold stationary always leaves the other two paying full price — and for real CNN workloads, all three operand types have <em>some</em> exploitable reuse simultaneously (weights reuse across spatial positions, inputs reuse across output channels, and partial sums reuse across the reduction). Row-stationary is a scheduling scheme that keeps a single 1D convolutional row resident in each PE's local register file and reuses <em>all three</em> operand types at once through careful spatial mapping across the PE array, rather than sacrificing two of them to maximize one. Their published results showed meaningfully lower total energy on real CNN benchmarks than pure WS, OS, or IS implementations of the same array size.</p>
+    </div>
+  </div>
+
+  <div class="dive-item">
+    <div class="dive-hdr" onclick="toggleDive(this)">
+      <span class="dive-chip" style="background:rgba(245,158,11,.12);color:var(--is)">Design</span>
+      <span class="dive-q">Does the dataflow change the systolic array's hardware, or just how it's used?</span>
+      <span class="dive-arrow">&#9660;</span>
+    </div>
+    <div class="dive-body">
+      <p>Both, in practice. At minimum, the dataflow determines which operand gets a persistent register inside each PE (versus which ones only need pass-through wiring) — a weight-stationary PE needs a weight register that holds its value across many cycles, while a purely pass-through operand just needs a pipeline flop. Real designs also differ in how partial sums are accumulated (a running adder chain vs. a final reduction tree) and in the control logic needed to load/drain the stationary operand at the start and end of each computation phase. So while the dataflow starts as a scheduling decision, it ends up baked directly into which registers exist in silicon.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="padding-top:0">
+  <div class="related-box">
+    <div class="tag">Go Deeper on Systolic Arrays</div>
+    <ul>
+      <li><a href="/tools/systolic-array-lab/">Interactive Systolic Array Lab</a> — step through A&times;B cycle by cycle and watch the MAC grid in action</li>
+      <li><a href="/ai-chip-design/day-07-systolic-array/">AI Chip Design: From Single MAC to Systolic Arrays</a> — the fundamentals of scaling from one MAC to thousands</li>
+      <li><a href="/ai-chip-design/day-08-4x4-systolic-deep-dive/">4&times;4 Systolic Array Deep Dive</a> — full cycle-by-cycle execution trace</li>
+      <li><a href="/ai-chip-design/day-27-systolic-array-rtl/">Systolic Array RTL Implementation</a> — from architecture to synthesizable Verilog</li>
+      <li><a href="/vlsi/cpu-gpu-tpu-npu/">CPU vs GPU vs TPU vs NPU</a> — where the systolic-array-based MXU fits in the wider accelerator landscape</li>
+    </ul>
+  </div>
+</div>
+
+<div class="faq-section">
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)"><span>What is a systolic array dataflow?</span><span class="faq-arr">&#9660;</span></div>
+    <div class="faq-a">It's the strategy that decides which operand (weights, inputs, or partial sums) stays fixed inside each processing element while the others stream through. The choice determines how many times each value has to be re-fetched from memory, which dominates a chip's energy consumption far more than the raw number of MAC units does.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)"><span>Why does Google's TPU use weight-stationary dataflow?</span><span class="faq-arr">&#9660;</span></div>
+    <div class="faq-a">Neural network weights are reused across every input in a batch, so loading each weight into its PE once and streaming thousands of activation vectors past it amortizes that one expensive weight-fetch over massive reuse — exactly the access pattern TPU workloads (large-batch inference and training) produce.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)"><span>What is output-stationary dataflow?</span><span class="faq-arr">&#9660;</span></div>
+    <div class="faq-a">Each PE accumulates one output value locally across the entire reduction (the full dot product), so the partial sum never has to leave the PE or round-trip through memory — only the smaller weight and input operands stream through. It minimizes partial-sum traffic at the cost of re-streaming inputs and weights more often.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)"><span>What is input-stationary dataflow and when is it used?</span><span class="faq-arr">&#9660;</span></div>
+    <div class="faq-a">Input-stationary holds an activation value fixed in a PE while different weight filters stream past it — useful when the same input feature map is convolved against many different filters, as in early convolutional layers with few input channels but many output channels.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q" onclick="toggleFaq(this)"><span>Is row-stationary the same as output-stationary?</span><span class="faq-arr">&#9660;</span></div>
+    <div class="faq-a">No. Row-stationary (used in MIT's Eyeriss chip) is a more sophisticated hybrid that keeps 1D convolution rows stationary and reuses all three operand types (weights, inputs, and partial sums) simultaneously across the PE array, rather than picking just one operand to hold fixed. It was designed specifically to minimize total data movement, not just one traffic category.</div>
+  </div>
+</div>
+
+<footer>&copy; 2026 EcrioniX &middot; <a href="/">Home</a> &middot; <a href="/vlsi/">VLSI</a> &middot; <a href="/tools/systolic-array-lab/">Systolic Lab</a>
+<div style="margin-top:.5rem">By EcrioniX &middot; Updated August 2026</div>
+</footer>
+
+<button id="btt" onclick="scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+function toggleDive(hdr){ hdr.parentElement.classList.toggle('open'); }
+function toggleFaq(q){ q.parentElement.classList.toggle('open'); }
+addEventListener('scroll',function(){var b=document.getElementById('btt');if(b)b.style.display=scrollY>400?'block':'none';});
+</script>
+
+</body>
+</html>
