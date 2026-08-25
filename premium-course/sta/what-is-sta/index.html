@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Module 1, Lesson 1: What is Static Timing Analysis? - EcrioniX Premium STA</title>
+<meta property="og:title" content="Module 1, Lesson 1: What is Static Timing Analysis? - EcrioniX Premium STA">
+<meta property="og:description" content="What STA is, why it exists, where it sits in the ASIC signoff flow, and what this course covers module by module.">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+  authDomain: "ecrionix.firebaseapp.com",
+  projectId: "ecrionix",
+  storageBucket: "ecrionix.firebasestorage.app",
+  messagingSenderId: "859295895664",
+  appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+};
+firebase.initializeApp(firebaseConfig);
+const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+firebase.auth().onAuthStateChanged(async user => {
+  if (!user) { window.location.href = '/premium-course/'; return; }
+  await checkAccess(user);
+});
+function markLessonComplete(slug) {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  firebase.firestore().collection('users').doc(user.uid).set({
+    completedLessons: { sta: firebase.firestore.FieldValue.arrayUnion(slug) }
+  }, { merge: true }).catch(err => console.error('Could not record lesson progress:', err));
+}
+async function checkAccess(user) {
+  if (user.uid === ADMIN_UID) {
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('lessonContent').style.display = 'block';
+    markLessonComplete('what-is-sta');
+    return;
+  }
+  try {
+    const doc = await firebase.firestore().collection('users').doc(user.uid).get();
+    const data = doc.data();
+    const wasApproved = data?.approvedCourses?.includes('sta');
+    const expiry = data?.courseExpiry?.sta;
+    const isExpired = wasApproved && expiry && expiry.toDate() < new Date();
+    const hasAccess = wasApproved && !isExpired;
+    document.getElementById('authLoading').style.display = 'none';
+    if (hasAccess) {
+      document.getElementById('lessonContent').style.display = 'block';
+      markLessonComplete('what-is-sta');
+    } else {
+      document.getElementById('noAccess').style.display = 'block';
+    }
+  } catch (error) {
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('noAccess').style.display = 'block';
+  }
+}
+</script>
+<style>
+#authLoading{position:fixed;inset:0;background:var(--bg,#020617);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:#38bdf8;border-radius:50%;animation:ecrxspin .7s linear infinite}
+@keyframes ecrxspin{to{transform:rotate(360deg)}}
+.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<nav class="navbar">
+  <div class="navbar-logo">EcrioniX</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/sta/" class="back-link">&larr; STA Course Map</a></div>
+</nav>
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>&#128274; No Access</h1>
+  <p>You don't have approved access to this course yet.</p>
+  <a href="/premium-course/">Go back and request access &rarr;</a>
+</div>
+
+    <div id="lessonContent" style="display:none;">
+<div class="container">
+    <div class="crumb"><a href="/premium-course/sta/">STA</a> / Module 1: Foundations</div>
+    <span class="lesson-tag">Lesson 1.1</span>
+        <h1>What is Static Timing Analysis?</h1>
+        <p class="lede">Every chip that reaches tapeout passes through one mandatory gate: Static Timing Analysis. This lesson is the map for the whole course &mdash; what STA actually does, why "static" is the whole point, where it sits in the flow between RTL and silicon, and what each later module will build on top of this.</p>
+
+        <div class="section">
+            <div class="section-head">1. The problem no amount of simulation can solve</div>
+            <p>A modern SoC can have hundreds of millions of flip-flops. Every one of them has a data pin that must be stable before the clock edge arrives (setup) and must stay stable for a short window after it (hold). If even one signal, on one path, in one corner of temperature and voltage, arrives too late or too early, that chip can fail in the field.</p>
+            <p>The obvious way to check this is simulation: drive input vectors, watch what happens. But a design with just 1,000 flip-flops already has more possible internal states than there are atoms in the observable universe. You cannot enumerate your way to confidence with vectors. A simulation that runs for a week might still miss the single input combination that breaks timing.</p>
+            <div class="note"><strong>This is the entire reason STA exists.</strong> It doesn't try to exercise every state. It looks at the circuit as a graph of delays and checks every possible <em>path</em> through that graph directly &mdash; without ever driving a single input vector. That's what "static" means, and it's why STA can claim something simulation never can: exhaustive coverage of every timing path in the design, guaranteed.</div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">2. Static vs. dynamic, side by side</div>
+            <table>
+              <tr><th>Property</th><th>Static Timing Analysis</th><th>Dynamic (Gate-Level) Simulation</th></tr>
+              <tr><td><strong>Needs input vectors?</strong></td><td>No &mdash; walks the netlist structurally</td><td>Yes &mdash; timing only checked on paths the testbench happens to activate</td></tr>
+              <tr><td><strong>Coverage</strong></td><td>Every timing path, exhaustively</td><td>Only whatever the test vectors exercise</td></tr>
+              <tr><td><strong>Runtime on a full chip</strong></td><td>Minutes to hours</td><td>Days to weeks for comparable path coverage</td></tr>
+              <tr><td><strong>Checks functional correctness?</strong></td><td>No &mdash; timing only</td><td>Yes</td></tr>
+              <tr><td><strong>Industry role</strong></td><td>Mandatory signoff for every ASIC</td><td>Functional verification, not timing signoff</td></tr>
+            </table>
+            <p>Neither replaces the other. STA cannot tell you if your multiplier computes the wrong answer &mdash; only that the answer, right or wrong, arrives in time. Simulation and formal equivalence checking own correctness; STA owns timing. A tapeout needs both signed off, for different reasons.</p>
+        </div>
+
+        <div class="section">
+            <div class="section-head">3. Where STA actually sits in the flow</div>
+            <p>STA isn't a single step you run once &mdash; it runs repeatedly, at every stage where timing information becomes more accurate, each time with higher stakes:</p>
+            <div class="code-panel">RTL (Verilog/VHDL)
+   |
+   v
+Synthesis  ──────────────► STA #1 (pre-layout, wireload-estimated)
+   |                        "Is this design even in the right ballpark?"
+   v
+Floorplan + Place & Route
+   |
+   v
+Clock Tree Synthesis  ───► STA #2 (post-CTS)
+   |                        "Now that real clock skew exists, still OK?"
+   v
+Routing (real RC parasitics)
+   |
+   v
+Final signoff  ──────────► STA #3 (post-route, multi-corner, THE gate)
+   |                        "Every corner, every path, zero violations."
+   v
+Tapeout</div>
+            <p>Each STA run uses progressively more accurate delay data &mdash; wireload estimates before layout exists, then real extracted parasitics (SPEF) once it does. The final signoff run is the one that actually decides whether the chip goes to the fab. Everything before it exists to catch problems early, when they're cheap to fix, rather than at the very end, when a timing failure can mean re-spinning the whole design.</p>
+        </div>
+
+        <div class="section">
+            <div class="section-head">4. The three inputs STA cannot run without</div>
+            <table>
+              <tr><th>Input</th><th>What it provides</th><th>Without it&hellip;</th></tr>
+              <tr><td><strong>Gate-level netlist</strong></td><td>The actual circuit structure &mdash; which cells, connected how</td><td>Nothing to analyze; STA has no notion of "your design" without it</td></tr>
+              <tr><td><strong>Liberty (.lib) timing models</strong></td><td>Per-cell delay, setup/hold time, and slew data, characterized by the foundry/library vendor at specific PVT corners</td><td>STA has cells with no idea how slow or fast they actually are</td></tr>
+              <tr><td><strong>SDC constraints</strong></td><td>Clock definitions, I/O timing, and exceptions &mdash; what the design is <em>supposed</em> to achieve</td><td>STA has no target to check against; a design with no SDC "passes" trivially, meaninglessly</td></tr>
+            </table>
+            <div class="note"><strong>The SDC is the part people underestimate most.</strong> A wrong or incomplete SDC doesn't cause STA to fail loudly &mdash; it causes STA to quietly check the wrong thing, or nothing at all, and report a clean signoff on a design that isn't actually clean. Every experienced STA engineer has a story about a false "all clear" caused by a missing clock definition. This course spends real time on SDC for exactly that reason.</div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">5. What "exhaustive" costs you: no functional awareness</div>
+            <p>STA's superpower &mdash; checking every path without vectors &mdash; comes from a deliberate blind spot: it has no idea what the circuit <em>computes</em>, only how signals propagate through it. Two consequences follow directly from this, and both come up constantly in real signoff work:</p>
+            <ul>
+              <li><strong>False paths look real to STA by default.</strong> If a mux selects between two inputs that can never both be relevant in the same cycle (by construction of your protocol, say), STA doesn't know that &mdash; it will check both as if either could happen. You have to tell it otherwise, explicitly, via SDC exceptions (Module 6 of this course).</li>
+              <li><strong>Asynchronous clock crossings are structurally invisible to it.</strong> Two unrelated clocks have no fixed phase relationship, so a "timing path" between them isn't something STA can meaningfully check &mdash; it either reports nonsense or (correctly configured) reports nothing at all. That's what CDC-specific tools exist for, and it's why STA and CDC signoff are separate disciplines that both matter.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-head">6. What this course covers, module by module</div>
+            <p>This lesson is the entry point; here's the shape of everything it's setting up:</p>
+            <ul>
+              <li><strong>Module 1 &mdash; Foundations (this module):</strong> what STA is, transistor-level origins of setup/hold, propagation vs. contamination delay, metastability and MTBF.</li>
+              <li><strong>Module 2 &mdash; The Timing Graph:</strong> nodes, edges, timing arcs, the four path types, data arrival time vs. data required time, slack.</li>
+              <li><strong>Module 3 &mdash; PVT Corners &amp; Variation:</strong> why one number was never enough, slow/fast corners, on-chip variation (OCV/AOCV/POCV), multi-mode multi-corner (MMMC) analysis.</li>
+              <li><strong>Module 4 &mdash; Clocking:</strong> skew, jitter, uncertainty, clock gating, generated and multiplexed clocks, clock tree synthesis.</li>
+              <li><strong>Module 5 &mdash; Liberty &amp; Delay Modeling:</strong> NLDM, CCS, ECSM, how a cell's delay table actually gets built.</li>
+              <li><strong>Module 6 &mdash; Timing Exceptions:</strong> false paths, multicycle paths, case analysis &mdash; and the real danger of getting them wrong.</li>
+              <li><strong>Module 7 &mdash; Closing Violations:</strong> practical setup and hold fixing techniques, and the classic trap of fixing one at the expense of the other.</li>
+              <li><strong>Module 8 &mdash; Signoff:</strong> crosstalk, IR drop, CDC structural checks, and what "clean STA signoff" actually certifies before tapeout.</li>
+            </ul>
+            <p>Each module builds directly on the one before it &mdash; the timing graph in Module 2 only makes sense once you've seen why setup/hold exist at the transistor level (later in Module 1), and exceptions in Module 6 only make sense once you understand exactly what a timing path is (Module 2). Take them in order.</p>
+        </div>
+
+        <div class="takeaways" style="background:var(--bg2,#080d1a);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:1.2rem 1.4rem;margin-top:1.5rem">
+            <h3 style="color:#38bdf8;margin-bottom:.6rem">Key Takeaways</h3>
+            <ul style="margin:0;padding-left:1.2rem;color:var(--sl)">
+              <li>STA checks every timing path in a design <strong>exhaustively, without input vectors</strong> &mdash; simulation can never match that coverage.</li>
+              <li>STA verifies <strong>timing only</strong>, never function; you still need simulation and formal verification for correctness.</li>
+              <li>STA runs <strong>repeatedly through the flow</strong> &mdash; pre-layout, post-CTS, and a final multi-corner signoff run that gates tapeout.</li>
+              <li>Three inputs are non-negotiable: <strong>netlist, Liberty timing models, and SDC constraints</strong> &mdash; a wrong SDC is the most common way signoff quietly lies to you.</li>
+              <li>STA's exhaustive-by-construction design is also its blind spot: it needs to be told about <strong>false paths and CDC boundaries</strong> explicitly, because it has no idea what your circuit computes.</li>
+            </ul>
+        </div>
+
+    </div>
+
+    </div>
+<footer>&copy; 2026 EcrioniX &middot; <a href="/">Home</a> &middot; <a href="/premium-course/">Premium</a></footer>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
