@@ -9262,11 +9262,11 @@ endmodule
       waveSignals: ['clk', 'we_a', 'addr_a', 'wdata_a', 'rdata_a', 'we_b', 'addr_b', 'wdata_b', 'rdata_b'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.......' },
-          { name: 'addr_a[2:0]', wave: '2.....3.', data: ['0', '2'] },
-          { name: 'addr_b[2:0]', wave: '2.......', data: ['1'] },
-          { name: 'rdata_a[7:0]', wave: '2..3....', data: ['xx', 'AA'] },
-          { name: 'rdata_b[7:0]', wave: '2..3....', data: ['xx', 'BB'] }
+          { name: 'clk', wave: 'p.....' },
+          { name: 'addr_a[2:0]', wave: '2.....', data: ['0'] },
+          { name: 'addr_b[2:0]', wave: '2.....', data: ['1'] },
+          { name: 'rdata_a[7:0]', wave: '2.3...', data: ['xx', 'AA'] },
+          { name: 'rdata_b[7:0]', wave: '2.3...', data: ['xx', 'BB'] }
         ],
         config: { hscale: 1 }
       }
@@ -9328,10 +9328,10 @@ endmodule
       waveSignals: ['clk', 'rst', 'access', 'way', 'lru_way'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.........' },
-          { name: 'access', wave: '0.1.......' },
-          { name: 'way', wave: '2.3.4.....', data: ['0', '0', '1'] },
-          { name: 'lru_way', wave: '0...1.0...' }
+          { name: 'clk', wave: 'p....' },
+          { name: 'access', wave: '01101' },
+          { name: 'way', wave: 'x23x4', data: ['0', '1', '0'] },
+          { name: 'lru_way', wave: '010.1' }
         ],
         config: { hscale: 1 }
       }
@@ -9404,12 +9404,13 @@ endmodule
       waveSignals: ['clk', 'rst', 'valid_in', 'ready_out', 'data_in', 'valid_out', 'ready_in', 'data_out'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p...........' },
-          { name: 'valid_in', wave: '0.1.......0.' },
-          { name: 'ready_in', wave: '0...1.0.1...' },
-          { name: 'ready_out', wave: '1.......0.1.' },
-          { name: 'valid_out', wave: '0.1.........' },
-          { name: 'data_out[7:0]', wave: '2...3.......', data: ['AA', 'BB'] }
+          { name: 'clk', wave: 'p.....' },
+          { name: 'valid_in', wave: '011110' },
+          { name: 'data_in[7:0]', wave: 'x23..x', data: ['AA', 'BB'] },
+          { name: 'ready_in', wave: '010011' },
+          { name: 'ready_out', wave: '110011' },
+          { name: 'valid_out', wave: '011110' },
+          { name: 'data_out[7:0]', wave: '23..4.', data: ['00', 'AA', 'BB'] }
         ],
         config: { hscale: 1 }
       }
@@ -9462,9 +9463,9 @@ endmodule
       waveSignals: ['clk', 'd', 'q'],
       wavedrom: {
         signal: [
-          { name: 'clk', wave: 'p.......' },
-          { name: 'd', wave: '01.0.1.0' },
-          { name: 'q', wave: '0.1.0.1.' }
+          { name: 'clk', wave: '010101' },
+          { name: 'd', wave: '101010' },
+          { name: 'q', wave: '010101' }
         ],
         config: { hscale: 1 }
       }
