@@ -9676,7 +9676,644 @@ endmodule
         ],
         config: { hscale: 1 }
       }
-    }
+    },
+    {
+      slug: 'rock-paper-scissors-lizard-spock',
+      title: 'Rock Paper Scissors Lizard Spock',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'game-logic'],
+      category: 'Fun & Games',
+      lede: 'Judge a round of the 5-way expanded rock-paper-scissors from The Big Bang Theory — each move beats exactly two of the other four, so the usual 3-way rule table isn\'t enough.',
+      concept: '<b>Concept:</b> Encode each player\'s move as 0=Rock, 1=Paper, 2=Scissors, 3=Lizard, 4=Spock. Every move beats exactly two others (Rock beats Scissors and Lizard; Paper beats Rock and Spock; Scissors beats Paper and Lizard; Lizard beats Spock and Paper; Spock beats Scissors and Rock) — so the cleanest implementation is a direct lookup of p1\'s beats-list against p2, then the reverse check if that fails. A single wrong entry in that beats-list (say, listing Paper instead of Scissors as one of Rock\'s victims) is a real, easy-to-make copy-paste slip — it still compiles and handles most matchups correctly, but silently flips the outcome for that one specific matchup.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>p1</td><td>input</td><td>3</td><td>Player 1's move (0=Rock,1=Paper,2=Scissors,3=Lizard,4=Spock)</td></tr>
+<tr><td>p2</td><td>input</td><td>3</td><td>Player 2's move, same encoding</td></tr>
+<tr><td>winner</td><td>output</td><td>2</td><td>0=tie, 1=player 1 wins, 2=player 2 wins</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [2:0] p1,
+  input  [2:0] p2,
+  output [1:0] winner
+);
+
+  // Your code here — 0=Rock,1=Paper,2=Scissors,3=Lizard,4=Spock.
+  // Each move beats exactly two others. winner: 0=tie, 1=p1 wins, 2=p2 wins.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [2:0] p1, p2; wire [1:0] winner; integer errors=0;
+  top_module dut(.p1(p1), .p2(p2), .winner(winner));
+  task check; input [2:0] a,b; input [1:0] ew; begin
+    p1=a; p2=b; #1;
+    if(winner!==ew) begin errors=errors+1; $display("FAIL p1=%0d p2=%0d expected=%0d got=%0d",a,b,ew,winner); end
+    else $display("PASS p1=%0d p2=%0d winner=%0d",a,b,winner);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(0,2,1);
+    check(1,0,1);
+    check(2,1,1);
+    check(3,4,1);
+    check(4,2,1);
+    check(0,0,0);
+    check(2,0,2);
+    check(1,3,2);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['p1', 'p2', 'winner'],
+      wavedrom: {
+        signal: [
+          { name: 'p1[2:0]', wave: '2.3.4.5.', data: ['Rock', 'Paper', 'Lizard', 'Scissors'] },
+          { name: 'p2[2:0]', wave: '2.3.4.5.', data: ['Scissors', 'Rock', 'Spock', 'Rock'] },
+          { name: 'winner[1:0]', wave: '2.3.4.5.', data: ['1', '1', '1', '2'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'magic-8-ball',
+      title: 'Magic 8-Ball Fortune Teller',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'lfsr'],
+      category: 'Fun & Games',
+      lede: 'Give a "random-feeling" fortune-teller answer on every shake using a self-advancing 3-bit LFSR — a tiny, deterministic taste of pseudo-randomness in hardware.',
+      concept: '<b>Concept:</b> A 3-bit Fibonacci LFSR with feedback tap <code>q[2]^q[0]</code> cycles through all 7 nonzero 3-bit states before repeating, giving a fixed but non-obvious-looking sequence of "answers" each time <code>shake</code> pulses: <code>lfsr &lt;= {lfsr[1:0], lfsr[2]^lfsr[0]};</code>. The tap position matters — a 3-bit LFSR has exactly two maximal-length taps (<code>q2^q1</code> and <code>q2^q0</code>), and swapping one for the other still produces a valid-looking cycling pattern, just a completely different (and here, wrong) sequence of answers.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (seeds lfsr to 3'b001)</td></tr>
+<tr><td>shake</td><td>input</td><td>1</td><td>1 to shake the ball and advance to the next answer</td></tr>
+<tr><td>answer</td><td>output</td><td>3</td><td>Current fortune-teller answer (the raw LFSR state)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  shake,
+  output [2:0] answer
+);
+
+  // Your code here — 3-bit LFSR, feedback = lfsr[2]^lfsr[0], seed on reset = 3'b001, advances on shake.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, shake; wire [2:0] answer; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .shake(shake), .answer(answer));
+  always #5 clk=~clk;
+  task check; input [2:0] ea; begin
+    if(answer!==ea) begin errors=errors+1; $display("FAIL expected=%b got=%b",ea,answer); end
+    else $display("PASS answer=%b",answer);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; shake=0; @(posedge clk); #1; rst=0;
+    check(3'b001);
+    shake=1; @(posedge clk); #1; check(3'b011);
+    @(posedge clk); #1; check(3'b111);
+    @(posedge clk); #1; check(3'b110);
+    @(posedge clk); #1; check(3'b101);
+    @(posedge clk); #1; check(3'b010);
+    @(posedge clk); #1; check(3'b100);
+    @(posedge clk); #1; check(3'b001);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'shake', 'answer'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'rst', wave: '10........' },
+          { name: 'shake', wave: '0.1.......' },
+          { name: 'answer[2:0]', wave: '2.3.4.5.6.', data: ['1', '3', '7', '6', '5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'hot-potato-token-passer',
+      title: 'Hot Potato Token Passer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'fsm', 'game-logic'],
+      category: 'Fun & Games',
+      lede: 'Pass a token around a 4-player ring every cycle until a buzzer sounds — whoever\'s holding it when the music stops loses, and the game freezes there.',
+      concept: '<b>Concept:</b> The token position advances every cycle (0→1→2→3→0…) until <code>buzzer</code> fires; at that exact moment, whoever currently holds the token is the loser, and the game must freeze (<code>game_over</code>) without advancing the token further: <code>if(buzzer) begin game_over&lt;=1; loser&lt;=token_pos; end else token_pos&lt;=token_pos+1;</code>. A subtle but very real party-game bug is advancing the token unconditionally every cycle and only afterward checking the buzzer — that records the loser as whoever is about to receive the token next, not whoever was actually holding it, quietly declaring the wrong player the loser.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (token_pos=0, game not over)</td></tr>
+<tr><td>buzzer</td><td>input</td><td>1</td><td>1 for one cycle to end the round</td></tr>
+<tr><td>token_pos</td><td>output</td><td>2</td><td>Which of the 4 players (0-3) currently holds the token</td></tr>
+<tr><td>game_over</td><td>output</td><td>1</td><td>1 once the buzzer has fired; freezes state until reset</td></tr>
+<tr><td>loser</td><td>output</td><td>2</td><td>The player holding the token the instant the buzzer fired</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  buzzer,
+  output reg [1:0] token_pos,
+  output reg game_over,
+  output reg [1:0] loser
+);
+
+  // Your code here — token_pos advances 0,1,2,3,0... each cycle until buzzer fires;
+  // at that moment latch loser=token_pos and set game_over, then freeze.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, buzzer; wire [1:0] token_pos; wire game_over; wire [1:0] loser; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .buzzer(buzzer), .token_pos(token_pos), .game_over(game_over), .loser(loser));
+  always #5 clk=~clk;
+  task check2; input [1:0] etp; input ego; input [1:0] el; input [127:0] label; begin
+    if(token_pos!==etp || game_over!==ego || loser!==el) begin errors=errors+1; $display("FAIL %0s expected token_pos=%0d game_over=%b loser=%0d got token_pos=%0d game_over=%b loser=%0d",label,etp,ego,el,token_pos,game_over,loser); end
+    else $display("PASS %0s token_pos=%0d game_over=%b loser=%0d",label,token_pos,game_over,loser);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; buzzer=0; @(posedge clk); #1; rst=0;
+    check2(0,0,0,"reset");
+    @(posedge clk); #1; check2(1,0,0,"pass1");
+    @(posedge clk); #1; check2(2,0,0,"pass2");
+    @(posedge clk); #1; check2(3,0,0,"pass3");
+    buzzer=1; @(posedge clk); #1; check2(3,1,3,"buzzer-freezes-on-holder");
+    buzzer=0; @(posedge clk); #1; check2(3,1,3,"frozen-after");
+    @(posedge clk); #1; check2(3,1,3,"still-frozen");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'buzzer', 'token_pos', 'game_over', 'loser'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...........' },
+          { name: 'buzzer', wave: '0.......1.0.' },
+          { name: 'token_pos[1:0]', wave: '2.3.4.5.....', data: ['0', '1', '2', '3'] },
+          { name: 'game_over', wave: '0.........1.' },
+          { name: 'loser[1:0]', wave: '2.........3.', data: ['0', '3'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'reaction-game-scorer',
+      title: 'Reaction Game Scorer',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'fsm', 'game-logic'],
+      category: 'Fun & Games',
+      lede: 'Score a simple reflex game: a light comes on, the player presses a button, and the circuit measures how many cycles it took — flagging jumping the gun or dozing off.',
+      concept: '<b>Concept:</b> A 3-state FSM (idle → armed → done) times the gap between <code>stimulus</code> and <code>button</code>: pressing before the stimulus is <code>too_early</code>, pressing within the window gives a <code>valid</code> reaction_time, and letting a counter hit a fixed threshold without a press sets <code>too_slow</code>. That timeout check is the easy piece to forget — an implementation that only reacts to <code>button</code> in the armed state and never checks whether the counter has run out will simply wait forever for a press that never comes, silently dropping the entire "too slow" case instead of ever flagging it.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset, returns to idle</td></tr>
+<tr><td>stimulus</td><td>input</td><td>1</td><td>Pulses for 1 cycle: the light turns on</td></tr>
+<tr><td>button</td><td>input</td><td>1</td><td>1 while the player is pressing the button</td></tr>
+<tr><td>reaction_time</td><td>output</td><td>4</td><td>Cycles between stimulus and a valid press</td></tr>
+<tr><td>too_slow</td><td>output</td><td>1</td><td>1 if 5 cycles pass after stimulus with no press</td></tr>
+<tr><td>too_early</td><td>output</td><td>1</td><td>1 if the button is pressed before any stimulus</td></tr>
+<tr><td>valid</td><td>output</td><td>1</td><td>1 once a valid in-window press has been scored</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  stimulus,
+  input  button,
+  output reg [3:0] reaction_time,
+  output reg too_slow,
+  output reg too_early,
+  output reg valid
+);
+
+  // Your code here — idle: too_early if button pressed with no stimulus yet, else move to armed on stimulus.
+  // armed: on button, latch reaction_time=cycle count and set valid; if 5 cycles pass with no button, set too_slow.
+  // Both outcomes move to a done state that holds until reset.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, stimulus, button; wire [3:0] reaction_time; wire too_slow, too_early, valid; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .stimulus(stimulus), .button(button), .reaction_time(reaction_time), .too_slow(too_slow), .too_early(too_early), .valid(valid));
+  always #5 clk=~clk;
+  task check3; input erv; input [3:0] ert; input ets; input [127:0] label; begin
+    if(valid!==erv || (erv && reaction_time!==ert) || too_slow!==ets) begin errors=errors+1; $display("FAIL %0s expected valid=%b rt=%0d slow=%b got valid=%b rt=%0d slow=%b",label,erv,ert,ets,valid,reaction_time,too_slow); end
+    else $display("PASS %0s valid=%b rt=%0d slow=%b",label,valid,reaction_time,too_slow);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; stimulus=0; button=0; @(posedge clk); #1; rst=0;
+    stimulus=1; @(posedge clk); #1; stimulus=0;
+    @(posedge clk); #1; @(posedge clk); #1; @(posedge clk); #1;
+    button=1; @(posedge clk); #1; check3(1,3,0,"valid-press-after-3-cycles");
+    button=0;
+    rst=1; @(posedge clk); #1; rst=0;
+    stimulus=1; @(posedge clk); #1; stimulus=0;
+    repeat(6) begin @(posedge clk); #1; end
+    check3(0,0,1,"never-pressed-times-out");
+    rst=1; @(posedge clk); #1; rst=0;
+    button=1; @(posedge clk); #1;
+    if(too_early!==1) begin errors=errors+1; $display("FAIL expected too_early=1 got %b",too_early); end
+    else $display("PASS too_early=1 pressed-before-stimulus");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'stimulus', 'button', 'reaction_time', 'too_slow', 'too_early', 'valid'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.................' },
+          { name: 'stimulus', wave: '0.10..............' },
+          { name: 'button', wave: '0.......1.0.......' },
+          { name: 'valid', wave: '0.........1.......' },
+          { name: 'reaction_time[3:0]', wave: '2.........3.......', data: ['0', '3'] },
+          { name: 'too_slow', wave: '0.................' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'space-invaders-collision-detector',
+      title: 'Space Invaders Collision Detector',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'comparator'],
+      category: 'Fun & Games',
+      lede: 'Detect whether a bullet hits an alien: a classic range-overlap check dressed up as retro arcade collision logic.',
+      concept: '<b>Concept:</b> The alien occupies a run of cells from <code>alien_x</code> up to (but not including) <code>alien_x+alien_width</code>; the bullet hits when its position falls anywhere in that half-open range: <code>hit = (bullet_x&gt;=alien_x) &amp;&amp; (bullet_x&lt;alien_x+alien_width);</code>. Using <code>&lt;=</code> instead of <code>&lt;</code> for the upper bound is a classic off-by-one in collision detection — it counts one extra cell just past the alien\'s actual right edge as a hit, so a bullet that should whiff right next to the alien registers a phantom collision instead.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>bullet_x</td><td>input</td><td>4</td><td>Bullet's horizontal position (0-15)</td></tr>
+<tr><td>alien_x</td><td>input</td><td>4</td><td>Alien's leftmost cell position</td></tr>
+<tr><td>alien_width</td><td>input</td><td>3</td><td>How many cells wide the alien is</td></tr>
+<tr><td>hit</td><td>output</td><td>1</td><td>1 if bullet_x falls within the alien's occupied cells</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] bullet_x,
+  input  [3:0] alien_x,
+  input  [2:0] alien_width,
+  output hit
+);
+
+  // Your code here — hit if alien_x <= bullet_x < alien_x + alien_width.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] bullet_x, alien_x; reg [2:0] alien_width; wire hit; integer errors=0;
+  top_module dut(.bullet_x(bullet_x), .alien_x(alien_x), .alien_width(alien_width), .hit(hit));
+  task check; input [3:0] bx, ax; input [2:0] aw; input eh; begin
+    bullet_x=bx; alien_x=ax; alien_width=aw; #1;
+    if(hit!==eh) begin errors=errors+1; $display("FAIL bullet_x=%0d alien_x=%0d width=%0d expected=%b got=%b",bx,ax,aw,eh,hit); end
+    else $display("PASS bullet_x=%0d alien_x=%0d width=%0d hit=%b",bx,ax,aw,hit);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(5,5,3,1);
+    check(7,5,3,1);
+    check(8,5,3,0);
+    check(4,5,3,0);
+    check(6,5,3,1);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['bullet_x', 'alien_x', 'alien_width', 'hit'],
+      wavedrom: {
+        signal: [
+          { name: 'bullet_x[3:0]', wave: '2.3.4.5.', data: ['5', '7', '8', '4'] },
+          { name: 'alien_x[3:0]', wave: '2.......', data: ['5'] },
+          { name: 'alien_width[2:0]', wave: '2.......', data: ['3'] },
+          { name: 'hit', wave: '1.1.0.0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'quiz-buzzer-lockout',
+      title: 'Quiz Show Buzzer Lockout',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'arbiter', 'game-logic'],
+      category: 'Fun & Games',
+      lede: 'Build a 4-player quiz buzzer: whoever presses first wins and locks out everyone else until the host resets — first-to-press, not round-robin.',
+      concept: '<b>Concept:</b> Once any player buzzes in, the system must latch that winner and completely ignore every subsequent buzz until reset: <code>if(!locked &amp;&amp; |buzz) begin locked&lt;=1; winner&lt;=...; end</code>. Simultaneous presses in the same cycle need a fixed tie-break (lowest player index wins here). The critical guard is <code>!locked</code> — drop it and the buzzer keeps updating <code>winner</code> on every later press even after the round is supposedly locked, letting a slower player steal the win from whoever actually buzzed in first.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset, unlocks the buzzer</td></tr>
+<tr><td>buzz</td><td>input</td><td>4</td><td>One bit per player; 1 means that player is pressing</td></tr>
+<tr><td>winner</td><td>output</td><td>4</td><td>One-hot: which player won the buzz-in (0 if none yet)</td></tr>
+<tr><td>locked</td><td>output</td><td>1</td><td>1 once a winner has been latched; ignores buzz until reset</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [3:0] buzz,
+  output reg [3:0] winner,
+  output reg locked
+);
+
+  // Your code here — first cycle any buzz bit is set (while unlocked), latch a one-hot winner
+  // (lowest index wins ties) and set locked; ignore all further buzz activity until reset.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst; reg [3:0] buzz; wire [3:0] winner; wire locked; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .buzz(buzz), .winner(winner), .locked(locked));
+  always #5 clk=~clk;
+  task check; input [3:0] ew; input el; input [127:0] label; begin
+    if(winner!==ew || locked!==el) begin errors=errors+1; $display("FAIL %0s expected winner=%b locked=%b got winner=%b locked=%b",label,ew,el,winner,locked); end
+    else $display("PASS %0s winner=%b locked=%b",label,winner,locked);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; buzz=0; @(posedge clk); #1; rst=0;
+    buzz=4'b0010; @(posedge clk); #1; check(4'b0010,1,"player1-buzzes-first");
+    buzz=4'b1000; @(posedge clk); #1; check(4'b0010,1,"locked-ignores-later-buzz");
+    rst=1; @(posedge clk); #1; rst=0;
+    buzz=4'b0101; @(posedge clk); #1; check(4'b0001,1,"tie-lowest-index-wins");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'buzz', 'winner', 'locked'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'buzz[3:0]', wave: '2.3.4...', data: ['0', '2', '8'] },
+          { name: 'winner[3:0]', wave: '2.3.....', data: ['0', '2'] },
+          { name: 'locked', wave: '0.1.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'tug-of-war-counter',
+      title: 'Tug of War Position Tracker',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter', 'game-logic'],
+      category: 'Fun & Games',
+      lede: 'Track the rope\'s position in a tug-of-war: each pull nudges a signed counter one way, and crossing a threshold declares a winner instantly.',
+      concept: '<b>Concept:</b> The rope\'s position is a signed up/down counter — team A\'s pull decrements it, team B\'s pull increments it — and the win check must use the position <em>after</em> this cycle\'s pull is applied, not the stale value from before it: compute <code>next_pos</code> combinationally, register <code>position&lt;=next_pos</code>, and check <code>next_pos</code> against the threshold in the same cycle. Checking the old, pre-pull <code>position</code> instead of <code>next_pos</code> is a subtle one-cycle-late bug — the win still gets detected eventually, just one full pull later than it actually happened, so a team can be declared the winner only after over-pulling past the real threshold.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (position=0, winner=none)</td></tr>
+<tr><td>pull_a</td><td>input</td><td>1</td><td>Team A pulls this cycle</td></tr>
+<tr><td>pull_b</td><td>input</td><td>1</td><td>Team B pulls this cycle</td></tr>
+<tr><td>position</td><td>output</td><td>4 (signed)</td><td>Rope position; negative = toward A, positive = toward B</td></tr>
+<tr><td>winner</td><td>output</td><td>2</td><td>0=none yet, 1=team A wins, 2=team B wins</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  pull_a,
+  input  pull_b,
+  output reg signed [3:0] position,
+  output reg [1:0] winner
+);
+
+  // Your code here — pull_a (only) moves position -1, pull_b (only) moves it +1 (both/neither: no change).
+  // Win threshold is +/-3. Check the NEW position (after this cycle's pull) against the threshold, not the old one.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, pull_a, pull_b; wire signed [3:0] position; wire [1:0] winner; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .pull_a(pull_a), .pull_b(pull_b), .position(position), .winner(winner));
+  always #5 clk=~clk;
+  task check; input signed [3:0] ep; input [1:0] ew; input [127:0] label; begin
+    if(position!==ep || winner!==ew) begin errors=errors+1; $display("FAIL %0s expected position=%0d winner=%0d got position=%0d winner=%0d",label,ep,ew,position,winner); end
+    else $display("PASS %0s position=%0d winner=%0d",label,position,winner);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; pull_a=0; pull_b=0; @(posedge clk); #1; rst=0;
+    pull_a=1; @(posedge clk); #1; check(-1,0,"pull1");
+    @(posedge clk); #1; check(-2,0,"pull2");
+    @(posedge clk); #1; check(-3,1,"pull3-team-a-wins-same-cycle-it-crosses");
+    pull_a=0; @(posedge clk); #1; check(-3,1,"frozen-after-win");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'pull_a', 'pull_b', 'position', 'winner'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'pull_a', wave: '0.1.....0.' },
+          { name: 'position[3:0]', wave: '2.3.4.5...', data: ['0', '-1', '-2', '-3'] },
+          { name: 'winner[1:0]', wave: '0.......1.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'parking-garage-counter',
+      title: 'Parking Garage Spot Counter',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'counter'],
+      category: 'Fun & Games',
+      lede: 'Track available spots in an 8-space garage as cars enter and exit, refusing to go negative when it\'s already full — an up/down counter with real-world guard rails.',
+      concept: '<b>Concept:</b> Available spots decrement on <code>car_in</code> and increment on <code>car_out</code>, but only when it\'s safe to do so: never decrement below 0, never increment past capacity. The full flag is simply <code>available==0</code>. Forgetting the <code>available!=0</code> guard on the decrement path means a car_in pulse that arrives while the garage is already full silently underflows the counter to 15 (since it\'s unsigned) instead of holding at 0 — the garage would appear to gain fifteen phantom free spots the instant it should have stayed completely full.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (available=8, garage empty)</td></tr>
+<tr><td>car_in</td><td>input</td><td>1</td><td>A car enters this cycle</td></tr>
+<tr><td>car_out</td><td>input</td><td>1</td><td>A car exits this cycle</td></tr>
+<tr><td>available</td><td>output</td><td>4</td><td>Number of free spots, 0-8</td></tr>
+<tr><td>full</td><td>output</td><td>1</td><td>1 when available==0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  car_in,
+  input  car_out,
+  output reg [3:0] available,
+  output full
+);
+
+  // Your code here — capacity is 8. car_in decrements available (never below 0),
+  // car_out increments it (never above 8). full = (available==0).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, car_in, car_out; wire [3:0] available; wire full; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .car_in(car_in), .car_out(car_out), .available(available), .full(full));
+  always #5 clk=~clk;
+  task check; input [3:0] ea; input ef; input [127:0] label; begin
+    if(available!==ea || full!==ef) begin errors=errors+1; $display("FAIL %0s expected available=%0d full=%b got available=%0d full=%b",label,ea,ef,available,full); end
+    else $display("PASS %0s available=%0d full=%b",label,available,full);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; car_in=0; car_out=0; @(posedge clk); #1; rst=0;
+    check(8,0,"reset-empty-garage");
+    car_in=1;
+    repeat(8) begin @(posedge clk); #1; end
+    check(0,1,"garage-now-full");
+    @(posedge clk); #1; check(0,1,"extra-car-in-while-full-does-not-underflow");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'rst', 'car_in', 'car_out', 'available', 'full'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'car_in', wave: '0.1.....' },
+          { name: 'available[3:0]', wave: '2.3.4.5.', data: ['8', '7', '6', '0'] },
+          { name: 'full', wave: '0.......' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'hamming-distance-calculator',
+      title: 'Hamming Distance Calculator',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'error-correction'],
+      category: 'Fun & Games',
+      lede: 'Count how many bit positions differ between two 8-bit values — the core distance metric behind error-correcting codes like Hamming(7,4).',
+      concept: '<b>Concept:</b> XOR marks exactly the bit positions where two values disagree, so the Hamming distance is simply the popcount of <code>a^b</code>: <code>diff=a^b; distance=diff[0]+diff[1]+...+diff[7];</code>. Swapping XOR for AND is an easy bitwise mix-up that produces a real (but wrong) number instead of an obvious error — <code>a&amp;b</code> counts bits that are set in <em>both</em> operands, which is an entirely different quantity that happens to equal zero whenever the two values share no 1-bits at all, masking the bug on plenty of otherwise-reasonable test inputs.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>a</td><td>input</td><td>8</td><td>First value</td></tr>
+<tr><td>b</td><td>input</td><td>8</td><td>Second value</td></tr>
+<tr><td>distance</td><td>output</td><td>4</td><td>Number of bit positions where a and b differ (0-8)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] a,
+  input  [7:0] b,
+  output [3:0] distance
+);
+
+  // Your code here — distance = popcount(a ^ b).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] a,b; wire [3:0] distance; integer errors=0;
+  top_module dut(.a(a), .b(b), .distance(distance));
+  task check; input [7:0] ta, tb_; input [3:0] ed; begin
+    a=ta; b=tb_; #1;
+    if(distance!==ed) begin errors=errors+1; $display("FAIL a=%b b=%b expected=%0d got=%0d",ta,tb_,ed,distance); end
+    else $display("PASS a=%b b=%b distance=%0d",ta,tb_,distance);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'b00000000, 8'b00000000, 0);
+    check(8'hFF, 8'h00, 8);
+    check(8'b10110000, 8'b10100001, 2);
+    check(8'b11110000, 8'b00001111, 8);
+    check(8'b10101010, 8'b10101010, 0);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['a', 'b', 'distance'],
+      wavedrom: {
+        signal: [
+          { name: 'a[7:0]', wave: '2.3.4.5.', data: ['00', 'FF', 'B0', 'F0'] },
+          { name: 'b[7:0]', wave: '2.3.4.5.', data: ['00', '00', 'A1', '0F'] },
+          { name: 'distance[3:0]', wave: '2.3.4.5.', data: ['0', '8', '2', '8'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'slot-machine-jackpot-detector',
+      title: 'Slot Machine Jackpot Detector',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'comparator'],
+      category: 'Fun & Games',
+      lede: 'Judge a 3-reel slot machine spin: jackpot when all three reels match, a smaller near-miss flag when exactly two do.',
+      concept: '<b>Concept:</b> A true jackpot requires <em>all three</em> reels to agree: <code>jackpot=(reel1==reel2)&amp;&amp;(reel2==reel3);</code>, with <code>two_match</code> catching the near-miss case where only some pair agrees. The easy mistake is checking only one pair (say <code>reel1==reel2</code>) and calling that the jackpot condition — it correctly fires when all three genuinely match, but it also fires whenever just the first two happen to match and the third is completely different, awarding a jackpot for what should only ever be a two-reel near-miss.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>reel1</td><td>input</td><td>3</td><td>First reel's symbol (0-7)</td></tr>
+<tr><td>reel2</td><td>input</td><td>3</td><td>Second reel's symbol</td></tr>
+<tr><td>reel3</td><td>input</td><td>3</td><td>Third reel's symbol</td></tr>
+<tr><td>jackpot</td><td>output</td><td>1</td><td>1 if all three reels match</td></tr>
+<tr><td>two_match</td><td>output</td><td>1</td><td>1 if exactly two (not all three) reels match</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [2:0] reel1,
+  input  [2:0] reel2,
+  input  [2:0] reel3,
+  output jackpot,
+  output two_match
+);
+
+  // Your code here — jackpot if all three reels are equal; two_match if any pair matches but not all three.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [2:0] reel1, reel2, reel3; wire jackpot, two_match; integer errors=0;
+  top_module dut(.reel1(reel1), .reel2(reel2), .reel3(reel3), .jackpot(jackpot), .two_match(two_match));
+  task check; input [2:0] r1,r2,r3; input ej, etm; begin
+    reel1=r1; reel2=r2; reel3=r3; #1;
+    if(jackpot!==ej || two_match!==etm) begin errors=errors+1; $display("FAIL reels=%0d,%0d,%0d expected jackpot=%b two_match=%b got jackpot=%b two_match=%b",r1,r2,r3,ej,etm,jackpot,two_match); end
+    else $display("PASS reels=%0d,%0d,%0d jackpot=%b two_match=%b",r1,r2,r3,jackpot,two_match);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(3,3,3,1,0);
+    check(3,3,5,0,1);
+    check(3,5,3,0,1);
+    check(1,2,3,0,0);
+    check(5,3,3,0,1);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['reel1', 'reel2', 'reel3', 'jackpot', 'two_match'],
+      wavedrom: {
+        signal: [
+          { name: 'reel1[2:0]', wave: '2.3.4.5.', data: ['3', '3', '3', '1'] },
+          { name: 'reel2[2:0]', wave: '2.......', data: ['3'] },
+          { name: 'reel3[2:0]', wave: '2.3.....', data: ['3', '5'] },
+          { name: 'jackpot', wave: '1.0.....' },
+          { name: 'two_match', wave: '0.1.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
   ];
 
   function getProblem(slug) {
