@@ -11498,6 +11498,1237 @@ endmodule
         config: { hscale: 1 }
       }
     },
+    {
+      slug: 'apb-slave-register-interface',
+      title: 'APB Slave Register Interface',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'protocol', 'amba'],
+      category: 'Protocols &amp; Interfaces',
+      lede: 'A minimal AMBA APB slave: 4 registers, zero wait states — and the two-phase setup/access handshake that decides exactly when a write is allowed to land.',
+      concept: '<b>Concept:</b> APB splits every transfer into a SETUP phase (<code>psel</code> asserted, <code>penable</code> still low) and an ACCESS phase one cycle later (<code>penable</code> now high too) — the actual register write must only commit during ACCESS: <code>if(psel &amp;&amp; penable &amp;&amp; pwrite) regs[paddr]&lt;=pwdata;</code>. Dropping the <code>penable</code> check and writing on <code>psel &amp;&amp; pwrite</code> alone commits the write a full cycle too early, during SETUP — a genuine APB protocol violation that happens to still "work" in simple single-transfer tests, which is exactly why it\'s a dangerous bug to leave in.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (clears all 4 registers)</td></tr>
+<tr><td>psel</td><td>input</td><td>1</td><td>Slave select</td></tr>
+<tr><td>penable</td><td>input</td><td>1</td><td>1 during the ACCESS phase (0 during SETUP)</td></tr>
+<tr><td>pwrite</td><td>input</td><td>1</td><td>1=write, 0=read</td></tr>
+<tr><td>paddr</td><td>input</td><td>2</td><td>Register address (0-3)</td></tr>
+<tr><td>pwdata</td><td>input</td><td>8</td><td>Write data</td></tr>
+<tr><td>prdata</td><td>output</td><td>8</td><td>Read data (combinational)</td></tr>
+<tr><td>pready</td><td>output</td><td>1</td><td>Always 1 (zero wait-state slave)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  psel,
+  input  penable,
+  input  pwrite,
+  input  [1:0] paddr,
+  input  [7:0] pwdata,
+  output [7:0] prdata,
+  output pready
+);
+
+  // Your code here — 4x8 register array. pready=1 always. prdata=regs[paddr] combinationally.
+  // Write only commits when psel && penable && pwrite (the ACCESS phase, not SETUP).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, psel, penable, pwrite; reg [1:0] paddr; reg [7:0] pwdata; wire [7:0] prdata; wire pready;
+  integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.psel(psel),.penable(penable),.pwrite(pwrite),.paddr(paddr),.pwdata(pwdata),.prdata(prdata),.pready(pready));
+  always #5 clk=~clk;
+  task check; input [7:0] ep; input [127:0] label; begin
+    if(prdata!==ep) begin errors=errors+1; $display("FAIL %0s expected prdata=%h got=%h",label,ep,prdata); end
+    else $display("PASS %0s prdata=%h",label,prdata);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; psel=0; penable=0; pwrite=0; paddr=0; pwdata=0; @(posedge clk); #1; rst=0;
+    psel=1; penable=0; pwrite=1; paddr=2'd1; pwdata=8'hAA;
+    @(posedge clk); #1; check(8'h00,"setup-phase-only-no-write-yet");
+    penable=1;
+    @(posedge clk); #1; check(8'hAA,"access-phase-write-commits");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'psel', 'penable', 'pwrite', 'paddr', 'pwdata', 'prdata'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p......' },
+          { name: 'psel', wave: '0.1....' },
+          { name: 'penable', wave: '0...1..' },
+          { name: 'pwdata[7:0]', wave: '2......', data: ['AA'] },
+          { name: 'prdata[7:0]', wave: '2.....3', data: ['00', 'AA'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'axi-lite-write-fsm',
+      title: 'AXI4-Lite Write Channel FSM',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'protocol', 'amba', 'fsm'],
+      category: 'Protocols &amp; Interfaces',
+      lede: 'Accept an address+data write beat, then hold the response channel until the master acknowledges — the handshake FSM behind every AXI4-Lite peripheral.',
+      concept: '<b>Concept:</b> Once <code>awready</code>/<code>wready</code> pulse to accept an address+data beat, the FSM must drop them back to 0 before moving into the response phase — leaving them asserted through <code>RESP</code> would tell the master it can send a <em>second</em> write before the first one\'s response (<code>bvalid</code>/<code>bready</code>) has even completed, which is a real AXI protocol violation that breaks ordering guarantees the whole bus depends on. Forgetting exactly that one deassertion (<code>awready&lt;=0; wready&lt;=0;</code>) when entering <code>RESP</code> is an easy line to drop and a serious one to miss.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>awvalid</td><td>input</td><td>1</td><td>Write address valid</td></tr>
+<tr><td>awready</td><td>output</td><td>1</td><td>Write address ready</td></tr>
+<tr><td>wvalid</td><td>input</td><td>1</td><td>Write data valid</td></tr>
+<tr><td>wready</td><td>output</td><td>1</td><td>Write data ready</td></tr>
+<tr><td>bvalid</td><td>output</td><td>1</td><td>Write response valid</td></tr>
+<tr><td>bready</td><td>input</td><td>1</td><td>Master ready to accept response</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  awvalid,
+  output reg awready,
+  input  wvalid,
+  output reg wready,
+  output reg bvalid,
+  input  bready
+);
+
+  // Your code here — IDLE: accept awvalid&&wvalid for 1 cycle (awready=wready=1), move to RESP.
+  // RESP: deassert awready/wready, assert bvalid until bready, then back to IDLE.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, awvalid, wvalid, bready; wire awready, wready, bvalid; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.awvalid(awvalid),.awready(awready),.wvalid(wvalid),.wready(wready),.bvalid(bvalid),.bready(bready));
+  always #5 clk=~clk;
+  task check; input ea,ew,eb; input [127:0] label; begin
+    if(awready!==ea||wready!==ew||bvalid!==eb) begin errors=errors+1; $display("FAIL %0s expected awready=%b wready=%b bvalid=%b got awready=%b wready=%b bvalid=%b",label,ea,ew,eb,awready,wready,bvalid); end
+    else $display("PASS %0s awready=%b wready=%b bvalid=%b",label,awready,wready,bvalid);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; awvalid=0; wvalid=0; bready=0; @(posedge clk); #1; rst=0;
+    awvalid=1; wvalid=1;
+    @(posedge clk); #1; check(1,1,0,"accept-address-and-data");
+    @(posedge clk); #1; check(0,0,1,"resp-phase-must-deassert-aw-w-ready");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'awvalid', 'awready', 'wvalid', 'wready', 'bvalid', 'bready'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.....' },
+          { name: 'awvalid', wave: '0.1...' },
+          { name: 'awready', wave: '0..1.0' },
+          { name: 'bvalid', wave: '0....1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'axi-lite-read-fsm',
+      title: 'AXI4-Lite Read Channel FSM',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'protocol', 'amba', 'fsm'],
+      category: 'Protocols &amp; Interfaces',
+      lede: 'The read-side twin of this catalog\'s AXI4-Lite write FSM: accept an address, then hold the data response until the master accepts it.',
+      concept: '<b>Concept:</b> Just like the write address channel, <code>arready</code> must pulse for exactly one cycle to accept the read address, then drop to 0 while <code>rvalid</code> holds the response — the same "forgot to deassert the ready signal when entering the response phase" bug that plagues the write channel shows up here too, letting the master think it can issue a second read address before the first read\'s data has even been returned.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>arvalid</td><td>input</td><td>1</td><td>Read address valid</td></tr>
+<tr><td>arready</td><td>output</td><td>1</td><td>Read address ready</td></tr>
+<tr><td>rvalid</td><td>output</td><td>1</td><td>Read data valid</td></tr>
+<tr><td>rready</td><td>input</td><td>1</td><td>Master ready to accept data</td></tr>
+<tr><td>rdata</td><td>output</td><td>8</td><td>Read data</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  arvalid,
+  output reg arready,
+  output reg rvalid,
+  input  rready,
+  output reg [7:0] rdata
+);
+
+  // Your code here — IDLE: accept arvalid for 1 cycle (arready=1), latch rdata, move to RESP.
+  // RESP: deassert arready, assert rvalid until rready, then back to IDLE.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, arvalid, rready; wire arready, rvalid; wire [7:0] rdata; integer errors=0;
+  top_module dut(.clk(clk),.rst(rst),.arvalid(arvalid),.arready(arready),.rvalid(rvalid),.rready(rready),.rdata(rdata));
+  always #5 clk=~clk;
+  task check; input ea,ev; input [127:0] label; begin
+    if(arready!==ea||rvalid!==ev) begin errors=errors+1; $display("FAIL %0s expected arready=%b rvalid=%b got arready=%b rvalid=%b",label,ea,ev,arready,rvalid); end
+    else $display("PASS %0s arready=%b rvalid=%b",label,arready,rvalid);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; arvalid=0; rready=0; @(posedge clk); #1; rst=0;
+    arvalid=1;
+    @(posedge clk); #1; check(1,0,"accept-address");
+    @(posedge clk); #1; check(0,1,"resp-phase-must-deassert-arready");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'arvalid', 'arready', 'rvalid', 'rready', 'rdata'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.....' },
+          { name: 'arvalid', wave: '0.1...' },
+          { name: 'arready', wave: '0..1.0' },
+          { name: 'rvalid', wave: '0....1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'clock-gating-cell',
+      title: 'Integrated Clock Gating Cell (ICG)',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'clock-generation', 'low-power'],
+      category: 'Sequential Design',
+      lede: 'The standard cell every low-power design leans on to disable a clock branch without ever producing a runt pulse — a level-sensitive latch, not a plain AND gate.',
+      concept: '<b>Concept:</b> A naive <code>gclk = clk &amp; en</code> is dangerous: if <code>en</code> changes while <code>clk</code> happens to be high, the output can glitch mid-pulse, and that glitch can clock a downstream flop at the wrong instant. The real ICG latches <code>en</code> only while <code>clk</code> is low (when it\'s safe) and holds that value steady through the whole high phase: <code>always @* if(!clk) en_latched=en; assign gclk=clk &amp; en_latched;</code>. Skipping the latch and gating directly with <code>en</code> is the exact bug real clock-gating cells exist to prevent — it looks identical in a waveform viewer for slow, careful test patterns, and only shows the glitch when <code>en</code> toggles at the "wrong" moment.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Free-running clock</td></tr>
+<tr><td>en</td><td>input</td><td>1</td><td>Gate enable</td></tr>
+<tr><td>gclk</td><td>output</td><td>1</td><td>Gated clock (glitch-free)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  en,
+  output gclk
+);
+
+  // Your code here — latch en while clk is LOW (transparent latch), then AND with clk.
+  // This is a level-sensitive latch: always @* if(!clk) en_latched=en;
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk, en; wire gclk; integer errors=0;
+  top_module dut(.clk(clk), .en(en), .gclk(gclk));
+  task check; input eg; input [127:0] label; begin
+    if(gclk!==eg) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,eg,gclk); end
+    else $display("PASS %0s gclk=%b",label,gclk);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    clk=0; en=1; #1;
+    clk=1; #1; check(1,"clk-high-en-was-1-during-low-phase");
+    en=0; #1; check(1,"en-drops-mid-high-phase-latched-value-must-hold-no-glitch");
+    clk=0; #1; check(0,"clk-low-forces-gclk-low-latch-now-reopens-captures-en0");
+    clk=1; #1; check(0,"clk-high-again-en-was-0-during-last-low-phase");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'en', 'gclk'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: '0.1...0.1.' },
+          { name: 'en', wave: '1...0.....' },
+          { name: 'gclk', wave: '0.1.....0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'interrupt-mask-register',
+      title: 'Interrupt Mask Register',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'interrupt'],
+      category: 'Combinational Design',
+      lede: 'Gate a bank of interrupt sources through a per-bit mask so that masked-off interrupts never reach the CPU — the register-level building block behind every real interrupt controller.',
+      concept: '<b>Concept:</b> The masked interrupt bits (<code>pending = irq &amp; mask</code>) are only half the job — the final line to the CPU must come from <code>pending</code>, not from the raw <code>irq</code> bits: <code>irq_out = |pending</code>. A very real bug when a mask register gets bolted onto an existing controller is computing <code>pending</code> correctly but leaving the old <code>irq_out = |irq</code> driver untouched — the masked-pending bits look right in isolation, but the interrupt line to the CPU is still driven straight from the unmasked sources, so masking a source does nothing at all to whether it actually interrupts.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>irq</td><td>input</td><td>8</td><td>Raw interrupt sources</td></tr>
+<tr><td>mask</td><td>input</td><td>8</td><td>1=source enabled, 0=masked off</td></tr>
+<tr><td>pending</td><td>output</td><td>8</td><td>irq &amp; mask</td></tr>
+<tr><td>irq_out</td><td>output</td><td>1</td><td>1 if any unmasked source is pending</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] irq,
+  input  [7:0] mask,
+  output [7:0] pending,
+  output irq_out
+);
+
+  // Your code here — pending = irq & mask; irq_out = |pending (NOT |irq).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] irq, mask; wire irq_out; wire [7:0] pending; integer errors=0;
+  top_module dut(.irq(irq), .mask(mask), .irq_out(irq_out), .pending(pending));
+  task check; input [7:0] i,m; input [7:0] ep; input eo; begin
+    irq=i;mask=m;#1;
+    if(pending!==ep||irq_out!==eo) begin errors=errors+1; $display("FAIL irq=%b mask=%b expected pending=%b irq_out=%b got pending=%b irq_out=%b",i,m,ep,eo,pending,irq_out); end
+    else $display("PASS irq=%b mask=%b pending=%b irq_out=%b",i,m,pending,irq_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(8'b00000100, 8'b00000000, 8'b00000000, 0);
+    check(8'b00000100, 8'b00000010, 8'b00000000, 0);
+    check(8'b00000100, 8'b00000100, 8'b00000100, 1);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['irq', 'mask', 'pending', 'irq_out'],
+      wavedrom: {
+        signal: [
+          { name: 'irq[7:0]', wave: '2.....', data: ['04'] },
+          { name: 'mask[7:0]', wave: '2.3...', data: ['00', '04'] },
+          { name: 'pending[7:0]', wave: '2.3...', data: ['00', '04'] },
+          { name: 'irq_out', wave: '0.1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'brown-out-reset-detector',
+      title: 'Brown-Out Reset Detector',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'power', 'reset'],
+      category: 'Sequential Design',
+      lede: 'Trigger a reset when the supply voltage dips too low — and use two different thresholds for asserting vs. releasing it, so noise near the edge can\'t chatter the reset line.',
+      concept: '<b>Concept:</b> A real brown-out detector uses hysteresis: reset asserts when voltage drops below a LOW threshold, but only releases once voltage climbs back above a separate, higher HIGH threshold — the gap between the two thresholds is a noise margin. Using the same threshold for both directions collapses that margin to zero: the moment voltage ticks back above the single threshold, reset releases immediately, even if it\'s still sitting in what should be the unsafe hysteresis band — exactly the chattering behavior hysteresis exists to prevent.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst_ext</td><td>input</td><td>1</td><td>External force-reset input</td></tr>
+<tr><td>vsense</td><td>input</td><td>8</td><td>Sensed supply voltage (arbitrary units)</td></tr>
+<tr><td>reset_out</td><td>output</td><td>1</td><td>1 while held in brown-out reset</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst_ext,
+  input  [7:0] vsense,
+  output reg reset_out
+);
+
+  // Your code here — LOW=100, HIGH=110. Assert reset when vsense<LOW; release only when vsense>=HIGH.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst_ext; reg [7:0] vsense; wire reset_out; integer errors=0;
+  top_module dut(.clk(clk), .rst_ext(rst_ext), .vsense(vsense), .reset_out(reset_out));
+  always #5 clk=~clk;
+  task check; input er; input [127:0] label; begin
+    if(reset_out!==er) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,er,reset_out); end
+    else $display("PASS %0s reset_out=%b",label,reset_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst_ext=1; vsense=120; @(posedge clk); #1; rst_ext=0; check(1,"held-in-reset");
+    vsense=90; @(posedge clk); #1; check(1,"dip-below-low-stays-in-reset");
+    vsense=105; @(posedge clk); #1; check(1,"in-hysteresis-gap-must-still-be-in-reset");
+    vsense=115; @(posedge clk); #1; check(0,"above-high-releases");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'vsense', 'reset_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p........' },
+          { name: 'vsense[7:0]', wave: '2.3.4.5..', data: ['120', '90', '105', '115'] },
+          { name: 'reset_out', wave: '1.......0' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'power-on-reset-generator',
+      title: 'Power-On Reset (POR) Generator',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'reset', 'counter'],
+      category: 'Sequential Design',
+      lede: 'Hold every flop in reset for a fixed number of cycles after power-up before releasing them — the counter-based POR sitting between a raw power rail and the rest of a chip.',
+      concept: '<b>Concept:</b> A POR simply counts cycles while reset is held, and releases exactly when the count reaches its target: <code>if(cnt==7) reset_out&lt;=0; else cnt&lt;=cnt+1;</code>, giving 8 total held cycles (cnt running 0 through 7 inclusive). Comparing against one less than the intended count (<code>cnt==6</code> instead of <code>cnt==7</code>) releases reset a full cycle early — a classic off-by-one in a hold-for-N-cycles counter that\'s easy to get wrong in either direction depending on whether the count starts at 0 or 1.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>trigger</td><td>input</td><td>1</td><td>1 pulse to (re)start the POR sequence</td></tr>
+<tr><td>reset_out</td><td>output</td><td>1</td><td>1 while held in reset (8 cycles after trigger)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  trigger,
+  output reg reset_out
+);
+
+  // Your code here — on trigger, hold reset_out=1 for exactly 8 cycles (counting 0..7), then release.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, trigger; wire reset_out; integer errors=0;
+  top_module dut(.clk(clk), .trigger(trigger), .reset_out(reset_out));
+  always #5 clk=~clk;
+  integer i;
+  task check; input er; input [127:0] label; begin
+    if(reset_out!==er) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,er,reset_out); end
+    else $display("PASS %0s reset_out=%b",label,reset_out);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    trigger=1; @(posedge clk); #1; trigger=0; check(1,"edge0-trigger");
+    for (i=0;i<6;i=i+1) begin @(posedge clk); #1; end
+    check(1,"edge6-still-held");
+    @(posedge clk); #1; check(1,"edge7-still-held-must-release-next");
+    @(posedge clk); #1; check(0,"edge8-released");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'trigger', 'reset_out'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'trigger', wave: '010.......' },
+          { name: 'reset_out', wave: '1........0' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'low-power-sleep-wake-fsm',
+      title: 'Low-Power Sleep/Wake FSM',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'fsm', 'low-power'],
+      category: 'Sequential Design',
+      lede: 'Enter a low-power sleep state on request and wake on an interrupt — but never actually go to sleep if a wake interrupt is already pending the instant sleep is requested.',
+      concept: '<b>Concept:</b> A real race condition in power management: if <code>sleep_req</code> and <code>wake_irq</code> arrive on the exact same cycle, sleeping anyway would mean the wake event that just occurred is silently swallowed, leaving the system asleep waiting for a <em>second</em> wake interrupt that may never come: <code>if(sleep_req &amp;&amp; !wake_irq) ...</code>. Dropping the <code>!wake_irq</code> guard means the FSM commits to sleep purely based on the request, without checking whether a wake is simultaneously being asserted — exactly the missed-wakeup race that guard exists to close.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (awake, not sleeping)</td></tr>
+<tr><td>sleep_req</td><td>input</td><td>1</td><td>1 to request entering sleep</td></tr>
+<tr><td>wake_irq</td><td>input</td><td>1</td><td>1 when a wake interrupt is pending</td></tr>
+<tr><td>sleeping</td><td>output</td><td>1</td><td>1 while in the sleep state</td></tr>
+<tr><td>wake_pulse</td><td>output</td><td>1</td><td>1-cycle pulse the instant the system wakes</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  sleep_req,
+  input  wake_irq,
+  output reg sleeping,
+  output reg wake_pulse
+);
+
+  // Your code here — AWAKE: if(sleep_req && !wake_irq) go to SLEEP. SLEEP: if(wake_irq) go to AWAKE, pulse wake_pulse.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, sleep_req, wake_irq; wire sleeping, wake_pulse; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .sleep_req(sleep_req), .wake_irq(wake_irq), .sleeping(sleeping), .wake_pulse(wake_pulse));
+  always #5 clk=~clk;
+  task check; input es; input [127:0] label; begin
+    if(sleeping!==es) begin errors=errors+1; $display("FAIL %0s expected sleeping=%b got=%b",label,es,sleeping); end
+    else $display("PASS %0s sleeping=%b",label,sleeping);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; sleep_req=0; wake_irq=0; @(posedge clk); #1; rst=0;
+    sleep_req=1; wake_irq=1;
+    @(posedge clk); #1; check(0,"race-sleep-and-wake-same-cycle-must-not-sleep");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'sleep_req', 'wake_irq', 'sleeping'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p...' },
+          { name: 'sleep_req', wave: '0.1.' },
+          { name: 'wake_irq', wave: '0.1.' },
+          { name: 'sleeping', wave: '0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'bus-timeout-watchdog',
+      title: 'Bus Timeout Watchdog',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Flag an error if a bus transaction doesn\'t get a ready response within a fixed number of cycles — and make sure that error actually clears once a transaction succeeds.',
+      concept: '<b>Concept:</b> The counter resets whenever there\'s no outstanding request or the slave responds, and the error clears at the same time: <code>if(!req||ready) begin cnt&lt;=0; timeout_err&lt;=0; end</code>. Resetting the counter but forgetting to also clear <code>timeout_err</code> creates a sticky-forever bug: once a transaction times out, even a perfectly healthy <em>later</em> transaction that completes right on time will leave the error flag stuck high, permanently reporting a fault that\'s no longer true.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>req</td><td>input</td><td>1</td><td>1 while a bus request is outstanding</td></tr>
+<tr><td>ready</td><td>input</td><td>1</td><td>1 when the slave responds</td></tr>
+<tr><td>timeout_err</td><td>output</td><td>1</td><td>1 if req has been outstanding for 10 cycles without ready</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  req,
+  input  ready,
+  output reg timeout_err
+);
+
+  // Your code here — count cycles while req is outstanding and ready hasn't arrived.
+  // If !req or ready, clear the counter AND timeout_err. At 10 cycles without ready, set timeout_err.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, req, ready; wire timeout_err; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .req(req), .ready(ready), .timeout_err(timeout_err));
+  always #5 clk=~clk;
+  integer i;
+  task check; input et; input [127:0] label; begin
+    if(timeout_err!==et) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,et,timeout_err); end
+    else $display("PASS %0s timeout_err=%b",label,timeout_err);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; req=0; ready=0; @(posedge clk); #1; rst=0;
+    req=1; ready=0;
+    for (i=0;i<10;i=i+1) begin @(posedge clk); #1; end
+    check(1,"timed-out-after-10-cycles");
+    ready=1; @(posedge clk); #1; ready=0; check(0,"ready-arrives-must-clear-sticky-error");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'req', 'ready', 'timeout_err'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p............' },
+          { name: 'req', wave: '0.1..........' },
+          { name: 'ready', wave: '0..........10' },
+          { name: 'timeout_err', wave: '0.........1.0' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'lockstep-dual-core-comparator',
+      title: 'Lockstep Dual-Core Comparator',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'safety'],
+      category: 'Sequential Design',
+      lede: 'The functional-safety watchdog behind lockstep processors: compare two redundant cores\' outputs every cycle, and once they ever disagree, latch that fault permanently.',
+      concept: '<b>Concept:</b> In a safety-critical lockstep design (the kind ISO 26262 automotive silicon relies on), a fault flag must be <em>sticky</em> — once a mismatch between the two redundant cores is observed, the fault must stay asserted until an explicit reset, never silently clearing itself just because a later comparison happens to match again: <code>if(mismatch) fault&lt;=1;</code> (no path that ever sets it back to 0 except reset). Writing <code>fault &lt;= mismatch</code> instead looks almost identical but re-evaluates the fault fresh every cycle, so a single transient glitch gets silently forgotten the moment the next comparison is clean — exactly the failure mode a lockstep safety mechanism exists to catch.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (clears fault)</td></tr>
+<tr><td>valid_a</td><td>input</td><td>1</td><td>Core A output valid this cycle</td></tr>
+<tr><td>data_a</td><td>input</td><td>8</td><td>Core A output</td></tr>
+<tr><td>valid_b</td><td>input</td><td>1</td><td>Core B output valid this cycle</td></tr>
+<tr><td>data_b</td><td>input</td><td>8</td><td>Core B output</td></tr>
+<tr><td>fault</td><td>output</td><td>1</td><td>Sticky: 1 forever once a mismatch is ever seen</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  valid_a,
+  input  [7:0] data_a,
+  input  valid_b,
+  input  [7:0] data_b,
+  output reg fault
+);
+
+  // Your code here — when both valid and data_a != data_b, latch fault=1. Never clear it except on rst.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, valid_a, valid_b; reg [7:0] data_a, data_b; wire fault; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .valid_a(valid_a), .data_a(data_a), .valid_b(valid_b), .data_b(data_b), .fault(fault));
+  always #5 clk=~clk;
+  task check; input ef; input [127:0] label; begin
+    if(fault!==ef) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,ef,fault); end
+    else $display("PASS %0s fault=%b",label,fault);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; valid_a=0; valid_b=0; data_a=0; data_b=0; @(posedge clk); #1; rst=0;
+    valid_a=1; valid_b=1; data_a=5; data_b=7;
+    @(posedge clk); #1; check(1,"mismatch-sets-fault");
+    data_a=9; data_b=9;
+    @(posedge clk); #1; check(1,"fault-must-stay-latched-sticky-even-after-a-matching-cycle");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'data_a', 'data_b', 'fault'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'data_a[7:0]', wave: '2.3.....', data: ['5', '9'] },
+          { name: 'data_b[7:0]', wave: '2.3.....', data: ['7', '9'] },
+          { name: 'fault', wave: '0.1.....' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+    {
+      slug: 'register-map-address-decoder',
+      title: 'Register-Map Address Decoder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'decoder'],
+      category: 'Combinational Design',
+      lede: 'Decode a bus address into one of 8 register chip-selects — and correctly refuse to assert anything for out-of-range addresses instead of aliasing them.',
+      concept: '<b>Concept:</b> With an address wider than the number of registers actually implemented, an in-range check matters as much as the decode itself: <code>cs = (addr&lt;8) ? (1&lt;&lt;addr) : 0</code>. Truncating the address down to just enough bits to index the 8 chip-selects (say, only using <code>addr[2:0]</code> and silently dropping the top bit) skips that range check entirely — every out-of-range address 8-15 quietly <em>aliases</em> onto register 0-7 based on its low 3 bits, so an access that should hit nothing at all ends up hitting a real register instead.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>addr</td><td>input</td><td>4</td><td>Register address (0-15; only 0-7 are valid)</td></tr>
+<tr><td>cs</td><td>output</td><td>8</td><td>One-hot chip-select; all-0 for out-of-range addr</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] addr,
+  output [7:0] cs
+);
+
+  // Your code here — cs = one-hot bit at position addr, but ALL ZERO if addr >= 8 (out of range).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] addr; wire [7:0] cs; integer errors=0;
+  top_module dut(.addr(addr), .cs(cs));
+  task check; input [3:0] a; input [7:0] ec; begin
+    addr=a;#1;
+    if(cs!==ec) begin errors=errors+1; $display("FAIL addr=%d expected=%b got=%b",a,ec,cs); end
+    else $display("PASS addr=%d cs=%b",a,cs);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(4'd3, 8'b00001000);
+    check(4'd8, 8'b00000000);
+    check(4'd15, 8'b00000000);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['addr', 'cs'],
+      wavedrom: {
+        signal: [
+          { name: 'addr[3:0]', wave: '2.3.4.', data: ['3', '8', '15'] },
+          { name: 'cs[7:0]', wave: '2.3...', data: ['08', '00'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'credit-based-flow-control-counter',
+      title: 'Credit-Based Flow Control Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter', 'protocol'],
+      category: 'Sequential Design',
+      lede: 'Track available send credits so a sender never transmits more than the receiver has buffer space for — the flow-control mechanism behind NoC and high-speed serial links.',
+      concept: '<b>Concept:</b> A sender may only spend a credit when it actually has one: <code>if(send &amp;&amp; can_send) credits&lt;=credits-1</code>, alongside independently gaining one back on <code>credit_return</code>. Dropping the <code>can_send</code> guard on the decrement lets <code>send</code> fire with zero credits available, underflowing the counter to its maximum value — which is doubly dangerous here, because <code>can_send</code> is derived from <code>credits!=0</code>, so the underflow doesn\'t just corrupt the count, it flips the flow-control gate back to "go ahead and send more" at exactly the moment the sender should be blocked.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (credits=4, full)</td></tr>
+<tr><td>send</td><td>input</td><td>1</td><td>1 to spend a credit this cycle</td></tr>
+<tr><td>credit_return</td><td>input</td><td>1</td><td>1 to gain a credit back this cycle</td></tr>
+<tr><td>credits</td><td>output</td><td>3</td><td>Available credits, 0-4</td></tr>
+<tr><td>can_send</td><td>output</td><td>1</td><td>1 if credits!=0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  send,
+  input  credit_return,
+  output reg [2:0] credits,
+  output can_send
+);
+
+  // Your code here — MAX=4. can_send=credits!=0. send only decrements when can_send; credit_return
+  // increments (capped at MAX). Handle both happening the same cycle without under/overflow.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, send, credit_return; wire [2:0] credits; wire can_send; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .send(send), .credit_return(credit_return), .credits(credits), .can_send(can_send));
+  always #5 clk=~clk;
+  integer i;
+  task check; input [2:0] ec; input ecs; input [127:0] label; begin
+    if(credits!==ec||can_send!==ecs) begin errors=errors+1; $display("FAIL %0s expected credits=%d can_send=%b got credits=%d can_send=%b",label,ec,ecs,credits,can_send); end
+    else $display("PASS %0s credits=%d can_send=%b",label,credits,can_send);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; send=0; credit_return=0; @(posedge clk); #1; rst=0;
+    check(4,1,"reset-full-credits");
+    send=1;
+    for (i=0;i<4;i=i+1) begin @(posedge clk); #1; end
+    check(0,0,"drained-to-zero");
+    @(posedge clk); #1; check(0,0,"send-with-zero-credits-must-not-underflow");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'send', 'credit_return', 'credits', 'can_send'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'send', wave: '0.1.....' },
+          { name: 'credits[2:0]', wave: '2.3.4.5.', data: ['4', '3', '2', '1'] },
+          { name: 'can_send', wave: '1.......' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'weighted-round-robin-arbiter',
+      title: 'Weighted Round-Robin Arbiter',
+      difficulty: 'hard',
+      points: 50,
+      tags: ['sequential', 'arbiter'],
+      category: 'Sequential Design',
+      lede: 'Give one requester more grants per round than the other — the QoS-style arbiter behind bandwidth allocation in NoCs and shared-memory controllers.',
+      concept: '<b>Concept:</b> Each requester gets a quota of consecutive grants per round (here, 2 for requester 0, 1 for requester 1); a grant only counts against that requester\'s own quota, and the quotas refill together once neither requester can be served: <code>if(req0 &amp;&amp; q0!=0) begin grant0&lt;=1; q0&lt;=q0-1; end</code>. Granting <code>req0</code> unconditionally whenever it\'s asserted — without ever checking or spending its quota — throws the weighting away entirely: requester 0 wins every single cycle it asks, and requester 1 is starved completely instead of getting its fair 1-in-3 share.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (refills both quotas)</td></tr>
+<tr><td>req0</td><td>input</td><td>1</td><td>Requester 0 asserting request</td></tr>
+<tr><td>req1</td><td>input</td><td>1</td><td>Requester 1 asserting request</td></tr>
+<tr><td>grant0</td><td>output</td><td>1</td><td>1-cycle grant to requester 0</td></tr>
+<tr><td>grant1</td><td>output</td><td>1</td><td>1-cycle grant to requester 1</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  req0,
+  input  req1,
+  output reg grant0,
+  output reg grant1
+);
+
+  // Your code here — W0=2, W1=1 quotas. Grant req0 while its quota lasts, then req1 while its quota
+  // lasts (decrementing each grant), then refill both quotas once neither can be served.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, req0, req1; wire grant0, grant1; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .req0(req0), .req1(req1), .grant0(grant0), .grant1(grant1));
+  always #5 clk=~clk;
+  task check; input eg0,eg1; input [127:0] label; begin
+    if(grant0!==eg0||grant1!==eg1) begin errors=errors+1; $display("FAIL %0s expected grant0=%b grant1=%b got grant0=%b grant1=%b",label,eg0,eg1,grant0,grant1); end
+    else $display("PASS %0s grant0=%b grant1=%b",label,grant0,grant1);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; req0=0; req1=0; @(posedge clk); #1; rst=0;
+    req0=1; req1=1;
+    @(posedge clk); #1; check(1,0,"cyc1-req0-quota2");
+    @(posedge clk); #1; check(1,0,"cyc2-req0-quota-now-0");
+    @(posedge clk); #1; check(0,1,"cyc3-req0-exhausted-req1-gets-turn");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'req0', 'req1', 'grant0', 'grant1'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'req0', wave: '0.1.....' },
+          { name: 'req1', wave: '0.1.....' },
+          { name: 'grant0', wave: '0.1.0...' },
+          { name: 'grant1', wave: '0....1..' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'axi-stream-packet-counter',
+      title: 'AXI-Stream Packet Counter',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['sequential', 'protocol', 'amba'],
+      category: 'Protocols &amp; Interfaces',
+      lede: 'Count completed packets on an AXI-Stream by watching tlast — but only when a beat is actually accepted, not just whenever tlast happens to be asserted.',
+      concept: '<b>Concept:</b> On AXI-Stream, a beat only really transfers when BOTH <code>tvalid</code> and <code>tready</code> are high that cycle — <code>tlast</code> alone means nothing if the receiver isn\'t ready to accept it: <code>if(tvalid &amp;&amp; tready &amp;&amp; tlast) packet_count&lt;=packet_count+1</code>. Counting on <code>tlast</code> alone, without the handshake qualifier, over-counts every time the last beat of a packet happens to coincide with backpressure (<code>tready=0</code>) — the packet hasn\'t actually been transferred yet, but the counter thinks it has, and then counts it <em>again</em> once the real handshake finally completes.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>tvalid</td><td>input</td><td>1</td><td>Data valid</td></tr>
+<tr><td>tready</td><td>input</td><td>1</td><td>Receiver ready</td></tr>
+<tr><td>tlast</td><td>input</td><td>1</td><td>1 on the last beat of a packet</td></tr>
+<tr><td>packet_count</td><td>output</td><td>8</td><td>Number of packets actually transferred</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  tvalid,
+  input  tready,
+  input  tlast,
+  output reg [7:0] packet_count
+);
+
+  // Your code here — increment only when tvalid && tready && tlast (a real accepted beat that's also the last one).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, tvalid, tready, tlast; wire [7:0] packet_count; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .tvalid(tvalid), .tready(tready), .tlast(tlast), .packet_count(packet_count));
+  always #5 clk=~clk;
+  task check; input [7:0] ec; input [127:0] label; begin
+    if(packet_count!==ec) begin errors=errors+1; $display("FAIL %0s expected=%d got=%d",label,ec,packet_count); end
+    else $display("PASS %0s packet_count=%d",label,packet_count);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; tvalid=0; tready=0; tlast=0; @(posedge clk); #1; rst=0;
+    tvalid=1; tready=0; tlast=1;
+    @(posedge clk); #1; check(0,"backpressure-tlast-not-accepted-must-not-count");
+    tready=1;
+    @(posedge clk); #1; check(1,"now-accepted-counts");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'tvalid', 'tready', 'tlast', 'packet_count'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p......' },
+          { name: 'tvalid', wave: '0.1....' },
+          { name: 'tready', wave: '0...1..' },
+          { name: 'tlast', wave: '0.1....' },
+          { name: 'packet_count[7:0]', wave: '2.....3', data: ['0', '1'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'dma-descriptor-beat-counter',
+      title: 'DMA Descriptor Beat Counter',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'counter', 'dma'],
+      category: 'Sequential Design',
+      lede: 'Track remaining beats in a DMA transfer as they complete, guarding against the stray late-arriving pulse that real pipelined DMA engines can produce after completion.',
+      concept: '<b>Concept:</b> The remaining-beats counter must never decrement past 0 — <code>if(beat_done &amp;&amp; beats_remaining!=0) beats_remaining&lt;=beats_remaining-1</code> — because a real DMA engine\'s completion pulses can arrive slightly out of sync with the counter due to pipeline latency, and a stray extra pulse after the transfer is already done is a normal, expected occurrence, not an error. Skip the guard and that harmless extra pulse underflows the counter to 255, which then flips <code>xfer_complete</code> back to 0 — telling the rest of the system a finished transfer is somehow still in progress.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>load</td><td>input</td><td>1</td><td>1 to load a new transfer's beat_total</td></tr>
+<tr><td>beat_total</td><td>input</td><td>8</td><td>Total beats for this transfer</td></tr>
+<tr><td>beat_done</td><td>input</td><td>1</td><td>1 pulse per completed beat</td></tr>
+<tr><td>beats_remaining</td><td>output</td><td>8</td><td>Beats left in the current transfer</td></tr>
+<tr><td>xfer_complete</td><td>output</td><td>1</td><td>1 when beats_remaining==0</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  load,
+  input  [7:0] beat_total,
+  input  beat_done,
+  output reg [7:0] beats_remaining,
+  output xfer_complete
+);
+
+  // Your code here — load sets beats_remaining=beat_total. beat_done decrements, but only if !=0.
+  // xfer_complete = (beats_remaining==0).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, load, beat_done; reg [7:0] beat_total; wire [7:0] beats_remaining; wire xfer_complete; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .load(load), .beat_total(beat_total), .beat_done(beat_done), .beats_remaining(beats_remaining), .xfer_complete(xfer_complete));
+  always #5 clk=~clk;
+  task check; input [7:0] eb; input ex; input [127:0] label; begin
+    if(beats_remaining!==eb||xfer_complete!==ex) begin errors=errors+1; $display("FAIL %0s expected remaining=%d complete=%b got remaining=%d complete=%b",label,eb,ex,beats_remaining,xfer_complete); end
+    else $display("PASS %0s remaining=%d complete=%b",label,beats_remaining,xfer_complete);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; load=0; beat_total=0; beat_done=0; @(posedge clk); #1; rst=0;
+    load=1; beat_total=8'd2; @(posedge clk); #1; load=0; check(2,0,"loaded-2-beats");
+    beat_done=1; @(posedge clk); #1; check(1,0,"beat1-done");
+    @(posedge clk); #1; check(0,1,"beat2-done-complete");
+    @(posedge clk); #1; check(0,1,"stray-extra-beat-done-must-not-underflow");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'load', 'beat_done', 'beats_remaining', 'xfer_complete'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'load', wave: '0.10....' },
+          { name: 'beat_done', wave: '0...1010' },
+          { name: 'beats_remaining[7:0]', wave: '2.3.4.5.', data: ['0', '2', '1', '0'] },
+          { name: 'xfer_complete', wave: '1.0....1' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'overtemp-throttle-monitor',
+      title: 'Over-Temperature Throttle Monitor',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'power', 'monitor'],
+      category: 'Sequential Design',
+      lede: 'Throttle performance at a warning temperature and shut down entirely at a critical one — with a recovery margin so the chip doesn\'t oscillate in and out of shutdown right at the edge.',
+      concept: '<b>Concept:</b> <code>throttle</code> is a simple combinational compare against the WARN threshold, but <code>shutdown</code> needs hysteresis just like a brown-out detector: it latches at CRIT and only releases once temperature drops all the way down to a separate, lower RECOVER threshold. Releasing shutdown as soon as temperature drops back below CRIT (the same threshold that triggered it) removes that recovery margin — the chip would flip in and out of shutdown right at the CRIT boundary instead of needing a real, meaningful drop in temperature to resume.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>temp</td><td>input</td><td>8</td><td>Sensed temperature</td></tr>
+<tr><td>throttle</td><td>output</td><td>1</td><td>1 while temp&gt;=WARN(80)</td></tr>
+<tr><td>shutdown</td><td>output</td><td>1</td><td>Latches at temp&gt;=CRIT(100); releases only below RECOVER(70)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  [7:0] temp,
+  output throttle,
+  output reg shutdown
+);
+
+  // Your code here — WARN=80, CRIT=100, RECOVER=70. throttle=(temp>=WARN), combinational.
+  // shutdown latches at temp>=CRIT; only clears once temp<RECOVER (hysteresis).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst; reg [7:0] temp; wire throttle; wire shutdown; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .temp(temp), .throttle(throttle), .shutdown(shutdown));
+  always #5 clk=~clk;
+  task check; input es; input [127:0] label; begin
+    if(shutdown!==es) begin errors=errors+1; $display("FAIL %0s expected shutdown=%b got=%b",label,es,shutdown); end
+    else $display("PASS %0s shutdown=%b",label,shutdown);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; temp=0; @(posedge clk); #1; rst=0;
+    temp=105; @(posedge clk); #1; check(1,"over-crit-shuts-down");
+    temp=75; @(posedge clk); #1; check(1,"in-hysteresis-gap-must-stay-shutdown");
+    temp=65; @(posedge clk); #1; check(0,"below-recover-clears");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'temp', 'throttle', 'shutdown'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.......' },
+          { name: 'temp[7:0]', wave: '2.3.4.5.', data: ['0', '105', '75', '65'] },
+          { name: 'throttle', wave: '0.1.....' },
+          { name: 'shutdown', wave: '0.1...0.' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'voltage-margin-monitor',
+      title: 'Voltage Margin Monitor',
+      difficulty: 'easy',
+      points: 10,
+      tags: ['combinational', 'monitor', 'power'],
+      category: 'Combinational Design',
+      lede: 'Flag a fault when the supply voltage strays outside its safe band in either direction — over-voltage or under-voltage, either one is a problem.',
+      concept: '<b>Concept:</b> The two individual threshold checks are independent conditions, and a fault should fire if <em>either</em> one is true: <code>fault = over_voltage || under_voltage</code>. Using <code>&amp;&amp;</code> instead of <code>||</code> silently changes the meaning to "both over AND under voltage at the same time" — a condition that\'s logically impossible for a single sensed value, so the fault output would never assert at all, no matter how far out of range the voltage strays.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>vsense</td><td>input</td><td>8</td><td>Sensed voltage (arbitrary units)</td></tr>
+<tr><td>over_voltage</td><td>output</td><td>1</td><td>1 if vsense &gt; 200</td></tr>
+<tr><td>under_voltage</td><td>output</td><td>1</td><td>1 if vsense &lt; 50</td></tr>
+<tr><td>fault</td><td>output</td><td>1</td><td>1 if either over or under voltage</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [7:0] vsense,
+  output over_voltage,
+  output under_voltage,
+  output fault
+);
+
+  // Your code here — over_voltage=(vsense>200); under_voltage=(vsense<50); fault = over_voltage || under_voltage.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [7:0] vsense; wire over_voltage, under_voltage, fault; integer errors=0;
+  top_module dut(.vsense(vsense), .over_voltage(over_voltage), .under_voltage(under_voltage), .fault(fault));
+  task check; input [7:0] v; input eo,eu,ef; begin
+    vsense=v;#1;
+    if(over_voltage!==eo||under_voltage!==eu||fault!==ef) begin errors=errors+1; $display("FAIL vsense=%d expected over=%b under=%b fault=%b got over=%b under=%b fault=%b",v,eo,eu,ef,over_voltage,under_voltage,fault); end
+    else $display("PASS vsense=%d over=%b under=%b fault=%b",v,over_voltage,under_voltage,fault);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(220, 1,0,1);
+    check(30, 0,1,1);
+    check(100, 0,0,0);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['vsense', 'over_voltage', 'under_voltage', 'fault'],
+      wavedrom: {
+        signal: [
+          { name: 'vsense[7:0]', wave: '2.3.4.', data: ['220', '30', '100'] },
+          { name: 'fault', wave: '1.0...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'jtag-tap-instruction-decoder',
+      title: 'JTAG TAP Instruction Decoder',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['combinational', 'dft'],
+      category: 'Combinational Design',
+      lede: 'Decode a JTAG TAP controller\'s instruction register — with the one spec rule that trips up most first attempts: every unimplemented code must default to BYPASS.',
+      concept: '<b>Concept:</b> The JTAG standard requires that any instruction code not implemented by a device fall through to BYPASS, not just the conventional all-1s code — <code>bypass = !(extest || sample_preload || idcode)</code> catches every unrecognized pattern, not only <code>4\'b1111</code>. Matching BYPASS against the literal all-1s pattern alone is a real, spec-violating simplification: any reserved or unimplemented instruction code that isn\'t all-1s falls into a gap where the TAP controller does something undefined instead of safely defaulting to BYPASS, which can break board-level JTAG chains that scan through multiple devices.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>ir</td><td>input</td><td>4</td><td>Instruction register value</td></tr>
+<tr><td>extest</td><td>output</td><td>1</td><td>1 if ir==0000</td></tr>
+<tr><td>sample_preload</td><td>output</td><td>1</td><td>1 if ir==0001</td></tr>
+<tr><td>idcode</td><td>output</td><td>1</td><td>1 if ir==0010</td></tr>
+<tr><td>bypass</td><td>output</td><td>1</td><td>1 for every other code (including 1111 and all reserved/unimplemented codes)</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  [3:0] ir,
+  output extest,
+  output sample_preload,
+  output idcode,
+  output bypass
+);
+
+  // Your code here — bypass must be 1 for ANY code that isn't extest/sample_preload/idcode, not just 4'b1111.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg [3:0] ir; wire extest, sample_preload, idcode, bypass; integer errors=0;
+  top_module dut(.ir(ir), .extest(extest), .sample_preload(sample_preload), .idcode(idcode), .bypass(bypass));
+  task check; input [3:0] i; input ee,es,eid,eb; begin
+    ir=i;#1;
+    if(extest!==ee||sample_preload!==es||idcode!==eid||bypass!==eb) begin errors=errors+1; $display("FAIL ir=%b expected extest=%b sp=%b idcode=%b bypass=%b got extest=%b sp=%b idcode=%b bypass=%b",i,ee,es,eid,eb,extest,sample_preload,idcode,bypass); end
+    else $display("PASS ir=%b extest=%b sp=%b idcode=%b bypass=%b",i,extest,sample_preload,idcode,bypass);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    check(4'b0000, 1,0,0,0);
+    check(4'b1111, 0,0,0,1);
+    check(4'b1010, 0,0,0,1);
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['ir', 'extest', 'idcode', 'bypass'],
+      wavedrom: {
+        signal: [
+          { name: 'ir[3:0]', wave: '2.3.4.', data: ['0', 'F', 'A'] },
+          { name: 'extest', wave: '1.0...' },
+          { name: 'bypass', wave: '0.1...' }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'scan-chain-shift-register',
+      title: 'Scan Chain Shift Register',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'dft'],
+      category: 'Sequential Design',
+      lede: 'A 4-flop scan chain that captures functional data in normal operation but shifts a test pattern straight through when scan mode is enabled — the DFT structure behind every ATPG test on real silicon.',
+      concept: '<b>Concept:</b> Scan mode must genuinely <em>shift</em> the chain — each flop takes on the previous flop\'s value, carrying every bit one position along: <code>ff &lt;= {ff[2:0], scan_in}</code>. A version that only writes the new scan-in bit into the bottom position while zeroing everything else (<code>ff &lt;= {3\'b000, scan_in}</code>) isn\'t a chain at all — it clobbers the 3 bits that were supposed to shift along instead of preserving and moving them, so scanning a test pattern through destroys the chain\'s contents instead of propagating them.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset</td></tr>
+<tr><td>scan_enable</td><td>input</td><td>1</td><td>1=scan/shift mode, 0=normal functional capture</td></tr>
+<tr><td>scan_in</td><td>input</td><td>1</td><td>Serial scan input</td></tr>
+<tr><td>func_d</td><td>input</td><td>4</td><td>Functional data (captured when scan_enable=0)</td></tr>
+<tr><td>q</td><td>output</td><td>4</td><td>Chain contents</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  scan_enable,
+  input  scan_in,
+  input  [3:0] func_d,
+  output [3:0] q
+);
+
+  // Your code here — scan_enable: shift {ff[2:0],scan_in} through the chain. Else: capture func_d.
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, scan_enable, scan_in; reg [3:0] func_d; wire [3:0] q; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .scan_enable(scan_enable), .scan_in(scan_in), .func_d(func_d), .q(q));
+  always #5 clk=~clk;
+  task check; input [3:0] eq_; input [127:0] label; begin
+    if(q!==eq_) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,eq_,q); end
+    else $display("PASS %0s q=%b",label,q);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; scan_enable=0; scan_in=0; func_d=0; @(posedge clk); #1; rst=0;
+    func_d=4'b1010; @(posedge clk); #1; check(4'b1010,"functional-load");
+    scan_enable=1; scan_in=1;
+    @(posedge clk); #1; check(4'b0101,"scan-shift-must-carry-existing-bits-along");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'scan_enable', 'scan_in', 'func_d', 'q'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.....' },
+          { name: 'scan_enable', wave: '0..1..' },
+          { name: 'func_d[3:0]', wave: '2.....', data: ['A'] },
+          { name: 'q[3:0]', wave: '2.3...', data: ['A', '5'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
+
+    {
+      slug: 'power-rail-sequencer',
+      title: 'Power Rail Sequencer',
+      difficulty: 'medium',
+      points: 25,
+      tags: ['sequential', 'fsm', 'power'],
+      category: 'Sequential Design',
+      lede: 'Bring up 3 power rails one at a time in a fixed order — and bring them down in the exact reverse order, since powering down the rail others depend on first can damage real silicon.',
+      concept: '<b>Concept:</b> Power sequencing during boot and shutdown is order-critical: rails come up 0→1→2, but must come down 2→1→0 — the reverse — because later rails typically depend on earlier ones staying powered while they\'re active. The bug is deceptively small: powering down in the <em>same</em> order as power-up (checking <code>rail_en[0]</code> first instead of <code>rail_en[2]</code>) turns off the foundational rail while the ones that depend on it are still active — on real hardware, exactly the kind of sequencing mistake that can damage a board, not just misbehave in simulation.',
+      portsHtml: `<table><thead><tr><th>Name</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>
+<tr><td>clk</td><td>input</td><td>1</td><td>Clock</td></tr>
+<tr><td>rst</td><td>input</td><td>1</td><td>Sync active-high reset (all rails off)</td></tr>
+<tr><td>power_up</td><td>input</td><td>1</td><td>Held high to sequence rails up, one per cycle</td></tr>
+<tr><td>power_down</td><td>input</td><td>1</td><td>Held high to sequence rails down, one per cycle, reverse order</td></tr>
+<tr><td>rail_en</td><td>output</td><td>3</td><td>rail_en[0]=first up/last down, rail_en[2]=last up/first down</td></tr>
+</tbody></table>`,
+      starter: `module top_module(
+  input  clk,
+  input  rst,
+  input  power_up,
+  input  power_down,
+  output reg [2:0] rail_en
+);
+
+  // Your code here — power_up: turn on rails in order 0,1,2 (one per cycle, lowest unset bit first).
+  // power_down: turn off rails in REVERSE order 2,1,0 (one per cycle, highest set bit first).
+
+endmodule
+`,
+      hiddenTb: `
+module tb;
+  reg clk=0, rst, power_up, power_down; wire [2:0] rail_en; integer errors=0;
+  top_module dut(.clk(clk), .rst(rst), .power_up(power_up), .power_down(power_down), .rail_en(rail_en));
+  always #5 clk=~clk;
+  task check; input [2:0] er; input [127:0] label; begin
+    if(rail_en!==er) begin errors=errors+1; $display("FAIL %0s expected=%b got=%b",label,er,rail_en); end
+    else $display("PASS %0s rail_en=%b",label,rail_en);
+  end endtask
+  initial begin
+    $dumpfile("dump.vcd"); $dumpvars(0,tb);
+    rst=1; power_up=0; power_down=0; @(posedge clk); #1; rst=0;
+    power_up=1;
+    @(posedge clk); #1; check(3'b001,"rail0-on");
+    @(posedge clk); #1; check(3'b011,"rail1-on");
+    @(posedge clk); #1; check(3'b111,"rail2-on-all-up");
+    power_up=0; power_down=1;
+    @(posedge clk); #1; check(3'b011,"power-down-must-turn-off-rail2-FIRST-reverse-order");
+    if(errors==0) $display("ALL_TESTS_PASSED"); else $display("TEST_FAILED");
+    $finish;
+  end
+endmodule
+`,
+      waveSignals: ['clk', 'power_up', 'power_down', 'rail_en'],
+      wavedrom: {
+        signal: [
+          { name: 'clk', wave: 'p.........' },
+          { name: 'power_up', wave: '0.1..0....' },
+          { name: 'power_down', wave: '0.....1...' },
+          { name: 'rail_en[2:0]', wave: '2.3.4.5.6.', data: ['0', '1', '3', '7', '3'] }
+        ],
+        config: { hscale: 1 }
+      }
+    },
   ];
 
   function getProblem(slug) {
