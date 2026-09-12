@@ -83,20 +83,30 @@ firebase.initializeApp(firebaseConfig);
 </div>
 
 <div class="section">
-<div class="section-head"><div class="section-num">3</div><h2>Waveform — two clocks, one data path</h2></div>
+<div class="section-head"><div class="section-num">3</div><h2>Waveform — two unrelated clocks</h2></div>
+<p>An async FIFO does <strong>not</strong> use a divided copy of one clock. <code>wr_clk</code> and <code>rd_clk</code> come from different PLLs / pads. There is no common rising edge, no integer period ratio you may assume, and no legal combinational path between domains. The diagram below uses WaveDrom <code>period</code> and <code>phase</code> so the clocks are not the same grid — that is the picture you should keep in your head.</p>
 <div class="wavedrom-box">
 <script type="WaveDrom">
 { signal: [
-  { name: 'wr_clk', wave: 'p.p.p.p.p.p.p.p.p' },
-  { name: 'rd_clk', wave: 'P...P...P...P...' },
-  { name: 'wdata',  wave: 'x2.3.4.5.x......', data: ['A','B','C','D'] },
-  { name: 'wr_en',  wave: '01.......0......' },
-  { name: 'rdata',  wave: 'x.....2...3...4.', data: ['A','B','C'] },
-  { name: 'rd_en',  wave: '0.....1.........' }
-], head: { text: 'Writer faster than reader — FIFO occupancy grows' } }
+  ['write domain',
+    { name: 'wr_clk', wave: 'p................', period: 1 },
+    { name: 'wr_en',  wave: '01...........0...', period: 1 },
+    { name: 'wdata',  wave: 'x2.3.4.5.x.......', period: 1, data: ['A','B','C','D'] }
+  ],
+  {},
+  ['read domain — slower, phase-shifted, not a divide of wr_clk',
+    { name: 'rd_clk', wave: 'p................', period: 1.65, phase: 0.42 },
+    { name: 'rd_en',  wave: '0......1.........', period: 1.65, phase: 0.42 },
+    { name: 'rdata',  wave: 'x......2.3.4.....', period: 1.65, phase: 0.42, data: ['A','B','C'] }
+  ]
+],
+  config: { hscale: 2 },
+  head: { text: 'Async FIFO: wr_clk and rd_clk are asynchronous' },
+  foot: { text: 'Writes land on wr_clk edges. Reads land on rd_clk edges. Occupancy grows because the writer is faster.' }
+}
 </script>
 </div>
-<p>The memory is written on <code>wr_clk</code> edges and read on <code>rd_clk</code> edges. Flags must be computed <em>in the domain that uses them</em>: the writer needs a stable <code>full</code> on <code>wr_clk</code>; the reader needs a stable <code>empty</code> on <code>rd_clk</code>.</p>
+<p class="diagram-caption">If two clocks look identical in a slide, treat it as a drawing bug — silicon will not line those edges up. Dual-port RAM is written on <code>wr_clk</code> and read on <code>rd_clk</code>. <code>full</code> is a write-domain signal; <code>empty</code> is a read-domain signal. Never AND them in one always block.</p>
 </div>
 
 <div class="angle-box"><div class="angle-label">Interview</div><p>“Can I 2FF-synchronize an 8-bit data bus?” — No. Each bit can resolve to a different sample. Use a FIFO (or handshake + captured data, or Gray if the bus is a counter). Data in an async FIFO <strong>does not cross</strong>; only Gray pointers do.</p></div>
