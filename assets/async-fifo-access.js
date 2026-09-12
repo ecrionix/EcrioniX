@@ -1,25 +1,15 @@
-/* Signed-in admin only. Guests go to Premium login. Other members are bounced. */
+/* Open course: any signed-in member. Guests are sent to Premium login. */
 (function () {
   'use strict';
-  var ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
-
-  function denyOtherMembers() {
-    window.location.replace('/premium-course/?denied=async-fifo');
-  }
 
   window.EcrioniXAsyncFifo = {
-    ADMIN_UID: ADMIN_UID,
     hasAccess: function (user) {
-      return !!(user && user.uid === ADMIN_UID);
+      return !!user;
     },
     bootLesson: function (slug) {
       firebase.auth().onAuthStateChanged(function (user) {
         if (!user) {
           window.location.replace('/premium-course/');
-          return;
-        }
-        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
-          denyOtherMembers();
           return;
         }
         document.getElementById('authLoading').style.display = 'none';
@@ -37,10 +27,6 @@
       firebase.auth().onAuthStateChanged(function (user) {
         if (!user) {
           window.location.replace('/premium-course/');
-          return;
-        }
-        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
-          denyOtherMembers();
           return;
         }
         document.getElementById('authLoading').style.display = 'none';
