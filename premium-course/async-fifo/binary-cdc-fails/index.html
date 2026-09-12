@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6672302762343789" crossorigin="anonymous"></script>
 <script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <link rel="stylesheet" href="/assets/theme-toggle.css">
 <link rel="stylesheet" href="/assets/premium-theme.css">
@@ -9,11 +10,11 @@
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
 <meta charset="UTF-8">
-<meta name="robots" content="noindex,follow">
+<meta name="robots" content="index,follow">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Binary pointer CDC and the convergence problem — Async FIFO from Scratch | EcrioniX</title>
-<meta property="og:title" content="Binary pointer CDC and the convergence problem — Async FIFO from Scratch | EcrioniX">
-<meta property="og:description" content="Binary pointer CDC and the convergence problem — dual-clock FIFO course, EcrioniX.">
+<title>Why binary FIFO pointers fail across clocks | EcrioniX</title>
+<meta property="og:title" content="Why binary FIFO pointers fail across clocks | EcrioniX">
+<meta property="og:description" content="Multi-bit CDC and reconvergence: binary 7→8, illegal sampled counts, Gray unit-distance, and why FIFO data stays in RAM instead of being synchronized.">
 <meta property="og:image" content="https://ecrionix.org/favicon1.png">
 <meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/binary-cdc-fails/">
 <meta property="og:type" content="website">
@@ -28,21 +29,25 @@
 const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
 firebase.initializeApp(firebaseConfig);
 </script>
-<script src="/assets/async-fifo-access.js?v=3"></script>
+<script src="/assets/async-fifo-access.js?v=4"></script>
 
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Premium", "item": "https://ecrionix.org/premium-course/"}, {"@type": "ListItem", "position": 2, "name": "Async FIFO from Scratch", "item": "https://ecrionix.org/premium-course/async-fifo/"}, {"@type": "ListItem", "position": 3, "name": "Binary pointer CDC failure", "item": "https://ecrionix.org/premium-course/async-fifo/binary-cdc-fails/"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why can’t you 2FF a binary counter?", "acceptedAnswer": {"@type": "Answer", "text": "Several bits may toggle on one count. Destination flops sample at slightly different times and recombine into a count the source never held. Full/empty decoded from that chimera can overflow or underflow."}}, {"@type": "Question", "name": "What happens at binary 7 to 8?", "acceptedAnswer": {"@type": "Answer", "text": "0111 to 1000 flips every bit. Gray 0100 to 1100 flips only the MSB. The Gray 2FF captures old or new, both legal."}}, {"@type": "Question", "name": "Is a stale Gray pointer dangerous?", "acceptedAnswer": {"@type": "Answer", "text": "It is late, not wild. Occupancy looks a little more full or empty than reality. Formulas must be written so late information is pessimistic, never optimistic about free space or available data."}}, {"@type": "Question", "name": "Why not Gray-code the FIFO data bus?", "acceptedAnswer": {"@type": "Answer", "text": "Payload bits are not a unit-distance sequence. Any pattern is legal data. Store data in dual-port RAM; synchronize only the monotone pointer."}}]}, {"@type": "TechArticle", "headline": "Binary pointer CDC failure", "author": {"@type": "Organization", "name": "EcrioniX"}, "publisher": {"@type": "Organization", "name": "EcrioniX"}, "url": "https://ecrionix.org/premium-course/async-fifo/binary-cdc-fails/", "image": "https://ecrionix.org/favicon1.png"}]}</script>
 </head>
 <body>
-<div id="authLoading"><div class="auth-spinner"></div></div>
+<noscript><style>#authLoading{display:none!important}#lessonContent,#courseContent{display:block!important}</style></noscript>
+
+<div id="authLoading" style="display:none"><div class="auth-spinner"></div></div>
 <div class="navbar">
   <div class="navbar-logo">Async FIFO from Scratch</div>
   <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
 </div>
+<div id="afSignInBanner" class="af-signin-banner">Sign in on the <a href="/premium-course/">Premium hub</a> to save lesson progress. This lesson is open to read so the page is a complete article, not an empty login wall.</div>
 <div id="noAccess" class="no-access" style="display:none">
   <h1>🔒 Course not open yet</h1>
   <p>This course is in progress and not available for enrollment.</p>
   <a href="/premium-course/">← Back to Premium</a>
 </div>
-<div id="lessonContent" style="display:none">
+<div id="lessonContent">
 <div class="container">
 <div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 3.1</div>
 <span class="lesson-tag">Lesson 3.1</span>
@@ -50,6 +55,7 @@ firebase.initializeApp(firebaseConfig);
 
 <p class="lede">If you sample a binary counter with another clock, several bits can be in transition at once. The captured vector can be a value the counter <span class="hl">never held</span>. That illegal pointer is the convergence / multi-bit CDC problem — and it is why async FIFOs use Gray code.</p>
 
+<nav class="af-toc" aria-label="On this page"><div class="af-toc-label">On this page</div><ol><li><a href="#seven">The 7→8 transition</a></li><li><a href="#conv">Reconvergence</a></li><li><a href="#wave">Async sample waveform</a></li><li><a href="#mtbf">Metastability vs illegal vectors</a></li><li><a href="#handshake">Handshake CDC alternative</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
 <div class="section">
 <div class="section-head"><div class="section-num">1</div><h2>The 7 → 8 transition</h2></div>
 <p>A 4-bit binary count going from 7 to 8:</p>
@@ -120,6 +126,16 @@ firebase.initializeApp(firebaseConfig);
 
 <div class="angle-box"><div class="angle-label">Interview</div><p>“Why Gray for pointers but not for FIFO data?” — Data is not a unit-distance code; any bit pattern is legal payload. You keep data in dual-port RAM and only synchronize the address/count. Gray is for <em>monotone pointers</em>.</p></div>
 
+<div class="section" id="mtbf"><div class="section-head"><div class="section-num">4</div><h2>Metastability vs a wrong digital value</h2></div>
+<p>People mix two failures. <strong>Metastability</strong> is an analog linger on one flop; 2FF makes the downstream digital world binary again with high MTBF. <strong>An illegal vector</strong> is a perfectly digital 4-bit number that was never a valid count. Two-flopping each binary bit does not fix illegal vectors. Gray reduces the CDC to one bit so the only uncertainty is old vs new.</p><p>If two Gray bits ever toggle together because you XOR’d combinationally (lesson 3.3), you re-introduce illegal vectors. Unit-distance is a property of the <em>net you sample</em>, not of a comment in the spec.</p></div>
+<div class="section" id="handshake"><div class="section-head"><div class="section-num">5</div><h2>When a FIFO is the wrong CDC</h2></div>
+<p>A single event (interrupt, packet-done) should use a pulse stretcher or handshake, not a 512-deep FIFO. A software-visible register that rarely changes can use a handshake + captured data (req/ack) rather than Gray. The async FIFO is for a <em>stream</em> of beats with backpressure. Using a FIFO for one flag wastes RAM and still needs you to size almost-empty correctly.</p></div>
+<div class="section af-faq-sec" id="faq"><div class="section-head"><div class="section-num">Q</div><h2>Frequently asked questions</h2></div>
+<details><summary>Why can’t you 2FF a binary counter?</summary><p>Several bits may toggle on one count. Destination flops sample at slightly different times and recombine into a count the source never held. Full/empty decoded from that chimera can overflow or underflow.</p></details>
+<details><summary>What happens at binary 7 to 8?</summary><p>0111 to 1000 flips every bit. Gray 0100 to 1100 flips only the MSB. The Gray 2FF captures old or new, both legal.</p></details>
+<details><summary>Is a stale Gray pointer dangerous?</summary><p>It is late, not wild. Occupancy looks a little more full or empty than reality. Formulas must be written so late information is pessimistic, never optimistic about free space or available data.</p></details>
+<details><summary>Why not Gray-code the FIFO data bus?</summary><p>Payload bits are not a unit-distance sequence. Any pattern is legal data. Store data in dual-port RAM; synchronize only the monotone pointer.</p></details>
+</div>
 <div class="key-takeaway"><h3>Key takeaways</h3>
 <ul>
 <li>Binary counters are multi-bit CDC. Reconvergence can invent illegal counts.</li>
@@ -130,6 +146,7 @@ firebase.initializeApp(firebaseConfig);
 <div class="lesson-nav"><a href="/premium-course/async-fifo/overflow-underflow/">← 2.3 Overflow</a><a href="/premium-course/async-fifo/gray-code/">3.2 Gray code →</a></div>
 </div>
 </div>
+<button id="back-to-top" type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
 <footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
 <script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);};};EcrioniXAsyncFifo.bootLesson('binary-cdc-fails');</script>
 <script defer src="/assets/verilog-code-block.js"></script>

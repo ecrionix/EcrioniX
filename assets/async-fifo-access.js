@@ -1,21 +1,40 @@
-/* Open course: any signed-in member. Guests are sent to Premium login. */
+/* Open course: article is always visible (AdSense / no-JS). Sign-in saves progress. */
 (function () {
   'use strict';
+
+  function hideSpinner() {
+    var el = document.getElementById('authLoading');
+    if (el) el.style.display = 'none';
+  }
+
+  function show(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+  }
+
+  function setBanner(user) {
+    var banner = document.getElementById('afSignInBanner');
+    if (!banner) return;
+    banner.style.display = user ? 'none' : 'block';
+  }
 
   window.EcrioniXAsyncFifo = {
     hasAccess: function (user) {
       return !!user;
     },
     bootLesson: function (slug) {
+      hideSpinner();
+      show('lessonContent');
+      if (typeof firebase === 'undefined' || !firebase.auth) {
+        setBanner(null);
+        if (typeof window.onAsyncFifoReady === 'function') window.onAsyncFifoReady();
+        return;
+      }
       firebase.auth().onAuthStateChanged(function (user) {
-        if (!user) {
-          window.location.replace('/premium-course/');
-          return;
-        }
-        document.getElementById('authLoading').style.display = 'none';
-        var lesson = document.getElementById('lessonContent');
-        if (lesson) lesson.style.display = 'block';
-        if (slug) {
+        hideSpinner();
+        show('lessonContent');
+        setBanner(user);
+        if (user && slug) {
           firebase.firestore().collection('users').doc(user.uid).set({
             completedLessons: { 'async-fifo': firebase.firestore.FieldValue.arrayUnion(slug) }
           }, { merge: true }).catch(function () {});
@@ -24,13 +43,14 @@
       });
     },
     bootIndex: function () {
+      hideSpinner();
+      show('courseContent');
+      if (typeof firebase === 'undefined' || !firebase.auth) return;
       firebase.auth().onAuthStateChanged(function (user) {
-        if (!user) {
-          window.location.replace('/premium-course/');
-          return;
-        }
-        document.getElementById('authLoading').style.display = 'none';
-        document.getElementById('courseContent').style.display = 'block';
+        hideSpinner();
+        show('courseContent');
+        setBanner(user);
+        if (!user) return;
         firebase.firestore().collection('users').doc(user.uid).get().then(function (doc) {
           var data = doc.data() || {};
           var completed = (data.completedLessons && data.completedLessons['async-fifo']) || [];
@@ -44,4 +64,9 @@
       });
     }
   };
+
+  window.addEventListener('scroll', function () {
+    var b = document.getElementById('back-to-top');
+    if (b) b.classList.toggle('show', window.scrollY > 400);
+  });
 })();
