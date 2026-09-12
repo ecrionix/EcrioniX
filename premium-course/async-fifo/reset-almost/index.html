@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<link rel="stylesheet" href="/assets/async-fifo-lesson.css">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset, almost-full, power-of-two depth — Async FIFO from Scratch | EcrioniX</title>
+<meta property="og:title" content="Reset, almost-full, power-of-two depth — Async FIFO from Scratch | EcrioniX">
+<meta property="og:description" content="Reset, almost-full, power-of-two depth — dual-clock FIFO course, EcrioniX.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/reset-almost/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="/assets/async-fifo-access.js"></script>
+
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">Async FIFO from Scratch</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is in progress and not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="lessonContent" style="display:none">
+<div class="container">
+<div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 4.4</div>
+<span class="lesson-tag">Lesson 4.4</span>
+<h1>Reset, almost-full, power-of-two depth</h1>
+
+<p class="lede">Reset must not leave one domain “running” with pointers at zero while the other still thinks it is full. Almost-full is occupancy in the write domain from a Gray-converted synced read pointer.</p>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Per-domain reset</h2></div>
+<p>Assert asynchronously if you want (POR). <strong>Deassert synchronously</strong> in each domain with a 2FF reset synchronizer on that domain’s clock. Both pointer engines and both 2FF chains return to 0. After both domains release reset, empty=1, full=0.</p>
+<div class="wavedrom-box">
+<script type="WaveDrom">
+{ signal: [
+  { name: 'wr_clk',    wave: 'p........' },
+  { name: 'rd_clk',    wave: 'P..P..P..' },
+  { name: 'rst_async', wave: '1.0......' },
+  { name: 'wr_rst_n',  wave: '0.1......' },
+  { name: 'rd_rst_n',  wave: '0...1....' },
+  { name: 'empty',     wave: '1........' },
+  { name: 'full',      wave: '0........' }
+], head: { text: 'Staggered deassert is OK if both pointers stay 0 until their domain is out of reset' } }
+</script>
+</div>
+<div class="trap-box"><div class="trap-label">Trap</div><p>Do not clear only the write pointer. The read domain would still hold an old rgray; synced into write domain it can look full forever or compare nonsense.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Almost-full / almost-empty</h2></div>
+<p>In the write domain, convert <code>wq2_rgray</code> back to binary, subtract from <code>wbin</code> (mod 2^PTR_W), get occupancy as seen with CDC delay, compare to a watermark. Because the pointer is stale, almost-full is still conservative if you treat occupancy as an upper bound.</p>
+<div class="code-panel"><div class="code-panel-head"><span>almost_full</span><button class="copy-btn" onclick="copyLabCode('afull',this)">Copy</button></div>
+<pre id="afull">wire [PTR_W-1:0] rbin_sync = gray2bin(wq2_rgray);
+wire [PTR_W-1:0] occ_wr    = wbin - rbin_sync; // WIDTH PTR_W, wraps correctly
+assign almost_full = (occ_wr >= ALMOST_FULL_LEVEL);
+</pre></div>
+<p>Do not use almost-full as a substitute for <code>full</code>. Hard full still gates <code>wr_fire</code>.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>DEPTH not a power of two</h2></div>
+<p>Gray incrementers assume a binary counter that visits 0..2^n−1. A 10-entry FIFO cannot use this pointer coding as-is. Options: implement 16 deep and ignore 6 locations; use a vendor hard FIFO; use a style with Gray of two n-bit counters and more compare logic (error-prone — not this course’s default).</p>
+</div>
+
+<div class="key-takeaway"><h3>Key takeaways</h3>
+<ul>
+<li>Reset both domains’ pointers and synchronizer flops.</li>
+<li>Watermarks from converted Gray occupancy, still gated by true full/empty.</li>
+<li>This Gray FIFO style ⇒ power-of-two DEPTH.</li>
+</ul></div>
+
+<div class="lesson-nav"><a href="/premium-course/async-fifo/async-rtl/">← 4.3 Async RTL</a><a href="/premium-course/async-fifo/fifo-visual-lab/">5.1 Visual lab →</a></div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
+<script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);};};EcrioniXAsyncFifo.bootLesson('reset-almost');</script>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

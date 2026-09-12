@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<link rel="stylesheet" href="/assets/async-fifo-lesson.css">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Complete sync FIFO RTL — Async FIFO from Scratch | EcrioniX</title>
+<meta property="og:title" content="Complete sync FIFO RTL — Async FIFO from Scratch | EcrioniX">
+<meta property="og:description" content="Complete sync FIFO RTL — dual-clock FIFO course, EcrioniX.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/sync-rtl/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="/assets/async-fifo-access.js"></script>
+
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">Async FIFO from Scratch</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is in progress and not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="lessonContent" style="display:none">
+<div class="container">
+<div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 2.2</div>
+<span class="lesson-tag">Lesson 2.2</span>
+<h1>Complete sync FIFO RTL</h1>
+
+<p class="lede">A synthesizable, parameterized sync FIFO using extra-MSB pointers. Copy it into the simulator and drive a small testbench.</p>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Module — extra-MSB pointers</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>sync_fifo.v</span><button class="copy-btn" onclick="copyLabCode('syncfifo',this)">Copy</button></div>
+<pre id="syncfifo">module sync_fifo #(
+  parameter WIDTH  = 8,
+  parameter DEPTH  = 16,              // must be power of 2
+  parameter ADDR_W = $clog2(DEPTH)
+)(
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             wr_en,
+  input  wire [WIDTH-1:0] wdata,
+  output wire             full,
+  input  wire             rd_en,
+  output reg  [WIDTH-1:0] rdata,
+  output wire             empty
+);
+  localparam PTR_W = ADDR_W + 1;
+
+  reg [WIDTH-1:0]  mem [0:DEPTH-1];
+  reg [PTR_W-1:0]  wptr, rptr;
+
+  wire wr_fire = wr_en && !full;
+  wire rd_fire = rd_en && !empty;
+
+  assign empty = (wptr == rptr);
+  assign full  = (wptr == {~rptr[PTR_W-1], rptr[PTR_W-2:0]});
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) wptr <= {PTR_W{1'b0}};
+    else if (wr_fire) wptr <= wptr + 1'b1;
+  end
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) rptr <= {PTR_W{1'b0}};
+    else if (rd_fire) rptr <= rptr + 1'b1;
+  end
+
+  always @(posedge clk) begin
+    if (wr_fire) mem[wptr[ADDR_W-1:0]] <= wdata;
+  end
+
+  always @(posedge clk) begin
+    if (rd_fire) rdata <= mem[rptr[ADDR_W-1:0]];
+  end
+endmodule
+</pre></div>
+<p><strong>Why <code>wptr[ADDR_W-1:0]</code> for the RAM address:</strong> the extra MSB is only a wrap counter. The memory has <code>DEPTH</code> rows.</p>
+<p><strong>Why <code>rdata</code> is a register:</strong> standard (not FWFT) FIFO — data appears the cycle after a successful read. FWFT would mux combinational RAM read; that is a different timing contract.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Each always block, one job</h2></div>
+<ol>
+<li>Write pointer increments only on <code>wr_fire</code> — never on a blocked <code>wr_en</code>.</li>
+<li>Read pointer same with <code>rd_fire</code>.</li>
+<li>Memory write is synchronous, address = write pointer (truncated).</li>
+<li>Memory read is captured into <code>rdata</code> on <code>rd_fire</code>.</li>
+<li>Flags are combinational from current pointers so a write on the last free slot sees <code>full</code> in time if you compute full from <em>next</em> pointer — see trap below.</li>
+</ol>
+<div class="trap-box"><div class="trap-label">Same-cycle full</div><p>The listing uses <code>full</code> from <em>current</em> pointers. A write that fills the last slot updates <code>wptr</code> on the clock edge; <code>full</code> rises after that edge. That is correct: the write that filled it was legal. The <em>next</em> cycle <code>full=1</code> blocks another write. Do not also write when <code>full</code> is already 1.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Minimal testbench</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>tb_sync_fifo.v</span><button class="copy-btn" onclick="copyLabCode('tbsync',this)">Copy</button></div>
+<pre id="tbsync">module tb;
+  reg clk=0, rst_n=0, wr_en=0, rd_en=0;
+  reg [7:0] wdata=0;
+  wire [7:0] rdata;
+  wire full, empty;
+  always #5 clk = ~clk;
+  sync_fifo #(.WIDTH(8), .DEPTH(4)) dut (
+    .clk(clk), .rst_n(rst_n),
+    .wr_en(wr_en), .wdata(wdata), .full(full),
+    .rd_en(rd_en), .rdata(rdata), .empty(empty)
+  );
+  integer i;
+  initial begin
+    #12 rst_n = 1;
+    // fill
+    for (i=0;i<4;i=i+1) begin
+      @(posedge clk); wr_en<=1; wdata<=i+8'hA0;
+    end
+    @(posedge clk); wr_en<=0;
+    if (!full) $display("FAIL expected full");
+    // drain
+    for (i=0;i<4;i=i+1) begin
+      @(posedge clk); rd_en<=1;
+    end
+    @(posedge clk); rd_en<=0;
+    if (!empty) $display("FAIL expected empty");
+    else $display("ALL_TESTS_PASSED");
+    $finish;
+  end
+endmodule
+</pre></div>
+<a class="sim-cta" href="/tools/verilog-simulator/" target="_blank" rel="noopener">Paste both modules in the simulator →</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>Expected fill/drain waveform</h2></div>
+<div class="wavedrom-box">
+<script type="WaveDrom">
+{ signal: [
+  { name: 'clk',   wave: 'p................' },
+  { name: 'rst_n', wave: '01...............' },
+  { name: 'wr_en', wave: '0.1...0..........' },
+  { name: 'wdata', wave: 'x.2222x..........', data: ['A0','A1','A2','A3'] },
+  { name: 'full',  wave: '0.....1.0........' },
+  { name: 'rd_en', wave: '0.......1...0....' },
+  { name: 'rdata', wave: 'x........2222x...', data: ['A0','A1','A2','A3'] },
+  { name: 'empty', wave: '1.0.........1....' }
+], head: { text: 'DEPTH=4 standard FIFO — data one cycle after rd_en' } }
+</script>
+</div>
+</div>
+
+<div class="key-takeaway"><h3>Key takeaways</h3>
+<ul>
+<li>Gate enables with flags. Never increment a pointer on a blocked request.</li>
+<li>Address RAM with the low bits only.</li>
+<li>This module is the same-clock cousin of the async FIFO. Dual-clock version keeps two copies of this idea, plus Gray CDC.</li>
+</ul></div>
+
+<div class="lesson-nav"><a href="/premium-course/async-fifo/sync-pointers/">← 2.1 Pointers</a><a href="/premium-course/async-fifo/binary-cdc-fails/">3.1 Binary CDC →</a></div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
+<script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);};};EcrioniXAsyncFifo.bootLesson('sync-rtl');</script>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

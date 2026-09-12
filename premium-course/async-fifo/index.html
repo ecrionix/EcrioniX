@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Async FIFO from Scratch — Dual-Clock FIFO Design | EcrioniX</title>
+<meta property="og:title" content="Async FIFO from Scratch — Dual-Clock FIFO Design | EcrioniX">
+<meta property="og:description" content="Build a production dual-clock FIFO from first principles: sync FIFO, Gray pointers, full/empty math, RTL, WaveDrom, and a live visual lab.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+window.ASYNC_FIFO_LESSON_SLUGS=[
+  'why-fifo','sync-vs-async','sync-pointers','sync-rtl',
+  'binary-cdc-fails','gray-code','gray-register',
+  'architecture','full-empty','async-rtl','reset-almost',
+  'fifo-visual-lab','interview-pack'
+];
+function toggleModule(id){const el=document.getElementById(id);const header=el.previousElementSibling;const isOpen=el.classList.contains('open');el.classList.toggle('open',!isOpen);header.classList.toggle('open',!isOpen);}
+</script>
+<script src="/assets/async-fifo-access.js"></script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.1);--blue:#38bdf8;--purple:#a78bfa;--teal:#2dd4bf;--text:#e2e8f0;--sl:#94a3b8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.7}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+#authLoading{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-spinner{width:36px;height:36px;border:3px solid rgba(56,189,248,.15);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.navbar{background:var(--nav-bg,rgba(2,6,23,.97));border-bottom:1px solid var(--bdr);padding:1rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50;gap:.65rem;flex-wrap:wrap}
+.navbar-logo{font-size:1.15rem;font-weight:700;color:var(--nav-text,#fff)}
+.navbar-right{display:flex;align-items:center;gap:.65rem}
+.back-link{color:var(--sl);font-size:.9rem}
+.container{max-width:800px;margin:0 auto;padding:2rem 1rem}
+h1{font-size:1.8rem;margin-bottom:.5rem;color:var(--heading,#f8fafc)}
+p{color:var(--sl);margin-bottom:1rem}
+.badge{display:inline-block;font-size:.72rem;font-weight:800;color:#fbbf24;background:rgba(251,191,36,.12);padding:.3rem .8rem;border-radius:20px;text-transform:uppercase;margin:0 .35rem 1rem 0}
+.no-access{text-align:center;padding:5rem 1.5rem}.no-access h1{color:#f87171}
+footer{border-top:1px solid var(--bdr);padding:2rem;text-align:center;font-size:.8rem;color:var(--sl);background:var(--bg2);margin-top:3rem}
+.course-hero{background:linear-gradient(120deg,rgba(56,189,248,.1),rgba(167,139,250,.1));border:1px solid var(--bdr);border-radius:14px;padding:1.6rem;margin:1.5rem 0 2rem}
+.course-progress-track{background:var(--bg3);border-radius:20px;height:8px;overflow:hidden;margin-top:1rem}
+.course-progress-fill{background:linear-gradient(90deg,#38bdf8,#2dd4bf);height:100%;width:0%;border-radius:20px;transition:width .4s}
+.course-progress-label{font-size:.78rem;color:var(--sl);margin-top:.5rem}
+.module{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;margin-bottom:.9rem;overflow:hidden}
+.module-header{display:flex;align-items:center;gap:.9rem;padding:1.1rem 1.3rem;cursor:pointer;user-select:none}
+.module-header:hover{background:rgba(56,189,248,.04)}
+.module-num{width:34px;height:34px;border-radius:50%;background:rgba(56,189,248,.14);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.module-title{font-weight:700;color:var(--heading,#f8fafc)}
+.module-meta{font-size:.78rem;color:var(--sl);margin-top:.15rem}
+.module-arrow{color:var(--sl);margin-left:auto}
+.module-header.open .module-arrow{transform:rotate(180deg)}
+.module-subtopics{max-height:0;overflow:hidden}
+.module-subtopics.open{max-height:none}
+.subtopic{display:flex;align-items:center;gap:.8rem;padding:.85rem 1.3rem .85rem 3.6rem;border-top:1px solid var(--bdr);font-size:.88rem}
+.subtopic a{color:var(--text);flex:1}.subtopic a:hover{color:var(--blue);text-decoration:none}
+.build-note{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24;border-radius:8px;padding:1rem 1.2rem;font-size:.85rem;margin-top:2rem}
+</style>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">EcrioniX Premium</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a href="/premium-course/" class="back-link">← Back to Premium</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none;">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is in progress and not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="courseContent" style="display:none;">
+  <div class="container">
+    <span class="badge">In progress</span>
+    <span class="badge" style="color:#38bdf8;background:rgba(56,189,248,.12)">Admin preview</span>
+    <h1>Async FIFO from Scratch</h1>
+    <p>Dual-clock FIFO design from first principles — why a FIFO exists, a complete sync FIFO, why binary pointers cannot cross clocks, Gray code, full/empty math, synthesizable RTL, waveforms, and a live visual lab. No price listed yet; enrollment opens after the curriculum is locked.</p>
+    <div class="course-hero">
+      <strong style="color:var(--heading,#f8fafc)">Course progress</strong>
+      <div class="course-progress-track"><div class="course-progress-fill"></div></div>
+      <div class="course-progress-label">0 of 13 lessons complete</div>
+    </div>
+
+    <div class="module">
+      <div class="module-header" onclick="toggleModule('mod1')">
+        <div class="module-num">1</div>
+        <div><div class="module-title">Why a FIFO exists</div><div class="module-meta">2 lessons · rate matching, sync vs async</div></div>
+        <div class="module-arrow">▾</div>
+      </div>
+      <div class="module-subtopics open" id="mod1">
+        <div class="subtopic"><a href="/premium-course/async-fifo/why-fifo/">1.1 Why FIFOs are needed</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/sync-vs-async/">1.2 Sync FIFO vs async FIFO</a></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-header" onclick="toggleModule('mod2')">
+        <div class="module-num">2</div>
+        <div><div class="module-title">Sync FIFO from scratch</div><div class="module-meta">2 lessons · pointers, full/empty, RTL</div></div>
+        <div class="module-arrow">▾</div>
+      </div>
+      <div class="module-subtopics open" id="mod2">
+        <div class="subtopic"><a href="/premium-course/async-fifo/sync-pointers/">2.1 Ring buffer, extra MSB, full vs empty</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/sync-rtl/">2.2 Complete sync FIFO RTL + simulator</a></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-header" onclick="toggleModule('mod3')">
+        <div class="module-num">3</div>
+        <div><div class="module-title">Why binary pointers fail across clocks</div><div class="module-meta">3 lessons · multi-bit CDC, Gray, register order</div></div>
+        <div class="module-arrow">▾</div>
+      </div>
+      <div class="module-subtopics open" id="mod3">
+        <div class="subtopic"><a href="/premium-course/async-fifo/binary-cdc-fails/">3.1 Binary pointer CDC and the convergence problem</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/gray-code/">3.2 Gray code, bin2gray, gray2bin</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/gray-register/">3.3 Convert then register — the XOR-order trap</a></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-header" onclick="toggleModule('mod4')">
+        <div class="module-num">4</div>
+        <div><div class="module-title">Async FIFO architecture &amp; RTL</div><div class="module-meta">4 lessons · Cummings flags, dual-clock RTL, reset</div></div>
+        <div class="module-arrow">▾</div>
+      </div>
+      <div class="module-subtopics open" id="mod4">
+        <div class="subtopic"><a href="/premium-course/async-fifo/architecture/">4.1 Dual-clock architecture</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/full-empty/">4.2 Full and empty flag formulas</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/async-rtl/">4.3 Complete async FIFO RTL</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/reset-almost/">4.4 Reset, almost-full, power-of-two depth</a></div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-header" onclick="toggleModule('mod5')">
+        <div class="module-num">5</div>
+        <div><div class="module-title">Lab &amp; interview</div><div class="module-meta">2 lessons · animation + Q&amp;A</div></div>
+        <div class="module-arrow">▾</div>
+      </div>
+      <div class="module-subtopics open" id="mod5">
+        <div class="subtopic"><a href="/premium-course/async-fifo/fifo-visual-lab/">5.1 Visual FIFO lab — fill, drain, flags</a></div>
+        <div class="subtopic"><a href="/premium-course/async-fifo/interview-pack/">5.2 Interview pack — whiteboard answers</a></div>
+      </div>
+    </div>
+
+    <div class="build-note">🚧 In progress — curriculum is being reviewed for accuracy before enrollment opens. Simulator labs: <a href="/tools/verilog-simulator/" style="color:#38bdf8">/tools/verilog-simulator/</a></div>
+  </div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/">Home</a> · <a href="/premium-course/">Premium</a></footer>
+<script>EcrioniXAsyncFifo.bootIndex();</script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

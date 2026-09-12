@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<link rel="stylesheet" href="/assets/async-fifo-lesson.css">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Complete async FIFO RTL — Async FIFO from Scratch | EcrioniX</title>
+<meta property="og:title" content="Complete async FIFO RTL — Async FIFO from Scratch | EcrioniX">
+<meta property="og:description" content="Complete async FIFO RTL — dual-clock FIFO course, EcrioniX.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/async-rtl/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="/assets/async-fifo-access.js"></script>
+
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">Async FIFO from Scratch</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is in progress and not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="lessonContent" style="display:none">
+<div class="container">
+<div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 4.3</div>
+<span class="lesson-tag">Lesson 4.3</span>
+<h1>Complete async FIFO RTL</h1>
+
+<p class="lede">One module, two clocks, dual-port RAM, registered Gray pointers, combinational full/empty from next Gray. This is the block you should be able to reconstruct in an interview.</p>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Synthesizable listing</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>async_fifo.v</span><button class="copy-btn" onclick="copyLabCode('afifo',this)">Copy</button></div>
+<pre id="afifo">module async_fifo #(
+  parameter WIDTH  = 8,
+  parameter DEPTH  = 16,                 // MUST be power of 2
+  parameter ADDR_W = $clog2(DEPTH)
+)(
+  input  wire             wr_clk,
+  input  wire             wr_rst_n,
+  input  wire             wr_en,
+  input  wire [WIDTH-1:0] wdata,
+  output wire             full,
+  input  wire             rd_clk,
+  input  wire             rd_rst_n,
+  input  wire             rd_en,
+  output reg  [WIDTH-1:0] rdata,
+  output wire             empty
+);
+  localparam PTR_W = ADDR_W + 1;
+
+  reg [WIDTH-1:0] mem [0:DEPTH-1];
+
+  // Pointers declared first so the 2FF can sample rgray / wgray.
+  reg  [PTR_W-1:0] wbin, wgray, rbin, rgray;
+  reg  [PTR_W-1:0] wq1_rgray, wq2_rgray;
+  reg  [PTR_W-1:0] rq1_wgray, rq2_wgray;
+
+  // Registered-pointer flags (no combinational loop). The beat that fills
+  // the last slot is legal; full rises on the following wr_clk.
+  assign full  = (wgray == {~wq2_rgray[PTR_W-1:PTR_W-2], wq2_rgray[PTR_W-3:0]});
+  assign empty = (rgray == rq2_wgray);
+
+  wire wr_fire = wr_en &amp; ~full;
+  wire rd_fire = rd_en &amp; ~empty;
+
+  wire [PTR_W-1:0] wbin_next  = wbin + wr_fire;
+  wire [PTR_W-1:0] wgray_next = wbin_next ^ (wbin_next >> 1);
+  wire [PTR_W-1:0] rbin_next  = rbin + rd_fire;
+  wire [PTR_W-1:0] rgray_next = rbin_next ^ (rbin_next >> 1);
+
+  // ---- write domain ----
+
+  always @(posedge wr_clk or negedge wr_rst_n) begin
+    if (!wr_rst_n) begin
+      wbin  <= {PTR_W{1'b0}};
+      wgray <= {PTR_W{1'b0}};
+    end else begin
+      wbin  <= wbin_next;
+      wgray <= wgray_next;
+    end
+  end
+
+  always @(posedge wr_clk)
+    if (wr_fire) mem[wbin[ADDR_W-1:0]] <= wdata;
+
+  always @(posedge wr_clk or negedge wr_rst_n) begin
+    if (!wr_rst_n) {wq2_rgray, wq1_rgray} <= {{PTR_W{1'b0}},{PTR_W{1'b0}}};
+    else           {wq2_rgray, wq1_rgray} <= {wq1_rgray, /* rgray from rd domain */ rgray};
+  end
+
+  always @(posedge rd_clk or negedge rd_rst_n) begin
+    if (!rd_rst_n) begin
+      rbin  <= {PTR_W{1'b0}};
+      rgray <= {PTR_W{1'b0}};
+    end else begin
+      rbin  <= rbin_next;
+      rgray <= rgray_next;
+    end
+  end
+
+  always @(posedge rd_clk)
+    if (rd_fire) rdata <= mem[rbin[ADDR_W-1:0]];
+
+  always @(posedge rd_clk or negedge rd_rst_n) begin
+    if (!rd_rst_n) {rq2_wgray, rq1_wgray} <= {{PTR_W{1'b0}},{PTR_W{1'b0}}};
+    else           {rq2_wgray, rq1_wgray} <= {rq1_wgray, wgray};
+  end
+endmodule
+</pre></div>
+<div class="trap-box"><div class="trap-label">DEPTH = 2</div><p>For <code>PTR_W == 2</code> there are no <code>[PTR_W-3:0]</code> bits — full is just <code>wgray == ~wq2_rgray</code> (both bits inverted). The listing assumes <code>DEPTH &gt;= 4</code> (<code>PTR_W &gt;= 3</code>), which is the usual teaching and product case.</p></div>
+<div class="trap-box"><div class="trap-label">Verilog cross-domain read of rgray / wgray</div><p>The listing reads <code>rgray</code> inside the write-domain 2FF and <code>wgray</code> inside the read-domain 2FF. Those source flops must be the registered Gray nets. The first stage of each 2FF is the metastability absorber. Do not add combo logic on that path. Some lint tools still flag the cross-module clock; the intent is a synchronizer — constrain it in SDC as a false path into FF1, or use a dedicated sync cell.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Line-by-line</h2></div>
+<ol>
+<li><code>wr_fire</code> / <code>rd_fire</code> never commit when the registered flag is already set.</li>
+<li><code>wgray_next</code> is Gray of the next binary — converted <em>before</em> the flop, then registered.</li>
+<li><code>full</code> / <code>empty</code> compare <em>registered</em> Gray (no combinational loop through the incrementer).</li>
+<li>RAM write address is current <code>wbin</code> (the location being filled this cycle).</li>
+<li>Read side is the mirror: empty from <code>rgray</code> vs 2FF-synced write Gray.</li>
+</ol>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Test in the simulator</h2></div>
+<p>Icarus in the browser uses one simulation time wheel — you can still generate two clocks with different periods:</p>
+<div class="code-panel"><div class="code-panel-head"><span>two clocks</span><button class="copy-btn" onclick="copyLabCode('twoclk',this)">Copy</button></div>
+<pre id="twoclk">reg wr_clk=0, rd_clk=0;
+always #4 wr_clk = ~wr_clk;   // 125 MHz
+always #7 rd_clk = ~rd_clk;   // ~71 MHz
+</pre></div>
+<a class="sim-cta" href="/tools/verilog-simulator/" target="_blank" rel="noopener">Open Verilog simulator →</a>
+</div>
+
+<div class="wavedrom-box">
+<script type="WaveDrom">
+{ signal: [
+  { name: 'wr_clk', wave: 'p.p.p.p.p.p.p' },
+  { name: 'wr_en',  wave: '01......0..' },
+  { name: 'full',   wave: '0.........1' },
+  { name: 'rd_clk', wave: 'P..P..P..P.' },
+  { name: 'rd_en',  wave: '0....1.....' },
+  { name: 'empty',  wave: '1.0........' }
+], head: { text: 'Independent clocks — flags each update on their own edge' } }
+</script>
+</div>
+
+<div class="key-takeaway"><h3>Key takeaways</h3>
+<ul>
+<li>Two incrementers, two Gray registers, two 2FF chains, one RAM.</li>
+<li>full / empty from registered Gray vs 2FF-synced opposite Gray (two MSBs inverted for full).</li>
+<li>DEPTH power of two. PTR_W = ADDR_W+1.</li>
+</ul></div>
+
+<div class="lesson-nav"><a href="/premium-course/async-fifo/full-empty/">← 4.2 Full/empty</a><a href="/premium-course/async-fifo/reset-almost/">4.4 Reset →</a></div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
+<script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);};};EcrioniXAsyncFifo.bootLesson('async-rtl');</script>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

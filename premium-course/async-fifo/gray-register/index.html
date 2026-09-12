@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<link rel="stylesheet" href="/assets/async-fifo-lesson.css">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Convert then register — the XOR-order trap — Async FIFO from Scratch | EcrioniX</title>
+<meta property="og:title" content="Convert then register — the XOR-order trap — Async FIFO from Scratch | EcrioniX">
+<meta property="og:description" content="Convert then register — the XOR-order trap — dual-clock FIFO course, EcrioniX.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/gray-register/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="/assets/async-fifo-access.js"></script>
+
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">Async FIFO from Scratch</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is in progress and not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="lessonContent" style="display:none">
+<div class="container">
+<div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 3.3</div>
+<span class="lesson-tag">Lesson 3.3</span>
+<h1>Convert then register — the XOR-order trap</h1>
+
+<p class="lede">Gray code only helps if the <span class="hl">CDC net is a registered Gray bus</span>. If Gray is combinational from a binary counter that is also transitioning, multiple Gray bits can glitch in one window — you are back to the binary problem.</p>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>Correct pattern</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>registered gray</span><button class="copy-btn" onclick="copyLabCode('goodg',this)">Copy</button></div>
+<pre id="goodg">wire [PTR_W-1:0] bin_next  = bin + wr_fire;
+wire [PTR_W-1:0] gray_next = bin_next ^ (bin_next >> 1);
+
+always @(posedge wr_clk or negedge wr_rst_n) begin
+  if (!wr_rst_n) begin
+    bin  <= {PTR_W{1'b0}};
+    gray <= {PTR_W{1'b0}};
+  end else begin
+    bin  <= bin_next;
+    gray <= gray_next;   // flop the Gray word, then 2FF-sync gray
+  end
+end
+</pre></div>
+<p>The net that leaves the write domain is <code>gray</code>, a flop output. Between wr_clk edges it is stable (ignoring clock-to-q). At most one Gray bit differs from the previous registered value.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>Broken pattern — XOR after the fact, combinational CDC</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>do not ship</span><button class="copy-btn" onclick="copyLabCode('badg',this)">Copy</button></div>
+<pre id="badg">always @(posedge wr_clk) bin <= bin + wr_fire;
+wire [PTR_W-1:0] gray_combo = bin ^ (bin >> 1);
+// then 2FF-sync gray_combo  ← CDC on combinational XOR
+</pre></div>
+<p>When <code>bin</code> bits have different clock-to-q, the XOR cloud produces intermediate Gray values with <strong>two or more bits flipping</strong> during the settling window. Sampling that cloud is the same class of bug as sampling binary.</p>
+<p>A related silicon bug: registering binary, then registering Gray from the <em>old</em> binary in a way that two Gray bits update on one cycle at a specific count (for example 7→8) because the XOR was applied to a mis-aligned copy of the counter. Check with <code>$onehot0(gray ^ $past(gray))</code> on the <em>exact net you synchronize</em>.</p>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Waveform — glitch vs clean</h2></div>
+<div class="wavedrom-box">
+<script type="WaveDrom">
+{ signal: [
+  { name: 'wr_clk',      wave: 'p......' },
+  { name: 'bin',         wave: '2.3....', data: ['7','8'] },
+  { name: 'gray_combo',  wave: 'x.2x3..', data: ['glitch','8'] },
+  { name: 'gray_reg',    wave: '2..3...', data: ['G7','G8'] }
+], head: { text: 'Combinational Gray can glitch; registered Gray changes once per wr_clk' } }
+</script>
+</div>
+</div>
+
+<div class="trap-box"><div class="trap-label">Synthesis</div><p>Mark the 2FF pair <code>(* ASYNC_REG = "TRUE" *)</code> (Xilinx) / equivalent dont_touch. Do not let retiming insert logic between the Gray flop and the first synchronizer flop.</p></div>
+
+<div class="key-takeaway"><h3>Key takeaways</h3>
+<ul>
+<li>Compute <code>gray_next</code> from <code>bin_next</code>, register both.</li>
+<li>Synchronize the flopped Gray, never the XOR cloud.</li>
+<li>Assert unit-distance on the CDC source register.</li>
+</ul></div>
+
+<div class="lesson-nav"><a href="/premium-course/async-fifo/gray-code/">← 3.2 Gray code</a><a href="/premium-course/async-fifo/architecture/">4.1 Architecture →</a></div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
+<script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);};};EcrioniXAsyncFifo.bootLesson('gray-register');</script>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>
