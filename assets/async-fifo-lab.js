@@ -19,6 +19,7 @@
     var wq1 = 0, wq2 = 0, rq1 = 0, rq2 = 0;
     var mem = [null, null, null, null, null, null, null, null];
     var nextData = 1, playing = false, tick = 0, timer = null;
+    var overflowAttempts = 0, underflowAttempts = 0;
 
     function occ() { return (wbin - rbin) & PTRM; }
 
@@ -30,6 +31,7 @@
     }
 
     function stepWrite(want) {
+      if (want && isFull()) overflowAttempts++;
       if (want && !isFull()) {
         mem[wbin & ADDRM] = nextData++;
         wbin = (wbin + 1) & PTRM;
@@ -39,6 +41,7 @@
       wq1 = rgray;
     }
     function stepRead(want) {
+      if (want && isEmpty()) underflowAttempts++;
       if (want && !isEmpty()) {
         mem[rbin & ADDRM] = null;
         rbin = (rbin + 1) & PTRM;
@@ -102,7 +105,9 @@
       ctx.fillText('Flags use 2FF-synced Gray (wq2 / rq2), so they lag the opposite side — conservative, not optimistic.', 40, 362);
 
       var el = document.getElementById('labStats');
-      if (el) el.textContent = 'next write data = ' + nextData + (full ? '  |  writes blocked' : '') + (empty ? '  |  reads blocked' : '');
+      if (el) el.textContent = 'next write data = ' + nextData +
+        '  |  blocked writes (stall, not overflow) = ' + overflowAttempts +
+        '  |  blocked reads (stall, not underflow) = ' + underflowAttempts;
     }
 
     function playTick() {
@@ -130,7 +135,7 @@
     document.getElementById('labStepR').onclick = function () { stepRead(true); draw(); };
     document.getElementById('labReset').onclick = function () {
       wbin = rbin = wgray = rgray = wq1 = wq2 = rq1 = rq2 = 0;
-      nextData = 1; tick = 0;
+      nextData = 1; tick = 0; overflowAttempts = 0; underflowAttempts = 0;
       mem = [null, null, null, null, null, null, null, null];
       draw();
     };

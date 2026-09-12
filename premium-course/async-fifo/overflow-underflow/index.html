@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<link rel="stylesheet" href="/assets/theme-toggle.css">
+<link rel="stylesheet" href="/assets/premium-theme.css">
+<link rel="stylesheet" href="/assets/async-fifo-lesson.css">
+<link rel="stylesheet" href="/assets/verilog-code-block.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex,follow">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overflow and underflow — Async FIFO from Scratch | EcrioniX</title>
+<meta property="og:title" content="Overflow and underflow — Async FIFO from Scratch | EcrioniX">
+<meta property="og:description" content="What FIFO overflow and underflow really mean, how they destroy data, and the exact RTL/SVA that must make both counts stay zero.">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:url" content="https://ecrionix.org/premium-course/async-fifo/overflow-underflow/">
+<meta property="og:type" content="website">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/skins/default.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavedrom/3.1.0/wavedrom.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",authDomain:"ecrionix.firebaseapp.com",projectId:"ecrionix",storageBucket:"ecrionix.firebasestorage.app",messagingSenderId:"859295895664",appId:"1:859295895664:web:893f744ee8ad871f9464b5"};
+firebase.initializeApp(firebaseConfig);
+</script>
+<script src="/assets/async-fifo-access.js?v=2"></script>
+</head>
+<body>
+<div id="authLoading"><div class="auth-spinner"></div></div>
+<div class="navbar">
+  <div class="navbar-logo">Async FIFO from Scratch</div>
+  <div class="navbar-right"><div id="themeToggleSlot"></div><a class="back-link" href="/premium-course/async-fifo/">← Course map</a></div>
+</div>
+<div id="noAccess" class="no-access" style="display:none">
+  <h1>🔒 Course not open yet</h1>
+  <p>This course is not available for enrollment.</p>
+  <a href="/premium-course/">← Back to Premium</a>
+</div>
+<div id="lessonContent" style="display:none">
+<div class="container">
+<div class="crumb"><a href="/premium-course/async-fifo/">Async FIFO from Scratch</a> / Lesson 2.3</div>
+<span class="lesson-tag">Lesson 2.3</span>
+<h1>Overflow and underflow</h1>
+<p class="lede"><span class="hl">Overflow</span> is a write that commits when the FIFO already holds <code>DEPTH</code> unread beats. <span class="hl">Underflow</span> is a read that commits when occupancy is 0. Both are <strong>functional bugs</strong>, not “retry later”. A correct FIFO may <em>stall</em> (<code>full</code>/<code>empty</code>); it must never overwrite or pop garbage.</p>
+
+<div class="def-box"><div class="def-label">Definitions</div>
+<p><strong>Overflow:</strong> <code>wr_fire</code> while occupancy is already <code>DEPTH</code> — new <code>wdata</code> overwrites an unread location (or the write pointer laps the read pointer). Lost data, often silent.<br>
+<strong>Underflow:</strong> <code>rd_fire</code> while occupancy is 0 — <code>rdata</code> is stale, X, or another beat’s leftover. Downstream FSM consumes a fake packet.</p></div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">1</div><h2>What actually breaks</h2></div>
+<table class="map-table">
+<tr><th></th><th>Overflow</th><th>Underflow</th></tr>
+<tr><td>When</td><td>Write while full</td><td>Read while empty</td></tr>
+<tr><td>Memory</td><td>Unread word destroyed</td><td>No valid word at <code>rptr</code></td></tr>
+<tr><td>Pointers</td><td>wptr advances anyway → occupancy looks legal, data is not</td><td>rptr advances past wptr → later “valid” reads are wrong</td></tr>
+<tr><td>Typical cause</td><td>Producer ignores <code>full</code>; combo-loop flag late; Gray CDC too <em>optimistic</em></td><td>Consumer ignores <code>empty</code>; FWFT vs standard mismatch; empty registered one cycle late without gating</td></tr>
+</table>
+<div class="trap-box"><div class="trap-label">Not the same as backpressure</div><p>A blocked write (<code>wr_en=1</code> and <code>full=1</code> and <code>wr_fire=0</code>) is <strong>healthy</strong>. Occupancy stays at DEPTH. Overflow is only if the RAM write and pointer increment still happen.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">2</div><h2>The only legal fires</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>hard gate</span><button class="copy-btn" onclick="copyLabCode('fires',this)">Copy</button></div>
+<pre id="fires">wire wr_fire = wr_en &amp; ~full;   // no RAM write, no wptr++ if full
+wire rd_fire = rd_en &amp; ~empty;  // no rptr++, no rdata capture if empty
+</pre></div>
+<p>Upstream must treat <code>full</code> as “do not present a new beat” (or keep <code>wdata</code> stable and wait). Downstream must treat <code>empty</code> as “<code>rdata</code> is not a new beat”.</p>
+<div class="wavedrom-box">
+<script type="WaveDrom">
+{ signal: [
+  { name: 'clk',     wave: 'p.........' },
+  { name: 'full',    wave: '0...1.0...' },
+  { name: 'wr_en',   wave: '1....1.0..' },
+  { name: 'wr_fire', wave: '1...0.1.0.' },
+  { name: 'empty',   wave: '1.0.....1.' },
+  { name: 'rd_en',   wave: '0.1.......' },
+  { name: 'rd_fire', wave: '0.1.....0.' }
+], head: { text: 'wr_en during FULL does not create wr_fire — that is stall, not overflow' } }
+</script>
+</div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">3</div><h2>Async FIFO — conservative flags vs overflow</h2></div>
+<p>The 2FF on Gray pointers hides recent opposite-side traffic. That must make flags <strong>pessimistic</strong>:</p>
+<ul>
+<li>Write domain may assert <code>full</code> while true occupancy is still &lt; DEPTH (wasted slots, <em>never</em> overflow).</li>
+<li>Read domain may assert <code>empty</code> while RAM still holds unread writes that have not synced yet (extra latency, <em>never</em> underflow).</li>
+</ul>
+<p>If you compared <em>live</em> binary pointers across clocks, you could think the FIFO is not full when it is — that is how CDC invents overflow.</p>
+<div class="infobox"><p>Golden check in any testbench: a software queue of the same DEPTH. Every <code>wr_fire</code> push, every <code>rd_fire</code> pop. If the model queue overflows or underflows, the RTL is wrong. Lesson 5.1’s lab tracks blocked writes/reads; those counters must rise instead of the golden queue breaking.</p></div>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">4</div><h2>SVA — occupancy never illegal</h2></div>
+<div class="code-panel"><div class="code-panel-head"><span>fifo_ovf_unf.sv</span><button class="copy-btn" onclick="copyLabCode('svaov',this)">Copy</button></div>
+<pre id="svaov">// Sync FIFO (one clock). Track occupancy in the TB, not with a DUT count
+// if you already use extra-MSB pointers.
+int occ;
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) occ &lt;= 0;
+  else occ &lt;= occ + wr_fire - rd_fire;
+end
+
+assert property (@(posedge clk) disable iff (!rst_n)
+  !(wr_fire &amp;&amp; (occ == DEPTH)));          // overflow
+assert property (@(posedge clk) disable iff (!rst_n)
+  !(rd_fire &amp;&amp; (occ == 0)));             // underflow
+assert property (@(posedge clk) disable iff (!rst_n)
+  occ &gt;= 0 &amp;&amp; occ &lt;= DEPTH);
+
+// Dual-clock: keep two occupancy views, or a mailbox in the TB.
+// Never sample both pointers in one always @(posedge wr_clk) without Gray.
+</pre></div>
+<a class="sim-cta" href="/tools/verilog-simulator/" target="_blank" rel="noopener">Try a fill-past-full test in the simulator →</a>
+</div>
+
+<div class="section">
+<div class="section-head"><div class="section-num">5</div><h2>Debug checklist</h2></div>
+<ol>
+<li><code>full</code> never 1, but occupancy hits DEPTH → pointer/flag formula bug (wrong MSB invert on Gray).</li>
+<li><code>empty</code> 0 at reset → pointers not cleared together.</li>
+<li>Overflow only at a specific count (7→8) → binary CDC or Gray XOR-order on the pointer you synchronize.</li>
+<li>Underflow after FWFT conversion → you captured <code>rdata</code> on <code>rd_en</code> instead of on a valid pop.</li>
+</ol>
+</div>
+
+<div class="key-takeaway">
+<h3>Key takeaways</h3>
+<ul>
+<li>Overflow = committed write when full. Underflow = committed read when empty.</li>
+<li>Stall is required. Loss of data is not.</li>
+<li>Async flags must be conservative; optimistic flags are overflow/underflow waiting to happen.</li>
+<li>Prove both with a golden queue + SVA, not by staring at one waveform.</li>
+</ul>
+</div>
+<div class="lesson-nav"><a href="/premium-course/async-fifo/sync-rtl/">← 2.2 Sync RTL</a><a href="/premium-course/async-fifo/binary-cdc-fails/">3.1 Binary CDC →</a></div>
+</div>
+</div>
+<footer>© 2026 EcrioniX · <a href="/premium-course/async-fifo/">Course map</a> · <a href="/tools/verilog-simulator/">Simulator</a></footer>
+<script>window.onAsyncFifoReady=function(){try{if(typeof WaveDrom!=='undefined')WaveDrom.ProcessAll();}catch(e){console.warn(e);}};EcrioniXAsyncFifo.bootLesson('overflow-underflow');</script>
+<script defer src="/assets/verilog-code-block.js"></script>
+<script defer src="/assets/theme-toggle.js"></script>
+</body>
+</html>

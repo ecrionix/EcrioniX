@@ -1,8 +1,11 @@
-/* Admin-only gate for the Async FIFO from Scratch course.
-   Later: also allow approvedCourses.includes('async-fifo'). */
+/* Signed-in admin only. Guests go to Premium login. Other members are bounced. */
 (function () {
   'use strict';
   var ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+
+  function denyOtherMembers() {
+    window.location.replace('/premium-course/?denied=async-fifo');
+  }
 
   window.EcrioniXAsyncFifo = {
     ADMIN_UID: ADMIN_UID,
@@ -12,19 +15,20 @@
     bootLesson: function (slug) {
       firebase.auth().onAuthStateChanged(function (user) {
         if (!user) {
-          window.location.href = '/premium-course/';
+          window.location.replace('/premium-course/');
+          return;
+        }
+        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
+          denyOtherMembers();
           return;
         }
         document.getElementById('authLoading').style.display = 'none';
-        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
-          document.getElementById('noAccess').style.display = 'block';
-          return;
-        }
-        document.getElementById('lessonContent').style.display = 'block';
+        var lesson = document.getElementById('lessonContent');
+        if (lesson) lesson.style.display = 'block';
         if (slug) {
           firebase.firestore().collection('users').doc(user.uid).set({
             completedLessons: { 'async-fifo': firebase.firestore.FieldValue.arrayUnion(slug) }
-          }, { merge: true }).catch(function () { /* ignore */ });
+          }, { merge: true }).catch(function () {});
         }
         if (typeof window.onAsyncFifoReady === 'function') window.onAsyncFifoReady();
       });
@@ -32,14 +36,14 @@
     bootIndex: function () {
       firebase.auth().onAuthStateChanged(function (user) {
         if (!user) {
-          window.location.href = '/premium-course/';
+          window.location.replace('/premium-course/');
+          return;
+        }
+        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
+          denyOtherMembers();
           return;
         }
         document.getElementById('authLoading').style.display = 'none';
-        if (!window.EcrioniXAsyncFifo.hasAccess(user)) {
-          document.getElementById('noAccess').style.display = 'block';
-          return;
-        }
         document.getElementById('courseContent').style.display = 'block';
         firebase.firestore().collection('users').doc(user.uid).get().then(function (doc) {
           var data = doc.data() || {};
