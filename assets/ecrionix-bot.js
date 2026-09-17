@@ -280,11 +280,15 @@
       }
       var menu = (nav && nav.querySelector('.mobile-menu')) || document.getElementById('mobileMenu') || document.querySelector('.mobile-menu');
       if (!menu) return;
-      // Replace node to drop any broken/duplicate page listeners, then bind once
+      // Replace node to drop any broken/duplicate page listeners, then bind once.
+      // Must strip inline onclick — cloneNode keeps it, which double-toggles .open (open then close).
       if (ham.dataset.ecxBound !== '1') {
         var fresh = ham.cloneNode(true);
+        fresh.removeAttribute('onclick');
         ham.parentNode.replaceChild(fresh, ham);
         bindHamburger(fresh, menu);
+      } else {
+        ham.removeAttribute('onclick');
       }
     });
 
