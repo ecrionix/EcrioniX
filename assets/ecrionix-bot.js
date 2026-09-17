@@ -226,13 +226,13 @@
   (function(){
     var css = ''
       +'html,body{max-width:100%;overflow-x:clip}'
-      +'.navbar,.nav,nav.navbar{overflow:visible!important}'
+      +'.navbar,.nav,nav.navbar,nav{overflow:visible!important}'
       +'.hamburger,.ecx-mnav-btn{display:none;background:none;border:none;cursor:pointer;padding:8px;flex-direction:column;gap:5px;flex-shrink:0;min-width:44px;min-height:44px;align-items:center;justify-content:center;z-index:120;position:relative}'
       +'.hamburger span,.ecx-mnav-btn span{display:block;width:22px;height:2px;background:#e2e8f0;border-radius:2px}'
-      +'.mobile-menu{display:none;flex-direction:column;background:#0c1526;border-top:1px solid rgba(148,163,184,.15);padding:.75rem 1.15rem 1rem;gap:0;position:absolute;left:0;right:0;top:100%;z-index:250;max-height:min(70vh,560px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 16px 40px rgba(0,0,0,.45);list-style:none;margin:0}'
-      +'.mobile-menu.open{display:flex!important}'
-      +'.mobile-menu a{color:#818cf8;text-decoration:none;font-size:.95rem;padding:.75rem 0;border-bottom:1px solid rgba(148,163,184,.1);min-height:44px;display:flex;align-items:center}'
-      +'.mobile-menu a:last-child{border-bottom:none}'
+      +'.mobile-menu,.mob-menu{display:none;flex-direction:column;background:#0c1526;border-top:1px solid rgba(148,163,184,.15);padding:.75rem 1.15rem 1rem;gap:0;position:absolute;left:0;right:0;top:100%;z-index:250;max-height:min(70vh,560px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 16px 40px rgba(0,0,0,.45);list-style:none;margin:0}'
+      +'.mobile-menu.open,.mob-menu.open{display:flex!important}'
+      +'.mobile-menu a,.mob-menu a{color:#818cf8;text-decoration:none;font-size:.95rem;padding:.75rem 0;border-bottom:1px solid rgba(148,163,184,.1);min-height:44px;display:flex;align-items:center}'
+      +'.mobile-menu a:last-child,.mob-menu a:last-child{border-bottom:none}'
       +'@media(max-width:768px){'
         +'.nav-links:not(.ecx-mnav-open){display:none!important}'
         +'.hamburger,.ecx-mnav-btn{display:flex!important}'
@@ -252,10 +252,20 @@
     st.textContent = css;
     document.head.appendChild(st);
 
+    function findMenu(ham, nav) {
+      return (nav && (nav.querySelector('.mobile-menu') || nav.querySelector('.mob-menu')))
+        || document.getElementById('mobileMenu')
+        || document.getElementById('mob')
+        || document.querySelector('.mobile-menu')
+        || document.querySelector('.mob-menu');
+    }
+
     function bindHamburger(ham, menu) {
       if (!ham || !menu || ham.dataset.ecxBound === '1') return;
       ham.dataset.ecxBound = '1';
+      ham.removeAttribute('onclick');
       ham.setAttribute('aria-expanded', 'false');
+      ham.setAttribute('type', 'button');
       ham.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -278,10 +288,11 @@
         if (cs.position === 'static') nav.style.position = 'relative';
         nav.style.overflow = 'visible';
       }
-      var menu = (nav && nav.querySelector('.mobile-menu')) || document.getElementById('mobileMenu') || document.querySelector('.mobile-menu');
+      var menu = findMenu(ham, nav);
       if (!menu) return;
       // Replace node to drop any broken/duplicate page listeners, then bind once.
       // Must strip inline onclick — cloneNode keeps it, which double-toggles .open (open then close).
+      // Also fixes broken patterns like this.nextElementSibling when menu is not a sibling.
       if (ham.dataset.ecxBound !== '1') {
         var fresh = ham.cloneNode(true);
         fresh.removeAttribute('onclick');
@@ -299,7 +310,7 @@
       if (container.querySelector('.hamburger') || container.querySelector('.ecx-mnav-btn')) return;
       // If a sibling mobile-menu exists under the outer nav, skip injection
       var outer = container.closest('.navbar, .nav, nav') || container;
-      if (outer.querySelector('.mobile-menu') && outer.querySelector('.hamburger')) return;
+      if ((outer.querySelector('.mobile-menu') || outer.querySelector('.mob-menu')) && outer.querySelector('.hamburger')) return;
 
       var cs = getComputedStyle(container);
       if (cs.position === 'static') container.style.position = 'relative';
@@ -323,7 +334,7 @@
     });
 
     document.addEventListener('click', function (e) {
-      document.querySelectorAll('.mobile-menu.open').forEach(function (menu) {
+      document.querySelectorAll('.mobile-menu.open, .mob-menu.open').forEach(function (menu) {
         var nav = menu.closest('.navbar, .nav, nav') || menu.parentElement;
         var ham = nav && nav.querySelector('.hamburger');
         if (menu.contains(e.target) || (ham && ham.contains(e.target))) return;
