@@ -107,6 +107,7 @@
     .lb-rank { width: 40px; font-family: 'Orbitron', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--dim); }
     .lb-rank.gold { color: var(--amber); } .lb-rank.silver { color: var(--muted); } .lb-rank.bronze { color: var(--rose); }
     .lb-name { flex: 1; font-weight: 600; color: var(--text); }
+    .lb-row.me { background: rgba(56,189,248,0.08); border-left: 3px solid var(--sky); }
     .lb-score { font-family: var(--mono); font-size: 1.1rem; font-weight: 800; color: var(--amber); background: rgba(251,191,36,0.1); padding: .2rem .6rem; border-radius: 6px; }
     
     .my-score-card { background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(245,158,11,0.15)); border: 1px solid rgba(251,191,36,0.3); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; display: none; text-align: center; }
@@ -159,12 +160,7 @@
   <!-- Left: Challenge & Editor -->
   <div class="panel">
     <div class="panel-hdr">
-      <div class="panel-title">
-        📝 CHALLENGE: 
-        <select class="challenge-select" id="challengeSelect" onchange="changeChallenge(this.value)">
-          <!-- Populated by JS -->
-        </select>
-      </div>
+      <div class="panel-title">📝 CHALLENGE: <span id="chBadge" style="color:var(--amber);font-size:.92rem;font-weight:600;">#001 — 8-Bit Popcount</span></div>
     </div>
     <div class="panel-body">
       <div class="challenge-box">
@@ -236,7 +232,7 @@
 <!-- Firebase SDK & Logic -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, doc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
   
   const firebaseConfig = {
@@ -255,22 +251,36 @@
   window.currentUser = null;
   window.currentChallenge = null;
 
+  const ADMIN_UID = 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2';
+
+  function resolveDisplayName(user) {
+    if (user.uid === ADMIN_UID) return 'ecrionix';
+    return user.displayName || user.email.split('@')[0];
+  }
+
+  function entryDisplayName(entry) {
+    if (entry.uid === ADMIN_UID || entry.name === 'EcrioniX' || entry.name === 'ecrionix') return 'ecrionix';
+    return entry.name || 'Anonymous';
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   onAuthStateChanged(auth, (user) => {
     const playAsEl = document.getElementById('playingAs');
     const cmtAsEl = document.getElementById('cmtPlayingAs');
     if (user) {
-      let name = user.displayName || user.email.split('@')[0];
-      if (user.uid === 'aUH4VdmtHKZQbFqXJqCOcQRNVOG2') {
-        name = 'EcrioniX';
-      }
+      const name = resolveDisplayName(user);
       window.currentUser = { uid: user.uid, name: name };
-      playAsEl.innerHTML = "Competing as: <span style='color:var(--heading)'>" + name + "</span>";
+      playAsEl.innerHTML = "Competing as: <span style='color:var(--heading)'>" + escapeHtml(name) + "</span>";
       cmtAsEl.innerText = "Commenting as: " + name;
     } else {
       window.currentUser = null;
       playAsEl.innerHTML = "<a href='/login.html' style='color:var(--rose)'>Login to save score</a>";
       cmtAsEl.innerHTML = "<a href='/login.html' style='color:var(--rose)'>Login to post comments</a>";
     }
+    if (lbData.length) updateMyScoreCard();
   });
 
   // ── Challenge Data ──
@@ -281,41 +291,39 @@
       desc: 'Design a combinational circuit that counts the number of HIGH (`1`) bits in an 8-bit input vector. The output should be a 4-bit binary number representing the total count. \n\n*Hint: The naive `if` cascade provided below synthesizes into a massive linear chain of adders. Can you build a parallel tree to save gates?*',
       ports: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);',
       code: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);\n\n  always @(*) begin\n    // Naive Software-style implementation\n    // This creates a deep, linear cascade of 8 adders!\n    count = 4\'d0;\n    if (din[0] == 1\'b1) count = count + 4\'d1;\n    if (din[1] == 1\'b1) count = count + 4\'d1;\n    if (din[2] == 1\'b1) count = count + 4\'d1;\n    if (din[3] == 1\'b1) count = count + 4\'d1;\n    if (din[4] == 1\'b1) count = count + 4\'d1;\n    if (din[5] == 1\'b1) count = count + 4\'d1;\n    if (din[6] == 1\'b1) count = count + 4\'d1;\n    if (din[7] == 1\'b1) count = count + 4\'d1;\n  end\n  \nendmodule'
-    },
-    {
-      id: 'seq1011',
-      title: 'Sequence Detector (1011)',
-      desc: 'Design a Moore state machine that detects the overlapping sequence `1011`. The output `detected` should be HIGH exactly one clock cycle after the sequence is received. Asynchronous active-low reset.',
-      ports: 'module seq_detector (\n  input wire clk,\n  input wire rst_n,\n  input wire din,\n  output reg detected\n);',
-      code: 'module seq_detector (\n  input wire clk,\n  input wire rst_n,\n  input wire din,\n  output reg detected\n);\n\n  // Write your optimized FSM here...\n  \nendmodule'
     }
   ];
 
   // ── Initialization & Routing ──
   function init() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const requestedId = urlParams.get('id');
-    window.currentChallenge = CHALLENGES.find(c => c.id === requestedId) || CHALLENGES[0];
+    window.currentChallenge = CHALLENGES[0];
 
-    // Populate Selector
-    const sel = document.getElementById('challengeSelect');
-    sel.innerHTML = CHALLENGES.map((c, idx) => 
-      `<option value="${c.id}" ${c.id === window.currentChallenge.id ? 'selected' : ''}>#00${idx+1} - ${c.title}</option>`
-    ).join('');
-
-    // Populate Challenge Text
     document.getElementById('chTitle').innerText = window.currentChallenge.title;
     document.getElementById('chDesc').innerHTML = window.currentChallenge.desc.replace(/\n/g, '<br>');
     document.getElementById('chPorts').innerText = window.currentChallenge.ports;
-    
-    // Set Editor
-    if(!document.getElementById('editor').value || document.getElementById('editor').value.trim() === '') {
-       document.getElementById('editor').value = window.currentChallenge.code;
-       window.updateLines();
+
+    const edEl = document.getElementById('editor');
+    const savedKey = 'gate_golf_code_' + window.currentChallenge.id;
+    const saved = localStorage.getItem(savedKey);
+    if (saved && saved.trim()) {
+      edEl.value = saved;
+    } else if (!edEl.value || edEl.value.trim() === '') {
+      edEl.value = window.currentChallenge.code;
     }
+    window.updateLines();
 
     fetchLeaderboard();
     fetchComments();
+  }
+
+  function normalizeLeaderboard(raw) {
+    const best = new Map();
+    raw.forEach(entry => {
+      const key = entry.uid || ('name:' + (entry.name || 'anonymous'));
+      const prev = best.get(key);
+      if (!prev || entry.score < prev.score) best.set(key, entry);
+    });
+    return Array.from(best.values()).sort((a, b) => a.score - b.score).slice(0, 50);
   }
 
   // ── Leaderboard Logic ──
@@ -328,12 +336,14 @@
       lbList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--dim);">No scores yet. Be the first!</div>`;
       return;
     }
+    const myUid = window.currentUser?.uid;
     lbList.innerHTML = lbData.map((entry, idx) => {
       let rankCls = idx === 0 ? 'gold' : (idx === 1 ? 'silver' : (idx === 2 ? 'bronze' : ''));
+      const isMe = myUid && entry.uid === myUid;
       return `
-        <div class="lb-row">
+        <div class="lb-row${isMe ? ' me' : ''}">
           <div class="lb-rank ${rankCls}">#${idx+1}</div>
-          <div class="lb-name">${entry.name}</div>
+          <div class="lb-name">${escapeHtml(entryDisplayName(entry))}${isMe ? ' <span style="color:var(--sky);font-size:.75rem;">(you)</span>' : ''}</div>
           <div class="lb-score">${entry.score} GE</div>
         </div>
       `;
@@ -343,30 +353,58 @@
   async function fetchLeaderboard() {
     lbList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--dim);">Loading scores...</div>`;
     try {
-      const q = query(collection(db, `gate_golf_scores_${window.currentChallenge.id}`), orderBy("score", "asc"), limit(50));
+      const q = query(collection(db, `gate_golf_scores_${window.currentChallenge.id}`), orderBy("score", "asc"), limit(100));
       const querySnapshot = await getDocs(q);
       const fetchedData = [];
-      querySnapshot.forEach(doc => fetchedData.push(doc.data()));
-      lbData = fetchedData;
+      querySnapshot.forEach(docSnap => fetchedData.push(docSnap.data()));
+      lbData = normalizeLeaderboard(fetchedData);
       renderLeaderboard();
+      updateMyScoreCard();
     } catch (e) {
       console.warn("Failed to fetch leaderboard", e);
       lbList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--rose);">Could not load leaderboard.</div>`;
     }
   }
 
-  window.saveScore = async function(name, score) {
+  function updateMyScoreCard() {
+    const scCard = document.getElementById('myScoreCard');
+    const scVal = document.getElementById('myScoreVal');
+    const myUid = window.currentUser?.uid;
+    if (!myUid) {
+      scCard.classList.remove('active');
+      return;
+    }
+    const mine = lbData.find(e => e.uid === myUid);
+    if (mine) {
+      scVal.textContent = mine.score;
+      scCard.classList.add('active');
+    }
+  }
+
+  window.saveScore = async function(score) {
+    if (!window.currentUser) return { saved: false, reason: 'not_logged_in' };
+    const uid = window.currentUser.uid;
+    const name = window.currentUser.name;
+    const coll = `gate_golf_scores_${window.currentChallenge.id}`;
+    const scoreRef = doc(db, coll, uid);
+
     try {
-      await addDoc(collection(db, `gate_golf_scores_${window.currentChallenge.id}`), {
+      const existing = await getDoc(scoreRef);
+      if (existing.exists() && existing.data().score <= score) {
+        await fetchLeaderboard();
+        return { saved: false, reason: 'not_improved', best: existing.data().score };
+      }
+      await setDoc(scoreRef, {
+        uid: uid,
         name: name,
         score: score,
         timestamp: Date.now()
       });
       await fetchLeaderboard();
+      return { saved: true, score: score };
     } catch(e) {
       console.error("Error saving score:", e);
-      lbData.push({ name, score });
-      renderLeaderboard();
+      throw e;
     }
   };
 
@@ -390,10 +428,10 @@
       cmtList.innerHTML = comments.map(c => `
         <div class="comment-item">
           <div class="cmt-hdr">
-            <span class="cmt-name">${c.name}</span>
+            <span class="cmt-name">${escapeHtml(entryDisplayName(c))}</span>
             <span class="cmt-time">${new Date(c.timestamp).toLocaleString()}</span>
           </div>
-          <div class="cmt-text">${c.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+          <div class="cmt-text">${escapeHtml(c.text)}</div>
         </div>
       `).join('');
     } catch (e) {
@@ -419,6 +457,7 @@
 
     try {
       await addDoc(collection(db, `gate_golf_comments_${window.currentChallenge.id}`), {
+        uid: window.currentUser.uid,
         name: name,
         text: text,
         timestamp: Date.now()
@@ -452,12 +491,13 @@
   
   window.updateLines = updateLines;
 
-  ed.addEventListener('input', updateLines);
+  ed.addEventListener('input', () => {
+    updateLines();
+    if (window.currentChallenge) {
+      localStorage.setItem('gate_golf_code_' + window.currentChallenge.id, ed.value);
+    }
+  });
   ed.addEventListener('scroll', () => { lnums.scrollTop = ed.scrollTop; });
-
-  window.changeChallenge = function(id) {
-    window.location.search = '?id=' + id;
-  };
 
   const btnLeaderboard = document.getElementById('tabBtnLeaderboard');
   const btnComments = document.getElementById('tabBtnComments');
@@ -488,7 +528,6 @@
   document.getElementById('btnSubmit').addEventListener('click', async function() {
     const code = ed.value.trim();
     const isGuest = !window.currentUser;
-    const pName = isGuest ? null : window.currentUser.name;
 
     const btn = document.getElementById('btnSubmit');
     const spin = document.getElementById('spin');
@@ -525,9 +564,20 @@
           scVal.textContent = gateCount;
           scCard.classList.add('active');
 
-          if(!isGuest && window.saveScore) {
-            window.saveScore(pName, gateCount);
-          } else if(isGuest) {
+          if (!isGuest && window.saveScore) {
+            try {
+              const result = await window.saveScore(gateCount);
+              if (result.saved) {
+                out.innerHTML += '\n<span class="sy-ok">Score saved to leaderboard!</span>\n';
+              } else if (result.reason === 'not_improved') {
+                out.innerHTML += `\n<span class="sy-hl">This run: ${gateCount} GE. Your best on the board is still ${result.best} GE — only improvements update the leaderboard.</span>\n`;
+                scVal.textContent = result.best;
+              }
+            } catch (saveErr) {
+              out.innerHTML += '\n<span class="sy-err">Synthesis OK, but could not save to leaderboard. Make sure you are logged in and try again.</span>\n';
+              console.error(saveErr);
+            }
+          } else if (isGuest) {
             out.innerHTML += '\n<span class="sy-hl">Note: You are not logged in. Score will not be saved to the leaderboard.</span>\n';
           }
           
