@@ -179,7 +179,7 @@
       </div>
 
       <div class="action-bar">
-        <input type="text" id="playerName" placeholder="Your Name / Handle" style="padding: .6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: var(--mono); width: 200px;">
+        <div id="playingAs" style="padding: .6rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--sky); font-family: var(--mono); font-weight: 600;">Authenticating...</div>
         <button class="btn-submit" id="btnSubmit" onclick="submitGolf()">
           Synthesize & Score <div class="spinner" id="spin"></div>
         </button>
@@ -222,7 +222,7 @@
           </div>
           
           <div class="comment-input-area">
-            <input type="text" id="cmtName" placeholder="Your Name">
+            <div id="cmtPlayingAs" style="font-size: .85rem; color: var(--sky); font-weight: 700;">Loading...</div>
             <textarea id="cmtText" placeholder="Discuss logic reduction strategies, ask for hints, or share your struggles! (Don't post full solutions)"></textarea>
             <button class="btn-comment" id="btnPostComment" onclick="postComment()">Post Comment</button>
           </div>
@@ -237,6 +237,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
   import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
   
   const firebaseConfig = {
     apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
@@ -248,15 +249,35 @@
   };
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // Global State
+  window.currentUser = null;
+  window.currentChallenge = null;
+
+  onAuthStateChanged(auth, (user) => {
+    const playAsEl = document.getElementById('playingAs');
+    const cmtAsEl = document.getElementById('cmtPlayingAs');
+    if (user) {
+      const name = user.displayName || user.email.split('@')[0];
+      window.currentUser = { uid: user.uid, name: name };
+      playAsEl.innerHTML = "Competing as: <span style='color:#fff'>" + name + "</span>";
+      cmtAsEl.innerText = "Commenting as: " + name;
+    } else {
+      window.currentUser = null;
+      playAsEl.innerHTML = "<a href='/login.html' style='color:var(--rose)'>Login to save score</a>";
+      cmtAsEl.innerHTML = "<a href='/login.html' style='color:var(--rose)'>Login to post comments</a>";
+    }
+  });
 
   // ── Challenge Data ──
   const CHALLENGES = [
     {
       id: 'popcount8',
       title: '8-Bit Population Count (Popcount)',
-      desc: 'Design a combinational circuit that counts the number of HIGH (`1`) bits in an 8-bit input vector. The output should be a 4-bit binary number representing the total count. \n\n*Hint: A naive + operator works, but explicitly instantiating a balanced tree of adders might save you gates!*',
+      desc: 'Design a combinational circuit that counts the number of HIGH (`1`) bits in an 8-bit input vector. The output should be a 4-bit binary number representing the total count. \n\n*Hint: The naive `if` cascade provided below synthesizes into a massive linear chain of adders. Can you build a parallel tree to save gates?*',
       ports: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);',
-      code: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);\n\n  // Write your highly optimized logic here...\n  \nendmodule'
+      code: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);\n\n  always @(*) begin\n    // Naive Software-style implementation\n    // This creates a deep, linear cascade of 8 adders!\n    count = 4\'d0;\n    if (din[0] == 1\'b1) count = count + 4\'d1;\n    if (din[1] == 1\'b1) count = count + 4\'d1;\n    if (din[2] == 1\'b1) count = count + 4\'d1;\n    if (din[3] == 1\'b1) count = count + 4\'d1;\n    if (din[4] == 1\'b1) count = count + 4\'d1;\n    if (din[5] == 1\'b1) count = count + 4\'d1;\n    if (din[6] == 1\'b1) count = count + 4\'d1;\n    if (din[7] == 1\'b1) count = count + 4\'d1;\n  end\n  \nendmodule'
     },
     {
       id: 'seq1011',
@@ -266,9 +287,6 @@
       code: 'module seq_detector (\n  input wire clk,\n  input wire rst_n,\n  input wire din,\n  output reg detected\n);\n\n  // Write your optimized FSM here...\n  \nendmodule'
     }
   ];
-
-  // Global State
-  window.currentChallenge = null;
 
   // ── Initialization & Routing ──
   function init() {
@@ -382,11 +400,14 @@
   }
 
   window.postComment = async function() {
-    const nameEl = document.getElementById('cmtName');
+    if (!window.currentUser) {
+      alert("You must be logged in to post comments.");
+      return;
+    }
     const textEl = document.getElementById('cmtText');
     const btn = document.getElementById('btnPostComment');
     
-    const name = nameEl.value.trim() || 'Anonymous Eng';
+    const name = window.currentUser.name;
     const text = textEl.value.trim();
     if(!text) return;
 
@@ -452,9 +473,13 @@
   const SYNTH_API = 'https://ecrionix-ecrionix-verilog.hf.space/synthesize';
 
   window.submitGolf = async function() {
+    if (!window.currentUser) {
+      alert("You must be logged in to synthesize and save scores.");
+      return;
+    }
+    
     const code = ed.value.trim();
-    let pName = document.getElementById('playerName').value.trim();
-    if(!pName) pName = "Anonymous Eng";
+    const pName = window.currentUser.name;
 
     const btn = document.getElementById('btnSubmit');
     const spin = document.getElementById('spin');
