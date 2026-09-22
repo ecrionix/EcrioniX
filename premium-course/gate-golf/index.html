@@ -308,7 +308,39 @@
       title: '8-Bit Population Count (Popcount)',
       desc: 'Design a combinational circuit that counts the number of HIGH (`1`) bits in an 8-bit input vector. The output should be a 4-bit binary number representing the total count. \n\n*Hint: The naive `if` cascade provided below synthesizes into a massive linear chain of adders. Can you build a parallel tree to save gates?*',
       ports: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);',
-      code: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);\n\n  always @(*) begin\n    // Naive Software-style implementation\n    // This creates a deep, linear cascade of 8 adders!\n    count = 4\'d0;\n    if (din[0] == 1\'b1) count = count + 4\'d1;\n    if (din[1] == 1\'b1) count = count + 4\'d1;\n    if (din[2] == 1\'b1) count = count + 4\'d1;\n    if (din[3] == 1\'b1) count = count + 4\'d1;\n    if (din[4] == 1\'b1) count = count + 4\'d1;\n    if (din[5] == 1\'b1) count = count + 4\'d1;\n    if (din[6] == 1\'b1) count = count + 4\'d1;\n    if (din[7] == 1\'b1) count = count + 4\'d1;\n  end\n  \nendmodule'
+      code: 'module popcount (\n  input wire [7:0] din,\n  output reg [3:0] count\n);\n\n  always @(*) begin\n    // Naive Software-style implementation\n    // This creates a deep, linear cascade of 8 adders!\n    count = 4\'d0;\n    if (din[0] == 1\'b1) count = count + 4\'d1;\n    if (din[1] == 1\'b1) count = count + 4\'d1;\n    if (din[2] == 1\'b1) count = count + 4\'d1;\n    if (din[3] == 1\'b1) count = count + 4\'d1;\n    if (din[4] == 1\'b1) count = count + 4\'d1;\n    if (din[5] == 1\'b1) count = count + 4\'d1;\n    if (din[6] == 1\'b1) count = count + 4\'d1;\n    if (din[7] == 1\'b1) count = count + 4\'d1;\n  end\n  \nendmodule',
+      testbench: `
+module tb;
+  reg [7:0] din;
+  wire [3:0] count;
+  integer i, expected, errors;
+
+  popcount uut (.din(din), .count(count));
+
+  function integer calc_pop(input [7:0] val);
+    integer j;
+    begin
+      calc_pop = 0;
+      for(j=0; j<8; j=j+1) if(val[j]) calc_pop = calc_pop + 1;
+    end
+  endfunction
+
+  initial begin
+    errors = 0;
+    for(i=0; i<256; i=i+1) begin
+      din = i;
+      #1;
+      expected = calc_pop(din);
+      if(count !== expected) begin
+        $display("FAIL: din=%b expected=%d got=%d", din, expected, count);
+        errors = errors + 1;
+      end
+    end
+    if(errors == 0) $display("SCORE_PASS");
+    else $display("SCORE_FAIL: %0d errors", errors);
+    $finish;
+  end
+endmodule`
     }
   ];
 
@@ -549,6 +581,7 @@
 
   // ── Synthesis Logic ──
   const SYNTH_API = 'https://ecrionix-ecrionix-verilog.hf.space/synthesize';
+  const SIM_API = 'https://ecrionix-ecrionix-verilog.hf.space/run';
 
   document.getElementById('btnSubmit').addEventListener('click', async function() {
     const code = ed.value.trim();
@@ -563,10 +596,31 @@
     btn.disabled = true;
     spin.style.display = 'block';
     out.classList.add('active');
-    out.innerHTML = '<span class="sy-hl">Compiling and Synthesizing via Yosys...</span>\n';
+    out.innerHTML = '<span class="sy-hl">Running Functional Testbench...</span>\n';
     scCard.classList.remove('active');
 
     try {
+      // 1. Verify functionality via Simulation
+      const simCode = code + '\n\n' + window.currentChallenge.testbench;
+      const simRes = await fetch(SIM_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: simCode })
+      });
+      
+      if (!simRes.ok) throw new Error('Simulation server error: ' + simRes.status);
+      const simData = await simRes.json();
+      
+      if (!simData.success || !simData.stdout || !simData.stdout.includes('SCORE_PASS')) {
+        out.innerHTML += '<span class="sy-err">Testbench Failed! Functional verification did not pass.</span>\n\n';
+        if (simData.stderr) out.innerHTML += escapeHtml(simData.stderr) + '\n';
+        if (simData.stdout) out.innerHTML += escapeHtml(simData.stdout);
+        return;
+      }
+      
+      out.innerHTML += '<span class="sy-ok">Testbench Passed. Synthesizing via Yosys...</span>\n\n';
+
+      // 2. Synthesize via Yosys for Gate Score
       const res = await fetch(SYNTH_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
