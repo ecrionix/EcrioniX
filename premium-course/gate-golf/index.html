@@ -208,14 +208,83 @@ module seq_detector (<br>
   </div>
 </main>
 
-<!-- Firebase SDK setup for future backend hookup -->
-<!-- Note: To enable live multiplayer syncing, configure your Firebase Web SDK config here -->
-<script type="module">
-  // import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  // import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  // const firebaseConfig = { projectId: "ecrionix", apiKey: "YOUR_API_KEY_HERE" };
-  // const app = initializeApp(firebaseConfig);
-  // const db = getFirestore(app);
+<!<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+  
+  const firebaseConfig = {
+    apiKey: "AIzaSyCP8IvAhIpjVTSTgfAu7xTbTryWjwlI_h4",
+    authDomain: "ecrionix.firebaseapp.com",
+    projectId: "ecrionix",
+    storageBucket: "ecrionix.firebasestorage.app",
+    messagingSenderId: "859295895664",
+    appId: "1:859295895664:web:893f744ee8ad871f9464b5"
+  };
+  
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  let lbData = [
+    { name: "YosysMaster99", score: 8 },
+    { name: "ASIC_Ninja", score: 9 },
+    { name: "VerilogGuru", score: 12 }
+  ]; // Fallback data
+
+  const lbList = document.getElementById('leaderboardList');
+  
+  function renderLeaderboard(data) {
+    // Sort ascending (lower score = fewer gates = better)
+    data.sort((a,b) => a.score - b.score);
+    lbList.innerHTML = data.map((entry, idx) => {
+      let rankCls = '';
+      if(idx===0) rankCls = 'gold';
+      if(idx===1) rankCls = 'silver';
+      if(idx===2) rankCls = 'bronze';
+      return `
+        <div class="lb-row">
+          <div class="lb-rank ${rankCls}">#${idx+1}</div>
+          <div class="lb-name">${entry.name}</div>
+          <div class="lb-score">${entry.score} GE</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function fetchLeaderboard() {
+    try {
+      const q = query(collection(db, "gate_golf_seq1011"), orderBy("score", "asc"), limit(50));
+      const querySnapshot = await getDocs(q);
+      const fetchedData = [];
+      querySnapshot.forEach((doc) => {
+        fetchedData.push(doc.data());
+      });
+      if(fetchedData.length > 0) lbData = fetchedData;
+      renderLeaderboard(lbData);
+    } catch (e) {
+      console.warn("Failed to fetch leaderboard from Firebase, using fallback. Error:", e);
+      renderLeaderboard(lbData);
+    }
+  }
+  
+  // Initial load
+  fetchLeaderboard();
+
+  // Make saveScore globally accessible for the submitGolf function
+  window.saveScore = async function(name, score) {
+    try {
+      await addDoc(collection(db, "gate_golf_seq1011"), {
+        name: name,
+        score: score,
+        timestamp: new Date().toISOString()
+      });
+      await fetchLeaderboard();
+    } catch(e) {
+      console.error("Error saving score to Firebase:", e);
+      // Fallback update
+      lbData.push({ name, score });
+      renderLeaderboard(lbData);
+    }
+  }
 </script>
 
 <script>
@@ -244,35 +313,6 @@ module seq_detector (<br>
 endmodule`;
   updateLines();
 
-  // ── Mock Leaderboard Data (Local Storage) ──
-  let lbData = JSON.parse(localStorage.getItem('gateGolf_seq1011')) || [
-    { name: "YosysMaster99", score: 8 },
-    { name: "ASIC_Ninja", score: 9 },
-    { name: "VerilogGuru", score: 12 },
-    { name: "Student_01", score: 18 },
-    { name: "RTL_Beginner", score: 25 }
-  ];
-
-  function renderLeaderboard() {
-    // Sort ascending (lower score = fewer gates = better)
-    lbData.sort((a,b) => a.score - b.score);
-    const list = document.getElementById('leaderboardList');
-    list.innerHTML = lbData.map((entry, idx) => {
-      let rankCls = '';
-      if(idx===0) rankCls = 'gold';
-      if(idx===1) rankCls = 'silver';
-      if(idx===2) rankCls = 'bronze';
-      return \`
-        <div class="lb-row">
-          <div class="lb-rank \${rankCls}">#\${idx+1}</div>
-          <div class="lb-name">\${entry.name}</div>
-          <div class="lb-score">\${entry.score} GE</div>
-        </div>
-      \`;
-    }).join('');
-  }
-  renderLeaderboard();
-
   // ── Synthesis & Scoring Logic ──
   const SYNTH_API = 'https://ecrionix-ecrionix-verilog.hf.space/synthesize';
 
@@ -290,7 +330,7 @@ endmodule`;
     btn.disabled = true;
     spin.style.display = 'block';
     out.classList.add('active');
-    out.innerHTML = '<span class="sy-hl">Compiling and Synthesizing via Yosys...</span>\\n';
+    out.innerHTML = '<span class="sy-hl">Compiling and Synthesizing via Yosys...</span>\n';
     scCard.classList.remove('active');
 
     try {
@@ -304,11 +344,11 @@ endmodule`;
       const data = await res.json();
 
       if(data.success) {
-        out.innerHTML += '<span class="sy-ok">Synthesis Successful!</span>\\n\\n';
+        out.innerHTML += '<span class="sy-ok">Synthesis Successful!</span>\n\n';
         
         // Extract Gate Count
         // Yosys output contains lines like: "Number of cells: 14"
-        const match = data.stdout.match(/Number of cells:\\s+(\\d+)/);
+        const match = data.stdout.match(/Number of cells:\s+(\d+)/);
         let gateCount = 0;
         
         if (match && match[1]) {
@@ -318,23 +358,23 @@ endmodule`;
           scVal.textContent = gateCount;
           scCard.classList.add('active');
 
-          // Save to Leaderboard
-          lbData.push({ name: pName, score: gateCount });
-          localStorage.setItem('gateGolf_seq1011', JSON.stringify(lbData));
-          renderLeaderboard();
+          // Save to Leaderboard via globally exposed function from the module script
+          if(window.saveScore) {
+            window.saveScore(pName, gateCount);
+          }
           
         } else {
-          out.innerHTML += '<span class="sy-err">Could not parse cell count from Yosys report. Is the module empty?</span>\\n';
+          out.innerHTML += '<span class="sy-err">Could not parse cell count from Yosys report. Is the module empty?</span>\n';
           out.innerHTML += data.stdout;
         }
 
       } else {
-        out.innerHTML += '<span class="sy-err">Synthesis Failed (Syntax Error)</span>\\n\\n';
-        out.innerHTML += (data.stderr || '') + '\\n' + data.stdout;
+        out.innerHTML += '<span class="sy-err">Synthesis Failed (Syntax Error)</span>\n\n';
+        out.innerHTML += (data.stderr || '') + '\n' + data.stdout;
       }
 
     } catch (e) {
-      out.innerHTML += '<span class="sy-err">Error connecting to synthesis server: ' + e.message + '</span>\\n';
+      out.innerHTML += '<span class="sy-err">Error connecting to synthesis server: ' + e.message + '</span>\n';
     } finally {
       btn.disabled = false;
       spin.style.display = 'none';
