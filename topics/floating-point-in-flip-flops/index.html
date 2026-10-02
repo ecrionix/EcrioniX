@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://media.ethicalads.io/media/client/ethicalads.min.js"></script>
+  <script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Floating-Point Numbers Are Stored in Flip-Flops (Where is the Dot?) | EcrioniX</title>
+<meta name="description" content="Flip-flops can only store 0 or 1. So where does the decimal point go? An in-depth hardware look at how silicon stores floats, IEEE 754 architecture, the hidden bit, and an interactive 32-FF visualizer.">
+<meta name="keywords" content="floating point in flip flops, how is the dot stored in binary, IEEE 754 hardware implementation, where is the decimal point stored, mantissa exponent sign bit, digital logic floating point, barrel shifter FPU">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<link rel="canonical" href="https://ecrionix.org/topics/floating-point-in-flip-flops/">
+<meta property="og:site_name" content="EcrioniX">
+<meta property="og:title" content="How Floating-Point Numbers Are Stored in Flip-Flops (Where is the Dot?)">
+<meta property="og:description" content="Flip-flops can only hold high or low voltage. There is no 'dot' in silicon. Learn the genius trick behind IEEE 754 with an interactive 32-flip-flop hardware visualizer.">
+<meta property="og:url" content="https://ecrionix.org/topics/floating-point-in-flip-flops/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-02">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-10-02","dateModified":"2026-10-02","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"headline":"How Floating-Point Numbers Are Stored in Flip-Flops (Where is the Dot?)","description":"A hardware-level exploration of how silicon stores fractional and floating-point numbers in flip-flops without a physical decimal point.","url":"https://ecrionix.org/topics/floating-point-in-flip-flops/","publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org","logo":{"@type":"ImageObject","url":"https://ecrionix.org/favicon1.png"}},"image":"https://ecrionix.org/favicon1.png","inLanguage":"en"},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"How is the decimal point stored in a flip-flop?","acceptedAnswer":{"@type":"Answer","text":"The decimal point (or radix point) is NEVER physically stored in any flip-flop. Flip-flops can only store binary voltages (0 or 1). In floating-point (IEEE 754), the point is virtual and dynamically calculated: it is implicitly placed immediately after a hidden '1' bit, and the exponent value determines how many places the hardware barrel shifter moves it during calculations."}},
+   {"@type":"Question","name":"What is the 'hidden bit' or 'implicit one' in IEEE 754?","acceptedAnswer":{"@type":"Answer","text":"In normalized binary scientific notation, any non-zero number always starts with a single non-zero bit before the point, which in binary can ONLY be '1' (e.g. 1.01101 x 2^E). Because this leading '1' is always guaranteed, hardware designers do not waste a flip-flop storing it. This provides 24 bits of precision while only storing 23 bits in flip-flops."}},
+   {"@type":"Question","name":"What is the difference between fixed-point and floating-point in hardware?","acceptedAnswer":{"@type":"Answer","text":"In fixed-point arithmetic, the radix point is fixed at a predetermined position purely in the designer's mind; hardware adders and multipliers are identical to standard integer logic. In floating-point, the point's position floats dynamically depending on the exponent, requiring dedicated alignment barrel shifters, normalizers, and leading-zero detectors."}},
+   {"@type":"Question","name":"Why can't computers store 0.1 exactly in binary floating point?","acceptedAnswer":{"@type":"Answer","text":"Just as 1/3 cannot be represented as a finite decimal (0.3333...), the fraction 0.1 (1/10) cannot be represented as a finite sum of powers of 2 (1/2, 1/4, 1/8...). It becomes an infinitely repeating binary pattern (0.0001100110011...), which must be rounded off to fit into the 23 mantissa flip-flops."}}
+ ]}
+]}
+</script>
+<style>
+:root{--bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.12);--teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;--amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.78;overflow-x:hidden}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.12rem .38rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+pre{background:#040711;color:#c9d1d9;padding:1.2rem 1.4rem;border-radius:10px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;margin:1rem 0;line-height:1.7;border:1px solid var(--bdr)}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem;flex-wrap:wrap}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:880px;margin:0 auto;padding:2.6rem 1.5rem}
+.hero-tag{display:inline-block;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.35);color:var(--blue);font-family:'Orbitron',sans-serif;font-size:.68rem;font-weight:700;padding:.25rem .75rem;border-radius:6px;letter-spacing:.08em;margin-bottom:1rem}
+h1{font-size:clamp(1.85rem,4.6vw,2.8rem);font-weight:900;color:#f8fafc;line-height:1.16;margin-bottom:.5rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1.2rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}.byline a{color:var(--teal);font-weight:600}
+.lead{color:var(--sl);font-size:1.1rem;margin-bottom:1.8rem;line-height:1.84}
+h2{font-size:1.45rem;font-weight:800;color:#f1f5f9;margin:2.4rem 0 .8rem;padding-top:.6rem;border-top:1px solid var(--bdr)}
+h3{font-size:1.08rem;font-weight:700;color:var(--amber);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1.4rem;margin:1.4rem 0}
+.box.mind{border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.05)}
+.box.fact{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.04)}
+.box.key{border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.04)}
+.box.warn{border-color:rgba(251,146,60,.35);background:rgba(251,146,60,.05)}
+.box h3{margin-top:0}
+.figure{background:#040711;border:1px solid var(--bdr);border-radius:12px;padding:1.4rem;margin:1.5rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.8rem;font-style:italic}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1.1rem 1.3rem;margin-bottom:.8rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.98rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0;color:var(--sl)}
+
+/* 32-FF Interactive Visualizer */
+.ff-sim-card{background:linear-gradient(180deg,#090e1f 0%,#040711 100%);border:2px solid rgba(56,189,248,.25);border-radius:16px;padding:1.6rem;margin:2rem 0;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.ff-sim-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.4rem;border-bottom:1px solid var(--bdr);padding-bottom:.8rem}
+.ff-sim-title{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:900;color:var(--blue);display:flex;align-items:center;gap:.6rem}
+.input-row{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1.2rem}
+.input-wrap{display:flex;align-items:center;gap:.6rem;background:#020617;border:1px solid var(--bdr);padding:.5rem .8rem;border-radius:8px}
+.input-wrap input{background:transparent;border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;outline:none;width:150px}
+.preset-pills{display:flex;gap:.5rem;flex-wrap:wrap}
+.pill{background:var(--bg3);border:1px solid var(--bdr);color:var(--sl);padding:.35rem .75rem;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .2s}
+.pill:hover{color:#fff;border-color:var(--teal)}
+.pill.active{background:rgba(45,212,191,.15);border-color:var(--teal);color:var(--teal)}
+
+.math-preview{background:#020617;border:1px solid rgba(167,139,250,.25);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.5rem;font-family:'JetBrains Mono',monospace;font-size:.88rem;color:#cbd5e1;line-height:1.7}
+.math-preview b{color:var(--purple)}
+
+.ff-rack{margin-bottom:1.5rem}
+.ff-rack-title{display:flex;justify-content:space-between;align-items:center;font-size:.76rem;color:#94a3b8;font-weight:700;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em}
+.ff-grid{display:grid;grid-template-columns:repeat(32,1fr);gap:2px;background:#020617;padding:6px;border:1px solid var(--bdr);border-radius:10px;overflow-x:auto}
+@media(max-width:768px){.ff-grid{grid-template-columns:repeat(32,minmax(18px,1fr))}}
+
+.ff-cell{height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;border:1px solid transparent;font-family:'JetBrains Mono',monospace;transition:all .2s;position:relative}
+.ff-cell .bit{font-size:.82rem;font-weight:800}
+.ff-cell .idx{font-size:.55rem;opacity:.5}
+
+.ff-cell.sign{background:rgba(251,146,60,.12);border-color:#fb923c;color:#fb923c}
+.ff-cell.exp{background:rgba(56,189,248,.12);border-color:#38bdf8;color:#38bdf8}
+.ff-cell.mant{background:rgba(45,212,191,.1);border-color:#2dd4bf;color:#2dd4bf}
+
+.ff-legend{display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:.8rem;font-size:.78rem;font-weight:600}
+.legend-item{display:flex;align-items:center;gap:.5rem}
+.legend-dot{width:12px;height:12px;border-radius:3px}
+
+.dot-callout{background:rgba(251,191,36,.06);border:1px dashed var(--amber);border-radius:10px;padding:1rem 1.2rem;display:flex;align-items:center;gap:1rem;margin-top:1.2rem}
+.dot-callout-icon{font-size:2rem;line-height:1}
+
+footer{border-top:1px solid var(--bdr);padding:2.2rem 1.5rem;text-align:center;font-size:.82rem;color:var(--sl);background:var(--bg2)}
+</style>
+</head>
+<body>
+<div id="ea-content" data-ea-publisher="ecrionixorg" data-ea-type="image" data-ea-style="stickybox" class="raised adaptive-css" data-ea-keywords="floatingpoint|flipflops|ieee754|hardware|vlsi|digitaldesign"></div>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/digital-electronics/">Digital</a><a href="/rtl-design/">RTL</a><a href="/topics/">Topics</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/topics/">Topics</a><span>›</span><span>Floating-Point in Flip-Flops</span></div>
+
+<div class="wrap">
+  <span class="hero-tag">SILICON ARCHITECTURE · DIGITAL ARITHMETIC</span>
+  <h1>How Floating-Point Numbers Are Stored in Flip-Flops<br><span style="color:var(--amber);font-size:.82em">(And Where Does the Dot Go?)</span></h1>
+  <div class="byline">By <a href="/">EcrioniX Research</a> <span style="opacity:.5">·</span> <span>02 Oct 2026</span> <span style="opacity:.5">·</span> <span>~8 min read</span></div>
+
+  <p class="lead">Every digital hardware engineer knows this fundamental physical truth: <b>a D Flip-Flop can only hold one of two states</b> — <code>0</code> (ground, 0V) or <code>1</code> (supply voltage, 1.2V). There is no "half-voltage", no comma, and certainly <b>no physical "dot" character</b> stamped into silicon. So when your CPU processes <code>3.14159</code>, where is the decimal point stored?</p>
+
+  <div class="box mind">
+    <h3 style="color:var(--purple)">🤯 The Short Answer</h3>
+    <p style="margin:0;font-size:.98rem">The decimal point is <b>nowhere</b> in silicon. It is not stored in any flip-flop. Instead, it is <b>phantom (implied)</b>. The hardware architecture <i>agrees</i> that a virtual dot sits permanently between an invisible "1" and the mantissa bits, and uses a dedicated digital gearbox — the <b>Exponent</b> and a <b>Barrel Shifter</b> — to slide the real-world dot left or right during calculations.</p>
+  </div>
+
+  <!-- ──────────────── INTERACTIVE 32-FF VISUALIZER ──────────────── -->
+  <div class="ff-sim-card">
+    <div class="ff-sim-header">
+      <div class="ff-sim-title">
+        <span>🔬</span> Interactive 32-Flip-Flop IEEE 754 Inspector
+      </div>
+      <div style="font-size:.74rem;color:#64748b;font-family:'JetBrains Mono',monospace">STANDARD SINGLE PRECISION (FLOAT32)</div>
+    </div>
+
+    <div class="input-row">
+      <div class="input-wrap">
+        <span style="font-size:.85rem;color:var(--sl);font-weight:700">Enter Number:</span>
+        <input type="number" id="numInput" value="13.625" step="any">
+      </div>
+      <div class="preset-pills">
+        <span class="pill active" data-val="13.625">13.625 (Classic)</span>
+        <span class="pill" data-val="-6.75">-6.75 (Negative)</span>
+        <span class="pill" data-val="0.1">0.1 (Repeating!)</span>
+        <span class="pill" data-val="3.1415927">&pi; (3.14159)</span>
+        <span class="pill" data-val="0.0">0.0 (Zero)</span>
+      </div>
+    </div>
+
+    <!-- Live Math Normalization Breakdown -->
+    <div class="math-preview" id="mathPreview">
+      <!-- Generated via JS -->
+    </div>
+
+    <!-- The 32 Physical Flip-Flops -->
+    <div class="ff-rack">
+      <div class="ff-rack-title">
+        <span>Physical D-Flip-Flop Standard Cell Row (32 Bits)</span>
+        <span id="hexDisp" style="color:var(--amber)">0x415A0000</span>
+      </div>
+      <div class="ff-grid" id="ffGrid">
+        <!-- 32 FF cells generated via JS -->
+      </div>
+      <div class="ff-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#fb923c"></div>
+          <span>Bit 31: <b>Sign</b> (1 FF)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#38bdf8"></div>
+          <span>Bits 30..23: <b>Biased Exponent</b> (8 FFs)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#2dd4bf"></div>
+          <span>Bits 22..0: <b>Fraction / Mantissa</b> (23 FFs)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- The "Where is the Dot?" Callout -->
+    <div class="dot-callout">
+      <div class="dot-callout-icon">📍</div>
+      <div style="font-size:.85rem;color:#f1f5f9;line-height:1.6">
+        <b style="color:var(--amber)">Where is the Dot right now?</b><br>
+        <span id="dotDesc">Notice that none of the 32 flip-flops store a dot! The ALU knows the mathematical value is <code>1.<span style="color:var(--teal)">101101</span> &times; 2<sup>3</sup></code>. The dot sits permanently to the right of the invisible hidden '1', and the exponent (+3) tells the hardware barrel shifter to move the point 3 places right in binary.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────────── SECTION 1: THE TWO SILICON APPROACHES ──────────────── -->
+  <h2>1. Two Ways Silicon Handles Fractions</h2>
+  <p>To understand why floating-point is designed this way, you must understand the two ways digital chips represent non-integers:</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <!-- Fixed Point Box -->
+      <rect x="30" y="30" width="300" height="180" rx="10" fill="rgba(56,189,248,.05)" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="180" y="60" text-anchor="middle" font-size="13" font-weight="800" fill="#38bdf8">1. FIXED-POINT (Q-FORMAT)</text>
+      <text x="180" y="82" text-anchor="middle" font-size="9" fill="#94a3b8">The "Imaginary Dot" Approach</text>
+      <!-- Bits -->
+      <g font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700">
+        <rect x="60" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="72" y="123" text-anchor="middle" fill="#f8fafc">0</text>
+        <rect x="88" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="100" y="123" text-anchor="middle" fill="#f8fafc">0</text>
+        <rect x="116" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="128" y="123" text-anchor="middle" fill="#f8fafc">1</text>
+        <rect x="144" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="156" y="123" text-anchor="middle" fill="#f8fafc">0</text>
+        <!-- The imaginary dot -->
+        <circle cx="177" cy="120" r="3.5" fill="#fbbf24"/>
+        <rect x="188" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="200" y="123" text-anchor="middle" fill="#2dd4bf">1</text>
+        <rect x="216" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="228" y="123" text-anchor="middle" fill="#2dd4bf">0</text>
+        <rect x="244" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="256" y="123" text-anchor="middle" fill="#2dd4bf">0</text>
+        <rect x="272" y="105" width="25" height="28" fill="#1e293b" stroke="#475569"/>
+        <text x="284" y="123" text-anchor="middle" fill="#2dd4bf">0</text>
+      </g>
+      <text x="180" y="160" text-anchor="middle" font-size="9" fill="#fbbf24">▲ Dot exists ONLY in engineer's mind!</text>
+      <text x="180" y="180" text-anchor="middle" font-size="9" fill="#94a3b8">Hardware is identical to standard integer logic.</text>
+
+      <!-- Floating Point Box -->
+      <rect x="350" y="30" width="300" height="180" rx="10" fill="rgba(167,139,250,.05)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="500" y="60" text-anchor="middle" font-size="13" font-weight="800" fill="#a78bfa">2. FLOATING-POINT (IEEE 754)</text>
+      <text x="500" y="82" text-anchor="middle" font-size="9" fill="#94a3b8">The "Dynamic Gearbox" Approach</text>
+      <!-- Split blocks -->
+      <rect x="375" y="105" width="30" height="28" rx="3" fill="rgba(251,146,60,.2)" stroke="#fb923c"/>
+      <text x="390" y="123" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" fill="#fb923c">S</text>
+      <rect x="410" y="105" width="90" height="28" rx="3" fill="rgba(56,189,248,.2)" stroke="#38bdf8"/>
+      <text x="455" y="123" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" fill="#38bdf8">EXP (8)</text>
+      <rect x="505" y="105" width="120" height="28" rx="3" fill="rgba(45,212,191,.2)" stroke="#2dd4bf"/>
+      <text x="565" y="123" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" fill="#2dd4bf">MANTISSA (23)</text>
+      <text x="500" y="160" text-anchor="middle" font-size="9" fill="#a78bfa">The Exponent slides the dot dynamically!</text>
+      <text x="500" y="180" text-anchor="middle" font-size="9" fill="#94a3b8">Enables vast dynamic range: from 10&supmin;&sup3;&sup8; to 10&sup3;&sup8;.</text>
+    </svg>
+    <div class="fig-cap">Fixed-point fixes the dot at a hardwired wire boundary. Floating-point encodes the dot's position as an exponent number stored in flip-flops.</div>
+  </div>
+
+  <!-- ──────────────── SECTION 2: TRANSISTOR VIEW ──────────────── -->
+  <h2>2. Inside the Silicon: 32 Physical D-Flip-Flops</h2>
+  <p>In standard 32-bit single precision (IEEE 754), a chip places exactly <b>32 D-Flip-Flop cells</b> in a row. Let's look at how the 32 transistors latch the information:</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <!-- Cell 1: Sign -->
+      <rect x="40" y="40" width="55" height="100" rx="6" fill="#0f172a" stroke="#fb923c" stroke-width="2"/>
+      <text x="67" y="65" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#fb923c">DFF</text>
+      <text x="67" y="85" text-anchor="middle" font-size="9" fill="#94a3b8">Bit 31</text>
+      <text x="67" y="120" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="14" font-weight="800" fill="#fb923c">0</text>
+      <text x="67" y="160" text-anchor="middle" font-size="9" font-weight="700" fill="#fb923c">SIGN</text>
+
+      <!-- Cell 2-9: Exponent -->
+      <rect x="110" y="40" width="180" height="100" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="200" y="65" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#38bdf8">8 &times; DFF CELLS</text>
+      <text x="200" y="85" text-anchor="middle" font-size="9" fill="#94a3b8">Bits 30 downto 23</text>
+      <text x="200" y="120" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13" font-weight="800" fill="#38bdf8">1 0 0 0 0 0 1 0</text>
+      <text x="200" y="160" text-anchor="middle" font-size="9" font-weight="700" fill="#38bdf8">BIASED EXPONENT (+127)</text>
+
+      <!-- Cell 10-32: Mantissa -->
+      <rect x="305" y="40" width="335" height="100" rx="6" fill="#0f172a" stroke="#2dd4bf" stroke-width="2"/>
+      <text x="472" y="65" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#2dd4bf">23 &times; DFF CELLS</text>
+      <text x="472" y="85" text-anchor="middle" font-size="9" fill="#94a3b8">Bits 22 downto 0</text>
+      <text x="472" y="120" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#2dd4bf">1 0 1 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0</text>
+      <text x="472" y="160" text-anchor="middle" font-size="9" font-weight="700" fill="#2dd4bf">MANTISSA / FRACTION (F)</text>
+    </svg>
+    <div class="fig-cap">Every single bit is a physical circuit (master-slave transmission gates &amp; inverters). None of them store a punctuation mark!</div>
+  </div>
+
+  <!-- ──────────────── SECTION 3: THE HIDDEN BIT ──────────────── -->
+  <h2>3. The Secret Trick: The "Invisible 1"</h2>
+  <p>Engineers love efficiency. In the 1980s, when Professor William Kahan led the design of IEEE 754, he realized a brilliant trick:</p>
+
+  <p>In standard binary scientific notation, every non-zero number is written so that there is exactly <b>one non-zero digit before the dot</b>:</p>
+  
+  <div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:1.2rem;color:var(--amber);margin:1.4rem 0">
+    1.01101 &times; 2<sup>3</sup>
+  </div>
+
+  <p>In decimal, that leading digit could be 1, 2, 3... up to 9. But in binary, what digits exist? <b>Only 0 and 1.</b> Since the leading digit cannot be 0 (otherwise you haven't normalized it yet), <b>IT IS ALWAYS 1!</b></p>
+
+  <div class="box key">
+    <h3 style="color:var(--green)">💡 Free Precision: The "Hidden Bit"</h3>
+    <p style="margin:0">Since the digit before the dot is <b>guaranteed to be 1</b>, why waste a physical flip-flop storing it? Hardware engineers simply <b>throw it away in storage</b> and <b>wire it back in during arithmetic!</b></p>
+    <p style="margin:.6rem 0 0">This is called the <b>Implicit One (or Hidden Bit)</b>. Even though you only build 23 flip-flops in silicon, your hardware computes with <b>24 bits of precision</b>!</p>
+  </div>
+
+  <!-- ──────────────── SECTION 4: STEP BY STEP WORKED EXAMPLE ──────────────── -->
+  <h2>4. Step-by-Step: Storing <code>13.625</code> in Flip-Flops</h2>
+  <p>Let's manually convert the number <code>+13.625</code> into hardware flip-flops, exactly as a compiler does:</p>
+
+  <ol>
+    <li>
+      <b>Convert Integer Part to Binary:</b><br>
+      \(13 = 8 + 4 + 1 = 1101_2\)
+    </li>
+    <li>
+      <b>Convert Fractional Part to Binary:</b><br>
+      \(0.625 = 0.5 + 0.125 = \frac{1}{2} + \frac{1}{8} = 0.101_2\)
+    </li>
+    <li>
+      <b>Combine Both:</b><br>
+      \(13.625 = 1101.101_2\)
+    </li>
+    <li>
+      <b>Normalize (Slide the Dot):</b><br>
+      Move the dot 3 positions to the left so only one "1" remains in front:<br>
+      \(1101.101_2 = \mathbf{1.101101} \times 2^{\mathbf{3}}\)
+    </li>
+    <li>
+      <b>Determine the Sign Bit:</b><br>
+      Positive number &rarr; <b>Bit 31 = <code>0</code></b>.
+    </li>
+    <li>
+      <b>Calculate Biased Exponent:</b><br>
+      The real exponent is \(+3\). Hardware uses a bias of \(+127\) (so exponents can be negative without needing a two's complement sign bit):<br>
+      \(E = 3 + 127 = 130_{10} = \mathbf{10000010_2}\) &rarr; Stored in <b>Bits 30..23</b>.
+    </li>
+    <li>
+      <b>Store the Mantissa (Drop the leading 1!):</b><br>
+      We discard the bold \(1.\) and store only what comes after the dot:<br>
+      \(\mathbf{101101}\) followed by seventeen zeros &rarr; Stored in <b>Bits 22..0</b>.
+    </li>
+  </ol>
+
+  <!-- ──────────────── SECTION 5: HARDWARE BARREL SHIFTER ──────────────── -->
+  <h2>5. How the ALU Does Math Without a Dot: The Barrel Shifter</h2>
+  <p>If there is no dot inside the flip-flops, how does a Floating Point Unit (FPU) add <code>13.625 + 0.5</code>?</p>
+
+  <p>To add two numbers, their decimal points <b>must line up</b>. In hardware, this is accomplished by an ultra-fast combinational block called a <b>Barrel Shifter</b>:</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <!-- Number A -->
+      <rect x="50" y="30" width="160" height="50" rx="6" fill="#0f172a" stroke="#38bdf8"/>
+      <text x="130" y="52" text-anchor="middle" font-size="11" font-weight="700" fill="#38bdf8">13.625 (Exp = 3)</text>
+      <text x="130" y="68" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#94a3b8">1.101101 &times; 2&sup3;</text>
+
+      <!-- Number B -->
+      <rect x="50" y="100" width="160" height="50" rx="6" fill="#0f172a" stroke="#2dd4bf"/>
+      <text x="130" y="122" text-anchor="middle" font-size="11" font-weight="700" fill="#2dd4bf">0.5 (Exp = -1)</text>
+      <text x="130" y="138" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="#94a3b8">1.000000 &times; 2&supmin;&sup1;</text>
+
+      <!-- Subtractor for Exp -->
+      <path d="M 210 55 L 260 85" stroke="#64748b" stroke-width="2"/>
+      <path d="M 210 125 L 260 95" stroke="#64748b" stroke-width="2"/>
+      <circle cx="270" cy="90" r="16" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="270" y="94" text-anchor="middle" font-size="12" font-weight="800" fill="#fbbf24">&Delta;</text>
+      <text x="270" y="120" text-anchor="middle" font-size="8" fill="#fbbf24">Diff = 4</text>
+
+      <!-- Barrel Shifter -->
+      <line x1="286" y1="90" x2="350" y2="90" stroke="#fbbf24" stroke-width="2"/>
+      <rect x="350" y="60" width="140" height="60" rx="8" fill="rgba(167,139,250,.1)" stroke="#a78bfa" stroke-width="2"/>
+      <text x="420" y="87" text-anchor="middle" font-size="11" font-weight="800" fill="#a78bfa">BARREL SHIFTER</text>
+      <text x="420" y="103" text-anchor="middle" font-size="9" fill="#94a3b8">Shift right by 4 wires</text>
+
+      <!-- Result aligned -->
+      <line x1="490" y1="90" x2="540" y2="90" stroke="#a78bfa" stroke-width="2"/>
+      <rect x="540" y="60" width="100" height="60" rx="8" fill="#0f172a" stroke="#4ade80" stroke-width="2"/>
+      <text x="590" y="87" text-anchor="middle" font-size="11" font-weight="800" fill="#4ade80">INTEGER ADD</text>
+      <text x="590" y="103" text-anchor="middle" font-size="9" fill="#94a3b8">Dots now match!</text>
+    </svg>
+    <div class="fig-cap">Hardware alignment: The FPU subtracts the two exponents (3 - (-1) = 4), then uses a barrel shifter to route the smaller number's mantissa right by 4 wires before doing a regular integer addition!</div>
+  </div>
+
+  <div class="box fact">
+    <h3 style="color:var(--blue)">Verilog Code: Restoring the Hidden Bit in RTL</h3>
+<pre><span style="color:#64748b">// Inside an FPGA/ASIC Floating Point Unit:</span>
+<span style="color:#64748b">// Restoring the hidden 1 before entering the adder</span>
+<span style="color:#38bdf8">wire</span> [31:0] float_a = <span style="color:#fbbf24">32'h415A0000</span>; <span style="color:#64748b">// 13.625</span>
+
+<span style="color:#38bdf8">wire</span>        sign_a  = float_a[31];
+<span style="color:#38bdf8">wire</span> [7:0]  exp_a   = float_a[30:23];
+
+<span style="color:#64748b">// Concatenate the invisible 1.0 back onto the 23-bit mantissa!</span>
+<span style="color:#38bdf8">wire</span> [23:0] full_mantissa_a = (exp_a == 8'd0) ? 
+                              {1'b0, float_a[22:0]} : <span style="color:#64748b">// Denormal number</span>
+                              {<span style="color:#4ade80">1'b1</span>, float_a[22:0]}; <span style="color:#64748b">// Normalized: 1.F restored!</span></pre>
+  </div>
+
+  <!-- ──────────────── SECTION 6: FAQ ──────────────── -->
+  <h2>6. High-Yield Interview Q&amp;A</h2>
+
+  <div class="faq-item">
+    <h3>Q: Why can't computers store 0.1 exactly in binary?</h3>
+    <p><b>A:</b> In base-10, fractions like 1/3 cannot be represented as finite decimals (0.33333...). Similarly, in base-2, the fraction 0.1 (1/10) cannot be represented as a finite sum of negative powers of 2 (\(1/2, 1/4, 1/8...\)). It becomes an infinitely repeating binary pattern: <code>0.00011001100110011...</code>. Because the flip-flops run out after 23 bits, it must be rounded, causing tiny precision errors (e.g. <code>0.1 + 0.2 = 0.30000000000000004</code>).</p>
+  </div>
+
+  <div class="faq-item">
+    <h3>Q: What is a "Subnormal" or "Denormalized" number?</h3>
+    <p><b>A:</b> When a number is extremely close to zero, the exponent drops to all zeros (`00000000`). At this point, the hardware disables the "hidden 1" rule and assumes a leading `0.` instead. This allows numbers to gradually underflow to zero rather than abruptly snapping to zero (known as graceful underflow).</p>
+  </div>
+
+  <div class="faq-item">
+    <h3>Q: When should an ASIC designer choose Fixed-Point over Floating-Point?</h3>
+    <p><b>A:</b> A 32-bit floating-point adder requires roughly <b>10&times; to 20&times; more logic gates</b> and silicon area than a fixed-point integer adder due to barrel shifters, normalizers, and rounding logic. In high-speed DSP, audio codecs, and edge AI accelerators where dynamic range is predictable, engineers almost always prefer <b>Fixed-Point</b> to save power and die area.</p>
+  </div>
+
+</div>
+
+<footer>
+  &copy; 2026 EcrioniX. Mastering VLSI, Computer Architecture &amp; Silicon Hardware.
+</footer>
+
+<!-- 32-FF Converter Script -->
+<script>
+(function(){
+  const numInput = document.getElementById('numInput');
+  const mathPreview = document.getElementById('mathPreview');
+  const ffGrid = document.getElementById('ffGrid');
+  const hexDisp = document.getElementById('hexDisp');
+  const dotDesc = document.getElementById('dotDesc');
+  const pills = document.querySelectorAll('.pill');
+
+  // Build 32 cells
+  for(let i=31; i>=0; i--){
+    const cell = document.createElement('div');
+    let type = 'mant';
+    if(i === 31) type = 'sign';
+    else if(i >= 23) type = 'exp';
+
+    cell.className = 'ff-cell ' + type;
+    cell.id = 'ff-' + i;
+    cell.innerHTML = '<span class="bit">0</span><span class="idx">' + i + '</span>';
+    ffGrid.appendChild(cell);
+  }
+
+  function floatToBinary(val){
+    const f32 = new Float32Array(1);
+    f32[0] = val;
+    const u32 = new Uint32Array(f32.buffer)[0];
+
+    const sign = (u32 >> 31) & 1;
+    const exp = (u32 >> 23) & 0xFF;
+    const mant = u32 & 0x7FFFFF;
+
+    return { u32, sign, exp, mant };
+  }
+
+  function update(){
+    const v = parseFloat(numInput.value);
+    if(isNaN(v)){
+      mathPreview.innerHTML = '<span style="color:var(--red)">Please enter a valid numeric value.</span>';
+      return;
+    }
+
+    const { u32, sign, exp, mant } = floatToBinary(v);
+
+    // Update cells
+    for(let i=31; i>=0; i--){
+      const bit = (u32 >> i) & 1;
+      const cell = document.getElementById('ff-' + i);
+      cell.querySelector('.bit').innerText = bit;
+    }
+
+    hexDisp.innerText = '0x' + u32.toString(16).toUpperCase().padStart(8, '0');
+
+    const realExp = exp === 0 ? -126 : exp - 127;
+    const mantBinary = mant.toString(2).padStart(23, '0');
+
+    // Build math breakdown
+    let formula = '';
+    if(v === 0){
+      formula = '<b>Special Case: Zero</b><br>Sign = ' + sign + ', Exponent = 0 (all zeros), Mantissa = 0 (all zeros).';
+      dotDesc.innerHTML = 'For <b>0.0</b>, the hardware detects Exponent=0 and Mantissa=0 as an exceptional state and does not restore the hidden 1.';
+    } else {
+      formula = '<b>Mathematical Identity:</b><br>' +
+        '(-1)<sup><span style="color:#fb923c">' + sign + '</span></sup> &times; ' +
+        '(1.<span style="color:#2dd4bf">' + mantBinary.substring(0, 8) + '...</span>)<sub>2</sub> &times; ' +
+        '2<sup><span style="color:#38bdf8">' + exp + ' - 127</span> (' + realExp + ')</sup><br>' +
+        '= ' + (sign ? '-' : '+') + '1.' + mantBinary + ' &times; 2<sup>' + realExp + '</sup>';
+      
+      dotDesc.innerHTML = 'Notice that <b>none of the 32 flip-flops store a dot!</b> The ALU knows the mathematical value is <code>1.<span style="color:var(--teal)">' + mantBinary.substring(0, 6) + '...</span> &times; 2<sup>' + realExp + '</sup></code>. The virtual dot is fixed to the right of the invisible hidden "1", and the exponent (' + realExp + ') tells the hardware barrel shifter to move the point by ' + Math.abs(realExp) + ' wires ' + (realExp >= 0 ? 'right' : 'left') + '.';
+    }
+
+    mathPreview.innerHTML = formula;
+  }
+
+  numInput.addEventListener('input', update);
+
+  pills.forEach(p => {
+    p.addEventListener('click', function(){
+      pills.forEach(x => x.classList.remove('active'));
+      this.classList.add('active');
+      numInput.value = this.getAttribute('data-val');
+      update();
+    });
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>
