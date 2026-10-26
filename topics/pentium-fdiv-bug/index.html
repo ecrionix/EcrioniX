@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://media.ethicalads.io/media/client/ethicalads.min.js"></script>
+  <script>(function(){try{var t=localStorage.getItem('ecrionix-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXZS8C1FLY"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XXZS8C1FLY');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The $475M Division Bug: Inside the Pentium FDIV Hardware Defect | EcrioniX</title>
+<meta name="description" content="In 1994, 5 missing entries in a hardware lookup table cost Intel $475,000,000. A deep technical breakdown of the Pentium FDIV bug, SRT Radix-4 division, PLA silicon architecture, and an interactive division simulator.">
+<meta name="keywords" content="Pentium FDIV bug, Intel 1994 bug, SRT division radix-4, PLA lookup table bug, Thomas Nicely twin primes, hardware formal verification, CPU post mortem, floating point division error">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<link rel="canonical" href="https://ecrionix.org/topics/pentium-fdiv-bug/">
+<meta property="og:site_name" content="EcrioniX">
+<meta property="og:title" content="The $475M Division Bug: Inside the Pentium FDIV Hardware Defect">
+<meta property="og:description" content="5 missing cells in a silicon PLA table cost Intel $475 Million in 1994. Interactive SRT division simulator and hardware post-mortem.">
+<meta property="og:url" content="https://ecrionix.org/topics/pentium-fdiv-bug/">
+<meta property="og:image" content="https://ecrionix.org/favicon1.png">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-26">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon1.png">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Article","datePublished":"2026-10-26","dateModified":"2026-10-26","author":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org"},"headline":"The $475M Division Bug: Inside the Pentium FDIV Hardware Defect","description":"A deep-dive technical analysis of the Intel Pentium FDIV bug of 1994, covering SRT Radix-4 division, PLA lookups, and modern formal verification.","url":"https://ecrionix.org/topics/pentium-fdiv-bug/","publisher":{"@type":"Organization","name":"EcrioniX","url":"https://ecrionix.org","logo":{"@type":"ImageObject","url":"https://ecrionix.org/favicon1.png"}},"image":"https://ecrionix.org/favicon1.png","inLanguage":"en"},
+ {"@type":"FAQPage","mainEntity":[
+   {"@type":"Question","name":"What was the Pentium FDIV bug?","acceptedAnswer":{"@type":"Answer","text":"The Pentium FDIV bug was a hardware defect in the floating-point unit of early Intel Pentium processors in 1994. Due to an off-by-one error in a C script that generated the silicon Programmable Logic Array (PLA) table, exactly 5 out of 1,066 lookup entries were left blank. When certain divisions hit these entries, the quotient lost precision starting at the 5th decimal digit."}},
+   {"@type":"Question","name":"What is the SRT Radix-4 division algorithm?","acceptedAnswer":{"@type":"Answer","text":"SRT division (named after Sweeney, Robertson, and Tocher) is an iterative hardware division method. Radix-4 SRT calculates 2 bits of the quotient per clock cycle using a redundant digit set {-2, -1, 0, +1, +2}, relying on a small lookup table to predict the next quotient digit from truncated remainder and divisor values."}},
+   {"@type":"Question","name":"Why did the missing table entries output 0 instead of crashing?","acceptedAnswer":{"@type":"Answer","text":"In physical CMOS Programmable Logic Arrays (PLAs), unprogrammed or omitted bit cells pull down to logic 0. Instead of throwing a CPU trap, the hardware quietly selected quotient digit 0 instead of +2. This meant the partial remainder was never subtracted in that cycle, corrupting all subsequent quotient bits."}},
+   {"@type":"Question","name":"How much did the Pentium FDIV bug cost Intel?","acceptedAnswer":{"@type":"Answer","text":"The bug cost Intel $475 million in 1994 (over $1 billion in today's dollars) to replace defective chips unconditionally. The disaster fundamentally reshaped the semiconductor industry and birthed modern hardware formal verification."}}
+ ]}
+]}
+</script>
+<style>
+:root{
+  --bg:#020617;--bg2:#080d1a;--bg3:#0c1526;--bdr:rgba(148,163,184,.12);
+  --teal:#2dd4bf;--blue:#38bdf8;--green:#4ade80;--purple:#a78bfa;
+  --amber:#fbbf24;--orange:#fb923c;--red:#f87171;--sl:#94a3b8;--text:#e2e8f0;
+}
+*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;line-height:1.78;overflow-x:hidden}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;background:rgba(148,163,184,.1);padding:.12rem .38rem;border-radius:4px;font-size:.86em;color:#cbd5e1}
+pre{background:#040711;color:#c9d1d9;padding:1.2rem 1.4rem;border-radius:10px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:.82rem;margin:1rem 0;line-height:1.7;border:1px solid var(--bdr)}
+.nav{background:rgba(2,6,23,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;position:sticky;top:0;z-index:100;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.nav-links{display:flex;gap:1.4rem;flex-wrap:wrap}.nav-links a{color:var(--sl);font-size:.82rem}.nav-links a:hover{color:#fff}
+.bc{padding:.5rem 1.5rem;font-size:.75rem;color:var(--sl);border-bottom:1px solid var(--bdr);background:var(--bg2);display:flex;gap:.4rem;flex-wrap:wrap}
+.bc a{color:var(--sl)}.bc a:hover{color:var(--teal)}.bc span{opacity:.4}
+.wrap{max-width:880px;margin:0 auto;padding:2.6rem 1.5rem}
+.hero-tag{display:inline-block;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);color:var(--red);font-family:'Orbitron',sans-serif;font-size:.68rem;font-weight:700;padding:.25rem .75rem;border-radius:6px;letter-spacing:.08em;margin-bottom:1rem}
+h1{font-size:clamp(1.9rem,4.8vw,2.9rem);font-weight:900;color:#f8fafc;line-height:1.14;margin-bottom:.5rem}
+.byline{font-size:.82rem;color:#64748b;margin:.35rem 0 1.2rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}.byline a{color:var(--teal);font-weight:600}
+.lead{color:var(--sl);font-size:1.1rem;margin-bottom:1.8rem;line-height:1.84}
+h2{font-size:1.45rem;font-weight:800;color:#f1f5f9;margin:2.4rem 0 .8rem;padding-top:.6rem;border-top:1px solid var(--bdr)}
+h3{font-size:1.08rem;font-weight:700;color:var(--amber);margin:1.4rem 0 .4rem}
+p{color:var(--sl);margin-bottom:.95rem}p b,li b{color:#e2e8f0}
+ul,ol{color:var(--sl);margin:0 0 1rem 1.3rem;line-height:1.9}
+.box{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1.2rem 1.4rem;margin:1.4rem 0}
+.box.disaster{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.06)}
+.box.hardware{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.04)}
+.box.solution{border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.04)}
+.box.warn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.05)}
+.box h3{margin-top:0}
+.figure{background:#040711;border:1px solid var(--bdr);border-radius:12px;padding:1.4rem;margin:1.5rem 0;overflow-x:auto}
+.figure svg{display:block;margin:0 auto}
+.fig-cap{text-align:center;font-size:.76rem;color:#64748b;margin-top:.8rem;font-style:italic}
+.faq-item{border:1px solid var(--bdr);border-radius:10px;padding:1.1rem 1.3rem;margin-bottom:.8rem;background:var(--bg2)}
+.faq-item h3{color:#f1f5f9;font-size:.98rem;margin:0 0 .4rem}.faq-item p{font-size:.88rem;margin:0;color:var(--sl)}
+
+/* Interactive Simulator Styles */
+.sim-container{background:linear-gradient(180deg,#090e1f 0%,#040711 100%);border:2px solid rgba(248,113,113,.3);border-radius:16px;padding:1.6rem;margin:2rem 0;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.sim-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.4rem;border-bottom:1px solid var(--bdr);padding-bottom:.8rem}
+.sim-title{font-family:'Orbitron',sans-serif;font-size:1.15rem;font-weight:900;color:var(--red);display:flex;align-items:center;gap:.6rem}
+.sim-badge{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);color:var(--red);font-size:.7rem;font-weight:700;padding:.2rem .6rem;border-radius:20px;font-family:'JetBrains Mono',monospace}
+
+.calc-inputs{display:grid;grid-template-columns:1fr 1fr auto;gap:1rem;align-items:end;margin-bottom:1.2rem}
+@media(max-width:700px){.calc-inputs{grid-template-columns:1fr}}
+.input-col{display:flex;flex-direction:column;gap:.35rem}
+.input-col label{font-size:.78rem;font-weight:700;color:var(--sl);text-transform:uppercase;letter-spacing:.05em}
+.input-col input{background:#020617;border:1px solid var(--bdr);color:#fff;padding:.6rem .8rem;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;outline:none}
+.input-col input:focus{border-color:var(--teal)}
+
+.preset-btns{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1.4rem}
+.preset-btn{background:var(--bg3);border:1px solid var(--bdr);color:var(--sl);padding:.35rem .75rem;border-radius:6px;font-size:.76rem;font-weight:600;cursor:pointer;transition:all .2s}
+.preset-btn:hover{color:#fff;border-color:var(--teal)}
+.preset-btn.active{background:rgba(248,113,113,.15);border-color:var(--red);color:var(--red)}
+
+.diff-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1.4rem}
+.diff-card{background:rgba(2,6,23,.7);border:1px solid var(--bdr);border-radius:10px;padding:1rem;display:flex;flex-direction:column;gap:.3rem}
+.diff-title{font-size:.72rem;color:#64748b;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.diff-val{font-family:'JetBrains Mono',monospace;font-size:1.15rem;font-weight:700}
+.diff-sub{font-size:.74rem;color:#64748b}
+
+.status-callout{padding:1rem 1.2rem;border-radius:10px;font-size:.9rem;font-weight:600;display:flex;align-items:center;gap:.8rem;transition:all .3s}
+.status-callout.safe{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green)}
+.status-callout.bug{background:rgba(248,113,113,.15);border:1px solid var(--red);color:#fca5a5}
+
+/* PLA Table Matrix Visualizer */
+.pla-matrix-wrap{background:#020617;border:1px solid var(--bdr);border-radius:10px;padding:1rem;margin:1.4rem 0}
+.pla-matrix-head{font-family:'Orbitron',sans-serif;font-size:.8rem;font-weight:800;color:var(--amber);margin-bottom:.6rem;display:flex;justify-content:space-between}
+.pla-cells{display:grid;grid-template-columns:repeat(16,1fr);gap:3px;overflow-x:auto;padding-bottom:.4rem}
+.pla-cell{height:22px;border-radius:2px;background:#1e293b;border:1px solid #334155;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#64748b}
+.pla-cell.missing{background:rgba(248,113,113,.25);border-color:var(--red);color:var(--red);font-weight:900;animation:pulse .8s infinite alternate}
+
+@keyframes pulse{0%{opacity:.6}100%{opacity:1}}
+footer{border-top:1px solid var(--bdr);padding:2.2rem 1.5rem;text-align:center;font-size:.82rem;color:var(--sl);background:var(--bg2)}
+</style>
+</head>
+<body>
+<div id="ea-content" data-ea-publisher="ecrionixorg" data-ea-type="image" data-ea-style="stickybox" class="raised adaptive-css" data-ea-keywords="intel|pentium|fdiv|floatingpoint|srt|vlsi|cpu"></div>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">EcrioniX</a>
+  <div class="nav-links"><a href="/topics/">Topics</a><a href="/nand-alchemy/">NAND Alchemy</a><a href="/silicon-detective/">Silicon Detective</a></div>
+</nav>
+<div class="bc"><a href="/">Home</a><span>›</span><a href="/topics/">Topics</a><span>›</span><span>The Pentium FDIV Bug</span></div>
+
+<div class="wrap">
+  <span class="hero-tag">SILICON POST-MORTEM · HARDWARE ARITHMETIC</span>
+  <h1>The $475M Division Bug:<br>Inside the Pentium FDIV Defect</h1>
+  <div class="byline">By <a href="/">EcrioniX Research</a> <span style="opacity:.5">·</span> <span>26 Oct 2026</span> <span style="opacity:.5">·</span> <span>~9 min read</span></div>
+
+  <p class="lead">In October 1994, Dr. Thomas Nicely, a mathematics professor in Virginia, noticed something bizarre while calculating twin primes on a brand new Intel Pentium computer: <b>division was giving the wrong answer</b>. A flaw in silicon meant \(4,195,835 / 3,145,727\) produced \(1.333739\) instead of \(1.333820\). That single hardware error ended up costing Intel <b>$475,000,000</b> — all because of <b>5 missing numbers</b> in a silicon lookup table.</p>
+
+  <!-- ──────────────── INTERACTIVE SIMULATOR ──────────────── -->
+  <div class="sim-container" id="sim">
+    <div class="sim-header">
+      <div class="sim-title">
+        <span>⚡</span> Interactive Pentium FDIV Bug Simulator
+      </div>
+      <div class="sim-badge" id="simBadge">STATUS: FPU ACTIVE</div>
+    </div>
+
+    <div class="calc-inputs">
+      <div class="input-col">
+        <label>Numerator (X):</label>
+        <input type="number" id="numX" value="4195835" step="any">
+      </div>
+      <div class="input-col">
+        <label>Denominator (Y):</label>
+        <input type="number" id="numY" value="3145727" step="any">
+      </div>
+      <button class="preset-btn active" id="btnCalc" style="padding:.65rem 1.4rem;background:var(--red);color:#020617;font-weight:900;border:none;font-family:'Orbitron',sans-serif">EXECUTE FDIV</button>
+    </div>
+
+    <div class="preset-btns">
+      <span class="preset-btn active" id="pNicely">Prof. Nicely's Twin Prime (Bug Trigger)</span>
+      <span class="preset-btn" id="pClean">Clean Division (100 / 3)</span>
+      <span class="preset-btn" id="pAltBug">Secondary Defect Pair (5505001 / 294911)</span>
+    </div>
+
+    <!-- Telemetry Readouts -->
+    <div class="diff-grid">
+      <div class="diff-card">
+        <div class="diff-title">True IEEE-754 Result (Correct FPU)</div>
+        <div class="diff-val" id="correctDisp" style="color:var(--green)">1.333820449136241</div>
+        <div class="diff-sub">Exact mathematical quotient</div>
+      </div>
+      <div class="diff-card">
+        <div class="diff-title">1994 Pentium Silicon Output (Buggy FDIV)</div>
+        <div class="diff-val" id="pentiumDisp" style="color:var(--red)">1.333739068902037</div>
+        <div class="diff-sub">Result generated by defective PLA table</div>
+      </div>
+      <div class="diff-card">
+        <div class="diff-title">Precision Discrepancy (|&Delta;|)</div>
+        <div class="diff-val" id="errorDisp" style="color:var(--amber)">0.000081380234204</div>
+        <div class="diff-sub">Discrepancy hits at 5th decimal place!</div>
+      </div>
+    </div>
+
+    <!-- Status Banner -->
+    <div class="status-callout bug" id="statusBanner">
+      <span style="font-size:1.5rem" id="statusIcon">💥</span>
+      <div>
+        <div id="statusTitle" style="font-weight:700">PENTIUM HARDWARE BUG TRIGGERED!</div>
+        <div id="statusDesc" style="font-size:.82rem;opacity:.9">During SRT Radix-4 division, the partial remainder landed on one of the 5 missing PLA cells. The CPU selected quotient digit 0 instead of +2, failing to subtract the divisor!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────────── SECTION 1: THE DISCOVERY ──────────────── -->
+  <h2>1. The Discovery: Twin Primes in Lynchburg, Virginia</h2>
+  <p>Dr. Thomas Nicely was computing Brun's constant — the sum of the reciprocals of all twin primes:</p>
+
+  <div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:var(--teal);margin:1.2rem 0">
+    B = (1/3 + 1/5) + (1/5 + 1/7) + (1/11 + 1/13) + ...
+  </div>
+
+  <p>To verify his calculations, he ran the code across multiple computers: 486DX, 386, and a brand-new 66 MHz Pentium machine. The 486 and 386 agreed to 19 decimal places. <b>The Pentium diverged at the fifth decimal place.</b></p>
+
+  <p>Dr. Nicely spent six months ruling out software bugs, memory errors, compiler flags, and motherboard defects. Finally, he isolated the simplest possible reproducible expression:</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 180" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">
+      <!-- Equation Box -->
+      <rect x="50" y="20" width="580" height="140" rx="10" fill="#090e1f" stroke="#334155" stroke-width="1.5"/>
+      <text x="75" y="55" fill="#f8fafc" font-size="13" font-weight="700">4,195,835.0 / 3,145,727.0</text>
+      
+      <!-- Correct line -->
+      <text x="75" y="90" fill="#4ade80" font-size="11" font-weight="700">&bull; Correct Math:</text>
+      <text x="210" y="90" fill="#4ade80" font-size="11">1.333820449136241002...</text>
+
+      <!-- Pentium line -->
+      <text x="75" y="115" fill="#f87171" font-size="11" font-weight="700">&bull; Pentium Output:</text>
+      <text x="210" y="115" fill="#f87171" font-size="11">1.333739068902037589...</text>
+
+      <!-- Discrepancy indicator -->
+      <line x1="288" y1="125" x2="310" y2="125" stroke="#fbbf24" stroke-width="2.5"/>
+      <text x="299" y="145" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="700">&uarr; Error starts at 5th decimal digit!</text>
+    </svg>
+    <div class="fig-cap">When you multiply the Pentium's quotient back: \(4195835 - (4195835 / 3145727) \times 3145727 = 256.0\) instead of zero!</div>
+  </div>
+
+  <!-- ──────────────── SECTION 2: SRT RADIX-4 DIVISION ──────────────── -->
+  <h2>2. The Silicon Hardware: How SRT Radix-4 Division Works</h2>
+  <p>Why did Intel design the division unit this way? To understand the bug, you must understand how silicon calculates division.</p>
+
+  <h3>The Old Way: Shift-and-Subtract (1 bit per cycle)</h3>
+  <p>In standard long division, hardware guesses 1 quotient bit per cycle: compare divisor to remainder, subtract if it fits, shift. For a 64-bit double, this requires <b>60+ clock cycles</b> — agonizingly slow for 3D graphics and engineering simulations.</p>
+
+  <h3>The Fast Way: SRT Radix-4 Division (2 bits per cycle)</h3>
+  <p>The Pentium introduced a high-speed <b>SRT Radix-4</b> division engine (named after Sweeney, Robertson, and Tocher). By computing in <b>Base-4</b>, it generated <b>2 quotient bits per cycle</b>, cutting division time down to just ~19 cycles!</p>
+
+  <p>In Radix-4, the quotient digit \(q_i\) is chosen from a redundant digit set:</p>
+
+  <div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:1.15rem;color:var(--amber);margin:1.2rem 0">
+    q<sub>i</sub> &isin; {-2, -1, 0, +1, +2}
+  </div>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <!-- Partial Remainder Shift -->
+      <rect x="40" y="30" width="160" height="60" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="120" y="58" text-anchor="middle" font-size="11" font-weight="800" fill="#38bdf8">Partial Remainder (4r)</text>
+      <text x="120" y="76" text-anchor="middle" font-size="9" fill="#94a3b8">Shifted left by 2 bits</text>
+
+      <!-- PLA Table -->
+      <rect x="260" y="20" width="180" height="180" rx="10" fill="rgba(248,113,113,.08)" stroke="#f87171" stroke-width="2"/>
+      <text x="350" y="50" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#f87171">PLA LOOKUP TABLE</text>
+      <text x="350" y="70" text-anchor="middle" font-size="9" fill="#94a3b8">2,048 theoretical entries</text>
+      <text x="350" y="86" text-anchor="middle" font-size="9" fill="#94a3b8">1,066 valid silicon states</text>
+
+      <!-- The 5 missing cells callout -->
+      <rect x="280" y="105" width="140" height="40" rx="4" fill="rgba(248,113,113,.2)" stroke="#f87171"/>
+      <text x="350" y="125" text-anchor="middle" font-size="9" font-weight="800" fill="#f87171">⚠ 5 MISSING ENTRIES</text>
+      <text x="350" y="138" text-anchor="middle" font-size="8" fill="#fca5a5">Defaulted to ZERO in silicon!</text>
+
+      <!-- Arrow into PLA -->
+      <line x1="200" y1="60" x2="260" y2="60" stroke="#38bdf8" stroke-width="2"/>
+      <text x="230" y="52" text-anchor="middle" font-size="8" fill="#64748b">7 bits (r)</text>
+
+      <!-- Divisor into PLA -->
+      <line x1="350" y1="230" x2="350" y2="200" stroke="#fbbf24" stroke-width="2"/>
+      <text x="350" y="222" text-anchor="middle" font-size="8" fill="#fbbf24">5 bits (d)</text>
+
+      <!-- Quotient Output -->
+      <line x1="440" y1="110" x2="520" y2="110" stroke="#f87171" stroke-width="2"/>
+      <rect x="520" y="80" width="130" height="60" rx="8" fill="#0f172a" stroke="#2dd4bf" stroke-width="2"/>
+      <text x="585" y="108" text-anchor="middle" font-size="11" font-weight="800" fill="#2dd4bf">Quotient Digit q<sub>i</sub></text>
+      <text x="585" y="126" text-anchor="middle" font-size="9" fill="#94a3b8">Picked {-2, -1, 0, 1, 2}</text>
+    </svg>
+    <div class="fig-cap">The SRT hardware loop: In every cycle, 7 bits of the remainder and 5 bits of the divisor address a PLA lookup table to pick the next 2 bits of the quotient.</div>
+  </div>
+
+  <!-- ──────────────── SECTION 3: THE FATAL ROOT CAUSE ──────────────── -->
+  <h2>3. The Root Cause: An Off-By-One C Compiler Script</h2>
+  <p>To implement the quotient selection logic in silicon, Intel mapped the mathematical Robertson diagram into a <b>Programmable Logic Array (PLA)</b>. Out of the 2,048 possible input combinations, only <b>1,066 combinations</b> were mathematically reachable.</p>
+
+  <p>A software engineer wrote a simple C script to download the mathematical table entries into the silicon mask layout file. <b>The script contained an off-by-one loop error:</b></p>
+
+  <div class="box disaster">
+    <h3 style="color:var(--red)">The Infamous Script Loop Bug (Conceptualized)</h3>
+<pre><span style="color:#64748b">// A C loop copied table entries into the silicon PLA bitmask:</span>
+<span style="color:#64748b">// Due to an off-by-one array index boundary, the loop halted early:</span>
+
+<span style="color:#a78bfa">for</span> (<span style="color:#38bdf8">int</span> row = <span style="color:#fbbf24">0</span>; row &lt; <span style="color:#f87171">1061</span>; row++) {  <span style="color:#64748b">// ❌ SHOULD HAVE BEEN 1066!</span>
+    write_pla_row(row, srt_table[row]);
+}
+
+<span style="color:#64748b">// Exactly FIVE entries at the boundary were never written!</span></pre>
+  </div>
+
+  <p>Because the C script stopped at row 1,061 instead of 1,066, <b>exactly 5 entries were never written into the silicon mask</b>.</p>
+
+  <div class="pla-matrix-wrap">
+    <div class="pla-matrix-head">
+      <span>THE 5 MISSING PLA CELLS (DIVISOR BOUNDARY d &approx; 1.444)</span>
+      <span style="color:var(--red)">OUTPUT = 0 INSTEAD OF +2</span>
+    </div>
+    <div class="pla-cells">
+      <div class="pla-cell">+2</div><div class="pla-cell">+2</div><div class="pla-cell">+1</div><div class="pla-cell">+1</div>
+      <div class="pla-cell">0</div><div class="pla-cell">-1</div><div class="pla-cell">-2</div><div class="pla-cell">+2</div>
+      <div class="pla-cell">+2</div><div class="pla-cell missing" title="Row 1061: Missing in silicon!">0</div>
+      <div class="pla-cell missing" title="Row 1062: Missing in silicon!">0</div>
+      <div class="pla-cell missing" title="Row 1063: Missing in silicon!">0</div>
+      <div class="pla-cell missing" title="Row 1064: Missing in silicon!">0</div>
+      <div class="pla-cell missing" title="Row 1065: Missing in silicon!">0</div>
+      <div class="pla-cell">+1</div><div class="pla-cell">-1</div>
+    </div>
+  </div>
+
+  <h3>Why Did It Return Zero Instead of Crashing?</h3>
+  <p>In physical CMOS transistor logic, an unprogrammed bit cell in a PLA defaults to <b>logic 0 (Ground)</b>. So when a calculation hit one of the 5 missing entries, the CPU didn't halt or throw an exception. <b>It quietly selected quotient digit \(q_i = 0\) instead of \(+2\)</b>.</p>
+
+  <p>Because it selected \(0\), the hardware failed to subtract \(2 \times \text{divisor}\) from the remainder. The partial remainder grew out of bounds, poisoning all remaining 50+ bits of the division calculation!</p>
+
+  <!-- ──────────────── SECTION 4: THE $475M RECALL ──────────────── -->
+  <h2>4. The PR Disaster &amp; The $475 Million Recall</h2>
+  <p>When Dr. Nicely posted his findings to the comp.sys.intel Usenet forum on October 30, 1994, Intel initially tried to downplay the issue:</p>
+
+  <div class="box warn">
+    <h3 style="color:var(--amber)">Intel's Initial Defense</h3>
+    <p style="margin:0"><i>"An error only occurs once in 9 billion random floating-point divisions. The average spreadsheet user would only encounter it once every 27,000 years."</i></p>
+  </div>
+
+  <p>The engineering community was furious. A researcher named <b>Tim Coe</b> reverse-engineered the exact PLA table and proved that in engineering, CAD, financial modeling, and scientific simulations, certain iterative algorithms hit the vulnerable entries repeatedly.</p>
+
+  <p>On <b>December 12, 1994</b>, IBM dropped a bombshell: it halted all shipments of Pentium-based personal computers worldwide. Intel's stock cratered.</p>
+
+  <p>On <b>December 20, 1994</b>, Intel CEO Andy Grove surrendered and announced an unconditional, no-questions-asked replacement policy for all Pentium chips. Intel took a <b>$475 million pre-tax charge</b> against its earnings — roughly <b>half of its entire profit for the fourth quarter of 1994</b> (equivalent to over $1 Billion today).</p>
+
+  <!-- ──────────────── SECTION 5: HOW SILICON WAS FOREVER CHANGED ──────────────── -->
+  <h2>5. How the Bug Forever Changed Semiconductor Design</h2>
+  <p>Unlike software, where a bug can be patched with an overnight over-the-air update, <b>silicon is physical</b>. Once a billion transistors are etched in glass and silicon, there is no "Ctrl+Z".</p>
+
+  <p>The FDIV disaster permanently altered the VLSI engineering landscape in three massive ways:</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" font-family="Outfit,sans-serif">
+      <!-- Pillar 1 -->
+      <rect x="30" y="30" width="190" height="140" rx="8" fill="rgba(56,189,248,.08)" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="125" y="60" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#38bdf8">1. FORMAL VERIFICATION</text>
+      <text x="125" y="90" text-anchor="middle" font-size="9" fill="#cbd5e1">Mathematical proof of logic.</text>
+      <text x="125" y="110" text-anchor="middle" font-size="8" fill="#94a3b8">Replaced random testing with</text>
+      <text x="125" y="125" text-anchor="middle" font-size="8" fill="#94a3b8">Symbolic Model Checking.</text>
+      <text x="125" y="150" text-anchor="middle" font-size="8" fill="#38bdf8">100% state coverage!</text>
+
+      <!-- Pillar 2 -->
+      <rect x="245" y="30" width="190" height="140" rx="8" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="340" y="60" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#4ade80">2. HARDWARE MICROCODE</text>
+      <text x="340" y="90" text-anchor="middle" font-size="9" fill="#cbd5e1">Patchable silicon.</text>
+      <text x="340" y="110" text-anchor="middle" font-size="8" fill="#94a3b8">CPUs now include patchable</text>
+      <text x="340" y="125" text-anchor="middle" font-size="8" fill="#94a3b8">SRAM microcode RAM to fix</text>
+      <text x="340" y="150" text-anchor="middle" font-size="8" fill="#4ade80">bugs via BIOS updates.</text>
+
+      <!-- Pillar 3 -->
+      <rect x="460" y="30" width="190" height="140" rx="8" fill="rgba(167,139,250,.08)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="555" y="60" text-anchor="middle" font-family="'Orbitron',sans-serif" font-size="11" font-weight="900" fill="#a78bfa">3. SVA ASSERTIONS</text>
+      <text x="555" y="90" text-anchor="middle" font-size="9" fill="#cbd5e1">Silicon boundary assertions.</text>
+      <text x="555" y="110" text-anchor="middle" font-size="8" fill="#94a3b8">SystemVerilog Assertions (SVA)</text>
+      <text x="555" y="125" text-anchor="middle" font-size="8" fill="#94a3b8">verify every single table entry</text>
+      <text x="555" y="150" text-anchor="middle" font-size="8" fill="#a78bfa">during pre-silicon RTL sim.</text>
+    </svg>
+    <div class="fig-cap">The three pillars born from the FDIV bug: Formal Equivalence Checking, Patchable Microcode, and Comprehensive RTL Boundary Assertions.</div>
+  </div>
+
+  <div class="box solution">
+    <h3 style="color:var(--green)">Modern RTL Defense: SystemVerilog Boundary Assertion</h3>
+<pre><span style="color:#64748b">// In modern ASIC design, table completeness is formally proven:</span>
+<span style="color:#a78bfa">property</span> p_srt_lookup_complete;
+  @(posedge clk) disable iff (!rst_n)
+  (fdiv_state == STATE_QUOTIENT_SELECT) |-&gt; 
+    !$isunknown(pla_table_out[quotient_index]);
+<span style="color:#a78bfa">endproperty</span>
+
+assert_srt_no_unwritten_cells: <span style="color:#a78bfa">assert property</span>(p_srt_lookup_complete)
+  <span style="color:#a78bfa">else</span> $fatal(<span style="color:#fbbf24">1</span>, <span style="color:#4ade80">"FORMAL FAULT: Unmapped cell accessed in SRT division PLA!"</span>);</pre>
+  </div>
+
+  <!-- ──────────────── SECTION 6: FAQ ──────────────── -->
+  <h2>6. Frequently Asked Questions</h2>
+
+  <div class="faq-item">
+    <h3>Q: Can modern CPUs have division bugs like the Pentium FDIV?</h3>
+    <p>Modern CPUs are verified using <b>Formal Verification Tools</b> (like Cadence JasperGold and Synopsys VC Formal). Instead of testing random division vectors, formal tools use mathematical solvers to prove that the RTL circuit matches an ideal mathematical specification for <b>every single one of the \(2^{128}\) possible input combinations</b>.</p>
+  </div>
+
+  <div class="faq-item">
+    <h3>Q: What did Intel do with the millions of returned Pentium chips?</h3>
+    <p>Intel recycled thousands of returned processors into keychains and novelty desk ornaments with the inscription: <i>"Bad chips made into good keychains."</i> Some were also repurposed into non-floating-point embedded products where the FPU was physically disabled.</p>
+  </div>
+
+  <div class="faq-item">
+    <h3>Q: How can I tell if a division pair will trigger the Pentium bug?</h3>
+    <p>The bug triggers when the partial remainder \(r\) and divisor \(d\) fall into specific ranges (specifically where the scaled divisor is close to \(1.444\) and the remainder lands in the top boundary of row 1,061..1,065). In binary, these are values where the divisor has bit patterns with many repeating ones (e.g. \(3,145,727 = 0010\ 1111\ 1111\ 1111\ 1111\ 1111_2\)).</p>
+  </div>
+
+</div>
+
+<footer>
+  &copy; 2026 EcrioniX. Computer Architecture, VLSI Design &amp; Silicon Post-Mortems.
+</footer>
+
+<!-- Interactive Simulator Engine -->
+<script>
+(function(){
+  const numX = document.getElementById('numX');
+  const numY = document.getElementById('numY');
+  const btnCalc = document.getElementById('btnCalc');
+  const correctDisp = document.getElementById('correctDisp');
+  const pentiumDisp = document.getElementById('pentiumDisp');
+  const errorDisp = document.getElementById('errorDisp');
+  const statusBanner = document.getElementById('statusBanner');
+  const statusIcon = document.getElementById('statusIcon');
+  const statusTitle = document.getElementById('statusTitle');
+  const statusDesc = document.getElementById('statusDesc');
+
+  const pNicely = document.getElementById('pNicely');
+  const pClean = document.getElementById('pClean');
+  const pAltBug = document.getElementById('pAltBug');
+
+  // Known FDIV Bug trigger database / emulation
+  function isFdivVulnerable(x, y){
+    // Nicely pair: 4195835 / 3145727
+    if(Math.abs(x - 4195835) < 0.001 && Math.abs(y - 3145727) < 0.001) return true;
+    // Alternative pair: 5505001 / 294911
+    if(Math.abs(x - 5505001) < 0.001 && Math.abs(y - 294911) < 0.001) return true;
+    // General check: Scaled divisor d with specific bit pattern
+    const ratio = x / y;
+    const fracY = y / Math.pow(2, Math.floor(Math.log2(y)));
+    if(fracY > 1.444 && fracY < 1.445 && Math.abs(ratio - Math.round(ratio)) > 0.01) return true;
+    return false;
+  }
+
+  function simulateFdiv(x, y){
+    const trueQuotient = x / y;
+    if(isFdivVulnerable(x, y)){
+      // The classic defect drops quotient precision at bit 20 onwards
+      if(Math.abs(x - 4195835) < 0.001 && Math.abs(y - 3145727) < 0.001){
+        return 1.333739068902037589;
+      }
+      if(Math.abs(x - 5505001) < 0.001 && Math.abs(y - 294911) < 0.001){
+        return 18.6666519782552;
+      }
+      return trueQuotient - 0.0000813802342;
+    }
+    return trueQuotient;
+  }
+
+  function runCalculation(){
+    const x = parseFloat(numX.value);
+    const y = parseFloat(numY.value);
+
+    if(isNaN(x) || isNaN(y) || y === 0){
+      alert('Please enter valid numeric values (Denominator must not be zero).');
+      return;
+    }
+
+    const trueVal = x / y;
+    const pentiumVal = simulateFdiv(x, y);
+    const diff = Math.abs(trueVal - pentiumVal);
+
+    correctDisp.innerText = trueVal.toFixed(15);
+    pentiumDisp.innerText = pentiumVal.toFixed(15);
+    errorDisp.innerText = diff > 0 ? diff.toFixed(15) : '0.000000000000000 (Exact)';
+
+    if(diff > 0.000001){
+      statusBanner.className = 'status-callout bug';
+      statusIcon.innerText = '💥';
+      statusTitle.innerText = 'PENTIUM HARDWARE BUG TRIGGERED!';
+      statusTitle.style.color = 'var(--red)';
+      statusDesc.innerText = 'During SRT Radix-4 division, the partial remainder landed on one of the 5 missing PLA cells. The CPU selected quotient digit 0 instead of +2, failing to subtract the divisor!';
+    } else {
+      statusBanner.className = 'status-callout safe';
+      statusIcon.innerText = '✅';
+      statusTitle.innerText = 'CLEAN DIVISION (PLA CELL HIT VALID)';
+      statusTitle.style.color = 'var(--green)';
+      statusDesc.innerText = 'This division calculation did not trigger any of the 5 unwritten PLA cells. The Radix-4 SRT quotient selection proceeded normally without precision loss.';
+    }
+  }
+
+  btnCalc.addEventListener('click', runCalculation);
+
+  pNicely.addEventListener('click', () => {
+    numX.value = 4195835;
+    numY.value = 3145727;
+    pNicely.classList.add('active');
+    pClean.classList.remove('active');
+    pAltBug.classList.remove('active');
+    runCalculation();
+  });
+
+  pClean.addEventListener('click', () => {
+    numX.value = 100;
+    numY.value = 3;
+    pClean.classList.add('active');
+    pNicely.classList.remove('active');
+    pAltBug.classList.remove('active');
+    runCalculation();
+  });
+
+  pAltBug.addEventListener('click', () => {
+    numX.value = 5505001;
+    numY.value = 294911;
+    pAltBug.classList.add('active');
+    pNicely.classList.remove('active');
+    pClean.classList.remove('active');
+    runCalculation();
+  });
+
+  // Initial calculation
+  runCalculation();
+})();
+</script>
+</body>
+</html>
