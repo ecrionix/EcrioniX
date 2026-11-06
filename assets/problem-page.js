@@ -501,6 +501,12 @@
     const wrap = qs('circuitDiagramWrap');
     if (!wrap) return;
     
+    if (p.circuitSvg) {
+      wrap.innerHTML = `<div class="circuit-card"><div class="circuit-title">📐 Circuit Schematic Diagram</div>${p.circuitSvg}</div>`;
+      wrap.style.display = 'block';
+      return;
+    }
+
     let svg = '';
     const slug = p.slug || '';
     if (slug.includes('and-gate')) {
@@ -522,6 +528,99 @@
       wrap.style.display = 'block';
     } else {
       wrap.style.display = 'none';
+    }
+  }
+
+  function renderTimingConstraints(p) {
+    const wrap = qs('timingWrap');
+    if (!wrap) return;
+    if (p.timingReqs || p.constraints) {
+      const esc = window.EcrioniXProblems?.esc || (s => String(s || ''));
+      wrap.innerHTML = `
+        <div class="timing-card">
+          <div class="timing-title">⚡ Timing &amp; Synthesizability Constraints</div>
+          <div class="timing-body">
+            <p><strong>Timing Contract:</strong> ${esc(p.timingReqs || 'Standard zero-delay functional timing.')}</p>
+            <p><strong>RTL Constraints:</strong> ${esc(p.constraints || 'Synthesizable Verilog-2001. No #delays.')}</p>
+          </div>
+        </div>
+      `;
+      wrap.style.display = 'block';
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
+
+  function renderHints(p) {
+    const wrap = qs('hintsWrap');
+    if (!wrap) return;
+    const hints = p.hints || [];
+    if (!hints.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+    const esc = window.EcrioniXProblems?.esc || (s => String(s || ''));
+    const titles = [
+      'Hint 1: Conceptual Direction & Primitives',
+      'Hint 2: Implementation Architecture & Approach',
+      'Hint 3: Edge Cases, Timing & Verilog Syntax'
+    ];
+    let itemsHtml = '';
+    hints.forEach((h, idx) => {
+      itemsHtml += `
+        <details class="hint-item">
+          <summary class="hint-summary"><span>${titles[idx] || ('Hint ' + (idx + 1))}</span></summary>
+          <div class="hint-body">${esc(h)}</div>
+        </details>
+      `;
+    });
+
+    wrap.innerHTML = `
+      <div class="hints-accordion">
+        <div class="hints-header">
+          <span>💡 Need Guidance? Progressive Hints (${hints.length} Levels)</span>
+        </div>
+        ${itemsHtml}
+      </div>
+    `;
+    wrap.style.display = 'block';
+  }
+
+  function renderSolutionDrawer(p) {
+    const wrap = qs('solutionWrap');
+    if (!wrap) return;
+    if (!p.referenceRtl) {
+      wrap.style.display = 'none';
+      return;
+    }
+    const esc = window.EcrioniXProblems?.esc || (s => String(s || ''));
+    wrap.innerHTML = `
+      <details class="solution-drawer">
+        <summary class="solution-summary">
+          <span>🔒 Reveal Verified Reference RTL Solution (Click to expand)</span>
+        </summary>
+        <div class="solution-content">
+          <div class="solution-warn">
+            ⚠️ <b>Self-Discovery Warning:</b> Try solving and simulating first! Viewing the verified reference implementation will bypass the real debugging experience.
+          </div>
+          <div class="solution-code-bar">
+            <span class="solution-tag">Verified Synthesizable RTL</span>
+            <button type="button" class="ide-tool-btn" id="copySolutionBtn">Copy Solution</button>
+          </div>
+          <pre class="solution-pre"><code>${esc(p.referenceRtl)}</code></pre>
+        </div>
+      </details>
+    `;
+    wrap.style.display = 'block';
+
+    const copyBtn = qs('copySolutionBtn');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(p.referenceRtl).then(() => {
+          copyBtn.textContent = '✓ Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy Solution'; }, 1800);
+        }).catch(() => {});
+      };
     }
   }
 
@@ -589,6 +688,9 @@
     if (qs('portsWrap')) qs('portsWrap').innerHTML = problem.portsHtml || '';
     
     renderCircuitDiagram(problem);
+    renderTimingConstraints(problem);
+    renderHints(problem);
+    renderSolutionDrawer(problem);
 
     const editorEl = qs('editor');
     if (editorEl) {
