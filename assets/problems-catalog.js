@@ -193,20 +193,17 @@
       "signal": [
         {
           "name": "a",
-          "wave": "0..1.1."
+          "wave": "0.0.1.1."
         },
         {
           "name": "b",
-          "wave": "0.1.0.1"
+          "wave": "0.1.0.1."
         },
         {
           "name": "out",
-          "wave": "0...1."
+          "wave": "0.0.0.1."
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
+      ]
     },
     "id": 3,
     "topic": "Digital Logic Fundamentals",
@@ -378,24 +375,21 @@
       "signal": [
         {
           "name": "sel",
-          "wave": "0..1.."
+          "wave": "0...1..."
         },
         {
           "name": "a",
-          "wave": "0.1.0."
+          "wave": "0.1.0.1."
         },
         {
           "name": "b",
-          "wave": "1.0.1."
+          "wave": "1.0.1.0."
         },
         {
           "name": "out",
-          "wave": "0.1.0.1"
+          "wave": "0.1.1.0."
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
+      ]
     },
     "id": 5,
     "topic": "Combinational Logic",
@@ -490,7 +484,7 @@
         },
         {
           "name": "in",
-          "wave": "=",
+          "wave": "=...",
           "data": [
             "4'b1010"
           ]
@@ -499,10 +493,7 @@
           "name": "out",
           "wave": "0101"
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
+      ]
     },
     "id": 6,
     "topic": "Combinational Logic",
@@ -582,24 +573,21 @@
       "signal": [
         {
           "name": "a",
-          "wave": "0..1.1."
+          "wave": "0.0.1.1."
         },
         {
           "name": "b",
-          "wave": "0.1.0.1"
+          "wave": "0.1.0.1."
         },
         {
           "name": "sum",
-          "wave": "0.1.1.0"
+          "wave": "0.1.1.0."
         },
         {
           "name": "cout",
-          "wave": "0...1."
+          "wave": "0.0.0.1."
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
+      ]
     },
     "id": 7,
     "topic": "Arithmetic Circuits",
@@ -798,11 +786,11 @@
       "signal": [
         {
           "name": "enable",
-          "wave": "01......"
+          "wave": "0.1....."
         },
         {
           "name": "in",
-          "wave": "====",
+          "wave": "=.=.=.=.",
           "data": [
             "00",
             "01",
@@ -812,18 +800,15 @@
         },
         {
           "name": "out",
-          "wave": "====",
+          "wave": "=.=.=.=.",
           "data": [
-            "0001",
+            "0000",
             "0010",
             "0100",
             "1000"
           ]
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
+      ]
     },
     "id": 9,
     "topic": "Combinational Logic",
@@ -1473,9 +1458,8 @@
         },
         {
           "name": "q",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
-            "0",
             "0",
             "1",
             "2",
@@ -1485,10 +1469,7 @@
             "6"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"130\" y=\"20\" width=\"80\" height=\"70\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"35\" y=\"35\" width=\"55\" height=\"40\" rx=\"4\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"90\" y1=\"55\" x2=\"130\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"55\" x2=\"250\" y2=\"55\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><path d=\"M 230,55 L 230,95 L 15,95 L 15,55 L 35,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"2,2\" fill=\"none\"/><text x=\"44\" y=\"60\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"145\" y=\"60\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">4-b REG</text><text x=\"256\" y=\"59\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text></svg>",
     "hints": [
@@ -1576,22 +1557,20 @@
         },
         {
           "name": "q",
-          "wave": "=x=========",
+          "wave": "=.========",
           "data": [
             "0",
-            "0",
-            "7",
-            "8",
-            "9",
-            "0",
             "1",
-            "2"
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"80\" height=\"70\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><polygon points=\"70,30 110,40 110,70 70,80\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"110\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"220\" y1=\"55\" x2=\"260\" y2=\"55\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><path d=\"M 240,55 L 240,95 L 30,95 L 30,45 L 70,45\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"2,2\" fill=\"none\"/><text x=\"80\" y=\"60\" fill=\"#fbbf24\" font-size=\"9\">q==9?</text><text x=\"155\" y=\"60\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">4-b REG</text><text x=\"265\" y=\"59\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q</text></svg>",
     "hints": [
@@ -1664,21 +1643,18 @@
         },
         {
           "name": "q",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
-            "0",
             "0",
             "1",
             "2",
+            "3",
+            "2",
             "1",
-            "0",
-            "15"
+            "0"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "id": 17,
     "topic": "Sequential Logic",
@@ -1803,20 +1779,18 @@
         },
         {
           "name": "q",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
             "0",
-            "0",
-            "0001",
-            "0010",
-            "0101",
-            "1011"
+            "1",
+            "2",
+            "4",
+            "9",
+            "3",
+            "7"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 320 80\" class=\"circuit-svg\"><rect x=\"30\" y=\"15\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"100\" y=\"15\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"170\" y=\"15\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"240\" y=\"15\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"5\" y1=\"40\" x2=\"30\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"75\" y1=\"40\" x2=\"100\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"145\" y1=\"40\" x2=\"170\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"40\" x2=\"240\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"285\" y1=\"40\" x2=\"305\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"45\" y=\"44\" fill=\"#e2e8f0\" font-size=\"10\">FF0</text><text x=\"115\" y=\"44\" fill=\"#e2e8f0\" font-size=\"10\">FF1</text><text x=\"185\" y=\"44\" fill=\"#e2e8f0\" font-size=\"10\">FF2</text><text x=\"255\" y=\"44\" fill=\"#e2e8f0\" font-size=\"10\">FF3</text></svg>",
     "hints": [
@@ -1896,20 +1870,17 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p......."
+          "wave": "p..............."
         },
         {
           "name": "areset_n",
-          "wave": "0.1....."
+          "wave": "0.1............."
         },
         {
           "name": "ce",
           "wave": "0...1...0...1..."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 260 100\" class=\"circuit-svg\"><rect x=\"60\" y=\"20\" width=\"80\" height=\"60\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><circle cx=\"190\" cy=\"50\" r=\"16\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.08)\"/><line x1=\"140\" y1=\"50\" x2=\"174\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"206\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"76\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">2-b CNT</text><text x=\"180\" y=\"54\" fill=\"#fbbf24\" font-size=\"10\">==3</text><text x=\"248\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">ce</text></svg>",
     "hints": [
@@ -1973,16 +1944,13 @@
         },
         {
           "name": "in",
-          "wave": "0..1....0"
+          "wave": "0..1...."
         },
         {
           "name": "p_edge",
           "wave": "0..10..."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "id": 20,
     "topic": "Sequential Logic",
@@ -2095,20 +2063,17 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p......."
+          "wave": "p..........."
         },
         {
           "name": "din",
-          "wave": "0.1011011."
+          "wave": "0.10110110.."
         },
         {
           "name": "detected",
-          "wave": "0.....10..1."
+          "wave": "0.....10..10"
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 340 100\" class=\"circuit-svg\"><circle cx=\"40\" cy=\"50\" r=\"22\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"105\" cy=\"50\" r=\"22\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"170\" cy=\"50\" r=\"22\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"235\" cy=\"50\" r=\"22\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"300\" cy=\"50\" r=\"22\" stroke=\"#2dd4bf\" stroke-width=\"2.5\" fill=\"rgba(45,212,191,0.15)\"/><text x=\"32\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\">S0/0</text><text x=\"97\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\">S1/0</text><text x=\"162\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\">S2/0</text><text x=\"227\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\">S3/0</text><text x=\"292\" y=\"54\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">S4/1</text></svg>",
     "hints": [
@@ -2195,7 +2160,7 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p......."
+          "wave": "p..........."
         },
         {
           "name": "din",
@@ -2205,10 +2170,7 @@
           "name": "detected",
           "wave": "0.....1.0.1."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 280 90\" class=\"circuit-svg\"><circle cx=\"50\" cy=\"45\" r=\"24\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"140\" cy=\"45\" r=\"24\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"230\" cy=\"45\" r=\"24\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><text x=\"44\" y=\"50\" fill=\"#e2e8f0\" font-size=\"11\">S0</text><text x=\"134\" y=\"50\" fill=\"#e2e8f0\" font-size=\"11\">S1</text><text x=\"224\" y=\"50\" fill=\"#e2e8f0\" font-size=\"11\">S2</text></svg>",
     "hints": [
@@ -2302,7 +2264,7 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p......."
+          "wave": "p......"
         },
         {
           "name": "we",
@@ -2334,10 +2296,7 @@
             "3C"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"120\" height=\"90\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"60\" x2=\"90\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"85\" x2=\"90\" y2=\"85\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"210\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"10\">addr[3:0]</text><text x=\"24\" y=\"64\" fill=\"#fbbf24\" font-size=\"10\">we</text><text x=\"12\" y=\"89\" fill=\"#a78bfa\" font-size=\"10\">data[7:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[7:0]</text><text x=\"110\" y=\"55\" fill=\"#e2e8f0\" font-size=\"13\" font-weight=\"700\">16x8 RAM</text><text x=\"115\" y=\"75\" fill=\"#64748b\" font-size=\"10\">SYNC BRAM</text></svg>",
     "hints": [
@@ -2444,8 +2403,9 @@
           "wave": "==.==..",
           "data": [
             "10",
+            "12",
             "10",
-            "10"
+            "12"
           ]
         },
         {
@@ -2464,10 +2424,7 @@
             "AA"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"120\" height=\"90\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"60\" x2=\"90\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"85\" x2=\"90\" y2=\"85\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"210\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"10\">addr[4:0]</text><text x=\"24\" y=\"64\" fill=\"#fbbf24\" font-size=\"10\">we</text><text x=\"12\" y=\"89\" fill=\"#a78bfa\" font-size=\"10\">din[7:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">dout[7:0]</text><text x=\"105\" y=\"55\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">READ-FIRST</text><text x=\"115\" y=\"75\" fill=\"#64748b\" font-size=\"10\">32x8 RAM</text></svg>",
     "hints": [
@@ -3226,12 +3183,9 @@
         },
         {
           "name": "tx",
-          "wave": "1.0101001011"
+          "wave": "1.010100101"
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "id": 30,
     "topic": "Serial Protocols",
@@ -3789,16 +3743,13 @@
         },
         {
           "name": "clk_dst",
-          "wave": "p..."
+          "wave": "p...p..."
         },
         {
           "name": "pulse_dst",
-          "wave": "0.10"
+          "wave": "0...10.."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 340 100\" class=\"circuit-svg\"><rect x=\"30\" y=\"20\" width=\"60\" height=\"60\" rx=\"6\" stroke=\"#f472b6\" stroke-width=\"2\" fill=\"rgba(244,114,182,0.06)\"/><rect x=\"130\" y=\"20\" width=\"55\" height=\"60\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"200\" y=\"20\" width=\"55\" height=\"60\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"295\" cy=\"50\" r=\"16\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"none\"/><text x=\"40\" y=\"55\" fill=\"#f472b6\" font-size=\"10\" font-weight=\"700\">T-REG</text><text x=\"142\" y=\"55\" fill=\"#38bdf8\" font-size=\"10\">SYNC1</text><text x=\"212\" y=\"55\" fill=\"#38bdf8\" font-size=\"10\">SYNC2</text><text x=\"285\" y=\"54\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">XOR</text></svg>",
     "hints": [
@@ -3868,9 +3819,8 @@
         },
         {
           "name": "gray",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
-            "0000",
             "0000",
             "0001",
             "0011",
@@ -3880,10 +3830,7 @@
             "0101"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "id": 35,
     "topic": "Sequential Logic",
@@ -4021,11 +3968,11 @@
         },
         {
           "name": "clk_rd",
-          "wave": "p..."
+          "wave": "p...p..."
         },
         {
           "name": "rd_ptr_gray",
-          "wave": "==..",
+          "wave": "==......",
           "data": [
             "0000",
             "0001"
@@ -4033,12 +3980,9 @@
         },
         {
           "name": "rd_empty",
-          "wave": "1.01"
+          "wave": "1.010..."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 340 110\" class=\"circuit-svg\"><rect x=\"30\" y=\"25\" width=\"70\" height=\"60\" rx=\"6\" stroke=\"#f472b6\" stroke-width=\"2\" fill=\"rgba(244,114,182,0.06)\"/><rect x=\"135\" y=\"25\" width=\"55\" height=\"60\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"205\" y=\"25\" width=\"55\" height=\"60\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><circle cx=\"295\" cy=\"55\" r=\"16\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"none\"/><text x=\"40\" y=\"60\" fill=\"#f472b6\" font-size=\"10\">WR_GRAY</text><text x=\"146\" y=\"60\" fill=\"#38bdf8\" font-size=\"9\">SYNC1</text><text x=\"216\" y=\"60\" fill=\"#38bdf8\" font-size=\"9\">SYNC2</text><text x=\"286\" y=\"59\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">==</text></svg>",
     "hints": [
@@ -4159,7 +4103,7 @@
         },
         {
           "name": "occupancy",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
             "0",
             "10",
@@ -4178,10 +4122,7 @@
           "name": "full",
           "wave": "0......."
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"60\" y=\"25\" width=\"80\" height=\"60\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><circle cx=\"190\" cy=\"55\" r=\"18\" stroke=\"#fbbf24\" stroke-width=\"2\" fill=\"rgba(251,191,36,0.08)\"/><line x1=\"140\" y1=\"55\" x2=\"172\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"208\" y1=\"55\" x2=\"250\" y2=\"55\" stroke=\"#fbbf24\" stroke-width=\"2\"/><text x=\"74\" y=\"60\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">5-b OCC</text><text x=\"180\" y=\"59\" fill=\"#fbbf24\" font-size=\"10\">&gt;=12</text><text x=\"255\" y=\"59\" fill=\"#fbbf24\" font-size=\"10\" font-weight=\"700\">almost_full</text></svg>",
     "hints": [
@@ -4373,9 +4314,8 @@
         },
         {
           "name": "credit_count",
-          "wave": "=x=======",
+          "wave": "=.======",
           "data": [
-            "4",
             "4",
             "3",
             "2",
@@ -4385,10 +4325,7 @@
             "1"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "id": 39,
     "topic": "On-Chip Protocols",
@@ -4513,11 +4450,11 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p......."
+          "wave": "p......"
         },
         {
           "name": "areset_n",
-          "wave": "0.1....."
+          "wave": "0.1...."
         },
         {
           "name": "req",
@@ -4537,10 +4474,7 @@
             "1000"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
+      ]
     },
     "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"15\" width=\"70\" height=\"40\" rx=\"4\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"80\" y=\"65\" width=\"70\" height=\"40\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><polygon points=\"190,30 230,45 230,75 190,90\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"none\"/><line x1=\"150\" y1=\"35\" x2=\"190\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"150\" y1=\"85\" x2=\"190\" y2=\"75\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"60\" x2=\"280\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"88\" y=\"38\" fill=\"#38bdf8\" font-size=\"9\">r &amp; (-r)</text><text x=\"88\" y=\"88\" fill=\"#a78bfa\" font-size=\"9\">m &amp; (-m)</text><text x=\"285\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">grant</text><text x=\"95\" y=\"115\" fill=\"#64748b\" font-size=\"9\">DUAL PRIORITY ARBITER</text></svg>",
     "hints": [
@@ -4625,7 +4559,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[1:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PRIORITY ENC</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "shift-register-sipo",
@@ -4677,7 +4612,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 115\" class=\"circuit-svg\"><rect x=\"65\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"125\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"185\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"245\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"65\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"50\" x2=\"125\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"170\" y1=\"50\" x2=\"185\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"45\" y1=\"95\" x2=\"270\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"80\" x2=\"85\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"145\" y1=\"80\" x2=\"145\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"205\" y1=\"80\" x2=\"205\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"265\" y1=\"80\" x2=\"265\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><text x=\"78\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF0</text><text x=\"138\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF1</text><text x=\"198\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF2</text><text x=\"258\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF3</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">sin</text><text x=\"300\" y=\"44\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">q[3:0]</text><text x=\"18\" y=\"98\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text></svg>"
   },
   {
     "slug": "bcd-7segment",
@@ -4725,7 +4661,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bcd[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">seg[6:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">7-SEG DEC</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "parity-generator",
@@ -4766,7 +4703,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">parity</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PARITY TREE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "ripple-carry-adder4",
@@ -4832,7 +4770,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">cout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "jk-flip-flop",
@@ -4878,7 +4817,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"100\" height=\"80\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"75\" x2=\"90\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M 90,50 L 98,55 L 90,60\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"none\"/><line x1=\"25\" y1=\"55\" x2=\"90\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"35\" x2=\"245\" y2=\"35\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"190\" y1=\"75\" x2=\"245\" y2=\"75\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">j</text><text x=\"8\" y=\"59\" fill=\"#38bdf8\" font-size=\"10\">&gt;clk</text><text x=\"14\" y=\"79\" fill=\"#94a3b8\" font-size=\"11\">k</text><text x=\"250\" y=\"39\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">q</text><text x=\"250\" y=\"79\" fill=\"#2dd4bf\" font-size=\"11\">valid</text><text x=\"115\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">JK-FF</text><text x=\"120\" y=\"70\" fill=\"#64748b\" font-size=\"9\">STORAGE</text></svg>"
   },
   {
     "slug": "mod6-counter",
@@ -4928,7 +4868,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">MOD-6</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[2:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "sequence-detector-1011",
@@ -4970,7 +4911,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">in</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">detected</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "full-subtractor",
@@ -5021,7 +4963,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">diff</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">bout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADD/SUB</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "binary-to-gray",
@@ -5069,7 +5012,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bin[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">gray[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GRAY CODE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "gray-to-binary",
@@ -5117,7 +5061,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">gray[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">bin[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GRAY CODE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "priority-encoder-8to3",
@@ -5169,7 +5114,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[2:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PRIORITY ENC</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "alu-4bit",
@@ -5240,7 +5186,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">zero</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ALU 4-BIT</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "barrel-rotator",
@@ -5294,7 +5241,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">shamt[2:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BARREL SHIFT</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "majority-voter",
@@ -5340,7 +5288,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"80\" x2=\"85\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"12\" y=\"44\" fill=\"#fbbf24\" font-size=\"10\">a</text><text x=\"12\" y=\"84\" fill=\"#38bdf8\" font-size=\"10\">clk, rst</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">ARBITER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">PRIORITY LOGIC</text></svg>"
   },
   {
     "slug": "lfsr-4bit",
@@ -5388,7 +5337,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 115\" class=\"circuit-svg\"><rect x=\"65\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"125\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"185\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"245\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"65\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"50\" x2=\"125\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"170\" y1=\"50\" x2=\"185\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"45\" y1=\"95\" x2=\"270\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"80\" x2=\"85\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"145\" y1=\"80\" x2=\"145\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"205\" y1=\"80\" x2=\"205\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"265\" y1=\"80\" x2=\"265\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><path d=\"M 270,30 L 270,15 L 45,15 L 45,45 L 65,45\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"2,2\" fill=\"none\"/><text x=\"145\" y=\"12\" fill=\"#f43f5e\" font-size=\"9\">XOR TAP FEEDBACK</text><text x=\"78\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF0</text><text x=\"138\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF1</text><text x=\"198\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF2</text><text x=\"258\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF3</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">clk</text><text x=\"300\" y=\"44\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">q[3:0]</text><text x=\"18\" y=\"98\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text></svg>"
   },
   {
     "slug": "piso-shift-register",
@@ -5437,7 +5387,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 115\" class=\"circuit-svg\"><rect x=\"65\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"125\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"185\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"245\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"65\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"50\" x2=\"125\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"170\" y1=\"50\" x2=\"185\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"45\" y1=\"95\" x2=\"270\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"80\" x2=\"85\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"145\" y1=\"80\" x2=\"145\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"205\" y1=\"80\" x2=\"205\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"265\" y1=\"80\" x2=\"265\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><text x=\"78\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF0</text><text x=\"138\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF1</text><text x=\"198\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF2</text><text x=\"258\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF3</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">load</text><text x=\"300\" y=\"44\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">sout</text><text x=\"18\" y=\"98\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text></svg>"
   },
   {
     "slug": "universal-shift-register",
@@ -5492,7 +5443,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 115\" class=\"circuit-svg\"><rect x=\"65\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"125\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"185\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"245\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"65\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"50\" x2=\"125\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"170\" y1=\"50\" x2=\"185\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"45\" y1=\"95\" x2=\"270\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"80\" x2=\"85\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"145\" y1=\"80\" x2=\"145\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"205\" y1=\"80\" x2=\"205\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"265\" y1=\"80\" x2=\"265\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><text x=\"78\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF0</text><text x=\"138\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF1</text><text x=\"198\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF2</text><text x=\"258\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF3</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">mode[1:0]</text><text x=\"300\" y=\"44\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">q[3:0]</text><text x=\"18\" y=\"98\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text></svg>"
   },
   {
     "slug": "pulse-stretcher",
@@ -5534,7 +5486,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">pulse_out</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "sequence-detector-101-nonoverlap",
@@ -5576,7 +5529,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">in</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">detected</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "traffic-light-fsm",
@@ -5619,7 +5573,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">clk</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">light[1:0]</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "vending-machine-fsm",
@@ -5666,7 +5621,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">nickel</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">dispense</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "popcount8",
@@ -5712,7 +5668,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">POPCOUNT</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "signed-overflow-detector",
@@ -5773,7 +5730,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">b[3:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "find-first-set",
@@ -5824,7 +5782,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">idx[2:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "clock-div3",
@@ -5865,7 +5824,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">clk_div3</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "combination-lock",
@@ -5917,7 +5877,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">code[1:0]</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">unlocked</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "binary-to-bcd",
@@ -5979,7 +5940,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bin[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">hundreds[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "manchester-encoder",
@@ -6020,7 +5982,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">data</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">enc</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "interrupt-controller",
@@ -6092,7 +6055,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"10\">irq[3:0]</text><text x=\"10\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ack</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">irq_num[1:0]</text><text x=\"96\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">PRIORITY INTERRU</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">RTL MODULE</text></svg>"
   },
   {
     "slug": "odd-parity-checker",
@@ -6138,7 +6102,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">parity_bit</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">error</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PARITY TREE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "excess3-converter",
@@ -6184,7 +6149,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bcd[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">excess3[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "add-sub-unit",
@@ -6250,7 +6216,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">result[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">cout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADD/SUB</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "mux8to1",
@@ -6299,7 +6266,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 120\" class=\"circuit-svg\"><polygon points=\"80,15 150,28 150,92 80,105\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"80\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"60\" x2=\"80\" y2=\"60\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"80\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"115\" y1=\"99\" x2=\"115\" y2=\"115\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"150\" y1=\"60\" x2=\"210\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"10\">in[7:0]</text><text x=\"14\" y=\"64\" fill=\"#94a3b8\" font-size=\"10\">d[0..7]</text><text x=\"100\" y=\"118\" fill=\"#fbbf24\" font-size=\"10\">sel</text><text x=\"216\" y=\"64\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">out</text><text x=\"96\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">8:1 MUX</text><text x=\"100\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SELECT</text></svg>"
   },
   {
     "slug": "decoder-3to8",
@@ -6350,7 +6318,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[2:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">en</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "carry-lookahead-adder4",
@@ -6416,7 +6385,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">cout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "equality-checker-8bit",
@@ -6466,7 +6436,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">eq</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">valid</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "array-multiplier-4bit",
@@ -6522,7 +6493,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">product[7:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">MULTIPLIER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "bcd-adder",
@@ -6588,7 +6560,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">cout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "compressor-4to2",
@@ -6654,7 +6627,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">carry</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "sr-flip-flop",
@@ -6700,7 +6674,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"100\" height=\"80\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"75\" x2=\"90\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M 90,50 L 98,55 L 90,60\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"none\"/><line x1=\"25\" y1=\"55\" x2=\"90\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"35\" x2=\"245\" y2=\"35\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"190\" y1=\"75\" x2=\"245\" y2=\"75\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">s</text><text x=\"8\" y=\"59\" fill=\"#38bdf8\" font-size=\"10\">&gt;clk</text><text x=\"14\" y=\"79\" fill=\"#94a3b8\" font-size=\"11\">r</text><text x=\"250\" y=\"39\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">q</text><text x=\"250\" y=\"79\" fill=\"#2dd4bf\" font-size=\"11\">valid</text><text x=\"115\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">SR-FF</text><text x=\"120\" y=\"70\" fill=\"#64748b\" font-size=\"9\">STORAGE</text></svg>"
   },
   {
     "slug": "d-latch",
@@ -6741,7 +6716,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"100\" height=\"80\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"75\" x2=\"90\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M 90,50 L 98,55 L 90,60\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"none\"/><line x1=\"25\" y1=\"55\" x2=\"90\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"35\" x2=\"245\" y2=\"35\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"190\" y1=\"75\" x2=\"245\" y2=\"75\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">en</text><text x=\"8\" y=\"59\" fill=\"#38bdf8\" font-size=\"10\">&gt;clk</text><text x=\"14\" y=\"79\" fill=\"#94a3b8\" font-size=\"11\">d</text><text x=\"250\" y=\"39\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">q</text><text x=\"250\" y=\"79\" fill=\"#2dd4bf\" font-size=\"11\">valid</text><text x=\"115\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">D-LATCH</text><text x=\"120\" y=\"70\" fill=\"#64748b\" font-size=\"9\">STORAGE</text></svg>"
   },
   {
     "slug": "johnson-counter",
@@ -6789,7 +6765,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "ring-counter",
@@ -6837,7 +6814,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "saturating-counter",
@@ -6886,7 +6864,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "watchdog-timer",
@@ -6932,7 +6911,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">WATCHDOG</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">timeout</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "serial-parity-checker",
@@ -6999,7 +6979,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bit_in</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">rst</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">parity_out</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PARITY TREE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "programmable-clock-divider",
@@ -7041,7 +7022,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">div[3:0]</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">pulse_out</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">RAM ARRAY</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "stack-pointer-updown",
@@ -7094,7 +7076,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sp[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">full</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "debounce-circuit",
@@ -7140,7 +7123,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">btn_in</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">btn_out</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "hamming74-encoder",
@@ -7186,7 +7170,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">codeword[6:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "hamming74-decoder",
@@ -7245,7 +7230,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">codeword[6:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">data[3:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">error</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "sign-extension",
@@ -7291,7 +7277,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "saturating-adder",
@@ -7347,7 +7334,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[7:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "rock-paper-scissors",
@@ -7403,7 +7391,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">p1[1:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">p2[1:0]</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">result[1:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "onescomplement-checksum",
@@ -7459,7 +7448,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[7:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "alu-mips-4bit",
@@ -7530,7 +7520,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">result[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">zero</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ALU 4-BIT</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "popcount-comparator",
@@ -7586,7 +7577,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">result[1:0]</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">valid</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "manchester-decoder",
@@ -7627,7 +7619,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">enc</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">enc</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">data</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "digital-dice",
@@ -7678,7 +7671,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">roll_en</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">dice_value[2:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "elevator-controller",
@@ -7726,7 +7720,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">call1</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">at_floor2</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "rotary-encoder-decoder",
@@ -7777,7 +7772,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">a</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">b</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">position[3:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "pwm-generator",
@@ -7819,7 +7815,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">PWM GEN</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">pwm_out</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "sync-ram-8x8",
@@ -7875,7 +7872,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">we</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">addr[2:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">dout[7:0]</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">RAM ARRAY</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "safe-with-lockout",
@@ -7931,7 +7929,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">code[1:0]</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">unlocked</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "fifo-occupancy-counter",
@@ -7984,7 +7983,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">full</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "sevenseg-multiplexer",
@@ -8024,14 +8024,13 @@
           "data": [
             "3",
             "7",
+            "4",
             "3"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1
-      }
-    }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"10\">digit0[3:0]</text><text x=\"10\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">digit1[3:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">digit_sel</text><text x=\"96\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">2-DIGIT 7-SEGMEN</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">RTL MODULE</text></svg>"
   },
   {
     "slug": "bcd-stopwatch-seconds",
@@ -8085,7 +8084,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">units[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">tens[2:0]</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "simple-alarm-clock",
@@ -8133,7 +8133,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">cur_hour[4:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">alarm_trig</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "traffic-light-pedestrian",
@@ -8182,7 +8183,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">ped_request</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">light[1:0]</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "fixed-priority-arbiter",
@@ -8230,7 +8232,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"80\" x2=\"85\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"12\" y=\"44\" fill=\"#fbbf24\" font-size=\"10\">req[3:0]</text><text x=\"12\" y=\"84\" fill=\"#38bdf8\" font-size=\"10\">clk, rst</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">grant[3:0]</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">ARBITER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">PRIORITY LOGIC</text></svg>"
   },
   {
     "slug": "twos-complement-negator",
@@ -8283,7 +8286,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">in[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">ctrl</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">overflow</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "interrupt-vector-generator",
@@ -8336,7 +8340,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">irq[3:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">vector[7:0]</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "sign-magnitude-converter",
@@ -8384,7 +8389,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "bcd-to-binary",
@@ -8443,7 +8449,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">tens[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">units[3:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">binary[6:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "bcd-updown-counter",
@@ -8492,7 +8499,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "change-detector",
@@ -8539,7 +8547,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">data[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">rst</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">changed</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "frequency-counter",
@@ -8586,7 +8595,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "two-way-traffic-intersection",
@@ -8638,7 +8648,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">clk</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">ns_light[1:0]</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "uart-frame-assembler",
@@ -8682,7 +8693,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">rx</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">rx_data[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">rx_valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">UART RX</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "gearbox-narrow-to-wide",
@@ -8738,7 +8750,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">in_valid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">in_data[3:0]</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out_valid</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">out_data[7:0]</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "gearbox-wide-to-narrow",
@@ -8794,7 +8807,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">in_valid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">in_data[7:0]</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out_valid</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">out_data[3:0]</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "crc4-generator",
@@ -8842,7 +8856,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">data[7:0]</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">ctrl</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">crc[3:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">CRC-8</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "crc4-checker",
@@ -8893,7 +8908,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">data[7:0]</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">crc_in[3:0]</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">error</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">CRC-8</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "additive-scrambler",
@@ -8946,7 +8962,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">data_in</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">scrambled_out</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">RAM ARRAY</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "run-length-bit-stuffer",
@@ -8988,7 +9005,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">bit_in</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">stuff_needed</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "axi-stream-handshake-counter",
@@ -9040,7 +9058,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">valid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">ready</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">count[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "byte-sync-detector",
@@ -9088,7 +9107,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">byte_in[7:0]</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">locked</text></svg>"
   },
   {
     "slug": "endianness-swapper",
@@ -9136,7 +9156,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">word_in[15:0]</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">ctrl</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">word_out[15:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "packet-length-counter",
@@ -9182,7 +9203,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">length[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "async-reset-synchronizer",
@@ -9229,7 +9251,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">async_rst_n</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">sync_rst_n</text></svg>"
   },
   {
     "slug": "three-flop-synchronizer",
@@ -9277,7 +9300,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">async_in</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">sync_out</text></svg>"
   },
   {
     "slug": "level-cross-edge-detector",
@@ -9326,7 +9350,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"10\">async_in</text><text x=\"10\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">rst</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">pulse_out</text><text x=\"96\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SYNCHRONIZED RIS</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">RTL MODULE</text></svg>"
   },
   {
     "slug": "pulse-toggle-synchronizer",
@@ -9374,7 +9399,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">tog_in</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">pulse_out</text></svg>"
   },
   {
     "slug": "handshake-ack-responder",
@@ -9423,7 +9449,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">req</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">ack</text></svg>"
   },
   {
     "slug": "pulse-stretch-and-sync",
@@ -9471,7 +9498,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"10\">fast_pulse</text><text x=\"10\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">rst</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sync_pulse</text><text x=\"96\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">STRETCH-AND-SYNC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">RTL MODULE</text></svg>"
   },
   {
     "slug": "cdc-bus-hold-register",
@@ -9537,7 +9565,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">valid</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">data_out[7:0]</text></svg>"
   },
   {
     "slug": "sync-enable-counter-snapshot",
@@ -9589,7 +9618,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">snapshot[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "fifo-empty-flag-synchronizer",
@@ -9651,7 +9681,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">wptr_gray_in[3:0]</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">empty</text></svg>"
   },
   {
     "slug": "fifo-full-flag-synchronizer",
@@ -9713,7 +9744,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><line x1=\"165\" y1=\"10\" x2=\"165\" y2=\"110\" stroke=\"#f43f5e\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/><rect x=\"55\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"190\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"255\" y=\"25\" width=\"50\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"52\" x2=\"190\" y2=\"52\" stroke=\"#f43f5e\" stroke-width=\"2\"/><line x1=\"240\" y1=\"52\" x2=\"255\" y2=\"52\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"305\" y1=\"52\" x2=\"335\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"65\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF_SRC</text><text x=\"198\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC1</text><text x=\"263\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">SYNC2</text><text x=\"70\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">DOMAIN A (clk_a)</text><text x=\"215\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">DOMAIN B (clk_b)</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"9\">rptr_gray_in[3:0]</text><text x=\"312\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">full</text></svg>"
   },
   {
     "slug": "bit-reversal",
@@ -9761,7 +9793,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "leading-zero-counter",
@@ -9809,7 +9842,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "hex-7segment-decoder",
@@ -9857,7 +9891,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">hex[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">seg[6:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">7-SEG DEC</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "thermometer-to-binary",
@@ -9905,7 +9940,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">therm[7:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[3:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "binary-to-thermometer",
@@ -9953,7 +9989,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bin[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">therm[7:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "bcd-digit-validator",
@@ -9995,7 +10032,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">nibble[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">valid</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "spi-shift-register",
@@ -10053,7 +10091,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">load</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">mosi</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">miso</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">shreg[7:0]</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">SPI</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "i2c-start-stop-detector",
@@ -10106,7 +10145,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">sda</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">scl</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">start_detected</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">stop_detected</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "thermostat-hysteresis-controller",
@@ -10156,7 +10196,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">temp[7:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">heater_on</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "fir-filter-3tap",
@@ -10212,7 +10253,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><rect x=\"75\" y=\"30\" width=\"45\" height=\"40\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"145\" y=\"30\" width=\"45\" height=\"40\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><circle cx=\"230\" cy=\"50\" r=\"14\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"75\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"120\" y1=\"50\" x2=\"145\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"50\" x2=\"216\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"244\" y1=\"50\" x2=\"310\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"88\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">Z^-1</text><text x=\"158\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">Z^-1</text><text x=\"225\" y=\"54\" fill=\"#38bdf8\" font-size=\"14\" font-weight=\"700\">+</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">x_in[8 (signed)-1:0]</text><text x=\"315\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">y_out[11 (signed)-1:0]</text><text x=\"130\" y=\"100\" fill=\"#64748b\" font-size=\"10\">TAP DELAY &amp; ACCUMULATOR</text></svg>"
   },
   {
     "slug": "signed-multiplier-4bit",
@@ -10271,7 +10313,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[4 (signed)-1:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[4 (signed)-1:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">product[8 (signed)-1:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">MULTIPLIER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "median-of-three",
@@ -10341,7 +10384,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">median[7:0]</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">valid</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "min-max-finder",
@@ -10422,7 +10466,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">b[7:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">min_val[7:0]</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">max_val[7:0]</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "bcd-subtractor",
@@ -10486,7 +10531,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">diff[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">borrow</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADD/SUB</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "shift-add-multiplier",
@@ -10540,7 +10586,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">start</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">product[7:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">done</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">MULTIPLIER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "auto-repeat-button",
@@ -10582,7 +10629,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">btn</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">pulse</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "gray-code-sequence-checker",
@@ -10632,7 +10680,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">code[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">rst</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">valid</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GRAY CODE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "one-shot-pulse-generator",
@@ -10675,7 +10724,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">trigger</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">pulse_out</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "serial-to-parallel-with-parity",
@@ -10741,7 +10791,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bit_in</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">frame_start</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">data_out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PARITY TREE</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "count-leading-ones",
@@ -10789,7 +10840,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "signed-comparator",
@@ -10852,7 +10904,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">a[4 (signed)-1:0]</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">b[4 (signed)-1:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">gt</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">eq</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "barrel-shifter",
@@ -10911,7 +10964,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">shamt[2:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BARREL SHIFT</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "bcd-incrementer",
@@ -10964,7 +11018,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">bcd_in[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">bcd_out[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "moving-average-filter",
@@ -11022,7 +11077,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 350 120\" class=\"circuit-svg\"><rect x=\"75\" y=\"30\" width=\"45\" height=\"40\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"145\" y=\"30\" width=\"45\" height=\"40\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><circle cx=\"230\" cy=\"50\" r=\"14\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"75\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"120\" y1=\"50\" x2=\"145\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"50\" x2=\"216\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"244\" y1=\"50\" x2=\"310\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"88\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">Z^-1</text><text x=\"158\" y=\"54\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">Z^-1</text><text x=\"225\" y=\"54\" fill=\"#38bdf8\" font-size=\"14\" font-weight=\"700\">+</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">x_in[7:0]</text><text x=\"315\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">avg_out[7:0]</text><text x=\"130\" y=\"100\" fill=\"#64748b\" font-size=\"10\">TAP DELAY &amp; ACCUMULATOR</text></svg>"
   },
   {
     "slug": "countdown-timer-with-pause",
@@ -11082,7 +11138,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">count[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">done</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "dual-port-ram",
@@ -11151,7 +11208,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">we_a</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">addr_a[2:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">rdata_a[7:0]</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">RAM ARRAY</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "lru-2way-tracker",
@@ -11203,7 +11261,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">access</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">way</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">lru_way</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">RAM ARRAY</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "skid-buffer",
@@ -11275,7 +11334,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">valid_in</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">data_in[7:0]</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">ready_out</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid_out</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">PROTOCOL</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "dual-edge-flip-flop",
@@ -11316,7 +11376,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"100\" height=\"80\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"75\" x2=\"90\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M 90,50 L 98,55 L 90,60\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"none\"/><line x1=\"25\" y1=\"55\" x2=\"90\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"35\" x2=\"245\" y2=\"35\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"190\" y1=\"75\" x2=\"245\" y2=\"75\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">d</text><text x=\"8\" y=\"59\" fill=\"#38bdf8\" font-size=\"10\">&gt;clk</text><text x=\"14\" y=\"79\" fill=\"#94a3b8\" font-size=\"11\">d</text><text x=\"250\" y=\"39\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">q</text><text x=\"250\" y=\"79\" fill=\"#2dd4bf\" font-size=\"11\">valid</text><text x=\"115\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DUAL-EDGE FF</text><text x=\"120\" y=\"70\" fill=\"#64748b\" font-size=\"9\">STORAGE</text></svg>"
   },
   {
     "slug": "binary-counter",
@@ -11364,7 +11425,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">q[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "toggle-ff",
@@ -11410,7 +11472,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 110\" class=\"circuit-svg\"><rect x=\"90\" y=\"15\" width=\"100\" height=\"80\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"90\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"75\" x2=\"90\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M 90,50 L 98,55 L 90,60\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"none\"/><line x1=\"25\" y1=\"55\" x2=\"90\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"190\" y1=\"35\" x2=\"245\" y2=\"35\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"190\" y1=\"75\" x2=\"245\" y2=\"75\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"14\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">t</text><text x=\"8\" y=\"59\" fill=\"#38bdf8\" font-size=\"10\">&gt;clk</text><text x=\"14\" y=\"79\" fill=\"#94a3b8\" font-size=\"11\">rst</text><text x=\"250\" y=\"39\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\">q</text><text x=\"250\" y=\"79\" fill=\"#2dd4bf\" font-size=\"11\">valid</text><text x=\"115\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">T-FF</text><text x=\"120\" y=\"70\" fill=\"#64748b\" font-size=\"9\">STORAGE</text></svg>"
   },
   {
     "slug": "rock-paper-scissors-lizard-spock",
@@ -11469,7 +11532,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">p1[2:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">p2[2:0]</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">winner[1:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "magic-8-ball",
@@ -11522,7 +11586,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">shake</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">answer[2:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "hot-potato-token-passer",
@@ -11585,7 +11650,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">buzzer</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">token_pos[1:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">game_over</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "reaction-game-scorer",
@@ -11648,7 +11714,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">stimulus</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">button</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">reaction_time[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">too_slow</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "space-invaders-collision-detector",
@@ -11706,7 +11773,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">bullet_x[3:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">alien_x[3:0]</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">hit</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "quiz-buzzer-lockout",
@@ -11763,7 +11831,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">buzz[3:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">winner[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">locked</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "tug-of-war-counter",
@@ -11818,7 +11887,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">position[4 (signed)-1:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">winner[1:0]</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "parking-garage-counter",
@@ -11872,7 +11942,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">available[3:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">full</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "hamming-distance-calculator",
@@ -11931,7 +12002,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">a[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">b[7:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">distance[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "slot-machine-jackpot-detector",
@@ -11995,7 +12067,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">reel1[2:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">reel2[2:0]</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">jackpot</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">two_match</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "carry-select-adder-4bit",
@@ -12065,7 +12138,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">b[3:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">sum[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">cout</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "booth-radix4-encoder",
@@ -12122,7 +12196,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">bHigh</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">bCur</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">neg</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">one_x</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "absolute-value-4bit",
@@ -12171,7 +12246,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">in[4 (signed)-1:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">ctrl</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[4 (signed)-1:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ALU 4-BIT</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "clamp-value-to-range",
@@ -12233,7 +12309,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">value[7:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">lo[7:0]</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">clamped[7:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ALU 4-BIT</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "integer-square-root-4bit",
@@ -12281,7 +12358,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">in[7:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">ctrl</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">root[3:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ADDER</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "crc8-generator",
@@ -12330,7 +12408,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">data[7:0]</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">ctrl</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">crc[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">CRC-8</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "numerically-controlled-oscillator",
@@ -12375,7 +12454,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">NCO ACCUM</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "spi-mode-selector",
@@ -12421,7 +12501,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">cpol</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">cpha</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">idle_clock</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">sample_edge</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">SPI</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "direct-mapped-cache-lookup",
@@ -12473,7 +12554,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">access</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">addr[3:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">hit</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">CACHE</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "content-addressable-memory-4entry",
@@ -12528,7 +12610,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"10\">entry0[3:0]</text><text x=\"10\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">entry1[3:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">match[3:0]</text><text x=\"96\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">4-ENTRY CONTENT-</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">RTL MODULE</text></svg>"
   },
   {
     "slug": "register-file-3read-1write",
@@ -12598,7 +12681,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"110\" y=\"18\" width=\"105\" height=\"84\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"55\" y=\"30\" width=\"40\" height=\"60\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"1.8\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"45\" x2=\"55\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"95\" y1=\"50\" x2=\"110\" y2=\"50\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><line x1=\"15\" y1=\"80\" x2=\"110\" y2=\"80\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"60\" y=\"64\" fill=\"#e2e8f0\" font-size=\"9\">ROW DEC</text><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"9\">we</text><text x=\"8\" y=\"84\" fill=\"#fbbf24\" font-size=\"9\">waddr[2:0]</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">rdata1/2/3[8 each-1:0]</text><text x=\"122\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">REG-FILE</text><text x=\"126\" y=\"70\" fill=\"#64748b\" font-size=\"9\">SENSE AMPS</text></svg>"
   },
   {
     "slug": "bit-interleaver",
@@ -12651,7 +12735,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">a[3:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">b[3:0]</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out[7:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "bit-deinterleaver",
@@ -12704,7 +12789,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">interleaved[7:0]</text><text x=\"12\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"275\" y=\"62\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">a[3:0]</text><text x=\"100\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">BIT CONVERTER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">TRANSFORM</text></svg>"
   },
   {
     "slug": "binary-to-one-cold",
@@ -12750,7 +12836,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">sel[2:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">out_n[7:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "lfsr-8bit-maximal",
@@ -12798,7 +12885,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">en</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">rst</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">q[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "simon-says-sequence-checker",
@@ -12863,7 +12951,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">press[1:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">press_valid</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">step[1:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">fail</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "parking-meter-fsm",
@@ -12920,7 +13009,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">tick</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">time_remaining[7:0]</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "leaderboard-top3-tracker",
@@ -12993,7 +13083,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">submit</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">score[7:0]</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">top1[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">top2[7:0]</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "leap-year-checker",
@@ -13034,7 +13125,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"135\" height=\"84\" rx=\"8\" stroke=\"#a78bfa\" stroke-width=\"2.5\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"15\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"65\" x2=\"85\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"88\" x2=\"85\" y2=\"88\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"220\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"220\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"44\" fill=\"#94a3b8\" font-size=\"9\">year[11:0]</text><text x=\"8\" y=\"69\" fill=\"#fbbf24\" font-size=\"9\">ctrl</text><text x=\"8\" y=\"92\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">is_leap</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">GAME LOGIC</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">FSM &amp; SCORER</text></svg>"
   },
   {
     "slug": "fizzbuzz-single-value",
@@ -13082,7 +13174,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><polygon points=\"90,20 180,35 180,85 90,100 115,60\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"35\" x2=\"95\" y2=\"35\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"25\" y1=\"85\" x2=\"95\" y2=\"85\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"135\" y1=\"88\" x2=\"135\" y2=\"110\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"180\" y1=\"50\" x2=\"250\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"180\" y1=\"75\" x2=\"250\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"12\" y=\"39\" fill=\"#94a3b8\" font-size=\"11\">n[7:0]</text><text x=\"12\" y=\"89\" fill=\"#94a3b8\" font-size=\"11\">ctrl</text><text x=\"120\" y=\"115\" fill=\"#fbbf24\" font-size=\"10\">op / cin</text><text x=\"256\" y=\"54\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">result[1:0]</text><text x=\"256\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"125\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">ALU 4-BIT</text><text x=\"128\" y=\"70\" fill=\"#64748b\" font-size=\"9\">DATAPATH</text></svg>"
   },
   {
     "slug": "axi-lite-write-fsm",
@@ -13133,7 +13226,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">awvalid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">wvalid</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">awready</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">wready</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "axi-lite-read-fsm",
@@ -13183,7 +13277,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">arvalid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">rready</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">arready</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">rvalid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "clock-gating-cell",
@@ -13225,7 +13320,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"75\" y=\"25\" width=\"55\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><path d=\"M 175,32 L 205,32 A 25 25 0 0 1 205,82 L 175,82 Z\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"42\" x2=\"75\" y2=\"42\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"65\" x2=\"75\" y2=\"65\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"130\" y1=\"45\" x2=\"175\" y2=\"45\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"20\" y1=\"95\" x2=\"155\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"155\" y1=\"95\" x2=\"155\" y2=\"70\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"155\" y1=\"70\" x2=\"175\" y2=\"70\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"57\" x2=\"275\" y2=\"57\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"82\" y=\"55\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">LATCH</text><text x=\"180\" y=\"60\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">AND</text><text x=\"10\" y=\"46\" fill=\"#94a3b8\" font-size=\"9\">en</text><text x=\"8\" y=\"99\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text><text x=\"280\" y=\"61\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">gclk</text></svg>"
   },
   {
     "slug": "interrupt-mask-register",
@@ -13282,7 +13378,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">irq[7:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">pending[7:0]</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "brown-out-reset-detector",
@@ -13330,7 +13427,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">rst_ext</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">reset_out</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "power-on-reset-generator",
@@ -13372,7 +13470,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">trigger</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">reset_out</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "low-power-sleep-wake-fsm",
@@ -13419,7 +13518,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 120\" class=\"circuit-svg\"><rect x=\"55\" y=\"25\" width=\"70\" height=\"55\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"2\" fill=\"rgba(56,189,248,0.06)\"/><rect x=\"145\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"230\" y=\"25\" width=\"65\" height=\"55\" rx=\"6\" stroke=\"#2dd4bf\" stroke-width=\"2\" fill=\"rgba(45,212,191,0.06)\"/><line x1=\"15\" y1=\"52\" x2=\"55\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"125\" y1=\"52\" x2=\"145\" y2=\"52\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"52\" x2=\"230\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"295\" y1=\"52\" x2=\"330\" y2=\"52\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><path d=\"M 180,80 L 180,95 L 35,95 L 35,65 L 55,65\" stroke=\"#a78bfa\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 145,68 L 152,72 L 145,76\" stroke=\"#38bdf8\" stroke-width=\"1.5\" fill=\"none\"/><text x=\"64\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">NEXT</text><text x=\"63\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"152\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">STATE</text><text x=\"156\" y=\"64\" fill=\"#64748b\" font-size=\"9\">REG</text><text x=\"238\" y=\"50\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">OUTPUT</text><text x=\"242\" y=\"64\" fill=\"#64748b\" font-size=\"9\">LOGIC</text><text x=\"8\" y=\"56\" fill=\"#94a3b8\" font-size=\"10\">sleep_req</text><text x=\"298\" y=\"46\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">sleeping</text><text x=\"75\" y=\"108\" fill=\"#a78bfa\" font-size=\"9\">current_state [feedback]</text></svg>"
   },
   {
     "slug": "bus-timeout-watchdog",
@@ -13466,7 +13566,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">WATCHDOG</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">timeout_err</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "lockstep-dual-core-comparator",
@@ -13520,7 +13621,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"125\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"78\" x2=\"85\" y2=\"78\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"210\" y1=\"40\" x2=\"260\" y2=\"40\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"210\" y1=\"75\" x2=\"260\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"42\" fill=\"#94a3b8\" font-size=\"11\">valid_a</text><text x=\"10\" y=\"82\" fill=\"#94a3b8\" font-size=\"11\">data_a[7:0]</text><text x=\"265\" y=\"44\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">fault</text><text x=\"265\" y=\"79\" fill=\"#4ade80\" font-size=\"11\">valid</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">COMPARATOR</text><text x=\"112\" y=\"70\" fill=\"#64748b\" font-size=\"10\">A &gt; B / A == B</text></svg>"
   },
   {
     "slug": "register-map-address-decoder",
@@ -13565,7 +13667,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">addr[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">cs[7:0]</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">valid</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "weighted-round-robin-arbiter",
@@ -13616,7 +13719,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"40\" x2=\"85\" y2=\"40\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"80\" x2=\"85\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"60\" x2=\"270\" y2=\"60\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"12\" y=\"44\" fill=\"#fbbf24\" font-size=\"10\">req0</text><text x=\"12\" y=\"84\" fill=\"#38bdf8\" font-size=\"10\">clk, rst</text><text x=\"275\" y=\"64\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">grant0</text><text x=\"105\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">ARBITER</text><text x=\"110\" y=\"70\" fill=\"#64748b\" font-size=\"9\">PRIORITY LOGIC</text></svg>"
   },
   {
     "slug": "axi-stream-packet-counter",
@@ -13672,7 +13776,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">tvalid</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">tready</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">packet_count[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "dma-descriptor-beat-counter",
@@ -13730,7 +13835,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 320 120\" class=\"circuit-svg\"><rect x=\"140\" y=\"20\" width=\"85\" height=\"75\" rx=\"6\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"45\" y=\"35\" width=\"55\" height=\"45\" rx=\"6\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"100\" y1=\"55\" x2=\"140\" y2=\"55\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"225\" y1=\"45\" x2=\"275\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"225\" y1=\"75\" x2=\"275\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><path d=\"M 245,45 L 245,105 L 25,105 L 25,55 L 45,55\" stroke=\"#2dd4bf\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\" fill=\"none\"/><path d=\"M 140,75 L 148,80 L 140,85\" stroke=\"#38bdf8\" stroke-width=\"1.8\" fill=\"none\"/><text x=\"56\" y=\"62\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">+1 ADD</text><text x=\"150\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">COUNTER</text><text x=\"156\" y=\"70\" fill=\"#64748b\" font-size=\"9\">REG [N-1:0]</text><text x=\"280\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">beats_remaining[7:0]</text><text x=\"280\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">xfer_complete</text><text x=\"142\" y=\"100\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk, rst_n</text></svg>"
   },
   {
     "slug": "overtemp-throttle-monitor",
@@ -13783,7 +13889,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">temp[7:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">throttle</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "voltage-margin-monitor",
@@ -13827,7 +13934,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">vsense[7:0]</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">over_voltage</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "jtag-tap-instruction-decoder",
@@ -13874,7 +13982,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 300 120\" class=\"circuit-svg\"><rect x=\"80\" y=\"18\" width=\"125\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"80\" y2=\"45\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"80\" y2=\"75\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"205\" y1=\"45\" x2=\"255\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"205\" y1=\"75\" x2=\"255\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"10\" y=\"49\" fill=\"#94a3b8\" font-size=\"11\">ir[3:0]</text><text x=\"18\" y=\"79\" fill=\"#fbbf24\" font-size=\"10\">ctrl</text><text x=\"260\" y=\"49\" fill=\"#2dd4bf\" font-size=\"11\" font-weight=\"700\">extest</text><text x=\"260\" y=\"79\" fill=\"#4ade80\" font-size=\"10\">sample_preload</text><text x=\"95\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">DECODER</text><text x=\"108\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CODE MATRIX</text></svg>"
   },
   {
     "slug": "scan-chain-shift-register",
@@ -13928,7 +14037,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 340 115\" class=\"circuit-svg\"><rect x=\"65\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"125\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"185\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><rect x=\"245\" y=\"30\" width=\"45\" height=\"50\" rx=\"4\" stroke=\"#a78bfa\" stroke-width=\"2\" fill=\"rgba(167,139,250,0.06)\"/><line x1=\"20\" y1=\"50\" x2=\"65\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"110\" y1=\"50\" x2=\"125\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"170\" y1=\"50\" x2=\"185\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"230\" y1=\"50\" x2=\"245\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"45\" y1=\"95\" x2=\"270\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"85\" y1=\"80\" x2=\"85\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"145\" y1=\"80\" x2=\"145\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"205\" y1=\"80\" x2=\"205\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><line x1=\"265\" y1=\"80\" x2=\"265\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><text x=\"78\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF0</text><text x=\"138\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF1</text><text x=\"198\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF2</text><text x=\"258\" y=\"58\" fill=\"#e2e8f0\" font-size=\"10\" font-weight=\"700\">FF3</text><text x=\"8\" y=\"54\" fill=\"#94a3b8\" font-size=\"10\">scan_enable</text><text x=\"300\" y=\"44\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">q[3:0]</text><text x=\"18\" y=\"98\" fill=\"#38bdf8\" font-size=\"9\">&gt;clk</text></svg>"
   },
   {
     "slug": "power-rail-sequencer",
@@ -13982,7 +14092,8 @@
       "config": {
         "hscale": 1
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 310 115\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"130\" height=\"80\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"20\" y1=\"45\" x2=\"85\" y2=\"45\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"20\" y1=\"75\" x2=\"85\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"215\" y1=\"58\" x2=\"270\" y2=\"58\" stroke=\"#f43f5e\" stroke-width=\"2.5\"/><text x=\"8\" y=\"49\" fill=\"#fbbf24\" font-size=\"9\">power_up</text><text x=\"8\" y=\"79\" fill=\"#38bdf8\" font-size=\"9\">clk/rst</text><text x=\"275\" y=\"62\" fill=\"#f43f5e\" font-size=\"11\" font-weight=\"700\">rail_en[2:0]</text><text x=\"108\" y=\"52\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">SUPERVISOR</text><text x=\"105\" y=\"70\" fill=\"#64748b\" font-size=\"9\">VOLTAGE / POR</text></svg>"
   },
   {
     "slug": "or-gate",
@@ -14009,21 +14120,19 @@
       "signal": [
         {
           "name": "a",
-          "wave": "0..1.."
+          "wave": "0.0.1.1."
         },
         {
           "name": "b",
-          "wave": "0.1.0.1"
+          "wave": "0.1.0.1."
         },
         {
           "name": "out",
-          "wave": "0.1..."
+          "wave": "0.1.1.1."
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
-    }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 260 90\" class=\"circuit-svg\"><path d=\"M 25,25 L 65,25 M 25,65 L 65,65 M 55,15 A 60 60 0 0 1 55,75 Q 95,75 130,45 Q 95,15 55,15 Z M 130,45 L 195,45\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.08)\"/><text x=\"12\" y=\"29\" fill=\"#94a3b8\" font-size=\"12\" font-family=\"'JetBrains Mono',monospace\">a</text><text x=\"12\" y=\"69\" fill=\"#94a3b8\" font-size=\"12\" font-family=\"'JetBrains Mono',monospace\">b</text><text x=\"202\" y=\"49\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\" font-family=\"'JetBrains Mono',monospace\">out</text><text x=\"82\" y=\"49\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">OR</text></svg>"
   },
   {
     "slug": "nand-gate",
@@ -14050,21 +14159,19 @@
       "signal": [
         {
           "name": "a",
-          "wave": "0..1.."
+          "wave": "0.0.1.1."
         },
         {
           "name": "b",
-          "wave": "0.1.0.1"
+          "wave": "0.1.0.1."
         },
         {
           "name": "out",
-          "wave": "1...0."
+          "wave": "1.1.1.0."
         }
-      ],
-      "config": {
-        "hscale": 2
-      }
-    }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 260 90\" class=\"circuit-svg\"><path d=\"M 25,25 L 65,25 M 25,65 L 65,65 M 65,12 L 105,12 A 33 33 0 0 1 105,78 L 65,78 Z\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.08)\"/><circle cx=\"144\" cy=\"45\" r=\"5\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"none\"/><line x1=\"149\" y1=\"45\" x2=\"195\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><text x=\"12\" y=\"29\" fill=\"#94a3b8\" font-size=\"12\" font-family=\"'JetBrains Mono',monospace\">a</text><text x=\"12\" y=\"69\" fill=\"#94a3b8\" font-size=\"12\" font-family=\"'JetBrains Mono',monospace\">b</text><text x=\"202\" y=\"49\" fill=\"#2dd4bf\" font-size=\"12\" font-weight=\"700\" font-family=\"'JetBrains Mono',monospace\">out</text><text x=\"80\" y=\"49\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">NAND</text></svg>"
   },
   {
     "slug": "demux-1to4",
@@ -14092,7 +14199,7 @@
       "signal": [
         {
           "name": "in",
-          "wave": "1...0."
+          "wave": "1.......0."
         },
         {
           "name": "sel[1:0]",
@@ -14116,11 +14223,9 @@
             "0"
           ]
         }
-      ],
-      "config": {
-        "hscale": 1.5
-      }
-    }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 280 120\" class=\"circuit-svg\"><polygon points=\"80,28 150,15 150,105 80,92\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"25\" y1=\"60\" x2=\"80\" y2=\"60\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><line x1=\"115\" y1=\"99\" x2=\"115\" y2=\"115\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"150\" y1=\"30\" x2=\"205\" y2=\"30\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"150\" y1=\"50\" x2=\"205\" y2=\"50\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"150\" y1=\"70\" x2=\"205\" y2=\"70\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><line x1=\"150\" y1=\"90\" x2=\"205\" y2=\"90\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"12\" y=\"64\" fill=\"#94a3b8\" font-size=\"11\">in</text><text x=\"100\" y=\"118\" fill=\"#fbbf24\" font-size=\"10\">sel</text><text x=\"212\" y=\"34\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out[0]</text><text x=\"212\" y=\"54\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out[1]</text><text x=\"212\" y=\"74\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out[2]</text><text x=\"212\" y=\"94\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">out[3]</text><text x=\"94\" y=\"55\" fill=\"#e2e8f0\" font-size=\"11\" font-weight=\"700\">1:4 DEMUX</text><text x=\"98\" y=\"70\" fill=\"#64748b\" font-size=\"9\">ROUTER</text></svg>"
   },
   {
     "slug": "apb-master-fsm",
@@ -14180,7 +14285,8 @@
       "config": {
         "hscale": 1.5
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">start</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">write</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">psel</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">penable</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">APB</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "uart-receiver",
@@ -14210,7 +14316,7 @@
       "signal": [
         {
           "name": "clk",
-          "wave": "p........."
+          "wave": "p.........."
         },
         {
           "name": "rx",
@@ -14237,11 +14343,9 @@
           "name": "valid",
           "wave": "0.........1"
         }
-      ],
-      "config": {
-        "hscale": 1.2
-      }
-    }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">rx</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">rst_n</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">data_out[7:0]</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">valid</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">UART RX</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "axi-stream-register-slice",
@@ -14312,7 +14416,8 @@
       "config": {
         "hscale": 1.5
       }
-    }
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 330 120\" class=\"circuit-svg\"><rect x=\"85\" y=\"18\" width=\"145\" height=\"84\" rx=\"8\" stroke=\"#38bdf8\" stroke-width=\"2.5\" fill=\"rgba(56,189,248,0.06)\"/><line x1=\"15\" y1=\"38\" x2=\"85\" y2=\"38\" stroke=\"#38bdf8\" stroke-width=\"2\"/><line x1=\"15\" y1=\"60\" x2=\"85\" y2=\"60\" stroke=\"#fbbf24\" stroke-width=\"2\"/><line x1=\"15\" y1=\"82\" x2=\"85\" y2=\"82\" stroke=\"#a78bfa\" stroke-width=\"2\"/><line x1=\"230\" y1=\"45\" x2=\"285\" y2=\"45\" stroke=\"#2dd4bf\" stroke-width=\"2.5\"/><line x1=\"230\" y1=\"75\" x2=\"285\" y2=\"75\" stroke=\"#4ade80\" stroke-width=\"2\"/><text x=\"8\" y=\"42\" fill=\"#94a3b8\" font-size=\"9\">s_axis_tdata[7:0]</text><text x=\"8\" y=\"64\" fill=\"#fbbf24\" font-size=\"9\">s_axis_tvalid</text><text x=\"8\" y=\"86\" fill=\"#a78bfa\" font-size=\"9\">clk, rst</text><text x=\"290\" y=\"49\" fill=\"#2dd4bf\" font-size=\"10\" font-weight=\"700\">s_axis_tready</text><text x=\"290\" y=\"79\" fill=\"#4ade80\" font-size=\"10\" font-weight=\"700\">m_axis_tdata[7:0]</text><text x=\"110\" y=\"52\" fill=\"#e2e8f0\" font-size=\"12\" font-weight=\"700\">AXI-STREAM</text><text x=\"115\" y=\"70\" fill=\"#64748b\" font-size=\"9\">CONTROLLER</text></svg>"
   },
   {
     "slug": "apb-slave-controller",
@@ -15122,9 +15227,7 @@
             "8",
             "7",
             "1",
-            "0",
-            "1",
-            "2"
+            "0"
           ]
         },
         {
@@ -15210,10 +15313,8 @@
           "wave": "=...==0..",
           "data": [
             "0",
-            "1",
-            "2",
-            "3",
-            "4"
+            "4",
+            "0"
           ]
         },
         {
@@ -15302,8 +15403,7 @@
             "0",
             "1",
             "4",
-            "3",
-            "0"
+            "3"
           ]
         },
         {
@@ -15578,10 +15678,8 @@
           "wave": "=...===..",
           "data": [
             "0",
-            "1",
             "2",
             "8",
-            "7",
             "0"
           ]
         },
@@ -15762,9 +15860,7 @@
           "wave": "=...===..",
           "data": [
             "0",
-            "1",
             "3",
-            "12",
             "16",
             "15"
           ]
@@ -16127,7 +16223,7 @@
       "multi-bit-handshake-cdc"
     ]
   }
-  ];
+];
 const LEVEL_META = [
     { level: 1, name: 'Digital Logic Fundamentals', diff: 'Beginner', badge: 'L1', color: '#38bdf8', desc: 'Logic gates, truth tables, multiplexers, demux, decoders, and bitwise reductions.' },
     { level: 2, name: 'Combinational RTL Design', diff: 'Beginner to Intermediate', badge: 'L2', color: '#2dd4bf', desc: 'ALU, barrel shifters, priority selection, adders, arithmetic, and latch avoidance.' },
