@@ -7,7 +7,9 @@
   'use strict';
 
   function initSiliconExplorer() {
-    const data = global.EcrioniXSiliconData;
+    const productId = document.body.dataset.productId || 'apple-iphone-6s';
+    const data = (global.EcrioniXSiliconProducts && global.EcrioniXSiliconProducts[productId]) 
+                 || (productId === 'apple-macbook-air-m1' ? global.EcrioniXSiliconDataM1 : global.EcrioniXSiliconData);
     if (!data) {
       console.error('EcrioniXSiliconData not loaded.');
       return;
@@ -136,7 +138,11 @@
 
         specsTable.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--se-muted);padding:2rem 0;">No component selected.<br>Rotate the phone and click any physical layer, chip, or silicon core.</td></tr>';
         supplyBox.innerHTML = '<div style="color:var(--se-muted);font-size:0.8rem;text-align:center;padding:1rem;">Select a semiconductor IC to view foundry and designer supply chains.</div>';
-        deepDiveText.innerHTML = '<p>The iPhone 6s represents a landmark engineering transition to 64-bit desktop-class mobile architecture. Select any hardware block above to explore its operational principles and semiconductor physics.</p>';
+        if (productId === 'apple-macbook-air-m1') {
+          deepDiveText.innerHTML = '<p>The M1 MacBook Air represents Apple\'s historic transition to Mac Apple Silicon, featuring an ultra-efficient 5nm fanless architecture and 128-bit Unified Memory Architecture. Select any hardware block, logic board chip, or M1 processor core above to explore its microarchitecture and semiconductor physics.</p>';
+        } else {
+          deepDiveText.innerHTML = '<p>The iPhone 6s represents a landmark engineering transition to 64-bit desktop-class mobile architecture. Select any hardware block above to explore its operational principles and semiconductor physics.</p>';
+        }
         return;
       }
 
@@ -414,6 +420,66 @@
           explodeSlider.value = 0;
           if (explodeVal) explodeVal.textContent = '0%';
         }
+      });
+    }
+
+    // MacBook Lid Angle Slider & Toggle Button
+    const lidSlider = document.getElementById('seLidSlider');
+    const lidVal = document.getElementById('seLidVal');
+    const toggleLidBtn = document.getElementById('seToggleLidBtn');
+
+    if (lidSlider && engine.setLidAngle) {
+      lidSlider.addEventListener('input', (e) => {
+        const deg = parseFloat(e.target.value);
+        engine.setLidAngle(deg);
+        if (lidVal) lidVal.textContent = ${Math.round(deg)}°;
+      });
+    }
+
+    if (toggleLidBtn && engine.setLidAngle) {
+      let isLidOpen = true;
+      toggleLidBtn.addEventListener('click', () => {
+        isLidOpen = !isLidOpen;
+        const target = isLidOpen ? 105 : 0;
+        engine.setLidAngle(target);
+        if (lidSlider) lidSlider.value = target;
+        if (lidVal) lidVal.textContent = ${target}°;
+        toggleLidBtn.innerHTML = isLidOpen ? '<span>💻</span> Close' : '<span>💻</span> Open';
+      });
+    }
+
+    // Workload Scenario Buttons (M1 Silicon Explorer)
+    const scenarioBtns = document.querySelectorAll('.se-scenario-pill');
+    const scenarioDesc = document.getElementById('seScenarioDesc');
+    const scenarioSteps = document.getElementById('seScenarioSteps');
+
+    if (scenarioBtns.length > 0 && data.WORKLOAD_SCENARIOS) {
+      scenarioBtns.forEach((btn, idx) => {
+        btn.addEventListener('click', () => {
+          scenarioBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          const sc = data.WORKLOAD_SCENARIOS[idx];
+          if (sc) {
+            if (scenarioDesc) scenarioDesc.textContent = sc.description;
+            if (scenarioSteps) {
+              scenarioSteps.innerHTML = sc.explanation.split('\n').map(step => <li></li>).join('');
+            }
+            if (engine.mode !== 'architecture') {
+              engine.setMode('architecture');
+              updateModeUI('architecture');
+            }
+            if (sc.path && engine.archMeshes) {
+              engine.archMeshes.forEach((mesh, id) => {
+                if (sc.path.includes(id)) {
+                  mesh.scale.set(1.08, 1.08, 1.25);
+                } else {
+                  mesh.scale.set(1.0, 1.0, 1.0);
+                }
+              });
+            }
+          }
+        });
       });
     }
 

@@ -900,4 +900,9 @@
     KNOWLEDGE_QUIZ
   };
 
+  if (!global.EcrioniXSiliconProducts) {
+    global.EcrioniXSiliconProducts = {};
+  }
+  global.EcrioniXSiliconProducts['apple-iphone-6s'] = global.EcrioniXSiliconData;
+
 })(typeof window !== 'undefined' ? window : globalThis);

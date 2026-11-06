@@ -57,6 +57,11 @@
       this.onSelectCallback = null;
       this.onHoverCallback = null;
 
+      this.isMacBook = (this.data && this.data.PRODUCT_META && this.data.PRODUCT_META.id === 'apple-macbook-air-m1');
+      this.lidAngle = this.isMacBook ? 105 : 0;
+      this.targetLidAngle = this.isMacBook ? 105 : 0;
+      this.displayAssemblyGroup = null;
+
       this.init();
     }
 
@@ -67,9 +72,15 @@
       this.setupMaterials();
 
       // Build 3D environments
-      this.buildPhysicalPhone();
-      this.buildMotherboard();
-      this.buildArchitectureDie();
+      if (this.isMacBook) {
+        this.buildPhysicalMacBook();
+        this.buildMotherboardMacBook();
+        this.buildArchitectureDieM1();
+      } else {
+        this.buildPhysicalPhone();
+        this.buildMotherboard();
+        this.buildArchitectureDie();
+      }
       this.buildDataFlowParticles();
 
       this.setupControls();
@@ -264,6 +275,43 @@
         wireframe: true,
         transparent: true,
         opacity: 0.35
+      });
+
+      // 14. Keycap Material (matte dark slate)
+      this.materials.keycap = new THREE.MeshStandardMaterial({
+        color: 0x181e28,
+        roughness: 0.72,
+        metalness: 0.15
+      });
+
+      // 15. Mirror Chrome Apple Logo
+      this.materials.appleLogoChrome = new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        metalness: 0.98,
+        roughness: 0.08
+      });
+
+      // 16. Retina IPS Display Panel (macOS Big Sur glow)
+      this.materials.retinaBigSur = new THREE.MeshStandardMaterial({
+        color: 0x07111e,
+        emissive: 0x1e3a5f,
+        emissiveIntensity: 0.55,
+        roughness: 0.25,
+        metalness: 0.1
+      });
+
+      // 17. Battery Pouch Mylar Wrap
+      this.materials.batteryMylar = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.45,
+        metalness: 0.3
+      });
+
+      // 18. Fanless Aluminum Heatsink
+      this.materials.heatsinkAluminum = new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        metalness: 0.92,
+        roughness: 0.28
       });
     }
 
@@ -893,7 +941,11 @@
         this.architectureGroup.visible = false;
         this.particlesGroup.visible = false;
 
-        this.camTargetPos.set(0, -2, 22);
+        if (this.isMacBook) {
+          this.camTargetPos.set(0, -14, 20);
+        } else {
+          this.camTargetPos.set(0, -2, 22);
+        }
         this.camTargetLookAt.set(0, 0, 0);
       } else if (newMode === 'motherboard') {
         this.physicalGroup.visible = false;
@@ -928,6 +980,10 @@
       const nextSide = this.currentBoardSide === 'front' ? 'back' : 'front';
       this.setMotherboardSide(nextSide);
       return nextSide;
+    }
+
+    setLidAngle(deg) {
+      this.targetLidAngle = Math.max(0, Math.min(135, deg));
     }
 
     setExplode(val) {
@@ -1007,6 +1063,12 @@
 
       // Smooth Explode view interpolation
       this.explodeFactor += (this.targetExplode - this.explodeFactor) * 0.1;
+
+      // Smooth Lid Angle interpolation for MacBook
+      if (this.isMacBook && this.displayAssemblyGroup) {
+        this.lidAngle += (this.targetLidAngle - this.lidAngle) * 0.08;
+        this.displayAssemblyGroup.rotation.x = -((this.lidAngle * Math.PI) / 180);
+      }
 
       if (this.mode === 'physical') {
         this.physicalMeshes.forEach(mesh => {
