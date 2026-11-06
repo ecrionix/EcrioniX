@@ -458,24 +458,107 @@
   }
   function highlight(code) { return code.split('\n').map(hlLine).join('\n'); }
 
-  function wireEditor(editorId, hlId) {
+  function wireEditor(editorId, hlId, gutterId, opts = {}) {
     const ed = document.getElementById(editorId);
     const hl = document.getElementById(hlId);
+    const gt = document.getElementById(gutterId || 'gutter-layer');
     if (!ed || !hl) return;
-    const sync = () => { hl.innerHTML = highlight(ed.value) + '\n'; };
+
+    const updateGutter = (lineCount) => {
+      if (!gt) return;
+      let s = '';
+      for (let i = 1; i <= lineCount; i++) {
+        s += `<span>${i}</span>\n`;
+      }
+      gt.innerHTML = s;
+    };
+
+    const sync = () => {
+      const code = ed.value;
+      hl.innerHTML = highlight(code) + '\n';
+      const lines = code.split('\n').length;
+      updateGutter(lines);
+      if (opts.onInput) opts.onInput(code);
+    };
+
     sync();
     ed.addEventListener('input', sync);
-    ed.addEventListener('scroll', () => { hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; });
+    ed.addEventListener('scroll', () => {
+      hl.scrollTop = ed.scrollTop;
+      hl.scrollLeft = ed.scrollLeft;
+      if (gt) gt.scrollTop = ed.scrollTop;
+    });
+
     ed.addEventListener('keydown', e => {
+      // 1. Run shortcut: Ctrl+Enter or Cmd+Enter
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (opts.onRun) opts.onRun();
+        return;
+      }
+      // 2. Save shortcut: Ctrl+S or Cmd+S
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (opts.onSave) opts.onSave(ed.value);
+        return;
+      }
+      // 3. Tab and Shift-Tab
       if (e.key === 'Tab') {
         e.preventDefault();
         const start = ed.selectionStart, end = ed.selectionEnd;
-        ed.value = ed.value.slice(0, start) + '  ' + ed.value.slice(end);
-        ed.selectionStart = ed.selectionEnd = start + 2;
+        if (e.shiftKey) {
+          // Outdent
+          const before = ed.value.slice(0, start);
+          const lineStart = before.lastIndexOf('\n') + 1;
+          if (ed.value.slice(lineStart, lineStart + 2) === '  ') {
+            ed.value = ed.value.slice(0, lineStart) + ed.value.slice(lineStart + 2);
+            ed.selectionStart = ed.selectionEnd = Math.max(lineStart, start - 2);
+            sync();
+          }
+        } else {
+          // Indent 2 spaces
+          ed.value = ed.value.slice(0, start) + '  ' + ed.value.slice(end);
+          ed.selectionStart = ed.selectionEnd = start + 2;
+          sync();
+        }
+        return;
+      }
+      // 4. Auto-closing pairs: (), [], {}, ""
+      const pairs = { '(': ')', '[': ']', '{': '}', '"': '"' };
+      if (pairs[e.key] && ed.selectionStart === ed.selectionEnd) {
+        e.preventDefault();
+        const start = ed.selectionStart;
+        const closing = pairs[e.key];
+        ed.value = ed.value.slice(0, start) + e.key + closing + ed.value.slice(start);
+        ed.selectionStart = ed.selectionEnd = start + 1;
         sync();
+        return;
+      }
+      // 5. Auto-indentation on Enter
+      if (e.key === 'Enter' && ed.selectionStart === ed.selectionEnd) {
+        const start = ed.selectionStart;
+        const before = ed.value.slice(0, start);
+        const lastNewLine = before.lastIndexOf('\n');
+        const curLine = before.slice(lastNewLine + 1);
+        const indentMatch = curLine.match(/^(\s*)/);
+        let indent = indentMatch ? indentMatch[1] : '';
+        if (/\b(begin|case|casex|casez|fork|generate|table)\b\s*$/.test(curLine.trim())) {
+          indent += '  ';
+        }
+        e.preventDefault();
+        const insertText = '\n' + indent;
+        ed.value = ed.value.slice(0, start) + insertText + ed.value.slice(start);
+        ed.selectionStart = ed.selectionEnd = start + insertText.length;
+        sync();
+        return;
       }
     });
-    return { sync };
+
+    return {
+      sync,
+      setValue: (val) => { ed.value = val; sync(); },
+      getValue: () => ed.value
+    };
   }
 
   global.EcrioniXProblems = {

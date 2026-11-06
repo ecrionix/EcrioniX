@@ -8,27 +8,54 @@
   let editorApi = null;
   let currentZoom = 1;
   let lastVcdText = null;
+  let lastCompileErr = '';
+  let lastRawStdout = '';
 
   function qs(id) { return document.getElementById(id); }
 
+  function getDraftKey() {
+    return problem ? 'ecrionix_draft_' + problem.slug : null;
+  }
+
+  function saveDraft(code) {
+    const k = getDraftKey();
+    if (!k) return;
+    try {
+      localStorage.setItem(k, code);
+      showDraftBadge('Draft saved');
+    } catch (_) {}
+  }
+
+  function showDraftBadge(msg) {
+    const badge = qs('draftStatus');
+    if (!badge) return;
+    badge.textContent = msg;
+    badge.classList.add('visible');
+    setTimeout(() => { badge.classList.remove('visible'); }, 1800);
+  }
+
   function showWaveform(vcdText) {
-    const wrap = qs('waveform-wrap');
-    if (!wrap) return;
     lastVcdText = vcdText;
-    if (!vcdText || !problem) { wrap.style.display = 'none'; return; }
+    const svgContainer = qs('waveform-svg');
+    const emptyNotice = qs('waveform-empty');
+    if (!svgContainer) return;
+
+    if (!vcdText || !problem) {
+      svgContainer.innerHTML = '';
+      if (emptyNotice) emptyNotice.style.display = 'block';
+      return;
+    }
+
+    if (emptyNotice) emptyNotice.style.display = 'none';
     const J = window.EcrioniXProblems;
     const signals = problem.waveSignals || [];
     const events = J.parseVCDSignals(vcdText, signals);
     const allTimes = signals.flatMap(n => (events[n] || []).map(e => e.time));
     const endTime = Math.max(4, ...(allTimes.length ? allTimes : [0])) + 1;
     
-    const svgContainer = qs('waveform-svg');
-    if (svgContainer) {
-      svgContainer.innerHTML = J.renderTimingDiagram(events, signals, endTime, currentZoom);
-    }
-    wrap.style.display = 'block';
+    svgContainer.innerHTML = J.renderTimingDiagram(events, signals, endTime, currentZoom);
 
-    // Auto-switch to waveform on mobile if tests ran
+    // If on mobile and user clicked waveform, update
     if (window.innerWidth < 900) {
       setMobileTab('waveform');
     }
@@ -40,6 +67,15 @@
     const zoomVal = qs('waveZoomVal');
     if (zoomVal) zoomVal.textContent = Math.round(currentZoom * 100) + '%';
     if (lastVcdText) showWaveform(lastVcdText);
+  }
+
+  function setResultTab(tabName) {
+    document.querySelectorAll('.res-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.res-tab-pane').forEach(pane => {
+      pane.classList.toggle('active', pane.id === 'pane-' + tabName);
+    });
   }
 
   function paintExpectedWave() {
@@ -73,47 +109,61 @@
     let passCount = 0;
     let failCount = 0;
     
-    const formattedLines = lines.map(line => {
+    const formattedRows = lines.map(line => {
       if (line.includes('PASS')) {
         passCount++;
-        return `<div class="log-row pass"><span class="badge-pass">PASS</span> <span>${J.esc(line.replace(/PASS:?/g, '').trim())}</span></div>`;
+        return `<div class="test-row pass"><span class="badge-pass">PASS</span> <span class="test-msg">${J.esc(line.replace(/PASS:?/g, '').trim())}</span></div>`;
       } else if (line.includes('FAIL')) {
         failCount++;
-        return `<div class="log-row fail"><span class="badge-fail">FAIL</span> <span>${J.esc(line.replace(/FAIL:?/g, '').trim())}</span></div>`;
+        return `<div class="test-row fail"><span class="badge-fail">FAIL</span> <span class="test-msg">${J.esc(line.replace(/FAIL:?/g, '').trim())}</span></div>`;
       }
-      return `<div class="log-row info">${J.esc(line)}</div>`;
+      return `<div class="test-row info"><span>${J.esc(line)}</span></div>`;
     }).join('');
 
     const total = passCount + failCount;
     let summaryHtml = '';
     if (total > 0) {
-      summaryHtml = `<div class="test-summary ${failCount === 0 ? 'all-pass' : 'has-fail'}">
-        <span>Test Summary: <b>${passCount}/${total}</b> test vectors passed</span>
-        <span class="status-indicator">${failCount === 0 ? '✓ ALL TESTS PASSED' : '✕ FAILURES DETECTED'}</span>
+      summaryHtml = `<div class="test-summary-card ${failCount === 0 ? 'all-pass' : 'has-fail'}">
+        <div class="summary-left">
+          <span class="summary-status-icon">${failCount === 0 ? '✓' : '✕'}</span>
+          <span class="summary-text">${failCount === 0 ? 'All Test Vectors Passed' : 'Test Vector Discrepancy Detected'}</span>
+        </div>
+        <div class="summary-right">
+          <span class="summary-pill">${passCount}/${total} Vectors Correct</span>
+        </div>
       </div>`;
     }
 
-    return summaryHtml + formattedLines;
+    return summaryHtml + formattedRows;
   }
 
   async function runSubmit() {
     const J = window.EcrioniXProblems;
     const editor = qs('editor');
-    const out = qs('console');
+    const resultsPane = qs('pane-test-results');
+    const compilePane = qs('pane-compile-output');
+    const simLogPane = qs('pane-sim-log');
     const btn = qs('submit-btn');
 
     if (!currentUser) {
       btn.disabled = true;
       btn.textContent = 'Sign in...';
-      out.innerHTML = '<span class="info">Sign in with Google to run tests and save your progress...</span>\n';
+      if (resultsPane) {
+        resultsPane.innerHTML = '<div class="notice-box info">Sign in with Google to run tests and save your points on the global leaderboard.</div>';
+      }
+      setResultTab('test-results');
       const user = await signInWithGoogle();
       btn.disabled = false;
-      btn.textContent = 'Run tests';
+      btn.textContent = 'Run Tests';
       if (!user) {
-        out.innerHTML = '<span class="warn">Sign-in was cancelled — sign in to run tests and track solves on the leaderboard.</span>';
+        if (resultsPane) {
+          resultsPane.innerHTML = '<div class="notice-box warn">Sign-in was cancelled — sign in to compile and simulate RTL.</div>';
+        }
         return;
       }
-      out.innerHTML = '<span class="ok">Signed in! Click Run tests again.</span>';
+      if (resultsPane) {
+        resultsPane.innerHTML = '<div class="notice-box ok">Signed in! Click "Run Tests" to execute.</div>';
+      }
       return;
     }
 
@@ -121,24 +171,53 @@
 
     btn.disabled = true;
     btn.textContent = 'Running...';
-    out.innerHTML = '<div class="sim-loading"><span class="auth-spinner mini"></span> <span>Compiling RTL and running testbench on simulation server...</span></div>';
+    if (resultsPane) {
+      resultsPane.innerHTML = '<div class="sim-loading"><span class="auth-spinner mini"></span> <span>Compiling RTL and simulating testbench on Icarus Verilog runner...</span></div>';
+    }
+    setResultTab('test-results');
 
     try {
       const res = await J.apiFetch(J.API, { code: combined }, (attempt, s) => {
-        out.innerHTML = `<span class="warn">Server waking up — retrying in ${Math.round(s)}s... (attempt ${attempt + 1}/3)</span>`;
+        if (resultsPane) {
+          resultsPane.innerHTML = `<div class="notice-box warn">Simulation container waking up — retrying in ${Math.round(s)}s... (attempt ${attempt + 1}/3)</div>`;
+        }
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
 
+      lastCompileErr = d.stderr || '';
+      lastRawStdout = d.stdout || '';
+
+      // Populate Compilation Output Pane
+      if (compilePane) {
+        if (!d.success && d.stage === 'compile') {
+          compilePane.innerHTML = `<div class="diag-card err"><div class="diag-header">❌ Compilation / Syntax Error</div><pre class="diag-pre">${J.esc(d.stderr || d.stdout)}</pre></div>`;
+        } else {
+          compilePane.innerHTML = `<div class="diag-card ok"><div class="diag-header">✓ Compilation Successful</div><pre class="diag-pre">${J.esc(d.stderr || 'Elaboration clean. 0 errors, 0 warnings.')}</pre></div>`;
+        }
+      }
+
+      // Populate Simulation Log Pane
+      if (simLogPane) {
+        simLogPane.innerHTML = `<pre class="diag-pre">${J.esc(d.stdout || 'No simulation output recorded.')}</pre>`;
+      }
+
       if (!d.success && d.stage === 'compile') {
-        out.innerHTML = `<div class="err-box"><div class="err-title">── RTL Compilation Error ──</div><pre class="err-pre">${J.esc(d.stderr || d.stdout)}</pre></div>`;
+        if (resultsPane) {
+          resultsPane.innerHTML = `<div class="diag-card err"><div class="diag-header">❌ Compilation Failed</div><p style="font-size:0.85rem;margin:0 0 0.5rem 0;">Icarus Verilog reported syntax or port errors in your RTL module.</p><pre class="diag-pre">${J.esc(d.stderr || d.stdout)}</pre></div>`;
+        }
+        setResultTab('compile-output');
         showWaveform(null);
         if (currentUser) await J.bumpAttempt(currentUser, problem.slug);
       } else {
         showWaveform(d.vcd);
         const judged = J.parseJudgeStdout(d.stdout);
         if (judged.passed) {
-          out.innerHTML = `<div class="pass-box"><div class="pass-title">🎉 All Tests Passed!</div><div class="test-log">${formatTestResults(judged.log)}</div></div>`;
+          if (resultsPane) {
+            resultsPane.innerHTML = `<div class="pass-box"><div class="pass-title">🎉 All Tests Passed!</div><div class="test-log">${formatTestResults(judged.log)}</div></div>`;
+          }
+          setResultTab('test-results');
+
           const result = await J.recordSolve(currentUser, problem.slug, problem.difficulty);
           if (qs('solvedBadge')) qs('solvedBadge').style.display = 'inline-block';
           const banner = qs('passBanner');
@@ -151,14 +230,19 @@
           renderShareCard(problem, result);
         } else {
           if (currentUser) await J.bumpAttempt(currentUser, problem.slug);
-          out.innerHTML = `<div class="fail-box"><div class="fail-title">❌ Verification Failed — Inspect Discrepancies Below</div><div class="test-log">${formatTestResults(judged.log)}</div>${d.stderr ? `<pre class="err-pre">${J.esc(d.stderr)}</pre>` : ''}</div>`;
+          if (resultsPane) {
+            resultsPane.innerHTML = `<div class="fail-box"><div class="fail-title">❌ Verification Failed — Inspect Discrepancies Below</div><div class="test-log">${formatTestResults(judged.log)}</div>${d.stderr ? `<pre class="diag-pre">${J.esc(d.stderr)}</pre>` : ''}</div>`;
+          }
+          setResultTab('test-results');
         }
       }
     } catch (e) {
-      out.innerHTML = `<div class="err-box"><div class="err-title">── Connection Error ──</div><p>${J.esc(e.message)}</p><span class="dim">Tip: The remote simulation container sleeps after inactivity — please click Run again.</span></div>`;
+      if (resultsPane) {
+        resultsPane.innerHTML = `<div class="diag-card err"><div class="diag-header">── Connection Error ──</div><p style="font-size:0.85rem;margin:0 0 0.5rem;">${J.esc(e.message)}</p><span class="dim">Tip: The remote simulation container sleeps after inactivity — please click Run Tests again.</span></div>`;
+      }
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Run tests';
+      btn.textContent = 'Run Tests';
     }
   }
 
@@ -171,26 +255,18 @@
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Background
     const bg = ctx.createLinearGradient(0, 0, W, H);
     bg.addColorStop(0, '#020617');
     bg.addColorStop(1, '#0c1526');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
 
-    // Accent glow blobs
     const glow = ctx.createRadialGradient(W * 0.85, H * 0.1, 20, W * 0.85, H * 0.1, 420);
     glow.addColorStop(0, 'rgba(56,189,248,.18)');
     glow.addColorStop(1, 'rgba(56,189,248,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
-    const glow2 = ctx.createRadialGradient(W * 0.1, H * 0.95, 20, W * 0.1, H * 0.95, 420);
-    glow2.addColorStop(0, 'rgba(167,139,250,.14)');
-    glow2.addColorStop(1, 'rgba(167,139,250,0)');
-    ctx.fillStyle = glow2;
-    ctx.fillRect(0, 0, W, H);
 
-    // Wordmark
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '700 30px Outfit, sans-serif';
     ctx.fillText('EcrioniX', 64, 76);
@@ -198,7 +274,6 @@
     ctx.font = '600 18px Outfit, sans-serif';
     ctx.fillText('RTL Design & Verilog Problems', 220, 76);
 
-    // "Solved" pill
     ctx.fillStyle = 'rgba(74,222,128,.14)';
     roundRect(ctx, 64, 130, 150, 42, 21);
     ctx.fill();
@@ -206,7 +281,6 @@
     ctx.font = '700 18px Outfit, sans-serif';
     ctx.fillText('✅ SOLVED', 84, 157);
 
-    // Difficulty pill
     const diffColors = { easy: ['rgba(74,222,128,.14)', '#4ade80'], medium: ['rgba(251,191,36,.14)', '#fbbf24'], hard: ['rgba(248,113,113,.14)', '#f87171'] };
     const [diffBg, diffFg] = diffColors[p.difficulty] || diffColors.easy;
     ctx.fillStyle = diffBg;
@@ -216,7 +290,6 @@
     ctx.font = '700 16px Outfit, sans-serif';
     ctx.fillText((p.difficulty || '').toUpperCase(), 254, 157);
 
-    // Points pill
     ctx.fillStyle = 'rgba(45,212,191,.14)';
     roundRect(ctx, 376, 130, 110, 42, 21);
     ctx.fill();
@@ -224,12 +297,10 @@
     ctx.font = '700 16px Outfit, sans-serif';
     ctx.fillText(p.points + ' PTS', 398, 157);
 
-    // Title
     ctx.fillStyle = '#f8fafc';
     ctx.font = '800 52px Outfit, sans-serif';
     wrapText(ctx, p.title, 64, 260, 1070, 62);
 
-    // Stats line
     const total = (window.ECRIONIX_PROBLEMS || []).length;
     const solvedCount = result && result.solvedCount ? result.solvedCount : null;
     ctx.fillStyle = '#94a3b8';
@@ -237,7 +308,6 @@
     const statsLine = solvedCount ? `${solvedCount} of ${total} problems solved` : `Free, auto-graded Verilog problems`;
     ctx.fillText(statsLine, 64, H - 130);
 
-    // Footer URL
     ctx.fillStyle = '#38bdf8';
     ctx.font = '700 26px Outfit, sans-serif';
     ctx.fillText('ecrionix.org/problems/', 64, H - 64);
@@ -343,9 +413,15 @@
   }
 
   function resetCode() {
-    qs('editor').value = problem.starter;
-    qs('console').innerHTML = '<span class="dim">// Output appears after you run tests.</span>';
+    if (!problem) return;
+    const k = getDraftKey();
+    if (k) {
+      try { localStorage.removeItem(k); } catch (_) {}
+    }
+    const ed = qs('editor');
+    if (ed) ed.value = problem.starter;
     if (editorApi) editorApi.sync();
+    showDraftBadge('Starter restored');
     showWaveform(null);
   }
 
@@ -361,14 +437,33 @@
     });
   }
 
+  function setFontSize(sizePx) {
+    const edWrap = qs('editorWrap');
+    if (!edWrap) return;
+    edWrap.style.fontSize = sizePx + 'px';
+    document.querySelectorAll('.font-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.size === String(sizePx));
+    });
+    try { localStorage.setItem('ecrionix_editor_font', sizePx); } catch (_) {}
+  }
+
+  function toggleFullscreen() {
+    const layout = qs('solveLayout');
+    const btn = qs('fullscreenBtn');
+    if (!layout) return;
+    const isFull = layout.classList.toggle('ide-fullscreen');
+    if (btn) {
+      btn.textContent = isFull ? '⛶ Exit' : '⛶ Fullscreen';
+      btn.title = isFull ? 'Exit Fullscreen' : 'Fullscreen Editor';
+    }
+  }
+
   function setMobileTab(tabName) {
     document.querySelectorAll('.mob-tab-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === tabName);
     });
     const specCol = qs('specCol');
     const editorCol = qs('editorCol');
-    const waveWrap = qs('waveform-wrap');
-    const consoleWrap = qs('consoleWrap');
 
     if (window.innerWidth < 900) {
       if (tabName === 'spec') {
@@ -377,23 +472,18 @@
       } else if (tabName === 'code') {
         if (specCol) specCol.style.display = 'none';
         if (editorCol) editorCol.style.display = 'block';
-        if (consoleWrap) consoleWrap.style.display = 'none';
-        if (waveWrap) waveWrap.style.display = 'none';
       } else if (tabName === 'waveform') {
         if (specCol) specCol.style.display = 'none';
         if (editorCol) editorCol.style.display = 'block';
-        if (waveWrap) waveWrap.style.display = 'block';
-        if (consoleWrap) consoleWrap.style.display = 'none';
+        setResultTab('waveform');
       } else if (tabName === 'output') {
         if (specCol) specCol.style.display = 'none';
         if (editorCol) editorCol.style.display = 'block';
-        if (consoleWrap) consoleWrap.style.display = 'block';
+        setResultTab('test-results');
       }
     } else {
       if (specCol) specCol.style.display = 'block';
       if (editorCol) editorCol.style.display = 'block';
-      if (consoleWrap) consoleWrap.style.display = 'block';
-      if (waveWrap && lastVcdText) waveWrap.style.display = 'block';
     }
   }
 
@@ -411,7 +501,6 @@
     const wrap = qs('circuitDiagramWrap');
     if (!wrap) return;
     
-    // Core schematic diagrams for major digital design circuits
     let svg = '';
     const slug = p.slug || '';
     if (slug.includes('and-gate')) {
@@ -434,6 +523,44 @@
     } else {
       wrap.style.display = 'none';
     }
+  }
+
+  function initSplitter() {
+    const gutter = qs('splitGutterH');
+    const layout = qs('solveLayout');
+    if (!gutter || !layout) return;
+
+    let isDragging = false;
+    gutter.addEventListener('mousedown', e => {
+      isDragging = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const rect = layout.getBoundingClientRect();
+      const offset = e.clientX - rect.left;
+      const pct = Math.max(25, Math.min(75, (offset / rect.width) * 100));
+      layout.style.gridTemplateColumns = `${pct}% 10px calc(${100 - pct}% - 10px)`;
+      try { localStorage.setItem('ecrionix_h_split', pct); } catch (_) {}
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+
+    // Restore saved split
+    try {
+      const saved = localStorage.getItem('ecrionix_h_split');
+      if (saved && window.innerWidth >= 900) {
+        layout.style.gridTemplateColumns = `${saved}% 10px calc(${100 - saved}% - 10px)`;
+      }
+    } catch (_) {}
   }
 
   function bootUI() {
@@ -464,16 +591,56 @@
     renderCircuitDiagram(problem);
 
     const editorEl = qs('editor');
-    if (editorEl) editorEl.value = problem.starter;
-    if (window.EcrioniXProblems?.wireEditor) {
-      editorApi = window.EcrioniXProblems.wireEditor('editor', 'hl-layer');
+    if (editorEl) {
+      // Check saved draft
+      const k = getDraftKey();
+      let restored = false;
+      if (k) {
+        try {
+          const draft = localStorage.getItem(k);
+          if (draft) {
+            editorEl.value = draft;
+            restored = true;
+          }
+        } catch (_) {}
+      }
+      if (!restored) {
+        editorEl.value = problem.starter;
+      }
+      if (restored) showDraftBadge('Restored from draft');
     }
 
+    if (window.EcrioniXProblems?.wireEditor) {
+      editorApi = window.EcrioniXProblems.wireEditor('editor', 'hl-layer', 'gutter-layer', {
+        onRun: runSubmit,
+        onSave: (code) => saveDraft(code),
+        onInput: (code) => saveDraft(code)
+      });
+    }
+
+    // Restore saved font size
+    try {
+      const savedFont = localStorage.getItem('ecrionix_editor_font');
+      if (savedFont) setFontSize(Number(savedFont));
+    } catch (_) {}
+
     paintExpectedWave();
+    initSplitter();
 
     if (qs('submit-btn')) qs('submit-btn').onclick = runSubmit;
     if (qs('resetBtn')) qs('resetBtn').onclick = resetCode;
     if (qs('copyBtn')) qs('copyBtn').onclick = copyCode;
+    if (qs('fullscreenBtn')) qs('fullscreenBtn').onclick = toggleFullscreen;
+
+    // Font size selector clicks
+    document.querySelectorAll('.font-btn').forEach(btn => {
+      btn.onclick = () => setFontSize(Number(btn.dataset.size));
+    });
+
+    // Results panel tab switcher clicks
+    document.querySelectorAll('.res-tab-btn').forEach(btn => {
+      btn.onclick = () => setResultTab(btn.dataset.tab);
+    });
 
     // Waveform zoom handlers
     const zIn = qs('waveZoomIn');
@@ -494,10 +661,8 @@
       if (window.innerWidth >= 900) {
         const specCol = qs('specCol');
         const editorCol = qs('editorCol');
-        const consoleWrap = qs('consoleWrap');
         if (specCol) specCol.style.display = 'block';
         if (editorCol) editorCol.style.display = 'block';
-        if (consoleWrap) consoleWrap.style.display = 'block';
       }
     });
   }
