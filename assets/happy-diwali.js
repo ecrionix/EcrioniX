@@ -926,48 +926,57 @@
   }
 
   // ==========================================
-  // 8. POPULATE WISHES GRIDS
+  // 8. POPULATE STREAMLINED WISHES (TABBED)
   // ==========================================
-  function renderWishesGrids() {
-    const engGrid = document.getElementById('engWishesGrid');
-    const tradGrid = document.getElementById('tradWishesGrid');
+  let currentWishesTab = 'eng';
 
-    if (engGrid) {
-      engGrid.innerHTML = ENGINEERING_WISHES.map((w, idx) => `
-        <div class="diwali-wish-card">
-          <span class="diwali-wish-badge">${w.badge}</span>
-          <p class="diwali-wish-text">${w.text}</p>
-          <div class="diwali-wish-actions">
-            <button type="button" class="diwali-icon-btn copy-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Copy wish">
-              <span>📋</span> Copy
-            </button>
-            <button type="button" class="diwali-icon-btn wa-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Share on WhatsApp">
-              <span>💬</span> WhatsApp
-            </button>
-          </div>
+  function renderCuratedWishes() {
+    const container = document.getElementById('curatedWishesGrid');
+    if (!container) return;
+    const list = (currentWishesTab === 'trad') ? TRADITIONAL_WISHES : ENGINEERING_WISHES;
+
+    container.innerHTML = list.map((w) => `
+      <div class="diwali-wish-card">
+        <span class="diwali-wish-badge" ${currentWishesTab === 'trad' ? 'style="background:rgba(225,29,72,0.12); color:#fb7185; border-color:rgba(225,29,72,0.25);"' : ''}>${w.badge}</span>
+        <p class="diwali-wish-text">${w.text}</p>
+        <div class="diwali-wish-actions">
+          <button type="button" class="diwali-btn diwali-btn-primary use-wish-btn" style="padding:0.35rem 0.75rem; font-size:0.78rem;" data-wish="${encodeURIComponent(w.text)}">
+            <span>🎨</span> Use on Card
+          </button>
+          <button type="button" class="diwali-icon-btn wa-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Share on WhatsApp">
+            <span>💬</span> WhatsApp
+          </button>
+          <button type="button" class="diwali-icon-btn copy-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Copy wish">
+            <span>📋</span> Copy
+          </button>
         </div>
-      `).join('');
-    }
+      </div>
+    `).join('');
 
-    if (tradGrid) {
-      tradGrid.innerHTML = TRADITIONAL_WISHES.map((w, idx) => `
-        <div class="diwali-wish-card">
-          <span class="diwali-wish-badge" style="background:rgba(225,29,72,0.12); color:#fb7185; border-color:rgba(225,29,72,0.25);">${w.badge}</span>
-          <p class="diwali-wish-text">${w.text}</p>
-          <div class="diwali-wish-actions">
-            <button type="button" class="diwali-icon-btn copy-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Copy wish">
-              <span>📋</span> Copy
-            </button>
-            <button type="button" class="diwali-icon-btn wa-wish-btn" data-text="${encodeURIComponent(w.text)}" title="Share on WhatsApp">
-              <span>💬</span> WhatsApp
-            </button>
-          </div>
-        </div>
-      `).join('');
-    }
+    // Wire up "Use on Card"
+    container.querySelectorAll('.use-wish-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const wish = decodeURIComponent(btn.dataset.wish);
+        const customWishInput = document.getElementById('cardCustomWish');
+        if (customWishInput) {
+          customWishInput.value = wish;
+          renderGreetingCard();
+        }
+        document.getElementById('cardStudio')?.scrollIntoView({ behavior: 'smooth' });
+        showToast('Wish applied to your card!');
+      });
+    });
 
-    // Attach event listeners to copy and whatsapp buttons
-    document.querySelectorAll('.copy-wish-btn').forEach(btn => {
+    // Wire up WhatsApp & Copy
+    container.querySelectorAll('.wa-wish-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = decodeURIComponent(btn.dataset.text);
+        const msg = `🪔✨ Happy Diwali!\n\n${text}\n\nCelebrate and create your personal greeting here:\n👉 https://ecrionix.org/happy-diwali/`;
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+      });
+    });
+
+    container.querySelectorAll('.copy-wish-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const text = decodeURIComponent(btn.dataset.text);
         navigator.clipboard.writeText(`🪔 Happy Diwali! ${text}\n\nhttps://ecrionix.org/happy-diwali/`).then(() => {
@@ -975,103 +984,16 @@
         });
       });
     });
-
-    document.querySelectorAll('.wa-wish-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const text = decodeURIComponent(btn.dataset.text);
-        const msg = `🪔✨ Happy Diwali!\n\n${text}\n\nCelebrate and create your personal greeting here:\n👉 https://ecrionix.org/happy-diwali/`;
-        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
-      });
-    });
   }
 
-  // ==========================================
-  // 9. COMMUNITY MESSAGE WALL
-  // ==========================================
-  const STORAGE_KEY = 'ecrionix_diwali_wall_wishes_v1';
-
-  function getStoredWallWishes() {
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function saveStoredWallWishes(list) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    } catch (e) {
-      console.warn('localStorage full:', e);
-    }
-  }
-
-  function sanitize(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
-
-  function renderCommunityWall() {
-    const wallContainer = document.getElementById('communityWallList');
-    if (!wallContainer) return;
-
-    const userWishes = getStoredWallWishes();
-    const combined = [...userWishes, ...COMMUNITY_SEEDS];
-
-    wallContainer.innerHTML = combined.map(item => `
-      <div class="diwali-wall-msg-card">
-        <div class="diwali-wall-msg-header">
-          <span class="diwali-wall-msg-author">${sanitize(item.author)}</span>
-          <span class="diwali-wall-msg-role">${sanitize(item.role || 'VLSI Community')}</span>
-        </div>
-        <p class="diwali-wall-msg-body">"${sanitize(item.msg)}"</p>
-      </div>
-    `).join('');
-  }
-
-  function handleWallSubmit(e) {
-    e.preventDefault();
-    const nameInput = document.getElementById('wallAuthorName');
-    const roleInput = document.getElementById('wallAuthorRole');
-    const msgInput = document.getElementById('wallMessage');
-
-    const author = (nameInput?.value || '').trim();
-    const role = (roleInput?.value || '').trim() || 'Engineer';
-    const msg = (msgInput?.value || '').trim();
-
-    if (!author || !msg) {
-      showToast('Please enter both your name and a festive wish!');
-      return;
-    }
-
-    if (msg.length > 240) {
-      showToast('Please keep your message under 240 characters.');
-      return;
-    }
-
-    // Basic profanity / offensive filter
-    const lower = msg.toLowerCase();
-    const badWords = ['spam', 'abuse', 'hack', 'casino', 'viagra'];
-    if (badWords.some(w => lower.includes(w))) {
-      showToast('Your message contains disallowed terms.');
-      return;
-    }
-
-    const newWish = { author, role, msg };
-    const userWishes = getStoredWallWishes();
-    userWishes.unshift(newWish);
-    saveStoredWallWishes(userWishes);
-
-    if (nameInput) nameInput.value = '';
-    if (roleInput) roleInput.value = '';
-    if (msgInput) msgInput.value = '';
-
-    renderCommunityWall();
-    showToast('Your Diwali wish has been added to the wall!');
-    spawnBurst(window.innerWidth / 2, window.innerHeight * 0.7, 24);
-  }
+  global.switchWishesTab = function(type) {
+    currentWishesTab = type;
+    const engBtn = document.getElementById('tabEngBtn');
+    const tradBtn = document.getElementById('tabTradBtn');
+    if (engBtn) engBtn.classList.toggle('active', type === 'eng');
+    if (tradBtn) tradBtn.classList.toggle('active', type === 'trad');
+    renderCuratedWishes();
+  };
 
   // ==========================================
   // 10. URL QUERY PARAMETER INTEGRATION
@@ -1154,8 +1076,7 @@
   function initHappyDiwali() {
     initSparklerCanvas();
     checkUrlPersonalization();
-    renderWishesGrids();
-    renderCommunityWall();
+    renderCuratedWishes();
 
     // Central Diya Light Button
     const lightBtn = document.getElementById('lightDiyaBtn');
@@ -1169,71 +1090,53 @@
       audioBtn.addEventListener('click', () => {
         isSoundEnabled = !isSoundEnabled;
         audioBtn.classList.toggle('playing', isSoundEnabled);
-        audioBtn.innerHTML = isSoundEnabled ? '<span>🔔</span> Sound: On' : '<span>🔕</span> Sound: Muted';
+        const icon = document.getElementById('soundIcon');
+        const label = document.getElementById('soundLabel');
+        if (icon) icon.textContent = isSoundEnabled ? '🔔' : '🔕';
+        if (label) label.textContent = isSoundEnabled ? 'Sound: On' : 'Sound: Muted';
         if (isSoundEnabled) playFestiveChime();
       });
     }
 
-    // Card Generator Inputs & Theme selection
+    // Card Generator Inputs
     const senderInput = document.getElementById('cardSenderName');
     const recipInput = document.getElementById('cardRecipientName');
-    const wishSelect = document.getElementById('cardWishPreset');
     const customWishText = document.getElementById('cardCustomWish');
 
     [senderInput, recipInput, customWishText].forEach(input => {
       if (input) input.addEventListener('input', renderGreetingCard);
     });
 
-    if (wishSelect) {
-      wishSelect.addEventListener('change', (e) => {
-        if (customWishText && e.target.value) {
-          customWishText.value = e.target.value;
+    // Theme Chips
+    document.querySelectorAll('.diwali-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.diwali-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentThemeId = parseInt(chip.dataset.theme) || 1;
+        renderGreetingCard();
+      });
+    });
+
+    // Preset Pills
+    document.querySelectorAll('.diwali-preset-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        if (customWishText && pill.dataset.wish) {
+          customWishText.value = pill.dataset.wish;
           renderGreetingCard();
+          showToast('Message loaded!');
         }
       });
-    }
-
-    // Theme selector pills
-    document.querySelectorAll('.diwali-theme-item').forEach(item => {
-      item.addEventListener('click', () => {
-        document.querySelectorAll('.diwali-theme-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-        currentThemeId = parseInt(item.dataset.theme) || 1;
-        renderGreetingCard();
-      });
     });
 
-    // Aspect ratio selector
-    document.querySelectorAll('.diwali-ratio-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.diwali-ratio-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentAspectRatio = btn.dataset.ratio;
-        renderGreetingCard();
-      });
-    });
-
-    // Card Actions
+    // Actions
     document.getElementById('downloadCardBtn')?.addEventListener('click', downloadCardImage);
     document.getElementById('shareWhatsAppBtn')?.addEventListener('click', shareOnWhatsApp);
+    document.getElementById('shareWhatsAppBtnReveal')?.addEventListener('click', shareOnWhatsApp);
     document.getElementById('shareNativeBtn')?.addEventListener('click', shareNative);
     document.getElementById('copyGreetingBtn')?.addEventListener('click', copyGreetingText);
-    document.getElementById('shareInstagramBtn')?.addEventListener('click', openInstagramModal);
-    document.getElementById('closeIgModalBtn')?.addEventListener('click', closeInstagramModal);
-    document.getElementById('igDownloadActionBtn')?.addEventListener('click', () => {
-      downloadCardImage();
-      closeInstagramModal();
-    });
-
-    // Oracle / Random Wish Buttons
-    document.getElementById('newOracleWishBtn')?.addEventListener('click', generateRandomWish);
-    document.getElementById('shareOracleWishBtn')?.addEventListener('click', shareOracleWish);
-
-    // Wall form submit
-    document.getElementById('wallForm')?.addEventListener('submit', handleWallSubmit);
 
     // Initial render of greeting card
-    setTimeout(renderGreetingCard, 350);
+    setTimeout(renderGreetingCard, 300);
   }
 
   if (document.readyState === 'loading') {

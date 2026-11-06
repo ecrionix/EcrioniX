@@ -5,7 +5,7 @@ description: Always add Google AdSense, EthicalAds, and GA4 to every HTML page c
 
 # EcrioniX Mandatory Advertising and Analytics Rules
 
-Whenever creating or editing ANY page in EcrioniX (courses, lessons, tools, labs, articles, calculators, visualizers):
+Whenever creating or editing ANY page in EcrioniX (courses, lessons, tools, labs, articles, calculators, visualizers; note: festive/holiday celebration pages like `/happy-diwali/` are exempt from EthicalAds when requested to maintain clean user experience):
 
 ## 1. Google AdSense (Publisher: ca-pub-6672302762343789)
 Place in `<head>`:
@@ -41,5 +41,5 @@ Place in `<head>`:
 ## 4. Verification
 Before completing any task that adds or edits an HTML page:
 - Check that `ca-pub-6672302762343789` is in `<head>`.
-- Check that `ethicalads.min.js` and `ecrionixorg` are present.
+- Check that `ethicalads.min.js` and `ecrionixorg` are present (except exempt festive/holiday pages).
 - Check that `G-XXZS8C1FLY` is in `<head>`.
