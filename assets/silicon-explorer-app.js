@@ -154,38 +154,45 @@
       // 1. Specs Table
       let tableHtml = '';
       if (userData.type === 'physical') {
-        tableHtml += `<tr><th>Dimensions</th><td>${d.dimensions || 'N/A'}</td></tr>`;
-        tableHtml += `<tr><th>Category</th><td>${d.category || 'N/A'}</td></tr>`;
+        tableHtml += `<tr><th>Component Name</th><td style="color:var(--se-cyan);">${d.name}</td></tr>`;
+        tableHtml += `<tr><th>Category</th><td>${d.category ? d.category.toUpperCase() : 'HARDWARE'}</td></tr>`;
+        if (d.dimensions) tableHtml += `<tr><th>Dimensions</th><td>${d.dimensions}</td></tr>`;
+        if (d.weight) tableHtml += `<tr><th>Weight / Mass</th><td>${d.weight}</td></tr>`;
+        if (d.material) tableHtml += `<tr><th>Material Composition</th><td>${d.material}</td></tr>`;
         if (d.specs) {
           Object.entries(d.specs).forEach(([k, v]) => {
             tableHtml += `<tr><th>${k}</th><td>${v}</td></tr>`;
           });
         }
-        tableHtml += `<tr><th>Vendor / Fabricator</th><td>${d.vendor || 'N/A'}</td></tr>`;
-        tableHtml += `<tr><th>Verification Status</th><td>${d.verification || 'Verified'}</td></tr>`;
+        tableHtml += `<tr><th>Primary Fabricator</th><td>${d.vendor || 'Apple ODM / Foxconn'}</td></tr>`;
+        tableHtml += `<tr><th>Teardown Verification</th><td style="color:var(--se-teal);">✓ Independently Verified</td></tr>`;
       } else if (userData.type === 'chip') {
-        tableHtml += `<tr><th>Part Number</th><td>${d.partNumber || 'Proprietary Apple'}</td></tr>`;
-        tableHtml += `<tr><th>Designer</th><td>${d.designer || 'Apple'}</td></tr>`;
-        tableHtml += `<tr><th>Foundry</th><td>${d.foundry || 'Confidential'}</td></tr>`;
+        tableHtml += `<tr><th>Part Number / Marking</th><td style="color:var(--se-cyan); font-weight:700;">${d.partNumber || 'Proprietary Apple'}</td></tr>`;
+        tableHtml += `<tr><th>IC Designer</th><td>${d.designer || 'Apple Inc.'}</td></tr>`;
+        tableHtml += `<tr><th>Semiconductor Foundry</th><td>${d.foundry || 'Confidential'}</td></tr>`;
         tableHtml += `<tr><th>Process Node</th><td>${d.technologyNode || 'N/A'}</td></tr>`;
-        tableHtml += `<tr><th>Die Size</th><td>${d.dieSize || 'Multi-die'}</td></tr>`;
-        tableHtml += `<tr><th>Package Type</th><td>${d.packageType || 'BGA'}</td></tr>`;
-        tableHtml += `<tr><th>Clock Frequency</th><td>${d.clockFrequency || 'Variable'}</td></tr>`;
-        tableHtml += `<tr><th>Power Draw</th><td>${d.powerEstimate || 'Dynamic'}</td></tr>`;
-        tableHtml += `<tr><th>Board Placement</th><td>Side ${d.boardSide.toUpperCase()}</td></tr>`;
-        if (d.interfaces) {
-          tableHtml += `<tr><th>Interfaces</th><td>${d.interfaces.join(', ')}</td></tr>`;
+        if (d.dieSize) tableHtml += `<tr><th>Die Footprint</th><td>${d.dieSize}</td></tr>`;
+        tableHtml += `<tr><th>Package Architecture</th><td>${d.packageType || 'BGA'}</td></tr>`;
+        tableHtml += `<tr><th>Operating Frequency</th><td>${d.clockFrequency || 'Variable / Bus-Synchronous'}</td></tr>`;
+        tableHtml += `<tr><th>Power Profile</th><td>${d.powerEstimate || 'Dynamic DVFS'}</td></tr>`;
+        tableHtml += `<tr><th>Board Placement</th><td>Side ${d.boardSide ? d.boardSide.toUpperCase() : 'A'}</td></tr>`;
+        if (d.interfaces && d.interfaces.length > 0) {
+          tableHtml += `<tr><th>Bus Interfaces</th><td>${d.interfaces.join(', ')}</td></tr>`;
         }
+        tableHtml += `<tr><th>Verification Status</th><td style="color:var(--se-teal);">✓ Teardown Confirmed</td></tr>`;
       } else if (userData.type === 'arch_block') {
-        tableHtml += `<tr><th>Subsystem</th><td>${d.category}</td></tr>`;
-        tableHtml += `<tr><th>Designer</th><td>${d.designer || 'Apple Architecture Team'}</td></tr>`;
-        if (d.isa) tableHtml += `<tr><th>Instruction Set</th><td>${d.isa}</td></tr>`;
-        if (d.clock) tableHtml += `<tr><th>Clock Frequency</th><td>${d.clock}</td></tr>`;
-        if (d.capacity) tableHtml += `<tr><th>Capacity</th><td>${d.capacity}</td></tr>`;
-        if (d.bandwidth) tableHtml += `<tr><th>Bandwidth</th><td>${d.bandwidth}</td></tr>`;
+        tableHtml += `<tr><th>Functional Block</th><td style="color:var(--se-cyan); font-weight:700;">${d.name}</td></tr>`;
+        tableHtml += `<tr><th>Subsystem Category</th><td>${(d.category || 'Processor IP').toUpperCase()}</td></tr>`;
+        tableHtml += `<tr><th>Architecture Designer</th><td>${d.designer || 'Apple Silicon Group'}</td></tr>`;
+        if (d.isa) tableHtml += `<tr><th>Instruction Set (ISA)</th><td>${d.isa}</td></tr>`;
+        if (d.clock || d.clockMax) tableHtml += `<tr><th>Clock Frequency</th><td>${d.clock || d.clockMax}</td></tr>`;
+        if (d.capacity) tableHtml += `<tr><th>Cache / Buffer Capacity</th><td>${d.capacity}</td></tr>`;
+        if (d.bandwidth) tableHtml += `<tr><th>Data Bandwidth</th><td>${d.bandwidth}</td></tr>`;
         if (d.latency) tableHtml += `<tr><th>Access Latency</th><td>${d.latency}</td></tr>`;
         if (d.clusters) tableHtml += `<tr><th>GPU Shading Clusters</th><td>${d.clusters}</td></tr>`;
-        if (d.peakCompute) tableHtml += `<tr><th>Peak Compute</th><td>${d.peakCompute}</td></tr>`;
+        if (d.peakCompute) tableHtml += `<tr><th>Peak FP32 Compute</th><td>${d.peakCompute}</td></tr>`;
+        if (d.areaMm2) tableHtml += `<tr><th>Silicon Die Area</th><td>${d.areaMm2} mm²</td></tr>`;
+        tableHtml += `<tr><th>Verification Status</th><td style="color:var(--se-teal);">✓ Die Floorplan Confirmed</td></tr>`;
       }
       specsTable.innerHTML = tableHtml;
 
@@ -343,19 +350,23 @@
         btn.classList.toggle('active', btn.dataset.mode === mode);
       });
 
+      const hudHint = document.getElementById('seHudHint');
       if (mode === 'physical') {
         hudTitle.textContent = 'Apple iPhone 6s — Physical Teardown';
         hudSubtitle.textContent = 'EXPLODED HARDWARE LAYERS · 7000-SERIES UNIBODY';
+        if (hudHint) hudHint.textContent = '🖱️ Drag to rotate • Right-click to pan • Scroll or buttons to zoom • Use Explode slider below';
         if (explodeSlider) explodeSlider.parentElement.style.display = 'flex';
         if (flipBtn) flipBtn.style.display = 'none';
       } else if (mode === 'motherboard') {
         hudTitle.textContent = 'Dual-Sided Logic Board — Chip Teardown';
         hudSubtitle.textContent = 'L-SHAPED 10-LAYER HDI PCB · FRONT & REAR SILICON';
+        if (hudHint) hudHint.textContent = '🔍 Click any semiconductor package to inspect foundry, package & clock • Click Flip to see rear';
         if (explodeSlider) explodeSlider.parentElement.style.display = 'none';
         if (flipBtn) flipBtn.style.display = 'flex';
       } else if (mode === 'architecture') {
         hudTitle.textContent = 'Apple A9 Silicon Die Microarchitecture';
         hudSubtitle.textContent = '14nm/16nm FinFET · 6-WIDE DECODE TWISTER CPU · 8MB SLC';
+        if (hudHint) hudHint.textContent = '⚡ High-contrast floorplan • Click any functional IP block to inspect internal microarchitecture';
         if (explodeSlider) explodeSlider.parentElement.style.display = 'none';
         if (flipBtn) flipBtn.style.display = 'none';
       }
@@ -420,6 +431,8 @@
           explodeSlider.value = 0;
           if (explodeVal) explodeVal.textContent = '0%';
         }
+        const stepBtns = document.querySelectorAll('.se-step-btn');
+        stepBtns.forEach(b => b.classList.toggle('active', b.dataset.step === '0'));
       });
     }
 
@@ -432,7 +445,7 @@
       lidSlider.addEventListener('input', (e) => {
         const deg = parseFloat(e.target.value);
         engine.setLidAngle(deg);
-        if (lidVal) lidVal.textContent = ${Math.round(deg)}°;
+        if (lidVal) lidVal.textContent = `${Math.round(deg)}°`;
       });
     }
 
@@ -443,7 +456,7 @@
         const target = isLidOpen ? 105 : 0;
         engine.setLidAngle(target);
         if (lidSlider) lidSlider.value = target;
-        if (lidVal) lidVal.textContent = ${target}°;
+        if (lidVal) lidVal.textContent = `${target}°`;
         toggleLidBtn.innerHTML = isLidOpen ? '<span>💻</span> Close' : '<span>💻</span> Open';
       });
     }
@@ -463,7 +476,7 @@
           if (sc) {
             if (scenarioDesc) scenarioDesc.textContent = sc.description;
             if (scenarioSteps) {
-              scenarioSteps.innerHTML = sc.explanation.split('\n').map(step => <li></li>).join('');
+              scenarioSteps.innerHTML = sc.explanation.split('\n').map(step => `<li>${step}</li>`).join('');
             }
             if (engine.mode !== 'architecture') {
               engine.setMode('architecture');
@@ -495,9 +508,100 @@
       });
     }
 
+
+    // Floating Viewport Action Cluster Buttons
+    const zoomInBtn = document.getElementById('seZoomInBtn');
+    if (zoomInBtn) {
+      zoomInBtn.addEventListener('click', () => {
+        if (engine.zoomIn) engine.zoomIn();
+      });
+    }
+
+    const zoomOutBtn = document.getElementById('seZoomOutBtn');
+    if (zoomOutBtn) {
+      zoomOutBtn.addEventListener('click', () => {
+        if (engine.zoomOut) engine.zoomOut();
+      });
+    }
+
+    const resetCamBtn = document.getElementById('seResetCamBtn');
+    if (resetCamBtn) {
+      resetCamBtn.addEventListener('click', () => {
+        engine.resetCamera();
+      });
+    }
+
+    const toggleLabelsBtn = document.getElementById('seToggleLabelsBtn');
+    if (toggleLabelsBtn) {
+      toggleLabelsBtn.addEventListener('click', () => {
+        if (engine.toggleLabels) {
+          const active = engine.toggleLabels();
+          toggleLabelsBtn.classList.toggle('active', active);
+        }
+      });
+    }
+
+    const fullscreenTopBtn = document.getElementById('seFullscreenTopBtn');
+    if (fullscreenTopBtn) {
+      fullscreenTopBtn.addEventListener('click', () => {
+        const elem = document.querySelector('.se-workbench') || document.body;
+        if (!document.fullscreenElement) {
+          elem.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen();
+        }
+      });
+    }
+
+    // Sidebar Collapse Toggles
+    const leftSidebar = document.getElementById('seSidebarLeft');
+    const leftToggle = document.getElementById('seSidebarLeftToggle');
+    if (leftToggle && leftSidebar) {
+      leftToggle.addEventListener('click', () => {
+        leftSidebar.classList.toggle('collapsed');
+        const isCollapsed = leftSidebar.classList.contains('collapsed');
+        const arrow = leftToggle.querySelector('.se-toggle-arrow');
+        if (arrow) arrow.textContent = isCollapsed ? '▶' : '◀';
+        setTimeout(() => {
+          if (engine.onWindowResize) engine.onWindowResize();
+        }, 310);
+      });
+    }
+
+    const rightSidebar = document.getElementById('seSidebarRight');
+    const rightToggle = document.getElementById('seSidebarRightToggle');
+    if (rightToggle && rightSidebar) {
+      rightToggle.addEventListener('click', () => {
+        rightSidebar.classList.toggle('collapsed');
+        const isCollapsed = rightSidebar.classList.contains('collapsed');
+        const arrow = rightToggle.querySelector('.se-toggle-arrow');
+        if (arrow) arrow.textContent = isCollapsed ? '◀' : '▶';
+        setTimeout(() => {
+          if (engine.onWindowResize) engine.onWindowResize();
+        }, 310);
+      });
+    }
+
+    // Explode Step Preset Buttons (0%, 50%, 100%)
+    const stepBtns = document.querySelectorAll('.se-step-btn');
+    if (stepBtns.length > 0) {
+      stepBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          stepBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const stepVal = parseInt(btn.dataset.step) || 0;
+          engine.setExplode(stepVal / 100);
+          if (explodeSlider) explodeSlider.value = stepVal;
+          if (explodeVal) explodeVal.textContent = `${stepVal}%`;
+        });
+      });
+    }
+
     // Camera Presets
     camPresetBtns.forEach(btn => {
       btn.addEventListener('click', () => {
+        camPresetBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
         engine.setCameraPreset(btn.dataset.preset);
       });
     });

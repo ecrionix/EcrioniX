@@ -225,15 +225,11 @@
         metalness: 0.25
       });
 
-      // 10. Polished Silicon Die Surface (Iridescent)
-      this.materials.siliconDie = new THREE.MeshPhysicalMaterial({
-        color: 0x1e1b4b,
-        emissive: 0x312e81,
-        emissiveIntensity: 0.3,
-        roughness: 0.12,
-        metalness: 0.95,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.08
+      // 10. Bare Silicon Substrate Surface (Sleek dark finish, non-glare high contrast)
+      this.materials.siliconDie = new THREE.MeshStandardMaterial({
+        color: 0x050a14,
+        roughness: 0.38,
+        metalness: 0.82
       });
 
       // 11. Matte Black Battery Pouch
@@ -648,29 +644,58 @@
     buildArchitectureDie() {
       // 1. Bare Silicon Die Base Substrate (10mm x 10mm normalized to 10 x 10 units)
       const dieBase = new THREE.Mesh(
-        new THREE.BoxGeometry(10.2, 10.2, 0.5),
+        new THREE.BoxGeometry(10.4, 10.4, 0.45),
         this.materials.siliconDie
       );
       dieBase.position.set(0, 0, 0);
       this.architectureGroup.add(dieBase);
 
-      // Interconnect grid texture lines (simulating M1-M11 copper metallization)
-      const gridHelper = new THREE.GridHelper(10.0, 24, 0x38bdf8, 0x1e293b);
+      // Microscopic interconnect grid texture lines (M1-M11 copper metallization)
+      const gridHelper = new THREE.GridHelper(10.2, 24, 0x0284c7, 0x0f172a);
       gridHelper.rotation.x = Math.PI / 2;
-      gridHelper.position.set(0, 0, 0.26);
+      gridHelper.position.set(0, 0, 0.24);
       this.architectureGroup.add(gridHelper);
 
-      // Die border guard ring
+      // Die border guard ring (TSMC/Samsung seal ring)
       const guardRing = new THREE.Mesh(
-        new THREE.RingGeometry(4.8, 5.0, 4),
-        new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95, roughness: 0.1 })
+        new THREE.RingGeometry(4.9, 5.15, 4),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95, roughness: 0.15 })
       );
       guardRing.rotation.z = Math.PI / 4;
-      guardRing.position.set(0, 0, 0.28);
+      guardRing.position.set(0, 0, 0.26);
       this.architectureGroup.add(guardRing);
 
+      // High-speed on-die bus lines (Crossbar & Fabric Interconnect traces)
+      const createBus = (p1, p2, col) => {
+        const mat = new THREE.LineBasicMaterial({ color: col || 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
+        const geom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(p1[0], p1[1], 0.28),
+          new THREE.Vector3(p2[0], p2[1], 0.28)
+        ]);
+        const line = new THREE.Line(geom, mat);
+        this.architectureGroup.add(line);
+      };
+
+      // CPU Cores to L2 Cache
+      createBus([-2.3, 0.5], [-2.3, -0.3], 0x38bdf8);
+      createBus([0.1, 0.5], [0.1, -0.3], 0x38bdf8);
+      // L2 to SLC
+      createBus([-1.1, -0.9], [-1.1, -1.05], 0x2dd4bf);
+      // GPU to SLC
+      createBus([1.5, -0.3], [1.2, -1.8], 0xa855f7);
+      // SLC to Interconnect NoC
+      createBus([-1.1, -2.55], [-1.1, -3.1], 0xfbbf24);
+      // Interconnect to LPDDR4 PHY
+      createBus([0.0, -3.35], [0.0, -3.75], 0x3b82f6);
+      createBus([-3.0, -3.35], [-3.0, -3.75], 0x3b82f6);
+      createBus([3.0, -3.35], [3.0, -3.75], 0x3b82f6);
+      // PCIe NVMe to Interconnect
+      createBus([2.0, -2.8], [2.0, -3.1], 0x06b6d4);
+      // Apple ISP to Interconnect
+      createBus([-3.8, -1.3], [-3.8, -3.1], 0xf43f5e);
+
       // 2. Microarchitecture IP Functional Blocks
-      const blocks = this.data.A9_DIE_BLOCKS;
+      const blocks = this.data.A9_DIE_BLOCKS || [];
       const blockLayouts = {
         'twister_core_0': { w: 2.2, h: 3.2, x: -2.3, y: 2.1, color: 0x38bdf8, label: 'CPU CORE 0\nTWISTER' },
         'twister_core_1': { w: 2.2, h: 3.2, x: 0.1, y: 2.1, color: 0x38bdf8, label: 'CPU CORE 1\nTWISTER' },
@@ -704,55 +729,94 @@
         id: blockData.id
       };
 
-      // Active silicon block with emissive border
+      // Base solid block with subtle emissive tint
       const mat = new THREE.MeshStandardMaterial({
-        color: layout.color,
+        color: 0x091122,
         emissive: layout.color,
-        emissiveIntensity: 0.35,
-        roughness: 0.25,
-        metalness: 0.45
+        emissiveIntensity: 0.12,
+        roughness: 0.28,
+        metalness: 0.65
       });
 
-      const body = new THREE.Mesh(new THREE.BoxGeometry(layout.w, layout.h, 0.25), mat);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(layout.w, layout.h, 0.26), mat);
       g.add(body);
 
-      // Glowing wireframe outline
+      // Razor-sharp glowing neon outline
       const wire = new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(layout.w, layout.h, 0.26)),
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(layout.w, layout.h, 0.27)),
         new THREE.LineBasicMaterial({ color: layout.color, linewidth: 2 })
       );
       g.add(wire);
 
-      // Dynamic canvas texture for crisp chip block label
+      // High-resolution Canvas Texture for crisp vector-like text
+      const cw = Math.max(768, Math.round(layout.w * 240));
+      const ch = Math.max(384, Math.round(layout.h * 240));
       const labelCanvas = document.createElement('canvas');
-      labelCanvas.width = 256;
-      labelCanvas.height = 128;
+      labelCanvas.width = cw;
+      labelCanvas.height = ch;
       const ctx = labelCanvas.getContext('2d');
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-      ctx.fillRect(0, 0, 256, 128);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(4, 4, 248, 120);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px "JetBrains Mono", monospace';
+
+      // Crisp background
+      ctx.fillStyle = '#060c18';
+      ctx.fillRect(0, 0, cw, ch);
+
+      // Top colored accent banner
+      const bannerH = Math.max(28, Math.round(ch * 0.18));
+      const hex = typeof layout.color === 'number' ? '#' + layout.color.toString(16).padStart(6, '0') : layout.color;
+      ctx.fillStyle = hex;
+      ctx.fillRect(0, 0, cw, bannerH);
+
+      // Outer accent border
+      ctx.strokeStyle = hex;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, cw - 8, ch - 8);
+
+      // Subsystem Tag inside banner
+      ctx.fillStyle = '#020617';
+      const catText = (blockData.category || 'SILICON IP').toUpperCase();
+      ctx.font = `bold ${Math.max(16, Math.round(bannerH * 0.58))}px "JetBrains Mono", monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const lines = layout.label.split('\n');
-      if (lines.length === 1) {
-        ctx.fillText(lines[0], 128, 64);
-      } else {
-        ctx.fillText(lines[0], 128, 45);
-        ctx.font = '16px "Outfit", sans-serif';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(lines[1], 128, 85);
+      ctx.fillText(catText, cw / 2, bannerH / 2);
+
+      // Parse multi-line title or layout.label
+      const rawLines = (layout.label || blockData.name).split('\n');
+      const titleLine = rawLines[0] || blockData.name;
+      const subLine = rawLines[1] || (blockData.clock ? `${blockData.clock}` : (blockData.capacity ? `${blockData.capacity}` : ''));
+
+      // Primary Title
+      ctx.fillStyle = '#ffffff';
+      const titleSize = Math.max(22, Math.min(Math.round(cw * 0.08), Math.round(ch * 0.22)));
+      ctx.font = `bold ${titleSize}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const titleY = subLine ? bannerH + (ch - bannerH) * 0.38 : bannerH + (ch - bannerH) * 0.5;
+      ctx.fillText(titleLine, cw / 2, titleY);
+
+      // Secondary subtitle / spec
+      if (subLine) {
+        ctx.fillStyle = hex;
+        const subSize = Math.max(18, Math.min(Math.round(cw * 0.065), Math.round(ch * 0.18)));
+        ctx.font = `600 ${subSize}px "Outfit", sans-serif`;
+        const subY = bannerH + (ch - bannerH) * 0.72;
+        ctx.fillText(subLine, cw / 2, subY);
       }
 
       const textTex = new THREE.CanvasTexture(labelCanvas);
+      textTex.generateMipmaps = true;
+      textTex.minFilter = THREE.LinearMipmapLinearFilter;
+      textTex.magFilter = THREE.LinearFilter;
+      if (this.renderer && this.renderer.capabilities) {
+        textTex.anisotropy = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8);
+      }
+      textTex.needsUpdate = true;
+
       const textPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(layout.w * 0.9, layout.h * 0.7),
-        new THREE.MeshBasicMaterial({ map: textTex, transparent: true })
+        new THREE.PlaneGeometry(layout.w * 0.96, layout.h * 0.94),
+        new THREE.MeshBasicMaterial({ map: textTex, transparent: false })
       );
-      textPlane.position.set(0, 0, 0.14);
+      textPlane.position.set(0, 0, 0.145);
+      textPlane.userData = { isLabel: true };
       g.add(textPlane);
 
       g.position.set(layout.x, layout.y, 0.4);
@@ -936,6 +1000,7 @@
       this.selectItem(null);
 
       if (newMode === 'physical') {
+        this.scene.fog = new THREE.FogExp2(0x020617, 0.008);
         this.physicalGroup.visible = true;
         this.motherboardGroup.visible = false;
         this.architectureGroup.visible = false;
@@ -948,6 +1013,7 @@
         }
         this.camTargetLookAt.set(0, 0, 0);
       } else if (newMode === 'motherboard') {
+        this.scene.fog = null; // Crisp view for logic board ICs
         this.physicalGroup.visible = false;
         this.motherboardGroup.visible = true;
         this.architectureGroup.visible = false;
@@ -957,6 +1023,7 @@
         this.camTargetPos.set(0, 0, 15);
         this.camTargetLookAt.set(0, 0, 0);
       } else if (newMode === 'architecture') {
+        this.scene.fog = null; // ELIMINATE ALL FOG BLUR - crystal clear silicon die view
         this.physicalGroup.visible = false;
         this.motherboardGroup.visible = false;
         this.architectureGroup.visible = true;
@@ -1052,6 +1119,45 @@
       this.controls.update();
     }
 
+    zoomIn(step = 0.82) {
+      if (!this.camera || !this.controls) return;
+      const target = this.controls.target;
+      const offset = this.camera.position.clone().sub(target);
+      const minD = this.controls.minDistance || 3.5;
+      if (offset.length() * step >= minD) {
+        offset.multiplyScalar(step);
+        this.camera.position.copy(target).add(offset);
+        this.controls.update();
+      }
+    }
+
+    zoomOut(step = 1.22) {
+      if (!this.camera || !this.controls) return;
+      const target = this.controls.target;
+      const offset = this.camera.position.clone().sub(target);
+      const maxD = this.controls.maxDistance || 60;
+      if (offset.length() * step <= maxD) {
+        offset.multiplyScalar(step);
+        this.camera.position.copy(target).add(offset);
+        this.controls.update();
+      }
+    }
+
+    toggleLabels() {
+      this.labelsVisible = !this.labelsVisible;
+      const toggle = (obj) => {
+        obj.traverse(child => {
+          if (child.userData && child.userData.isLabel) {
+            child.visible = this.labelsVisible;
+          }
+        });
+      };
+      toggle(this.physicalGroup);
+      toggle(this.motherboardGroup);
+      toggle(this.architectureGroup);
+      return this.labelsVisible;
+    }
+
     // ==========================================
     // 6. MAIN RENDER & ANIMATION LOOP
     // ==========================================
@@ -1101,6 +1207,179 @@
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     }
+
+    // ==========================================
+    // 7. MACBOOK AIR M1 ENVIRONMENT IMPLEMENTATIONS
+    // ==========================================
+    buildPhysicalMacBook() {
+      const comps = this.data.PHYSICAL_COMPONENTS || [];
+      const compMap = new Map();
+      comps.forEach(c => compMap.set(c.id, c));
+
+      // 1. Lower Wedge Aluminum Case
+      const caseData = compMap.get('aluminum_wedge_case');
+      const wedge = this.createRoundedBox(13.2, 9.2, 0.45, 0.4, this.materials.aluminum);
+      wedge.position.set(0, 0, -0.25);
+      this.registerComponentMesh(wedge, caseData, this.physicalGroup);
+
+      // 2. Battery pack
+      const battData = compMap.get('three_cell_battery');
+      const battGroup = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const cell = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.4, 0.22), this.materials.batteryMylar || this.materials.battery);
+        cell.position.set(-3.8 + i * 3.8, -2.2, 0.1);
+        battGroup.add(cell);
+      }
+      this.registerComponentMesh(battGroup, battData, this.physicalGroup);
+
+      // 3. Trackpad
+      const tpData = compMap.get('force_touch_trackpad');
+      const tp = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3.2, 0.1), this.materials.chamfer);
+      tp.position.set(0, -2.4, 0.18);
+      this.registerComponentMesh(tp, tpData, this.physicalGroup);
+
+      // 4. Keyboard Deck
+      const kbData = compMap.get('scissor_switch_keyboard');
+      const kbGroup = new THREE.Group();
+      const kbWell = new THREE.Mesh(new THREE.BoxGeometry(11.2, 4.4, 0.05), this.materials.aluminum);
+      kbWell.position.set(0, 1.8, 0.12);
+      kbGroup.add(kbWell);
+      // Keycaps grid
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 14; c++) {
+          const key = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.08), this.materials.keycap);
+          key.position.set(-4.8 + c * 0.74, 0.4 + r * 0.74, 0.18);
+          kbGroup.add(key);
+        }
+      }
+      this.registerComponentMesh(kbGroup, kbData, this.physicalGroup);
+
+      // 5. Fanless Aluminum Heatsink
+      const hsData = compMap.get('fanless_aluminum_heatsink');
+      const hs = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.0, 0.16), this.materials.heatsinkAluminum || this.materials.aluminum);
+      hs.position.set(2.2, 1.6, 0.22);
+      this.registerComponentMesh(hs, hsData, this.physicalGroup);
+
+      // 6. Display Assembly (Hinged Lid)
+      const dispData = compMap.get('retina_display_assembly');
+      this.displayAssemblyGroup = new THREE.Group();
+      this.displayAssemblyGroup.position.set(0, 4.6, 0.1); // Hinge line
+
+      const lid = this.createRoundedBox(13.2, 9.2, 0.28, 0.35, this.materials.aluminum);
+      lid.position.set(0, 4.6, 0); // Offset from hinge
+
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(12.0, 7.8), this.materials.retinaBigSur || this.materials.lcdScreen);
+      screen.position.set(0, 4.6, 0.16);
+
+      const appleLogo = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.02, 32), this.materials.appleLogoChrome || this.materials.chamfer);
+      appleLogo.rotation.x = Math.PI / 2;
+      appleLogo.position.set(0, 4.6, -0.16);
+
+      this.displayAssemblyGroup.add(lid, screen, appleLogo);
+      this.displayAssemblyGroup.rotation.x = -((this.lidAngle * Math.PI) / 180);
+      this.registerComponentMesh(this.displayAssemblyGroup, dispData, this.physicalGroup);
+    }
+
+    buildMotherboardMacBook() {
+      // Main compact L-shaped PCB
+      const pcbMat = this.materials.pcb.clone();
+      this.mbBoardMesh = new THREE.Mesh(new THREE.BoxGeometry(10.5, 4.5, 0.2), pcbMat);
+      this.mbBoardMesh.position.set(0, 0, 0);
+      this.motherboardGroup.add(this.mbBoardMesh);
+
+      // Add verified IC chips
+      const chips = this.data.CHIPS_DATA || [];
+      const chipPositions = {
+        'apple_m1_soc_unified_memory': { x: 0, y: 0.2, z: 0.16, w: 3.4, h: 3.0, d: 0.18, color: 0x111827 },
+        'apple_m1_silicon_die': { x: -0.6, y: 0.2, z: 0.28, w: 1.8, h: 1.9, d: 0.1, color: 0x1e1b4b },
+        'skhynix_lpddr4x_sdram_8gb': { x: 1.0, y: 0.2, z: 0.28, w: 1.2, h: 2.2, d: 0.1, color: 0x182235 },
+        'kioxia_nand_flash_storage': { x: -3.6, y: -0.4, z: 0.16, w: 1.6, h: 1.8, d: 0.14, color: 0x1e293b },
+        'apple_t2_pmic_343s00420': { x: 2.8, y: -0.8, z: 0.16, w: 1.2, h: 1.2, d: 0.12, color: 0x1f2937 },
+        'intel_jhl8040r_thunderbolt4_retimer': { x: -3.8, y: 1.2, z: 0.16, w: 1.0, h: 1.0, d: 0.12, color: 0x111827 },
+        'murata_apple_wifi6_bluetooth5_module': { x: 3.6, y: 1.1, z: 0.16, w: 1.4, h: 1.3, d: 0.15, color: 0xc0c8d4 },
+        'intersil_isl9240_buck_boost_charger': { x: 2.6, y: 0.8, z: 0.16, w: 0.9, h: 0.9, d: 0.1, color: 0x111827 },
+        'texas_instruments_cd3217b12_usb_pd': { x: -4.5, y: 0.3, z: 0.16, w: 0.8, h: 0.8, d: 0.09, color: 0x111827 },
+        'cirrus_logic_cs42l83a_audio_codec': { x: 4.2, y: -0.8, z: 0.16, w: 0.8, h: 0.8, d: 0.09, color: 0x111827 }
+      };
+
+      chips.forEach(chip => {
+        const pos = chipPositions[chip.id] || { x: (Math.random() - 0.5) * 7, y: (Math.random() - 0.5) * 3, z: 0.15, w: 1.0, h: 1.0, d: 0.12, color: 0x111827 };
+        const chipMesh = this.createChipMesh(chip, pos);
+        this.chipMeshes.set(chip.id, chipMesh);
+        this.mbBoardMesh.add(chipMesh);
+        this.clickableObjects.push(chipMesh);
+      });
+
+      this.motherboardGroup.visible = false;
+    }
+
+    buildArchitectureDieM1() {
+      // 1. Bare TSMC 5nm Silicon Die Base Substrate (12 x 12 normalized units)
+      const dieBase = new THREE.Mesh(
+        new THREE.BoxGeometry(12.4, 12.4, 0.45),
+        this.materials.siliconDie
+      );
+      dieBase.position.set(0, 0, 0);
+      this.architectureGroup.add(dieBase);
+
+      // Microscopic interconnect grid texture
+      const gridHelper = new THREE.GridHelper(12.0, 26, 0x0284c7, 0x0f172a);
+      gridHelper.rotation.x = Math.PI / 2;
+      gridHelper.position.set(0, 0, 0.24);
+      this.architectureGroup.add(gridHelper);
+
+      // Guard ring
+      const guardRing = new THREE.Mesh(
+        new THREE.RingGeometry(5.8, 6.1, 4),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95, roughness: 0.15 })
+      );
+      guardRing.rotation.z = Math.PI / 4;
+      guardRing.position.set(0, 0, 0.26);
+      this.architectureGroup.add(guardRing);
+
+      // High-speed Apple Fabric & UMA bus lines
+      const createBus = (p1, p2, col) => {
+        const mat = new THREE.LineBasicMaterial({ color: col || 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
+        const geom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(p1[0], p1[1], 0.28),
+          new THREE.Vector3(p2[0], p2[1], 0.28)
+        ]);
+        const line = new THREE.Line(geom, mat);
+        this.architectureGroup.add(line);
+      };
+
+      createBus([-2.8, 2.0], [-2.8, 0.0], 0x38bdf8); // Firestorm to Fabric
+      createBus([-2.8, -2.0], [-2.8, 0.0], 0x2dd4bf); // Icestorm to Fabric
+      createBus([2.6, 1.2], [0.0, 0.0], 0xa855f7); // GPU to Fabric
+      createBus([2.6, -2.4], [0.0, -1.5], 0xf43f5e); // NPU to Fabric
+      createBus([0.0, 0.0], [5.0, 0.0], 0x3b82f6); // Fabric to Memory PHY
+
+      // 2. M1 Silicon Blocks
+      const blocks = this.data.M1_DIE_BLOCKS || [];
+      const m1Layouts = {
+        'firestorm_cpu_cluster': { w: 4.8, h: 3.4, x: -2.8, y: 3.6, color: 0x38bdf8, label: '4× FIRESTORM CPU\\n+ 12MB L2 CACHE' },
+        'icestorm_cpu_cluster': { w: 4.8, h: 2.2, x: -2.8, y: 0.6, color: 0x2dd4bf, label: '4× ICESTORM CPU\\n+ 4MB L2 CACHE' },
+        'apple_8core_gpu': { w: 5.4, h: 4.2, x: 2.8, y: 2.8, color: 0xa855f7, label: 'APPLE 8-CORE GPU\\n128 EUs · 1024 ALUs' },
+        'neural_engine_16core': { w: 3.2, h: 2.4, x: 3.2, y: -1.2, color: 0xf43f5e, label: '16-CORE ANE\\n11 TOPS COMPUTE' },
+        'system_level_cache_slc': { w: 4.8, h: 1.2, x: -2.8, y: -1.3, color: 0xfbbf24, label: '16MB SYSTEM CACHE\\n(SLC)' },
+        'fabric_interconnect': { w: 10.8, h: 0.8, x: 0.0, y: -2.5, color: 0x64748b, label: 'APPLE FABRIC INTERCONNECT\\nCROSSBAR NoC' },
+        'unified_memory_controller': { w: 10.8, h: 1.2, x: 0.0, y: -4.0, color: 0x3b82f6, label: '128-BIT UNIFIED MEMORY CONTROLLER\\nLPDDR4X-4266 DUAL-CHANNEL' },
+        'secure_enclave_m1': { w: 2.0, h: 1.8, x: -4.8, y: -1.3, color: 0xeab308, label: 'SECURE ENCLAVE\\nGEN 2 CRYPTO' },
+        'media_engine_isp': { w: 2.6, h: 2.0, x: -4.8, y: 1.8, color: 0x06b6d4, label: 'MEDIA ENGINE\\nPRORES & ISP' },
+        'pcie_thunderbolt_controller': { w: 3.2, h: 1.8, x: 3.2, y: -3.8, color: 0x10b981, label: 'THUNDERBOLT 3 / USB4\\nPCIE 4.0 CONTROLLER' }
+      };
+
+      blocks.forEach(b => {
+        const layout = m1Layouts[b.id] || { w: 2.0, h: 2.0, x: 0, y: 0, color: 0x94a3b8, label: b.name };
+        const blockMesh = this.createArchBlockMesh(b, layout);
+        this.archMeshes.set(b.id, blockMesh);
+        this.architectureGroup.add(blockMesh);
+        this.clickableObjects.push(blockMesh);
+      });
+
+      this.architectureGroup.visible = false;
+    }
+
   }
 
   // Expose globally
