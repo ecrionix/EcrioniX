@@ -14313,10 +14313,1822 @@
         "hscale": 1.5
       }
     }
+  },
+  {
+    "slug": "apb-slave-controller",
+    "title": "AMBA APB Slave Controller with Wait States & Error Response",
+    "difficulty": "hard",
+    "difficultyLabel": "Advanced",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "apb-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "APB Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 41,
+    "lede": "Design a compliant AMBA 3/4 APB slave supporting IDLE, SETUP, and ACCESS phases with dynamic wait states and slave error signaling.",
+    "concept": "<b>Objective:</b> Implement a 3-state APB slave FSM (IDLE, SETUP, ACCESS) adhering to Arm AMBA protocol specifications. Handle zero-wait and wait-state transfers, register writes/reads, and PSLVERR generation for unmapped address spaces.<br><br><b>Prerequisites:</b> AMBA APB specification, synchronous FSM design, bus handshaking, address decoding.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>PCLK</code></td><td>input</td><td>1</td><td>APB clock</td></tr>\n<tr><td><code>PRESETn</code></td><td>input</td><td>1</td><td>Active-low reset</td></tr>\n<tr><td><code>PSEL</code></td><td>input</td><td>1</td><td>Slave select</td></tr>\n<tr><td><code>PENABLE</code></td><td>input</td><td>1</td><td>Enable strobe (asserted in ACCESS phase)</td></tr>\n<tr><td><code>PWRITE</code></td><td>input</td><td>1</td><td>1 = Write transfer, 0 = Read transfer</td></tr>\n<tr><td><code>PADDR[7:0]</code></td><td>input</td><td>8</td><td>8-bit memory address</td></tr>\n<tr><td><code>PWDATA[31:0]</code></td><td>input</td><td>32</td><td>Incoming 32-bit write data</td></tr>\n<tr><td><code>PRDATA[31:0]</code></td><td>output</td><td>32</td><td>Outgoing 32-bit read data</td></tr>\n<tr><td><code>PREADY</code></td><td>output</td><td>1</td><td>1 when transfer complete; 0 extends wait state</td></tr>\n<tr><td><code>PSLVERR</code></td><td>output</td><td>1</td><td>1 on address out of bounds (PADDR > 8'h0C) during completed access</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        PCLK,\n  input  wire        PRESETn,\n  input  wire        PSEL,\n  input  wire        PENABLE,\n  input  wire        PWRITE,\n  input  wire [7:0]  PADDR,\n  input  wire [31:0] PWDATA,\n  output wire [31:0] PRDATA,\n  output wire        PREADY,\n  output wire        PSLVERR\n);\n\n  // Implement 4 internal 32-bit registers at addresses 8'h00, 8'h04, 8'h08, 8'h0C.\n  // Addresses > 8'h0C should assert PSLVERR = 1 when transfer completes.\n  // PREADY = 1 completes the transfer.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        PCLK,\n  input  wire        PRESETn,\n  input  wire        PSEL,\n  input  wire        PENABLE,\n  input  wire        PWRITE,\n  input  wire [7:0]  PADDR,\n  input  wire [31:0] PWDATA,\n  output wire [31:0] PRDATA,\n  output wire        PREADY,\n  output wire        PSLVERR\n);\n\n  reg [31:0] mem [0:3];\n  wire addr_valid = (PADDR <= 8'h0C) && (PADDR[1:0] == 2'b00);\n  wire [1:0] reg_idx = PADDR[3:2];\n\n  assign PREADY = 1'b1;\n  assign PSLVERR = (PSEL && PENABLE && !addr_valid);\n  assign PRDATA = (PSEL && !PWRITE) ? (addr_valid ? mem[reg_idx] : 32'hDEADBEEF) : 32'h0;\n\n  always @(posedge PCLK or negedge PRESETn) begin\n    if (!PRESETn) begin\n      mem[0] <= 32'h0;\n      mem[1] <= 32'h0;\n      mem[2] <= 32'h0;\n      mem[3] <= 32'h0;\n    end else begin\n      if (PSEL && PENABLE && PWRITE && addr_valid) begin\n        mem[reg_idx] <= PWDATA;\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg PCLK, PRESETn, PSEL, PENABLE, PWRITE;\n  reg [7:0] PADDR;\n  reg [31:0] PWDATA;\n  wire [31:0] PRDATA;\n  wire PREADY, PSLVERR;\n  integer errors = 0;\n\n  top_module dut(\n    .PCLK(PCLK), .PRESETn(PRESETn), .PSEL(PSEL), .PENABLE(PENABLE),\n    .PWRITE(PWRITE), .PADDR(PADDR), .PWDATA(PWDATA),\n    .PRDATA(PRDATA), .PREADY(PREADY), .PSLVERR(PSLVERR)\n  );\n\n  always #5 PCLK = ~PCLK;\n\n  task apb_write(input [7:0] a, input [31:0] d, input exp_err);\n    begin\n      @(negedge PCLK);\n      PSEL = 1; PENABLE = 0; PWRITE = 1; PADDR = a; PWDATA = d;\n      @(negedge PCLK);\n      PENABLE = 1;\n      #1;\n      while (!PREADY) @(negedge PCLK);\n      if (PSLVERR !== exp_err) begin\n        $display(\"FAIL: APB write to 0x%02x PSLVERR expected %b, got %b\", a, exp_err, PSLVERR);\n        errors = errors + 1;\n      end\n      @(negedge PCLK);\n      PSEL = 0; PENABLE = 0; PWRITE = 0;\n    end\n  endtask\n\n  task apb_read(input [7:0] a, input [31:0] exp_d, input exp_err);\n    begin\n      @(negedge PCLK);\n      PSEL = 1; PENABLE = 0; PWRITE = 0; PADDR = a;\n      @(negedge PCLK);\n      PENABLE = 1;\n      #1;\n      while (!PREADY) @(negedge PCLK);\n      if (PSLVERR !== exp_err) begin\n        $display(\"FAIL: APB read from 0x%02x PSLVERR expected %b, got %b\", a, exp_err, PSLVERR);\n        errors = errors + 1;\n      end\n      if (!exp_err && PRDATA !== exp_d) begin\n        $display(\"FAIL: APB read from 0x%02x data mismatch. Exp 0x%08x, got 0x%08x\", a, exp_d, PRDATA);\n        errors = errors + 1;\n      end\n      @(negedge PCLK);\n      PSEL = 0; PENABLE = 0;\n    end\n  endtask\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    PCLK = 0; PRESETn = 0; PSEL = 0; PENABLE = 0; PWRITE = 0; PADDR = 0; PWDATA = 0;\n    #15 PRESETn = 1;\n    \n    // Test 1: Write Reg 0 and Read back\n    apb_write(8'h00, 32'h12345678, 0);\n    apb_read(8'h00, 32'h12345678, 0);\n    \n    // Test 2: Write Reg 1, 2, 3\n    apb_write(8'h04, 32'hCAFEBABE, 0);\n    apb_write(8'h08, 32'h55AA55AA, 0);\n    apb_write(8'h0C, 32'hA0B0C0D0, 0);\n    \n    apb_read(8'h04, 32'hCAFEBABE, 0);\n    apb_read(8'h08, 32'h55AA55AA, 0);\n    apb_read(8'h0C, 32'hA0B0C0D0, 0);\n    \n    // Test 3: Unmapped address access -> PSLVERR check\n    apb_write(8'h20, 32'hBAD00000, 1);\n    apb_read(8'h30, 32'h0, 1);\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "PCLK",
+      "PRESETn",
+      "PSEL",
+      "PENABLE",
+      "PWRITE",
+      "PADDR",
+      "PWDATA",
+      "PRDATA",
+      "PREADY",
+      "PSLVERR"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "PCLK",
+          "wave": "p........"
+        },
+        {
+          "name": "PSEL",
+          "wave": "01...01.0"
+        },
+        {
+          "name": "PENABLE",
+          "wave": "0.1.0..10"
+        },
+        {
+          "name": "PWRITE",
+          "wave": "01...00.."
+        },
+        {
+          "name": "PADDR",
+          "wave": "x=...x=..",
+          "data": [
+            "0x00",
+            "0x00"
+          ]
+        },
+        {
+          "name": "PWDATA",
+          "wave": "x=...x...",
+          "data": [
+            "0x12345678"
+          ]
+        },
+        {
+          "name": "PRDATA",
+          "wave": "x......=.",
+          "data": [
+            "0x12345678"
+          ]
+        },
+        {
+          "name": "PREADY",
+          "wave": "1........"
+        },
+        {
+          "name": "PSLVERR",
+          "wave": "0........"
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 520 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"240\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"260\" y=\"45\" fill=\"#38bdf8\" font-size=\"14\" font-weight=\"700\" text-anchor=\"middle\">APB Slave Controller</text>\n  <text x=\"260\" y=\"65\" fill=\"#94a3b8\" font-size=\"11\" text-anchor=\"middle\">IDLE -> SETUP -> ACCESS</text>\n  \n  <rect x=\"160\" y=\"80\" width=\"200\" height=\"40\" rx=\"6\" fill=\"#1e293b\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\n  <text x=\"260\" y=\"105\" fill=\"#e2e8f0\" font-size=\"11\" text-anchor=\"middle\">Register Bank (4x32-bit)</text>\n  \n  <rect x=\"160\" y=\"135\" width=\"200\" height=\"45\" rx=\"6\" fill=\"#1e293b\" stroke=\"#f43f5e\" stroke-width=\"1.5\"/>\n  <text x=\"260\" y=\"155\" fill=\"#f43f5e\" font-size=\"11\" text-anchor=\"middle\">Address Decoder & Error Logic</text>\n  <text x=\"260\" y=\"170\" fill=\"#94a3b8\" font-size=\"9\" text-anchor=\"middle\">PADDR &gt; 8'h0C -&gt; PSLVERR=1</text>\n\n  <!-- Left Inputs -->\n  <line x1=\"40\" y1=\"50\" x2=\"140\" y2=\"50\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"45\" fill=\"#94a3b8\" font-size=\"10\">PCLK</text>\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"75\" fill=\"#94a3b8\" font-size=\"10\">PSEL</text>\n  <line x1=\"40\" y1=\"110\" x2=\"140\" y2=\"110\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"105\" fill=\"#94a3b8\" font-size=\"10\">PENABLE</text>\n  <line x1=\"40\" y1=\"140\" x2=\"140\" y2=\"140\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"135\" fill=\"#94a3b8\" font-size=\"10\">PADDR[7:0]</text>\n  <line x1=\"40\" y1=\"170\" x2=\"140\" y2=\"170\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"165\" fill=\"#94a3b8\" font-size=\"10\">PWDATA[31:0]</text>\n\n  <!-- Right Outputs -->\n  <line x1=\"380\" y1=\"70\" x2=\"480\" y2=\"70\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"430\" y=\"65\" fill=\"#2dd4bf\" font-size=\"10\">PREADY</text>\n  <line x1=\"380\" y1=\"110\" x2=\"480\" y2=\"110\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"430\" y=\"105\" fill=\"#2dd4bf\" font-size=\"10\">PRDATA[31:0]</text>\n  <line x1=\"380\" y1=\"150\" x2=\"480\" y2=\"150\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"430\" y=\"145\" fill=\"#f43f5e\" font-size=\"10\">PSLVERR</text>\n</svg>",
+    "hints": [
+      "Recall that in APB, a transfer spans at least two clock cycles: Cycle 1 is SETUP (PSEL=1, PENABLE=0) and Cycle 2 is ACCESS (PSEL=1, PENABLE=1).",
+      "Data sampling and writing happen on posedge PCLK when PSEL && PENABLE && PREADY are all asserted.",
+      "Check for valid address bounds (PADDR <= 8'h0C). If unmapped, assert PSLVERR = 1 during the ACCESS cycle and drive a benign default value (e.g., 32'hDEADBEEF) onto PRDATA."
+    ],
+    "explanation": "<h3>AMBA APB Protocol Fundamentals</h3>\n<p>The <b>Advanced Peripheral Bus (APB)</b> is part of the Arm AMBA protocol family optimized for minimal power and reduced interface complexity. Unlike high-performance burst protocols (such as AXI), APB is designed for non-pipelined, register-mapped control transfers.</p>\n<h4>The APB Transfer Cycle</h4>\n<ul>\n  <li><b>IDLE State:</b> Normal default state. <code>PSEL</code> and <code>PENABLE</code> are deasserted.</li>\n  <li><b>SETUP Phase:</b> When a transfer is requested, the bus master drives <code>PADDR</code>, <code>PWRITE</code>, and <code>PWDATA</code> (if writing), and asserts <code>PSEL = 1</code> while keeping <code>PENABLE = 0</code>.</li>\n  <li><b>ACCESS Phase:</b> On the next clock edge, the master asserts <code>PENABLE = 1</code>. The slave asserts <code>PREADY = 1</code> to complete the transaction, or holds <code>PREADY = 0</code> to insert wait states.</li>\n</ul>\n<p>If an invalid address is targeted, the slave asserts <code>PSLVERR = 1</code> during the completed ACCESS phase to report a transfer error to the master.</p>",
+    "timingReqs": "Clocked on rising edge of PCLK with active-low synchronous reset PRESETn. PREADY must assert during ACCESS phase; PSLVERR is valid only when PSEL && PENABLE && PREADY.",
+    "constraints": "Fully synthesizable Verilog-2001. No # delays. Registered read data and PREADY control.",
+    "commonMistakes": "Updating internal registers during the SETUP phase (when PENABLE=0) instead of the ACCESS phase (when PSEL && PENABLE && PREADY). Inverting PENABLE or letting PREADY float.",
+    "hwNotes": "In high-frequency SoC architectures, PREADY and PRDATA paths should be registered to avoid combinational feedback loops across chip partition boundaries.",
+    "relatedSlugs": [
+      "apb-master-controller",
+      "apb-register-bank",
+      "valid-ready-handshake"
+    ]
+  },
+  {
+    "slug": "apb-master-controller",
+    "title": "AMBA APB Master State Machine Controller",
+    "difficulty": "hard",
+    "difficultyLabel": "Advanced",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "apb-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "APB Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 42,
+    "lede": "Design a synthesizable AMBA APB master finite state machine that accepts internal core commands and drives standard APB bus transactions.",
+    "concept": "<b>Objective:</b> Implement an APB Master Controller converting internal single-cycle request pulses into 2-phase APB transactions (SETUP -> ACCESS). Support slave wait states via PREADY, capture PRDATA on read completion, and support back-to-back requests.<br><br><b>Prerequisites:</b> Finite state machines, AMBA 3 APB master timing, handshaking protocols.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>req</code></td><td>input</td><td>1</td><td>Internal transfer trigger</td></tr>\n<tr><td><code>req_write</code></td><td>input</td><td>1</td><td>1 = Write, 0 = Read</td></tr>\n<tr><td><code>req_addr[7:0]</code></td><td>input</td><td>8</td><td>Requested memory address</td></tr>\n<tr><td><code>req_wdata[31:0]</code></td><td>input</td><td>32</td><td>Requested write data</td></tr>\n<tr><td><code>ready</code></td><td>output</td><td>1</td><td>High when master is idle and can accept requests</td></tr>\n<tr><td><code>rdata[31:0]</code></td><td>output</td><td>32</td><td>Captured read data valid when ready pulses high</td></tr>\n<tr><td><code>err</code></td><td>output</td><td>1</td><td>Asserted if slave returned PSLVERR=1</td></tr>\n<tr><td><code>PSEL</code>, <code>PENABLE</code>, <code>PWRITE</code></td><td>output</td><td>1</td><td>APB control signals</td></tr>\n<tr><td><code>PADDR[7:0]</code>, <code>PWDATA[31:0]</code></td><td>output</td><td>8, 32</td><td>APB address and write data lines</td></tr>\n<tr><td><code>PRDATA[31:0]</code>, <code>PREADY</code>, <code>PSLVERR</code></td><td>input</td><td>32, 1, 1</td><td>APB slave feedback signals</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        req,\n  input  wire        req_write,\n  input  wire [7:0]  req_addr,\n  input  wire [31:0] req_wdata,\n  output reg         ready,\n  output reg  [31:0] rdata,\n  output reg         err,\n  output reg         PSEL,\n  output reg         PENABLE,\n  output reg         PWRITE,\n  output reg  [7:0]  PADDR,\n  output reg  [31:0] PWDATA,\n  input  wire [31:0] PRDATA,\n  input  wire        PREADY,\n  input  wire        PSLVERR\n);\n\n  // Implement the APB Master FSM: IDLE -> SETUP -> ACCESS.\n  // Hold PADDR/PWDATA stable throughout SETUP and ACCESS until PREADY is high.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        req,\n  input  wire        req_write,\n  input  wire [7:0]  req_addr,\n  input  wire [31:0] req_wdata,\n  output reg         ready,\n  output reg  [31:0] rdata,\n  output reg         err,\n  output reg         PSEL,\n  output reg         PENABLE,\n  output reg         PWRITE,\n  output reg  [7:0]  PADDR,\n  output reg  [31:0] PWDATA,\n  input  wire [31:0] PRDATA,\n  input  wire        PREADY,\n  input  wire        PSLVERR\n);\n\n  localparam IDLE   = 2'b00;\n  localparam SETUP  = 2'b01;\n  localparam ACCESS = 2'b10;\n\n  reg [1:0] state;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      state   <= IDLE;\n      ready   <= 1'b1;\n      rdata   <= 32'h0;\n      err     <= 1'b0;\n      PSEL    <= 1'b0;\n      PENABLE <= 1'b0;\n      PWRITE  <= 1'b0;\n      PADDR   <= 8'h0;\n      PWDATA  <= 32'h0;\n    end else begin\n      case (state)\n        IDLE: begin\n          PENABLE <= 1'b0;\n          if (req) begin\n            state   <= SETUP;\n            ready   <= 1'b0;\n            PSEL    <= 1'b1;\n            PWRITE  <= req_write;\n            PADDR   <= req_addr;\n            PWDATA  <= req_wdata;\n            err     <= 1'b0;\n          end else begin\n            PSEL  <= 1'b0;\n            ready <= 1'b1;\n          end\n        end\n\n        SETUP: begin\n          state   <= ACCESS;\n          PENABLE <= 1'b1;\n        end\n\n        ACCESS: begin\n          if (PREADY) begin\n            err <= PSLVERR;\n            if (!PWRITE) begin\n              rdata <= PRDATA;\n            end\n            if (req) begin\n              state   <= SETUP;\n              PSEL    <= 1'b1;\n              PENABLE <= 1'b0;\n              PWRITE  <= req_write;\n              PADDR   <= req_addr;\n              PWDATA  <= req_wdata;\n              ready   <= 1'b0;\n            end else begin\n              state   <= IDLE;\n              PSEL    <= 1'b0;\n              PENABLE <= 1'b0;\n              ready   <= 1'b1;\n            end\n          end\n        end\n\n        default: state <= IDLE;\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, req, req_write;\n  reg [7:0] req_addr;\n  reg [31:0] req_wdata;\n  wire ready, err;\n  wire [31:0] rdata;\n  wire PSEL, PENABLE, PWRITE;\n  wire [7:0] PADDR;\n  wire [31:0] PWDATA;\n  reg [31:0] PRDATA;\n  reg PREADY, PSLVERR;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n), .req(req), .req_write(req_write),\n    .req_addr(req_addr), .req_wdata(req_wdata), .ready(ready),\n    .rdata(rdata), .err(err), .PSEL(PSEL), .PENABLE(PENABLE),\n    .PWRITE(PWRITE), .PADDR(PADDR), .PWDATA(PWDATA),\n    .PRDATA(PRDATA), .PREADY(PREADY), .PSLVERR(PSLVERR)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; req = 0; req_write = 0; req_addr = 0; req_wdata = 0;\n    PRDATA = 32'h0; PREADY = 1; PSLVERR = 0;\n    #15 rst_n = 1;\n\n    // Test 1: Single write transfer\n    @(negedge clk);\n    req = 1; req_write = 1; req_addr = 8'h10; req_wdata = 32'hBEEFCAFE;\n    @(negedge clk);\n    req = 0;\n    if (!PSEL || PENABLE) begin\n      $display(\"FAIL: Expected SETUP state (PSEL=1, PENABLE=0)\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (!PSEL || !PENABLE) begin\n      $display(\"FAIL: Expected ACCESS state (PSEL=1, PENABLE=1)\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (!ready) begin\n      $display(\"FAIL: Expected ready=1 after write completed\");\n      errors = errors + 1;\n    end\n\n    // Test 2: Read transfer with 2 wait states\n    @(negedge clk);\n    req = 1; req_write = 0; req_addr = 8'h20;\n    PREADY = 0; PRDATA = 32'h99887766;\n    @(negedge clk);\n    req = 0;\n    @(negedge clk); // Enters ACCESS with PREADY=0\n    if (!PENABLE) begin\n      $display(\"FAIL: PENABLE should stay asserted during wait states\");\n      errors = errors + 1;\n    end\n    @(negedge clk); // 1st wait cycle\n    PREADY = 1;     // Release wait state\n    @(negedge clk);\n    if (rdata !== 32'h99887766) begin\n      $display(\"FAIL: Captured read data mismatch. Got %08x\", rdata);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "req",
+      "ready",
+      "PSEL",
+      "PENABLE",
+      "PWRITE",
+      "PADDR",
+      "PWDATA",
+      "PREADY",
+      "rdata"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "req",
+          "wave": "01.0....."
+        },
+        {
+          "name": "ready",
+          "wave": "10...1..."
+        },
+        {
+          "name": "PSEL",
+          "wave": "0.1..0..."
+        },
+        {
+          "name": "PENABLE",
+          "wave": "0..1.0..."
+        },
+        {
+          "name": "PREADY",
+          "wave": "1...01..."
+        },
+        {
+          "name": "PWDATA",
+          "wave": "x.=..x...",
+          "data": [
+            "0xBEEFCAFE"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 520 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"150\" y=\"25\" width=\"220\" height=\"170\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"260\" y=\"50\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">APB Master FSM</text>\n  \n  <circle cx=\"205\" cy=\"115\" r=\"28\" fill=\"#1e293b\" stroke=\"#60a5fa\" stroke-width=\"1.5\"/>\n  <text x=\"205\" y=\"118\" fill=\"#e2e8f0\" font-size=\"9\" text-anchor=\"middle\">IDLE</text>\n  \n  <circle cx=\"260\" cy=\"115\" r=\"28\" fill=\"#1e293b\" stroke=\"#2dd4bf\" stroke-width=\"1.5\"/>\n  <text x=\"260\" y=\"118\" fill=\"#e2e8f0\" font-size=\"9\" text-anchor=\"middle\">SETUP</text>\n  \n  <circle cx=\"315\" cy=\"115\" r=\"28\" fill=\"#1e293b\" stroke=\"#f59e0b\" stroke-width=\"1.5\"/>\n  <text x=\"315\" y=\"118\" fill=\"#e2e8f0\" font-size=\"9\" text-anchor=\"middle\">ACCESS</text>\n\n  <path d=\"M 233,115 L 232,115\" stroke=\"#94a3b8\" stroke-width=\"1.5\"/>\n  \n  <!-- Left Side: Internal Core Control -->\n  <line x1=\"50\" y1=\"65\" x2=\"150\" y2=\"65\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"55\" y=\"60\" fill=\"#a78bfa\" font-size=\"10\">req, req_write</text>\n  <line x1=\"50\" y1=\"95\" x2=\"150\" y2=\"95\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"55\" y=\"90\" fill=\"#a78bfa\" font-size=\"10\">req_addr, req_wdata</text>\n  <line x1=\"150\" y1=\"145\" x2=\"50\" y2=\"145\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"55\" y=\"140\" fill=\"#4ade80\" font-size=\"10\">ready, rdata[31:0]</text>\n\n  <!-- Right Side: APB External Bus -->\n  <line x1=\"370\" y1=\"65\" x2=\"470\" y2=\"65\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"385\" y=\"60\" fill=\"#38bdf8\" font-size=\"10\">PSEL, PENABLE</text>\n  <line x1=\"370\" y1=\"100\" x2=\"470\" y2=\"100\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"385\" y=\"95\" fill=\"#38bdf8\" font-size=\"10\">PADDR, PWDATA</text>\n  <line x1=\"470\" y1=\"145\" x2=\"370\" y2=\"145\" stroke=\"#fbbf24\" stroke-width=\"2\"/>\n  <text x=\"385\" y=\"140\" fill=\"#fbbf24\" font-size=\"10\">PREADY, PRDATA</text>\n</svg>",
+    "hints": [
+      "Use a 2-bit state register: IDLE (00), SETUP (01), ACCESS (10).",
+      "When in IDLE and req=1, latch req_addr and req_wdata, assert PSEL=1 and PENABLE=0, and move to SETUP.",
+      "In ACCESS, hold PADDR and PWDATA perfectly constant. Only move back to IDLE (or SETUP for back-to-back) once PREADY is sampled high."
+    ],
+    "explanation": "<h3>APB Master Controller Architecture</h3>\n<p>An APB Master translates transaction requests from processor cores, DMA engines, or debug bridges into valid APB bus waveforms.</p>\n<h4>State Machine Execution</h4>\n<ol>\n  <li><b>IDLE:</b> The master asserts <code>ready = 1</code>. When <code>req = 1</code> is received, the master captures address, write-enable, and payload, asserts <code>PSEL = 1</code>, and enters <b>SETUP</b>.</li>\n  <li><b>SETUP:</b> <code>PSEL = 1</code> and <code>PENABLE = 0</code>. Address and control signals are stable. The state machine transitions unconditionally to <b>ACCESS</b> on the next clock edge.</li>\n  <li><b>ACCESS:</b> The master asserts <code>PENABLE = 1</code>. If the slave asserts <code>PREADY = 0</code>, the master remains in ACCESS indefinitely without changing any control or data signals. Once <code>PREADY = 1</code> is sampled, the transfer completes, read data is latched, and the master returns to IDLE (or restarts SETUP for back-to-back operations).</li>\n</ol>",
+    "timingReqs": "Clocked on rising edge of clk with active-low synchronous reset rst_n. Master must assert PSEL during SETUP and add PENABLE in ACCESS, holding PADDR/PWDATA stable until PREADY=1.",
+    "constraints": "Synthesizable Verilog-2001. No # delays. Clean Moore/Mealy FSM implementation.",
+    "commonMistakes": "Deasserting PENABLE or changing PADDR/PWDATA when PREADY=0. The APB specification strictly requires all signals to remain stable throughout wait states.",
+    "hwNotes": "APB masters in safety-critical SoCs (ISO 26262) incorporate a timeout counter in the ACCESS state to abort hung transactions if a peripheral never asserts PREADY.",
+    "relatedSlugs": [
+      "apb-slave-controller",
+      "apb-register-bank",
+      "valid-ready-handshake"
+    ]
+  },
+  {
+    "slug": "apb-register-bank",
+    "title": "Configurable APB Memory-Mapped Register Bank with Masking",
+    "difficulty": "hard",
+    "difficultyLabel": "Advanced",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "apb-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "APB Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 43,
+    "lede": "Design a production-grade APB register bank featuring control, status, scratchpad, and interrupt-enable registers with read-only protections.",
+    "concept": "<b>Objective:</b> Implement a memory-mapped register block connected to an APB bus. Implement exact register semantics: Control (R/W), Status (Read-Only from external input), Scratchpad (R/W with default reset pattern), and Interrupt Enable (R/W).<br><br><b>Prerequisites:</b> AMBA APB protocol, memory-mapped I/O, address decoding, register banks.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>PCLK</code>, <code>PRESETn</code></td><td>input</td><td>1</td><td>Clock and active-low reset</td></tr>\n<tr><td><code>PSEL</code>, <code>PENABLE</code>, <code>PWRITE</code></td><td>input</td><td>1</td><td>Standard APB control</td></tr>\n<tr><td><code>PADDR[7:0]</code></td><td>input</td><td>8</td><td>Register address (0x00=CTRL, 0x04=STATUS, 0x08=SCRATCH, 0x0C=IEN)</td></tr>\n<tr><td><code>PWDATA[31:0]</code></td><td>input</td><td>32</td><td>Incoming write data</td></tr>\n<tr><td><code>PRDATA[31:0]</code></td><td>output</td><td>32</td><td>Outgoing read data</td></tr>\n<tr><td><code>PREADY</code>, <code>PSLVERR</code></td><td>output</td><td>1</td><td>Ready and error indicator</td></tr>\n<tr><td><code>ext_status[31:0]</code></td><td>input</td><td>32</td><td>Hardware status wired to Read-Only 0x04</td></tr>\n<tr><td><code>ctrl_out[31:0]</code></td><td>output</td><td>32</td><td>Current content of Control Register (0x00)</td></tr>\n<tr><td><code>ien_out[31:0]</code></td><td>output</td><td>32</td><td>Current content of Interrupt Enable Register (0x0C)</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        PCLK,\n  input  wire        PRESETn,\n  input  wire        PSEL,\n  input  wire        PENABLE,\n  input  wire        PWRITE,\n  input  wire [7:0]  PADDR,\n  input  wire [31:0] PWDATA,\n  output reg  [31:0] PRDATA,\n  output wire        PREADY,\n  output reg         PSLVERR,\n  input  wire [31:0] ext_status,\n  output reg  [31:0] ctrl_out,\n  output reg  [31:0] ien_out\n);\n\n  // Address Map:\n  // 0x00: CTRL    (R/W, reset=0x00000000) -> drives ctrl_out\n  // 0x04: STATUS  (Read-Only)              -> returns ext_status\n  // 0x08: SCRATCH (R/W, reset=0xA5A50001)\n  // 0x0C: IEN     (R/W, reset=0x00000000) -> drives ien_out\n  // Other addresses: PSLVERR = 1, PRDATA = 32'h0\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        PCLK,\n  input  wire        PRESETn,\n  input  wire        PSEL,\n  input  wire        PENABLE,\n  input  wire        PWRITE,\n  input  wire [7:0]  PADDR,\n  input  wire [31:0] PWDATA,\n  output reg  [31:0] PRDATA,\n  output wire        PREADY,\n  output reg         PSLVERR,\n  input  wire [31:0] ext_status,\n  output reg  [31:0] ctrl_out,\n  output reg  [31:0] ien_out\n);\n\n  assign PREADY = 1'b1;\n  reg [31:0] scratch_reg;\n\n  wire wr_en = PSEL && PENABLE && PWRITE;\n  wire rd_en = PSEL && PENABLE && !PWRITE;\n\n  always @(posedge PCLK or negedge PRESETn) begin\n    if (!PRESETn) begin\n      ctrl_out    <= 32'h00000000;\n      ien_out     <= 32'h00000000;\n      scratch_reg <= 32'hA5A50001;\n      PRDATA      <= 32'h00000000;\n      PSLVERR     <= 1'b0;\n    end else begin\n      PSLVERR <= 1'b0;\n      if (wr_en) begin\n        case (PADDR)\n          8'h00: ctrl_out    <= PWDATA;\n          8'h04: ; // Status register is Read-Only; writes ignored without error or with error per design\n          8'h08: scratch_reg <= PWDATA;\n          8'h0C: ien_out     <= PWDATA;\n          default: PSLVERR   <= 1'b1;\n        endcase\n      end\n\n      if (rd_en) begin\n        case (PADDR)\n          8'h00: PRDATA <= ctrl_out;\n          8'h04: PRDATA <= ext_status;\n          8'h08: PRDATA <= scratch_reg;\n          8'h0C: PRDATA <= ien_out;\n          default: begin\n            PRDATA  <= 32'h00000000;\n            PSLVERR <= 1'b1;\n          end\n        endcase\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg PCLK, PRESETn, PSEL, PENABLE, PWRITE;\n  reg [7:0] PADDR;\n  reg [31:0] PWDATA, ext_status;\n  wire [31:0] PRDATA, ctrl_out, ien_out;\n  wire PREADY, PSLVERR;\n  integer errors = 0;\n\n  top_module dut (\n    .PCLK(PCLK), .PRESETn(PRESETn), .PSEL(PSEL), .PENABLE(PENABLE),\n    .PWRITE(PWRITE), .PADDR(PADDR), .PWDATA(PWDATA),\n    .PRDATA(PRDATA), .PREADY(PREADY), .PSLVERR(PSLVERR),\n    .ext_status(ext_status), .ctrl_out(ctrl_out), .ien_out(ien_out)\n  );\n\n  always #5 PCLK = ~PCLK;\n\n  task apb_write(input [7:0] a, input [31:0] d, input exp_err);\n    begin\n      @(negedge PCLK); PSEL = 1; PENABLE = 0; PWRITE = 1; PADDR = a; PWDATA = d;\n      @(negedge PCLK); PENABLE = 1;\n      @(negedge PCLK);\n      if (PSLVERR !== exp_err) begin\n        $display(\"FAIL: Write addr 0x%02x PSLVERR expected %b, got %b\", a, exp_err, PSLVERR);\n        errors = errors + 1;\n      end\n      PSEL = 0; PENABLE = 0;\n    end\n  endtask\n\n  task apb_read(input [7:0] a, input [31:0] exp_d, input exp_err);\n    begin\n      @(negedge PCLK); PSEL = 1; PENABLE = 0; PWRITE = 0; PADDR = a;\n      @(negedge PCLK); PENABLE = 1;\n      @(negedge PCLK);\n      if (PSLVERR !== exp_err) begin\n        $display(\"FAIL: Read addr 0x%02x PSLVERR expected %b, got %b\", a, exp_err, PSLVERR);\n        errors = errors + 1;\n      end\n      if (!exp_err && PRDATA !== exp_d) begin\n        $display(\"FAIL: Read addr 0x%02x mismatch. Exp 0x%08x, got 0x%08x\", a, exp_d, PRDATA);\n        errors = errors + 1;\n      end\n      PSEL = 0; PENABLE = 0;\n    end\n  endtask\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    PCLK = 0; PRESETn = 0; PSEL = 0; PENABLE = 0; PWRITE = 0; PADDR = 0; PWDATA = 0; ext_status = 32'h1234ABCD;\n    #15 PRESETn = 1;\n\n    // Check reset scratchpad value\n    apb_read(8'h08, 32'hA5A50001, 0);\n\n    // Write & Read CTRL\n    apb_write(8'h00, 32'h00000007, 0);\n    if (ctrl_out !== 32'h7) begin\n      $display(\"FAIL: ctrl_out port mismatch\");\n      errors = errors + 1;\n    end\n    apb_read(8'h00, 32'h00000007, 0);\n\n    // Read STATUS (ReadOnly)\n    apb_read(8'h04, 32'h1234ABCD, 0);\n    // Write to STATUS (should not alter ext_status)\n    apb_write(8'h04, 32'hFFFFFFFF, 0);\n    apb_read(8'h04, 32'h1234ABCD, 0);\n\n    // Write & Read IEN\n    apb_write(8'h0C, 32'h000000FF, 0);\n    if (ien_out !== 32'hFF) begin\n      $display(\"FAIL: ien_out port mismatch\");\n      errors = errors + 1;\n    end\n    apb_read(8'h0C, 32'h000000FF, 0);\n\n    // Out of bounds address\n    apb_read(8'h40, 32'h0, 1);\n    apb_write(8'h50, 32'h1234, 1);\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "PCLK",
+      "PRESETn",
+      "PSEL",
+      "PENABLE",
+      "PWRITE",
+      "PADDR",
+      "PWDATA",
+      "PRDATA",
+      "ctrl_out",
+      "ien_out"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "PCLK",
+          "wave": "p........"
+        },
+        {
+          "name": "PSEL",
+          "wave": "01.01.0.."
+        },
+        {
+          "name": "PENABLE",
+          "wave": "0.10.10.."
+        },
+        {
+          "name": "PADDR",
+          "wave": "x=.x=.x..",
+          "data": [
+            "0x00",
+            "0x08"
+          ]
+        },
+        {
+          "name": "PWDATA",
+          "wave": "x=.x.....",
+          "data": [
+            "0x00000007"
+          ]
+        },
+        {
+          "name": "PRDATA",
+          "wave": "x....=.x.",
+          "data": [
+            "0xA5A50001"
+          ]
+        },
+        {
+          "name": "ctrl_out",
+          "wave": "0..=.....",
+          "data": [
+            "0x7"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">APB Register Bank</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"85\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">0x00: CTRL</text>\n  <text x=\"212\" y=\"100\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Read / Write</text>\n\n  <rect x=\"275\" y=\"65\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#a78bfa\"/>\n  <text x=\"327\" y=\"85\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">0x04: STATUS</text>\n  <text x=\"327\" y=\"100\" fill=\"#a78bfa\" font-size=\"8\" text-anchor=\"middle\">Read-Only</text>\n\n  <rect x=\"160\" y=\"125\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"145\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">0x08: SCRATCH</text>\n  <text x=\"212\" y=\"160\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">R/W: 0xA5A50001</text>\n\n  <rect x=\"275\" y=\"125\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"327\" y=\"145\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">0x0C: IEN</text>\n  <text x=\"327\" y=\"160\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Read / Write</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"75\" fill=\"#94a3b8\" font-size=\"9\">PADDR, PWDATA</text>\n  <line x1=\"40\" y1=\"140\" x2=\"140\" y2=\"140\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"135\" fill=\"#a78bfa\" font-size=\"9\">ext_status[31:0]</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"420\" y=\"75\" fill=\"#2dd4bf\" font-size=\"9\">PRDATA[31:0]</text>\n  <line x1=\"400\" y1=\"120\" x2=\"500\" y2=\"120\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"420\" y=\"115\" fill=\"#4ade80\" font-size=\"9\">ctrl_out[31:0]</text>\n  <line x1=\"400\" y1=\"155\" x2=\"500\" y2=\"155\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"420\" y=\"150\" fill=\"#4ade80\" font-size=\"9\">ien_out[31:0]</text>\n</svg>",
+    "hints": [
+      "Decode the byte address: PADDR == 8'h00, 8'h04, 8'h08, 8'h0C.",
+      "For write operations, write only on PSEL && PENABLE && PWRITE.",
+      "For 0x04 (STATUS), write operations must NOT overwrite the external status input."
+    ],
+    "explanation": "<h3>Memory-Mapped Register Banks in Modern SoCs</h3>\n<p>Every peripheral core in an SoC (timers, UARTs, I2C controllers, GPU dispatchers) exposes an addressable register bank over APB or AXI-Lite.</p>\n<h4>Key Architecture Rules</h4>\n<ul>\n  <li><b>Read-Only Registers:</b> Registers reflecting hardware conditions (status, FIFO levels, error flags) ignore CPU writes.</li>\n  <li><b>Reset Value Management:</b> Certain registers (like scratchpads or hardware IDs) must wake up with nonzero values to allow software drivers to identify the IP version.</li>\n  <li><b>Address Decoding:</b> Word-aligned addresses step in multiples of 4 bytes (0x00, 0x04, 0x08, 0x0C). Unmapped accesses must flag <code>PSLVERR</code> to trap rogue firmware pointers.</li>\n</ul>",
+    "timingReqs": "Clocked on PCLK with active-low PRESETn. All registers update on posedge PCLK during active ACCESS phase (PSEL && PENABLE && PWRITE && PREADY).",
+    "constraints": "Synthesizable Verilog-2001. No latches. Clean default address decode multiplexing.",
+    "commonMistakes": "Allowing writes to modify read-only status registers or failing to clear PSLVERR on valid transfers.",
+    "hwNotes": "Registers can consume significant gate count. For wide register sets, register sharing or RAM-based register files are employed.",
+    "relatedSlugs": [
+      "apb-slave-controller",
+      "apb-master-controller",
+      "parameterized-register-slice"
+    ]
+  },
+  {
+    "slug": "axi-valid-ready-handshake-engine",
+    "title": "AXI4 Handshake Engine with Protocol Hold Rules & Backpressure",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "axi-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "AXI Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 44,
+    "lede": "Implement an AXI valid-ready handshake engine enforcing the AMBA AXI handshake stability rules under severe downstream backpressure.",
+    "concept": "<b>Objective:</b> Design a valid-ready handshake controller adhering to Arm AMBA AXI4 specifications. Ensure transfers occur strictly on clock edges where VALID && READY are both high. Ensure VALID cannot depend combinationally on READY, and payload is held stable during stall cycles.<br><br><b>Prerequisites:</b> AMBA AXI4 valid/ready handshake principles, pipelining, combinational loops avoidance.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>ACLK</code>, <code>ARESETn</code></td><td>input</td><td>1</td><td>Global clock and active-low synchronous reset</td></tr>\n<tr><td><code>s_valid</code>, <code>s_data[31:0]</code></td><td>input</td><td>1, 32</td><td>Upstream producer handshake and data</td></tr>\n<tr><td><code>s_ready</code></td><td>output</td><td>1</td><td>Upstream ready indicating buffer readiness</td></tr>\n<tr><td><code>m_valid</code>, <code>m_data[31:0]</code></td><td>output</td><td>1, 32</td><td>Downstream consumer handshake and data</td></tr>\n<tr><td><code>m_ready</code></td><td>input</td><td>1</td><td>Downstream consumer ready backpressure signal</td></tr>\n<tr><td><code>stall_detected</code></td><td>output</td><td>1</td><td>Status flag asserted during backpressure stalls</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        s_valid,\n  output wire        s_ready,\n  input  wire [31:0] s_data,\n  output reg         m_valid,\n  input  wire        m_ready,\n  output reg  [31:0] m_data,\n  output wire        stall_detected\n);\n\n  // Implement an elastic valid-ready buffer stage:\n  // 1. Data beat transfers when (VALID && READY) on posedge ACLK.\n  // 2. Once m_valid is asserted, m_data and m_valid MUST remain stable until m_ready = 1.\n  // 3. stall_detected = m_valid && !m_ready.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        s_valid,\n  output wire        s_ready,\n  input  wire [31:0] s_data,\n  output reg         m_valid,\n  input  wire        m_ready,\n  output reg  [31:0] m_data,\n  output wire        stall_detected\n);\n\n  assign stall_detected = m_valid && !m_ready;\n  assign s_ready = !m_valid || m_ready;\n\n  always @(posedge ACLK or negedge ARESETn) begin\n    if (!ARESETn) begin\n      m_valid <= 1'b0;\n      m_data  <= 32'h0;\n    end else begin\n      if (s_ready) begin\n        m_valid <= s_valid;\n        if (s_valid) begin\n          m_data <= s_data;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg ACLK, ARESETn, s_valid, m_ready;\n  reg [31:0] s_data;\n  wire s_ready, m_valid, stall_detected;\n  wire [31:0] m_data;\n  integer errors = 0;\n\n  top_module dut (\n    .ACLK(ACLK), .ARESETn(ARESETn),\n    .s_valid(s_valid), .s_ready(s_ready), .s_data(s_data),\n    .m_valid(m_valid), .m_ready(m_ready), .m_data(m_data),\n    .stall_detected(stall_detected)\n  );\n\n  always #5 ACLK = ~ACLK;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    ACLK = 0; ARESETn = 0; s_valid = 0; m_ready = 0; s_data = 0;\n    #15 ARESETn = 1;\n\n    // Test 1: Immediate downstream ready (pass-through)\n    @(negedge ACLK);\n    m_ready = 1; s_valid = 1; s_data = 32'hDEAD1111;\n    @(negedge ACLK);\n    if (!m_valid || m_data !== 32'hDEAD1111) begin\n      $display(\"FAIL: Immediate pass-through failed\");\n      errors = errors + 1;\n    end\n    s_valid = 0;\n    @(negedge ACLK);\n\n    // Test 2: Downstream stall (m_ready = 0)\n    @(negedge ACLK);\n    m_ready = 0; s_valid = 1; s_data = 32'h22223333;\n    @(negedge ACLK); // m_valid goes high with 32'h22223333\n    if (!stall_detected) begin\n      $display(\"FAIL: stall_detected should be 1 during stall\");\n      errors = errors + 1;\n    end\n    // Upstream attempts to change data while stalled\n    s_data = 32'hBAADF00D;\n    @(negedge ACLK);\n    if (m_data !== 32'h22223333 || !m_valid) begin\n      $display(\"FAIL: m_data or m_valid changed during downstream stall!\");\n      errors = errors + 1;\n    end\n    \n    // Release downstream\n    m_ready = 1;\n    @(negedge ACLK);\n    s_valid = 0;\n    @(negedge ACLK);\n    if (m_valid) begin\n      $display(\"FAIL: m_valid should deassert once flushed\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "ACLK",
+      "ARESETn",
+      "s_valid",
+      "s_ready",
+      "s_data",
+      "m_valid",
+      "m_ready",
+      "m_data",
+      "stall_detected"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "ACLK",
+          "wave": "p........"
+        },
+        {
+          "name": "s_valid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "s_ready",
+          "wave": "1.01....."
+        },
+        {
+          "name": "s_data",
+          "wave": "x=.x.....",
+          "data": [
+            "0x22223333"
+          ]
+        },
+        {
+          "name": "m_valid",
+          "wave": "0.1..0..."
+        },
+        {
+          "name": "m_ready",
+          "wave": "0..1....."
+        },
+        {
+          "name": "m_data",
+          "wave": "x..=.x...",
+          "data": [
+            "0x22223333"
+          ]
+        },
+        {
+          "name": "stall_detected",
+          "wave": "0.10....."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 520 200\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"150\" y=\"25\" width=\"220\" height=\"150\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"260\" y=\"55\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">AXI Valid-Ready Engine</text>\n  \n  <rect x=\"180\" y=\"80\" width=\"160\" height=\"40\" rx=\"6\" fill=\"#1e293b\" stroke=\"#2dd4bf\" stroke-width=\"1.5\"/>\n  <text x=\"260\" y=\"105\" fill=\"#2dd4bf\" font-size=\"11\" text-anchor=\"middle\">Payload Register & Hold Logic</text>\n\n  <line x1=\"50\" y1=\"75\" x2=\"150\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"55\" y=\"70\" fill=\"#94a3b8\" font-size=\"10\">s_valid, s_data[31:0]</text>\n  \n  <line x1=\"150\" y1=\"120\" x2=\"50\" y2=\"120\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"55\" y=\"115\" fill=\"#2dd4bf\" font-size=\"10\">s_ready</text>\n\n  <line x1=\"370\" y1=\"75\" x2=\"470\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"390\" y=\"70\" fill=\"#38bdf8\" font-size=\"10\">m_valid, m_data[31:0]</text>\n  \n  <line x1=\"470\" y1=\"120\" x2=\"370\" y2=\"120\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"390\" y=\"115\" fill=\"#2dd4bf\" font-size=\"10\">m_ready</text>\n  \n  <line x1=\"370\" y1=\"150\" x2=\"470\" y2=\"150\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"390\" y=\"145\" fill=\"#f43f5e\" font-size=\"10\">stall_detected</text>\n</svg>",
+    "hints": [
+      "A transfer happens if and only if (VALID && READY) on the rising clock edge.",
+      "According to AMBA AXI, VALID cannot wait for READY combinationally. But READY can wait for VALID.",
+      "When m_valid is high and m_ready is low, s_ready must drop to 0 to prevent upstream overwriting the unstalled payload."
+    ],
+    "explanation": "<h3>The AMBA AXI Valid-Ready Handshake Contract</h3>\n<p>In all 5 AXI channels (AR, R, AW, W, B) as well as AXI4-Stream, data movement is governed by the two-way <code>VALID / READY</code> handshake contract:</p>\n<ul>\n  <li><b>The Transfer Point:</b> Data is consumed strictly when <code>VALID = 1</code> and <code>READY = 1</code> at a positive clock edge.</li>\n  <li><b>The Stability Requirement:</b> Once a master asserts <code>VALID</code>, it must maintain <code>VALID = 1</code> and keep the payload unchanged until <code>READY = 1</code> is observed.</li>\n  <li><b>Deadlock Prevention:</b> The specification forbids <code>VALID</code> from waiting for <code>READY</code> combinationally. A master cannot check if a slave is ready before deciding whether to assert <code>VALID</code>.</li>\n</ul>",
+    "timingReqs": "Clocked on posedge ACLK, active-low reset ARESETn. When s_valid is asserted, s_data must not change until s_valid && s_ready occurs.",
+    "constraints": "No combinational path from m_ready to s_valid. Synthesizable Verilog-2001.",
+    "commonMistakes": "Allowing payload signals to mutate while VALID is high and READY is low, or creating a combinational loop from READY to VALID.",
+    "hwNotes": "Cascading simple valid-ready stages introduces a half-bandwidth bubble (1 beat every 2 cycles). Eliminating this requires a skid buffer (Problem 45).",
+    "relatedSlugs": [
+      "axi-stream-register-slice-full",
+      "valid-ready-handshake",
+      "apb-slave-controller"
+    ]
+  },
+  {
+    "slug": "axi-stream-register-slice-full",
+    "title": "Full-Throughput AXI4-Stream Register Slice (Skid Buffer)",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "axi-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "AXI Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 45,
+    "lede": "Design a production-grade 1-stage AXI4-Stream register slice with skid buffering supporting 100% throughput and full timing isolation.",
+    "concept": "<b>Objective:</b> Implement a full-bandwidth AXI-Stream register slice (skid buffer) carrying TVALID, TREADY, TDATA[31:0], TKEEP[3:0], and TLAST. Both forward (TVALID/TDATA) and reverse (TREADY) paths must be registered to break combinational timing paths across clock domains without losing back-to-back transfer capability.<br><br><b>Prerequisites:</b> AXI4-Stream protocol, skid buffer architecture, pipeline timing closure.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>aclk</code>, <code>aresetn</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>s_tvalid</code>, <code>s_tready</code></td><td>in/out</td><td>1</td><td>Slave stream handshake interface</td></tr>\n<tr><td><code>s_tdata[31:0]</code>, <code>s_tkeep[3:0]</code>, <code>s_tlast</code></td><td>input</td><td>32, 4, 1</td><td>Slave data, byte enables, and end-of-packet flag</td></tr>\n<tr><td><code>m_tvalid</code>, <code>m_tready</code></td><td>out/in</td><td>1</td><td>Master stream handshake interface</td></tr>\n<tr><td><code>m_tdata[31:0]</code>, <code>m_tkeep[3:0]</code>, <code>m_tlast</code></td><td>output</td><td>32, 4, 1</td><td>Master data, byte enables, and end-of-packet flag</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        aclk,\n  input  wire        aresetn,\n  input  wire        s_tvalid,\n  output reg         s_tready,\n  input  wire [31:0] s_tdata,\n  input  wire [3:0]  s_tkeep,\n  input  wire        s_tlast,\n  output reg         m_tvalid,\n  input  wire        m_tready,\n  output reg  [31:0] m_tdata,\n  output reg  [3:0]  m_tkeep,\n  output reg         m_tlast\n);\n\n  // Implement a 2-entry skid buffer (Primary and Secondary/Skid registers):\n  // Breaks timing paths on both forward (VALID/DATA) and backward (READY) directions.\n  // Must sustain 1 transfer per clock cycle when m_tready = 1.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        aclk,\n  input  wire        aresetn,\n  input  wire        s_tvalid,\n  output reg         s_tready,\n  input  wire [31:0] s_tdata,\n  input  wire [3:0]  s_tkeep,\n  input  wire        s_tlast,\n  output reg         m_tvalid,\n  input  wire        m_tready,\n  output reg  [31:0] m_tdata,\n  output reg  [3:0]  m_tkeep,\n  output reg         m_tlast\n);\n\n  // Skid register storage\n  reg [31:0] skid_data;\n  reg [3:0]  skid_keep;\n  reg        skid_last;\n  reg        skid_valid;\n\n  always @(posedge aclk or negedge aresetn) begin\n    if (!aresetn) begin\n      s_tready   <= 1'b1;\n      m_tvalid   <= 1'b0;\n      m_tdata    <= 32'h0;\n      m_tkeep    <= 4'h0;\n      m_tlast    <= 1'b0;\n      skid_valid <= 1'b0;\n      skid_data  <= 32'h0;\n      skid_keep  <= 4'h0;\n      skid_last  <= 1'b0;\n    end else begin\n      if (m_tvalid && !m_tready) begin\n        // Downstream stalled: capture into skid buffer if new valid beat arrives\n        if (s_tvalid && s_tready) begin\n          skid_data  <= s_tdata;\n          skid_keep  <= s_tkeep;\n          skid_last  <= s_tlast;\n          skid_valid <= 1'b1;\n          s_tready   <= 1'b0; // Skid full: assert backpressure upstream\n        end\n      end else begin\n        // Downstream ready: drain skid if present, otherwise pass from upstream\n        if (skid_valid) begin\n          m_tvalid   <= 1'b1;\n          m_tdata    <= skid_data;\n          m_tkeep    <= skid_keep;\n          m_tlast    <= skid_last;\n          skid_valid <= 1'b0;\n          s_tready   <= 1'b1;\n        end else if (s_tvalid && s_tready) begin\n          m_tvalid <= 1'b1;\n          m_tdata  <= s_tdata;\n          m_tkeep  <= s_tkeep;\n          m_tlast  <= s_tlast;\n          s_tready <= 1'b1;\n        end else begin\n          m_tvalid <= 1'b0;\n          s_tready <= 1'b1;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg aclk, aresetn, s_tvalid, m_tready, s_tlast;\n  reg [31:0] s_tdata;\n  reg [3:0] s_tkeep;\n  wire s_tready, m_tvalid, m_tlast;\n  wire [31:0] m_tdata;\n  wire [3:0] m_tkeep;\n  integer errors = 0;\n\n  top_module dut (\n    .aclk(aclk), .aresetn(aresetn),\n    .s_tvalid(s_tvalid), .s_tready(s_tready), .s_tdata(s_tdata), .s_tkeep(s_tkeep), .s_tlast(s_tlast),\n    .m_tvalid(m_tvalid), .m_tready(m_tready), .m_tdata(m_tdata), .m_tkeep(m_tkeep), .m_tlast(m_tlast)\n  );\n\n  always #5 aclk = ~aclk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    aclk = 0; aresetn = 0; s_tvalid = 0; m_tready = 1; s_tdata = 0; s_tkeep = 4'hF; s_tlast = 0;\n    #15 aresetn = 1;\n\n    // Test 1: Full-throughput 4-beat burst with m_tready = 1\n    @(negedge aclk);\n    s_tvalid = 1; s_tdata = 32'h11111111; s_tlast = 0;\n    @(negedge aclk);\n    s_tdata = 32'h22222222; s_tlast = 0;\n    @(negedge aclk);\n    s_tdata = 32'h33333333; s_tlast = 0;\n    @(negedge aclk);\n    s_tdata = 32'h44444444; s_tlast = 1;\n    @(negedge aclk);\n    s_tvalid = 0; s_tlast = 0;\n\n    // Verify pipeline drained cleanly\n    repeat(3) @(negedge aclk);\n\n    // Test 2: Downstream stall right after sending beat\n    @(negedge aclk);\n    s_tvalid = 1; s_tdata = 32'hAAAA0001; s_tlast = 0;\n    @(negedge aclk);\n    m_tready = 0; // Downstream stalls\n    s_tdata = 32'hAAAA0002; s_tlast = 1; // Sent into skid buffer\n    @(negedge aclk);\n    s_tvalid = 0;\n    \n    // Hold stall for 2 cycles\n    repeat(2) @(negedge aclk);\n    if (!m_tvalid || m_tdata !== 32'hAAAA0001) begin\n      $display(\"FAIL: Head of queue corrupted during stall\");\n      errors = errors + 1;\n    end\n    \n    // Release stall\n    m_tready = 1;\n    @(negedge aclk);\n    @(negedge aclk);\n    if (m_tdata !== 32'hAAAA0002 || !m_tlast) begin\n      $display(\"FAIL: Skid buffer failed to drain properly\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "aclk",
+      "aresetn",
+      "s_tvalid",
+      "s_tready",
+      "s_tdata",
+      "s_tlast",
+      "m_tvalid",
+      "m_tready",
+      "m_tdata",
+      "m_tlast"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "aclk",
+          "wave": "p........"
+        },
+        {
+          "name": "s_tvalid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "s_tready",
+          "wave": "1...01..."
+        },
+        {
+          "name": "s_tdata",
+          "wave": "x====x...",
+          "data": [
+            "D0",
+            "D1",
+            "D2",
+            "D3"
+          ]
+        },
+        {
+          "name": "m_tvalid",
+          "wave": "0.1...0.."
+        },
+        {
+          "name": "m_tready",
+          "wave": "1..0.1..."
+        },
+        {
+          "name": "m_tdata",
+          "wave": "x.====x..",
+          "data": [
+            "D0",
+            "D1",
+            "D2",
+            "D3"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">AXI-Stream Register Slice</text>\n  <text x=\"270\" y=\"62\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">Skid Buffer Architecture (100% Throughput)</text>\n  \n  <rect x=\"160\" y=\"75\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"98\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Main Register</text>\n  <text x=\"212\" y=\"112\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Outputs m_tdata</text>\n\n  <rect x=\"275\" y=\"75\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"327\" y=\"98\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Skid Register</text>\n  <text x=\"327\" y=\"112\" fill=\"#f59e0b\" font-size=\"8\" text-anchor=\"middle\">Absorbs 1 Stall Beat</text>\n\n  <rect x=\"160\" y=\"135\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#64748b\"/>\n  <text x=\"270\" y=\"155\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Registered Ready Controller</text>\n  <text x=\"270\" y=\"168\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Breaks Backward Timing Critical Path</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"90\" x2=\"140\" y2=\"90\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"85\" fill=\"#38bdf8\" font-size=\"9\">s_tvalid, s_tdata</text>\n  <line x1=\"140\" y1=\"150\" x2=\"40\" y2=\"150\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"145\" fill=\"#2dd4bf\" font-size=\"9\">s_tready (reg)</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"90\" x2=\"500\" y2=\"90\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"85\" fill=\"#38bdf8\" font-size=\"9\">m_tvalid, m_tdata</text>\n  <line x1=\"500\" y1=\"150\" x2=\"400\" y2=\"150\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"145\" fill=\"#2dd4bf\" font-size=\"9\">m_tready</text>\n</svg>",
+    "hints": [
+      "A basic register slice suffers from bubble cycles because registering s_tready creates a 1-cycle feedback delay.",
+      "A skid buffer solves this by holding 2 data slots: Primary and Skid.",
+      "When downstream stalls (m_tready=0), the incoming beat on that exact cycle is caught in the skid register, and s_tready is lowered for the following cycle."
+    ],
+    "explanation": "<h3>Why Chips Need Skid Buffers</h3>\n<p>In high-speed physical design (1 GHz+), long routing wires between distant IP blocks cannot meet setup time if combinational control signals (like <code>READY</code> backpressure) traverse multiple hierarchical boundaries.</p>\n<h4>The Register Slice Dilemma</h4>\n<p>If you register forward signals (<code>VALID</code>/<code>DATA</code>) but pass <code>READY</code> combinationally, the reverse timing path remains broken. If you naively register <code>READY</code>, the upstream transmitter cannot know the downstream stalled until 1 cycle later, dropping a packet or halving bandwidth to 50%.</p>\n<p>The <b>Skid Buffer</b> introduces a secondary holding register that catches the extra in-flight beat during the 1-cycle round-trip latency of the registered <code>s_tready</code> signal, enabling 100% throughput and complete timing closure.</p>",
+    "timingReqs": "Sustain 100% throughput (1 transfer per clock cycle when both upstream and downstream are ready). Zero data loss or payload corruption during backpressure.",
+    "constraints": "Purely registered outputs for timing isolation. Synthesizable Verilog-2001.",
+    "commonMistakes": "Failing to transfer the skid buffer payload to m_tdata immediately when m_tready goes high, leading to out-of-order data or pipeline stalls.",
+    "hwNotes": "Standard industry AXI-Stream infrastructure IPs (such as Xilinx AXI4-Stream Register Slice or Arm CoreLink) use skid buffers at almost every major clock domain or floorplan SLR boundary.",
+    "relatedSlugs": [
+      "axi-valid-ready-handshake-engine",
+      "valid-ready-handshake",
+      "parameterized-register-slice"
+    ]
+  },
+  {
+    "slug": "axi-write-controller",
+    "title": "Decoupled AXI4 Write Master Transaction Controller",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "axi-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "AXI Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 46,
+    "lede": "Design an AXI4 write master controller handling independent, decoupled address and data channel handshakes with write response tracking.",
+    "concept": "<b>Objective:</b> Implement a synthesizable AXI4 Write Controller. Address write (AW) and data write (W) channels must operate independently without assuming simultaneous handshakes. Coordinate AWVALID/AWREADY, WVALID/WREADY/WLAST, and capture write response on BVALID/BREADY.<br><br><b>Prerequisites:</b> AXI4 write channel architecture (AW, W, B), decoupled handshakes, transaction state machines.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>ACLK</code>, <code>ARESETn</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>start_write</code></td><td>input</td><td>1</td><td>Trigger 1-beat write transaction</td></tr>\n<tr><td><code>wr_addr[31:0]</code>, <code>wr_data[31:0]</code></td><td>input</td><td>32</td><td>Address and payload input from core</td></tr>\n<tr><td><code>write_complete</code>, <code>write_err</code></td><td>output</td><td>1</td><td>Status pulse on B handshake; err if BRESP != 2'b00</td></tr>\n<tr><td><code>AWVALID</code>, <code>AWREADY</code>, <code>AWADDR[31:0]</code></td><td>out/in/out</td><td>1, 1, 32</td><td>AXI Write Address channel</td></tr>\n<tr><td><code>WVALID</code>, <code>WREADY</code>, <code>WDATA[31:0]</code>, <code>WLAST</code></td><td>out/in/out/out</td><td>1, 1, 32, 1</td><td>AXI Write Data channel</td></tr>\n<tr><td><code>BVALID</code>, <code>BREADY</code>, <code>BRESP[1:0]</code></td><td>in/out/in</td><td>1, 1, 2</td><td>AXI Write Response channel</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        start_write,\n  input  wire [31:0] wr_addr,\n  input  wire [31:0] wr_data,\n  output reg         write_complete,\n  output reg         write_err,\n  output reg         AWVALID,\n  input  wire        AWREADY,\n  output reg  [31:0] AWADDR,\n  output reg         WVALID,\n  input  wire        WREADY,\n  output reg  [31:0] WDATA,\n  output reg         WLAST,\n  input  wire        BVALID,\n  output reg         BREADY,\n  input  wire [1:0]  BRESP\n);\n\n  // Implement decoupled AXI write transaction:\n  // 1. Assert AWVALID and WVALID upon start_write.\n  // 2. Track AW and W completion independently.\n  // 3. Once both complete, assert BREADY and wait for BVALID.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        start_write,\n  input  wire [31:0] wr_addr,\n  input  wire [31:0] wr_data,\n  output reg         write_complete,\n  output reg         write_err,\n  output reg         AWVALID,\n  input  wire        AWREADY,\n  output reg  [31:0] AWADDR,\n  output reg         WVALID,\n  input  wire        WREADY,\n  output reg  [31:0] WDATA,\n  output reg         WLAST,\n  input  wire        BVALID,\n  output reg         BREADY,\n  input  wire [1:0]  BRESP\n);\n\n  reg aw_done, w_done;\n\n  always @(posedge ACLK or negedge ARESETn) begin\n    if (!ARESETn) begin\n      write_complete <= 1'b0;\n      write_err      <= 1'b0;\n      AWVALID        <= 1'b0;\n      AWADDR         <= 32'h0;\n      WVALID         <= 1'b0;\n      WDATA          <= 32'h0;\n      WLAST          <= 1'b0;\n      BREADY         <= 1'b0;\n      aw_done        <= 1'b0;\n      w_done         <= 1'b0;\n    end else begin\n      write_complete <= 1'b0;\n      write_err      <= 1'b0;\n\n      if (start_write && !AWVALID && !WVALID && !aw_done && !w_done && !BREADY) begin\n        AWVALID <= 1'b1;\n        AWADDR  <= wr_addr;\n        WVALID  <= 1'b1;\n        WDATA   <= wr_data;\n        WLAST   <= 1'b1;\n        aw_done <= 1'b0;\n        w_done  <= 1'b0;\n      end\n\n      // Independent AW handshake\n      if (AWVALID && AWREADY) begin\n        AWVALID <= 1'b0;\n        aw_done <= 1'b1;\n      end\n\n      // Independent W handshake\n      if (WVALID && WREADY) begin\n        WVALID <= 1'b0;\n        WLAST  <= 1'b0;\n        w_done <= 1'b1;\n      end\n\n      // When both AW and W have completed, enable B channel\n      if ((aw_done || (AWVALID && AWREADY)) && (w_done || (WVALID && WREADY))) begin\n        BREADY <= 1'b1;\n      end\n\n      // B channel handshake\n      if (BREADY && BVALID) begin\n        BREADY         <= 1'b0;\n        aw_done        <= 1'b0;\n        w_done         <= 1'b0;\n        write_complete <= 1'b1;\n        write_err      <= (BRESP != 2'b00);\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg ACLK, ARESETn, start_write;\n  reg [31:0] wr_addr, wr_data;\n  wire write_complete, write_err;\n  wire AWVALID, WVALID, WLAST, BREADY;\n  wire [31:0] AWADDR, WDATA;\n  reg AWREADY, WREADY, BVALID;\n  reg [1:0] BRESP;\n  integer errors = 0;\n\n  top_module dut (\n    .ACLK(ACLK), .ARESETn(ARESETn),\n    .start_write(start_write), .wr_addr(wr_addr), .wr_data(wr_data),\n    .write_complete(write_complete), .write_err(write_err),\n    .AWVALID(AWVALID), .AWREADY(AWREADY), .AWADDR(AWADDR),\n    .WVALID(WVALID), .WREADY(WREADY), .WDATA(WDATA), .WLAST(WLAST),\n    .BVALID(BVALID), .BREADY(BREADY), .BRESP(BRESP)\n  );\n\n  always #5 ACLK = ~ACLK;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    ACLK = 0; ARESETn = 0; start_write = 0; wr_addr = 0; wr_data = 0;\n    AWREADY = 0; WREADY = 0; BVALID = 0; BRESP = 0;\n    #15 ARESETn = 1;\n\n    // Test 1: AW handshakes first, W handshakes 2 cycles later\n    @(negedge ACLK);\n    start_write = 1; wr_addr = 32'h80000000; wr_data = 32'hDEADBEEF;\n    @(negedge ACLK);\n    start_write = 0;\n    AWREADY = 1; WREADY = 0; // AW completes first\n    @(negedge ACLK);\n    AWREADY = 0;\n    if (AWVALID) begin\n      $display(\"FAIL: AWVALID should drop after AW handshake\");\n      errors = errors + 1;\n    end\n    @(negedge ACLK);\n    WREADY = 1; // Now W completes\n    @(negedge ACLK);\n    WREADY = 0;\n    if (!BREADY) begin\n      $display(\"FAIL: BREADY should assert once both AW and W are done\");\n      errors = errors + 1;\n    end\n    // Send response\n    BVALID = 1; BRESP = 2'b00;\n    @(negedge ACLK);\n    BVALID = 0;\n    if (!write_complete || write_err) begin\n      $display(\"FAIL: Expected clean write_complete\");\n      errors = errors + 1;\n    end\n\n    // Test 2: Error response test (SLVERR = 2'b10)\n    @(negedge ACLK);\n    start_write = 1; wr_addr = 32'hFFFF0000; wr_data = 32'h12345678;\n    @(negedge ACLK);\n    start_write = 0;\n    AWREADY = 1; WREADY = 1; // Simultaneous handshake\n    @(negedge ACLK);\n    AWREADY = 0; WREADY = 0;\n    BVALID = 1; BRESP = 2'b10;\n    @(negedge ACLK);\n    BVALID = 0;\n    if (!write_complete || !write_err) begin\n      $display(\"FAIL: Expected write_err=1 on SLVERR response\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "ACLK",
+      "ARESETn",
+      "start_write",
+      "AWVALID",
+      "AWREADY",
+      "WVALID",
+      "WREADY",
+      "BVALID",
+      "BREADY",
+      "write_complete",
+      "write_err"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "ACLK",
+          "wave": "p........"
+        },
+        {
+          "name": "start_write",
+          "wave": "010......"
+        },
+        {
+          "name": "AWVALID",
+          "wave": "0.10....."
+        },
+        {
+          "name": "AWREADY",
+          "wave": "0.10....."
+        },
+        {
+          "name": "WVALID",
+          "wave": "0.1.0...."
+        },
+        {
+          "name": "WREADY",
+          "wave": "0..10...."
+        },
+        {
+          "name": "BREADY",
+          "wave": "0...10..."
+        },
+        {
+          "name": "BVALID",
+          "wave": "0...10..."
+        },
+        {
+          "name": "write_complete",
+          "wave": "0....10.."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">AXI4 Write Controller</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"220\" height=\"35\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"87\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">AW Channel (AWVALID / AWREADY)</text>\n\n  <rect x=\"160\" y=\"105\" width=\"220\" height=\"35\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"270\" y=\"127\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">W Channel (WVALID / WREADY / WLAST)</text>\n\n  <rect x=\"160\" y=\"145\" width=\"220\" height=\"35\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"167\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">B Channel (BVALID / BREADY / BRESP)</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">start_write</text>\n  <line x1=\"40\" y1=\"120\" x2=\"140\" y2=\"120\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"115\" fill=\"#a78bfa\" font-size=\"9\">wr_addr, wr_data</text>\n  <line x1=\"140\" y1=\"160\" x2=\"40\" y2=\"160\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"155\" fill=\"#4ade80\" font-size=\"9\">write_complete</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">AWADDR, AWVALID</text>\n  <line x1=\"400\" y1=\"120\" x2=\"500\" y2=\"120\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"115\" fill=\"#2dd4bf\" font-size=\"9\">WDATA, WVALID</text>\n  <line x1=\"500\" y1=\"160\" x2=\"400\" y2=\"160\" stroke=\"#f59e0b\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"155\" fill=\"#f59e0b\" font-size=\"9\">BVALID, BREADY</text>\n</svg>",
+    "hints": [
+      "Do NOT wait for AWREADY before asserting WVALID, or vice versa. The AMBA AXI spec requires address and data channels to be completely decoupled.",
+      "Maintain two flags: aw_done and w_done. Each flag flips to 1 when its respective channel handshakes.",
+      "Only assert BREADY when both aw_done and w_done are true."
+    ],
+    "explanation": "<h3>Decoupled AXI Write Channel Architecture</h3>\n<p>Unlike simple buses where address and data are locked together in a single phase, AXI4 splits writes into three distinct channels:</p>\n<ol>\n  <li><b>Write Address Channel (AW):</b> Specifies write target address, burst length, and cache attributes.</li>\n  <li><b>Write Data Channel (W):</b> Carries the data payload beats and byte enables (<code>WSTRB</code>), terminating with <code>WLAST</code>.</li>\n  <li><b>Write Response Channel (B):</b> Transmits the final completion status from slave to master (<code>OKAY</code>, <code>EXOKAY</code>, <code>SLVERR</code>, <code>DECERR</code>).</li>\n</ol>\n<p>A crucial rule of AXI is that <b>AW and W channels are fully independent</b>. The data can arrive before, during, or after the address phase. Attempting to tie them together causes inter-channel deadlocks in complex interconnect matrices.</p>",
+    "timingReqs": "Clocked on posedge ACLK, active-low reset ARESETn. AW and W handshakes can occur in any order. B channel handshake occurs only after both AW and final W beat complete.",
+    "constraints": "Do not assume AW and W occur in the same cycle. Fully synthesizable Verilog-2001.",
+    "commonMistakes": "Assuming AWREADY and WREADY arrive in the same clock cycle, or asserting BREADY before all data beats have been acknowledged.",
+    "hwNotes": "High-performance AXI write masters track outstanding transaction IDs (AWID) to support multi-transaction pipelining.",
+    "relatedSlugs": [
+      "axi-read-controller",
+      "axi-stream-round-robin-arbiter",
+      "axi-valid-ready-handshake-engine"
+    ]
+  },
+  {
+    "slug": "axi-read-controller",
+    "title": "Burst-Aware AXI4 Read Transaction Controller",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "axi-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "AXI Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 47,
+    "lede": "Implement an AXI4 read master controller handling address issue, multi-beat read streaming, RLAST tracking, and backpressure.",
+    "concept": "<b>Objective:</b> Design an AXI4 Read Master Controller that issues read addresses on AR, accepts streaming beats on R with backpressure control, tracks burst beats until RLAST, and signals completion to the internal core.<br><br><b>Prerequisites:</b> AXI4 Read channel specification (AR and R), burst beat tracking, valid-ready flow control.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>ACLK</code>, <code>ARESETn</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>start_read</code></td><td>input</td><td>1</td><td>Internal trigger to launch read burst</td></tr>\n<tr><td><code>rd_addr[31:0]</code></td><td>input</td><td>32</td><td>Requested start address</td></tr>\n<tr><td><code>read_done</code>, <code>read_err</code></td><td>output</td><td>1</td><td>Completion pulse on RLAST; err if RRESP != 0</td></tr>\n<tr><td><code>read_data_out[31:0]</code>, <code>read_data_valid</code></td><td>output</td><td>32, 1</td><td>Forwarded streaming data beats</td></tr>\n<tr><td><code>ARVALID</code>, <code>ARREADY</code>, <code>ARADDR[31:0]</code></td><td>out/in/out</td><td>1, 1, 32</td><td>AXI Read Address Channel</td></tr>\n<tr><td><code>RVALID</code>, <code>RREADY</code>, <code>RDATA[31:0]</code>, <code>RLAST</code>, <code>RRESP[1:0]</code></td><td>in/out/in/in/in</td><td>1, 1, 32, 1, 2</td><td>AXI Read Data Channel</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        start_read,\n  input  wire [31:0] rd_addr,\n  output reg         read_done,\n  output reg  [31:0] read_data_out,\n  output reg         read_data_valid,\n  output reg         read_err,\n  output reg         ARVALID,\n  input  wire        ARREADY,\n  output reg  [31:0] ARADDR,\n  input  wire        RVALID,\n  output reg         RREADY,\n  input  wire [31:0] RDATA,\n  input  wire        RLAST,\n  input  wire [1:0]  RRESP\n);\n\n  // Implement AXI4 read controller:\n  // 1. Send read address via AR channel.\n  // 2. Stream data beats from R channel until RLAST is observed.\n  // 3. Forward each beat to read_data_out with read_data_valid = 1.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        ACLK,\n  input  wire        ARESETn,\n  input  wire        start_read,\n  input  wire [31:0] rd_addr,\n  output reg         read_done,\n  output reg  [31:0] read_data_out,\n  output reg         read_data_valid,\n  output reg         read_err,\n  output reg         ARVALID,\n  input  wire        ARREADY,\n  output reg  [31:0] ARADDR,\n  input  wire        RVALID,\n  output reg         RREADY,\n  input  wire [31:0] RDATA,\n  input  wire        RLAST,\n  input  wire [1:0]  RRESP\n);\n\n  reg ar_done;\n\n  always @(posedge ACLK or negedge ARESETn) begin\n    if (!ARESETn) begin\n      read_done       <= 1'b0;\n      read_data_out   <= 32'h0;\n      read_data_valid <= 1'b0;\n      read_err        <= 1'b0;\n      ARVALID         <= 1'b0;\n      ARADDR          <= 32'h0;\n      RREADY          <= 1'b0;\n      ar_done         <= 1'b0;\n    end else begin\n      read_done       <= 1'b0;\n      read_data_valid <= 1'b0;\n\n      // Start Read transaction\n      if (start_read && !ARVALID && !ar_done) begin\n        ARVALID <= 1'b1;\n        ARADDR  <= rd_addr;\n        ar_done <= 1'b0;\n      end\n\n      // AR Channel handshake\n      if (ARVALID && ARREADY) begin\n        ARVALID <= 1'b0;\n        ar_done <= 1'b1;\n        RREADY  <= 1'b1; // Ready to receive read beats\n      end\n\n      // R Channel beats\n      if (RREADY && RVALID) begin\n        read_data_out   <= RDATA;\n        read_data_valid <= 1'b1;\n        if (RRESP != 2'b00) begin\n          read_err <= 1'b1;\n        end\n        if (RLAST) begin\n          RREADY    <= 1'b0;\n          ar_done   <= 1'b0;\n          read_done <= 1'b1;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg ACLK, ARESETn, start_read;\n  reg [31:0] rd_addr;\n  wire read_done, read_data_valid, read_err, ARVALID, RREADY;\n  wire [31:0] read_data_out, ARADDR;\n  reg ARREADY, RVALID, RLAST;\n  reg [31:0] RDATA;\n  reg [1:0] RRESP;\n  integer errors = 0;\n\n  top_module dut (\n    .ACLK(ACLK), .ARESETn(ARESETn),\n    .start_read(start_read), .rd_addr(rd_addr),\n    .read_done(read_done), .read_data_out(read_data_out),\n    .read_data_valid(read_data_valid), .read_err(read_err),\n    .ARVALID(ARVALID), .ARREADY(ARREADY), .ARADDR(ARADDR),\n    .RVALID(RVALID), .RREADY(RREADY), .RDATA(RDATA),\n    .RLAST(RLAST), .RRESP(RRESP)\n  );\n\n  always #5 ACLK = ~ACLK;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    ACLK = 0; ARESETn = 0; start_read = 0; rd_addr = 0;\n    ARREADY = 0; RVALID = 0; RLAST = 0; RDATA = 0; RRESP = 0;\n    #15 ARESETn = 1;\n\n    // Test 1: 3-beat read burst\n    @(negedge ACLK);\n    start_read = 1; rd_addr = 32'h10004000;\n    @(negedge ACLK);\n    start_read = 0;\n    ARREADY = 1; // AR acknowledges\n    @(negedge ACLK);\n    ARREADY = 0;\n    if (!RREADY) begin\n      $display(\"FAIL: RREADY should be asserted after AR handshake\");\n      errors = errors + 1;\n    end\n\n    // Beat 0\n    RVALID = 1; RDATA = 32'hAA01AA01; RLAST = 0; RRESP = 0;\n    @(negedge ACLK);\n    if (!read_data_valid || read_data_out !== 32'hAA01AA01) begin\n      $display(\"FAIL: Beat 0 mismatch\");\n      errors = errors + 1;\n    end\n\n    // Beat 1\n    RDATA = 32'hBB02BB02; RLAST = 0;\n    @(negedge ACLK);\n    if (!read_data_valid || read_data_out !== 32'hBB02BB02) begin\n      $display(\"FAIL: Beat 1 mismatch\");\n      errors = errors + 1;\n    end\n\n    // Beat 2 (RLAST)\n    RDATA = 32'hCC03CC03; RLAST = 1;\n    @(negedge ACLK);\n    RVALID = 0; RLAST = 0;\n    if (!read_done) begin\n      $display(\"FAIL: read_done should pulse on RLAST beat\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "ACLK",
+      "ARESETn",
+      "start_read",
+      "ARVALID",
+      "ARREADY",
+      "ARADDR",
+      "RVALID",
+      "RREADY",
+      "RDATA",
+      "RLAST",
+      "read_done"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "ACLK",
+          "wave": "p........"
+        },
+        {
+          "name": "start_read",
+          "wave": "010......"
+        },
+        {
+          "name": "ARVALID",
+          "wave": "0.10....."
+        },
+        {
+          "name": "ARREADY",
+          "wave": "0.10....."
+        },
+        {
+          "name": "RREADY",
+          "wave": "0..1...0."
+        },
+        {
+          "name": "RVALID",
+          "wave": "0..1...0."
+        },
+        {
+          "name": "RDATA",
+          "wave": "x..===x..",
+          "data": [
+            "B0",
+            "B1",
+            "B2"
+          ]
+        },
+        {
+          "name": "RLAST",
+          "wave": "0....10.."
+        },
+        {
+          "name": "read_done",
+          "wave": "0.....10."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">AXI4 Read Controller</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"87\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">AR Channel (Address Issue)</text>\n  <text x=\"270\" y=\"100\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">ARVALID / ARREADY / ARADDR</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"55\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"270\" y=\"147\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">R Channel (Streaming Beat Capture)</text>\n  <text x=\"270\" y=\"160\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">RVALID / RREADY / RDATA / RLAST</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">start_read, rd_addr</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"50\" y=\"140\" fill=\"#4ade80\" font-size=\"9\">read_done, read_data_out</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">ARVALID, ARADDR</text>\n  <line x1=\"500\" y1=\"145\" x2=\"400\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">RVALID, RLAST, RDATA</text>\n</svg>",
+    "hints": [
+      "Launch ARVALID upon start_read. Once ARREADY is sampled high, deassert ARVALID and assert RREADY.",
+      "Each incoming cycle where (RVALID && RREADY) is true represents one valid beat of the read burst.",
+      "When RLAST is asserted alongside RVALID and RREADY, the final beat of the burst has arrived: deassert RREADY and pulse read_done."
+    ],
+    "explanation": "<h3>AXI4 Read Channel Operation</h3>\n<p>In AXI4, read transactions use two separate channels:</p>\n<ul>\n  <li><b>Address Read (AR) Channel:</b> The master sends the starting address (<code>ARADDR</code>) and burst attributes (<code>ARLEN</code>, <code>ARSIZE</code>, <code>ARBURST</code>).</li>\n  <li><b>Read Data (R) Channel:</b> The slave returns streaming beats along with error status (<code>RRESP</code>). The final beat of the burst is flagged with <code>RLAST = 1</code>.</li>\n</ul>\n<p>Unlike write transactions, there is no separate response channel for reads; response status (<code>RRESP</code>) is bundled alongside each individual data beat on the R channel.</p>",
+    "timingReqs": "Clocked on posedge ACLK, active-low ARESETn. ARADDR must remain stable while ARVALID=1. RREADY backpressure must be respected without data loss.",
+    "constraints": "Synthesizable Verilog-2001. Track RLAST to finalize burst.",
+    "commonMistakes": "Deasserting RREADY before RLAST arrives, causing slave deadlocks or dropped burst beats.",
+    "hwNotes": "AXI read controllers in DDR memory subsystems issue multiple read addresses concurrently (pipelined AR) to saturate memory bank parallelism.",
+    "relatedSlugs": [
+      "axi-write-controller",
+      "axi-valid-ready-handshake-engine",
+      "axi-stream-round-robin-arbiter"
+    ]
+  },
+  {
+    "slug": "axi-stream-round-robin-arbiter",
+    "title": "4-Channel Round-Robin AXI-Stream Arbiter with Packet Locking",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "axi-protocol",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "AXI Protocol",
+    "isAdvancedSection": true,
+    "advancedIndex": 48,
+    "lede": "Design a 4-channel AXI-Stream arbiter featuring packet-boundary locking, starvation-free fair round-robin scheduling, and full backpressure propagation.",
+    "concept": "<b>Objective:</b> Implement a 4-input, 1-output AXI4-Stream arbiter. Once a channel is granted, lock the connection until the entire packet completes (indicated by TLAST && TVALID && TREADY). Support downstream backpressure (m_tready = 0) without dropping packets or switching channels mid-packet. Rotate priority fairly to the next requester upon packet termination.<br><br><b>Prerequisites:</b> AXI-Stream packet framing, round-robin arbitration algorithms, fair resource sharing, packet locking.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>aclk</code>, <code>aresetn</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>s_tvalid[3:0]</code></td><td>input</td><td>4</td><td>Ingress valid signals for channels 0..3</td></tr>\n<tr><td><code>s_tready[3:0]</code></td><td>output</td><td>4</td><td>Backpressure ready signals for channels 0..3</td></tr>\n<tr><td><code>s_tdata[127:0]</code></td><td>input</td><td>128</td><td>Packed data: ch0=[31:0], ch1=[63:32], ch2=[95:64], ch3=[127:96]</td></tr>\n<tr><td><code>s_tlast[3:0]</code></td><td>input</td><td>4</td><td>End-of-packet indicators for channels 0..3</td></tr>\n<tr><td><code>m_tvalid</code>, <code>m_tready</code></td><td>out/in</td><td>1</td><td>Downstream AXI-Stream valid and ready</td></tr>\n<tr><td><code>m_tdata[31:0]</code>, <code>m_tlast</code></td><td>output</td><td>32, 1</td><td>Arbitrated egress data stream and end-of-packet flag</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire         aclk,\n  input  wire         aresetn,\n  input  wire [3:0]   s_tvalid,\n  output reg  [3:0]   s_tready,\n  input  wire [127:0] s_tdata,\n  input  wire [3:0]   s_tlast,\n  output reg          m_tvalid,\n  input  wire         m_tready,\n  output reg  [31:0]  m_tdata,\n  output reg          m_tlast\n);\n\n  // Implement 4-to-1 Round-Robin Arbiter:\n  // 1. Lock arbitration onto winning channel until (m_tvalid && m_tready && m_tlast).\n  // 2. Rotate priority to (winner + 1) % 4 only upon packet completion.\n  // 3. Forward s_tdata and s_tlast of selected channel to egress.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire         aclk,\n  input  wire         aresetn,\n  input  wire [3:0]   s_tvalid,\n  output reg  [3:0]   s_tready,\n  input  wire [127:0] s_tdata,\n  input  wire [3:0]   s_tlast,\n  output reg          m_tvalid,\n  input  wire         m_tready,\n  output reg  [31:0]  m_tdata,\n  output reg          m_tlast\n);\n\n  reg [1:0] winner;\n  reg [1:0] base_ptr;\n  reg       locked;\n\n  wire [31:0] ch_data [0:3];\n  assign ch_data[0] = s_tdata[31:0];\n  assign ch_data[1] = s_tdata[63:32];\n  assign ch_data[2] = s_tdata[95:64];\n  assign ch_data[3] = s_tdata[127:96];\n\n  // Combinational round-robin priority picker\n  reg [1:0] next_grant;\n  reg       any_req;\n\n  always @(*) begin\n    any_req    = |s_tvalid;\n    next_grant = base_ptr;\n    if (s_tvalid[base_ptr]) begin\n      next_grant = base_ptr;\n    end else if (s_tvalid[(base_ptr + 2'd1) & 2'd3]) begin\n      next_grant = (base_ptr + 2'd1) & 2'd3;\n    end else if (s_tvalid[(base_ptr + 2'd2) & 2'd3]) begin\n      next_grant = (base_ptr + 2'd2) & 2'd3;\n    end else if (s_tvalid[(base_ptr + 2'd3) & 2'd3]) begin\n      next_grant = (base_ptr + 2'd3) & 2'd3;\n    end\n  end\n\n  // Mux selection\n  always @(*) begin\n    if (locked || any_req) begin\n      m_tvalid = s_tvalid[winner];\n      m_tdata  = ch_data[winner];\n      m_tlast  = s_tlast[winner];\n    end else begin\n      m_tvalid = 1'b0;\n      m_tdata  = 32'h0;\n      m_tlast  = 1'b0;\n    end\n\n    s_tready = 4'b0000;\n    if (locked || any_req) begin\n      s_tready[winner] = m_tready;\n    end\n  end\n\n  always @(posedge aclk or negedge aresetn) begin\n    if (!aresetn) begin\n      winner   <= 2'd0;\n      base_ptr <= 2'd0;\n      locked   <= 1'b0;\n    end else begin\n      if (!locked) begin\n        if (any_req) begin\n          winner <= next_grant;\n          locked <= 1'b1;\n          // Single-beat packet check\n          if (s_tvalid[next_grant] && m_tready && s_tlast[next_grant]) begin\n            locked   <= 1'b0;\n            base_ptr <= (next_grant + 2'd1) & 2'd3;\n          end\n        end\n      end else begin\n        // Locked in transfer\n        if (m_tvalid && m_tready && m_tlast) begin\n          locked   <= 1'b0;\n          base_ptr <= (winner + 2'd1) & 2'd3;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg aclk, aresetn, m_tready;\n  reg [3:0] s_tvalid, s_tlast;\n  reg [127:0] s_tdata;\n  wire [3:0] s_tready;\n  wire m_tvalid, m_tlast;\n  wire [31:0] m_tdata;\n  integer errors = 0;\n\n  top_module dut (\n    .aclk(aclk), .aresetn(aresetn),\n    .s_tvalid(s_tvalid), .s_tready(s_tready), .s_tdata(s_tdata), .s_tlast(s_tlast),\n    .m_tvalid(m_tvalid), .m_tready(m_tready), .m_tdata(m_tdata), .m_tlast(m_tlast)\n  );\n\n  always #5 aclk = ~aclk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    aclk = 0; aresetn = 0; m_tready = 1;\n    s_tvalid = 0; s_tlast = 0; s_tdata = 0;\n    #15 aresetn = 1;\n\n    // Test 1: Channel 0 transmits 2-beat packet, while Channel 1 is also requesting\n    @(negedge aclk);\n    s_tvalid = 4'b0011; // Ch 0 and Ch 1 active\n    s_tdata[31:0]   = 32'h000000A1; s_tlast[0] = 0;\n    s_tdata[63:32]  = 32'h000000B1; s_tlast[1] = 1;\n    @(negedge aclk);\n    if (m_tdata !== 32'h000000A1 || m_tlast !== 0) begin\n      $display(\"FAIL: Ch 0 beat 1 mismatch\");\n      errors = errors + 1;\n    end\n    \n    // Beat 2 of Channel 0 with TLAST\n    s_tdata[31:0] = 32'h000000A2; s_tlast[0] = 1;\n    @(negedge aclk);\n    s_tvalid[0] = 0; // Ch 0 finishes\n\n    // Next cycle should grant Channel 1 due to round-robin\n    @(negedge aclk);\n    if (m_tdata !== 32'h000000B1 || m_tlast !== 1) begin\n      $display(\"FAIL: Ch 1 failed to be granted after Ch 0 finished. Got %08x\", m_tdata);\n      errors = errors + 1;\n    end\n    s_tvalid[1] = 0;\n\n    // Test 2: Downstream stall during packet transfer\n    repeat(2) @(negedge aclk);\n    s_tvalid[2] = 1; s_tdata[95:64] = 32'h000000C1; s_tlast[2] = 0;\n    @(negedge aclk);\n    m_tready = 0; // Stall\n    @(negedge aclk);\n    if (s_tready[2] !== 0) begin\n      $display(\"FAIL: s_tready[2] should be 0 when m_tready is 0\");\n      errors = errors + 1;\n    end\n    m_tready = 1;\n    s_tlast[2] = 1;\n    @(negedge aclk);\n    s_tvalid[2] = 0;\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "aclk",
+      "aresetn",
+      "s_tvalid",
+      "s_tready",
+      "m_tvalid",
+      "m_tready",
+      "m_tdata",
+      "m_tlast"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "aclk",
+          "wave": "p........"
+        },
+        {
+          "name": "s_tvalid",
+          "wave": "0=...0...",
+          "data": [
+            "0x3"
+          ]
+        },
+        {
+          "name": "m_tvalid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "m_tready",
+          "wave": "1........"
+        },
+        {
+          "name": "m_tdata",
+          "wave": "x====x...",
+          "data": [
+            "A1",
+            "A2",
+            "B1",
+            "C1"
+          ]
+        },
+        {
+          "name": "m_tlast",
+          "wave": "0.1.10..."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">4-Way AXI-Stream Arbiter</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"220\" height=\"40\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"85\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Packet-Locking Controller</text>\n  <text x=\"270\" y=\"98\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Locks channel until TLAST && TVALID && TREADY</text>\n\n  <rect x=\"160\" y=\"115\" width=\"220\" height=\"40\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"135\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">Round-Robin Priority Pointer</text>\n  <text x=\"270\" y=\"148\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Rotates to (winner + 1) % 4</text>\n\n  <!-- Left Inputs -->\n  <line x1=\"40\" y1=\"70\" x2=\"140\" y2=\"70\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"65\" fill=\"#94a3b8\" font-size=\"9\">s_tvalid[3:0]</text>\n  <line x1=\"40\" y1=\"105\" x2=\"140\" y2=\"105\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"100\" fill=\"#94a3b8\" font-size=\"9\">s_tdata[127:0]</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">s_tready[3:0]</text>\n\n  <!-- Right Outputs -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">m_tvalid, m_tlast</text>\n  <line x1=\"400\" y1=\"115\" x2=\"500\" y2=\"115\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"110\" fill=\"#38bdf8\" font-size=\"9\">m_tdata[31:0]</text>\n  <line x1=\"500\" y1=\"150\" x2=\"400\" y2=\"150\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"145\" fill=\"#2dd4bf\" font-size=\"9\">m_tready</text>\n</svg>",
+    "hints": [
+      "Packet locking is essential: once an input channel begins sending, you cannot switch to another channel mid-packet even if other channels assert valid.",
+      "A packet ends when m_tvalid && m_tready && m_tlast is true on the clock edge.",
+      "When the packet completes, update the base pointer to (winner + 1) % 4 to guarantee starvation-free round-robin fairness."
+    ],
+    "explanation": "<h3>Packet Interleaving vs. Packet Locking</h3>\n<p>In streaming networking protocols (Ethernet, PCIe TLP, AXI-Stream), data beats belong to distinct packets bounded by <code>TLAST</code>. Arbitrating on a pure per-beat basis would cause packet fragmentation and interleaving, corrupting packet payloads at the receiver.</p>\n<h4>Arbiter Design Rules</h4>\n<ul>\n  <li><b>Arbitration Phase:</b> When the arbiter is idle (unlocked), it inspects all requesting channels and grants access according to the current round-robin priority pointer.</li>\n  <li><b>Locked Phase:</b> The winner gains exclusive access to the egress bus. Even if downstream backpressure occurs (<code>m_tready = 0</code>), the arbiter holds its grant.</li>\n  <li><b>Release &amp; Rotation:</b> When the final beat is transferred (<code>m_tvalid &amp;&amp; m_tready &amp;&amp; m_tlast</code>), the lock releases and the priority pointer advances to prevent starvation.</li>\n</ul>",
+    "timingReqs": "Clocked on aclk with active-low aresetn. Arbitration decision occurs when unlocked and requesters are active. Priority advances only when packet completes.",
+    "constraints": "No packet interleaving. Synthesizable Verilog-2001.",
+    "commonMistakes": "Switching channels on backpressure (m_tready=0) or breaking packet boundaries when higher-priority requesters arrive.",
+    "hwNotes": "In network-on-chip (NoC) routers, packet arbiters include aging counters to prevent low-bandwidth channels from starving under high-rate streaming flows.",
+    "relatedSlugs": [
+      "axi-stream-register-slice-full",
+      "round-robin-arbiter",
+      "axi-write-controller"
+    ]
+  },
+  {
+    "slug": "credit-flow-control-controller",
+    "title": "Credit-Based Flow Control Controller for Inter-Chiplet Links",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "credit-based-flow-control",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "Credit-Based Flow Control",
+    "isAdvancedSection": true,
+    "advancedIndex": 49,
+    "lede": "Design a credit-based flow control transmit manager for high-speed chiplet and PCIe/UCIe links with zero-credit stalling and underflow protection.",
+    "concept": "<b>Objective:</b> Implement a transmitter-side credit tracking engine. Initialize with INIT_CREDITS (default 8). On each transmitted beat, consume 1 credit. On receiving credit_return_in, replenish credits. Stall upstream when credits reach zero, and correctly handle simultaneous transmission and credit returns.<br><br><b>Prerequisites:</b> Credit-based flow control theory, UCIe / PCIe transaction layers, saturating counters.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>tx_valid</code>, <code>tx_data[31:0]</code></td><td>input</td><td>1, 32</td><td>Upstream data beat request</td></tr>\n<tr><td><code>tx_ready</code></td><td>output</td><td>1</td><td>High when credits > 0; low when credit exhausted</td></tr>\n<tr><td><code>phy_tx_valid</code>, <code>phy_tx_data[31:0]</code></td><td>output</td><td>1, 32</td><td>Transmitted flit out to chiplet PHY</td></tr>\n<tr><td><code>credit_return_in</code></td><td>input</td><td>1</td><td>1-cycle strobe indicating receiver freed 1 buffer entry</td></tr>\n<tr><td><code>credits_available[3:0]</code></td><td>output</td><td>4</td><td>Current remaining credit balance (resets to 8)</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        tx_valid,\n  input  wire [31:0] tx_data,\n  output wire        tx_ready,\n  output reg         phy_tx_valid,\n  output reg  [31:0] phy_tx_data,\n  input  wire        credit_return_in,\n  output reg  [3:0]  credits_available\n);\n\n  // Implement credit-based flow control:\n  // 1. Reset value of credits_available = 4'd8.\n  // 2. tx_ready = (credits_available > 0).\n  // 3. When tx_valid && tx_ready: transmit data (phy_tx_valid=1) and decrement credit.\n  // 4. When credit_return_in: increment credit.\n  // 5. Handle simultaneous send and credit return without count jitter or underflow.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        tx_valid,\n  input  wire [31:0] tx_data,\n  output wire        tx_ready,\n  output reg         phy_tx_valid,\n  output reg  [31:0] phy_tx_data,\n  input  wire        credit_return_in,\n  output reg  [3:0]  credits_available\n);\n\n  assign tx_ready = (credits_available > 4'd0);\n  wire send_beat = tx_valid && tx_ready;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      credits_available <= 4'd8;\n      phy_tx_valid      <= 1'b0;\n      phy_tx_data       <= 32'h0;\n    end else begin\n      phy_tx_valid <= send_beat;\n      if (send_beat) begin\n        phy_tx_data <= tx_data;\n      end\n\n      case ({send_beat, credit_return_in})\n        2'b10: begin // Sent, no return -> decrement\n          if (credits_available > 4'd0)\n            credits_available <= credits_available - 4'd1;\n        end\n        2'b01: begin // No send, return -> increment\n          if (credits_available < 4'd15)\n            credits_available <= credits_available + 4'd1;\n        end\n        2'b11: begin // Simultaneous send and return -> net zero change\n          credits_available <= credits_available;\n        end\n        default: ; // 2'b00 -> hold\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, tx_valid, credit_return_in;\n  reg [31:0] tx_data;\n  wire tx_ready, phy_tx_valid;\n  wire [31:0] phy_tx_data;\n  wire [3:0] credits_available;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .tx_valid(tx_valid), .tx_data(tx_data), .tx_ready(tx_ready),\n    .phy_tx_valid(phy_tx_valid), .phy_tx_data(phy_tx_data),\n    .credit_return_in(credit_return_in), .credits_available(credits_available)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; tx_valid = 0; credit_return_in = 0; tx_data = 0;\n    #15 rst_n = 1;\n\n    // Verify initial credit balance = 8\n    @(negedge clk);\n    if (credits_available !== 4'd8 || !tx_ready) begin\n      $display(\"FAIL: Initial credits mismatch. Expected 8, got %0d\", credits_available);\n      errors = errors + 1;\n    end\n\n    // Exhaust all 8 credits\n    repeat (8) begin\n      tx_valid = 1; tx_data = tx_data + 1;\n      @(negedge clk);\n    end\n    tx_valid = 0;\n    @(negedge clk);\n    if (credits_available !== 4'd0 || tx_ready !== 0) begin\n      $display(\"FAIL: Expected 0 credits and tx_ready=0 after 8 transmits. Got credits=%0d, tx_ready=%b\", credits_available, tx_ready);\n      errors = errors + 1;\n    end\n\n    // Attempt illegal transmit with 0 credits\n    tx_valid = 1; tx_data = 32'hBAD00000;\n    @(negedge clk);\n    if (phy_tx_valid !== 0) begin\n      $display(\"FAIL: Transmitted beat despite 0 credits!\");\n      errors = errors + 1;\n    end\n    tx_valid = 0;\n\n    // Return 2 credits\n    credit_return_in = 1;\n    @(negedge clk);\n    credit_return_in = 1;\n    @(negedge clk);\n    credit_return_in = 0;\n    @(negedge clk);\n    if (credits_available !== 4'd2 || !tx_ready) begin\n      $display(\"FAIL: Expected 2 credits after returns. Got %0d\", credits_available);\n      errors = errors + 1;\n    end\n\n    // Simultaneous send and return\n    tx_valid = 1; tx_data = 32'hA0A0A0A0; credit_return_in = 1;\n    @(negedge clk);\n    tx_valid = 0; credit_return_in = 0;\n    @(negedge clk);\n    if (credits_available !== 4'd2) begin\n      $display(\"FAIL: Simultaneous send and return altered credit count! Expected 2, got %0d\", credits_available);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "tx_valid",
+      "tx_ready",
+      "phy_tx_valid",
+      "credit_return_in",
+      "credits_available"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "credits_available",
+          "wave": "=...===..",
+          "data": [
+            "8",
+            "7",
+            "1",
+            "0",
+            "1",
+            "2"
+          ]
+        },
+        {
+          "name": "tx_valid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "tx_ready",
+          "wave": "1...0.1.."
+        },
+        {
+          "name": "phy_tx_valid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "credit_return_in",
+          "wave": "0....1.0."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Credit-Based Flow Control</text>\n  <text x=\"270\" y=\"62\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">UCIe / PCIe Flit Flow Engine</text>\n  \n  <rect x=\"160\" y=\"75\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"95\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">Saturating Credit Up/Down Counter</text>\n  <text x=\"270\" y=\"108\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Reset=8 | Max=15 | Min=0</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"150\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Zero-Credit Stall Comparator</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">credits == 0 -&gt; tx_ready = 0</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">tx_valid, tx_data</text>\n  <line x1=\"140\" y1=\"110\" x2=\"40\" y2=\"110\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"105\" fill=\"#2dd4bf\" font-size=\"9\">tx_ready</text>\n  <line x1=\"40\" y1=\"150\" x2=\"140\" y2=\"150\" stroke=\"#f59e0b\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"145\" fill=\"#f59e0b\" font-size=\"9\">credit_return_in</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"90\" x2=\"500\" y2=\"90\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"85\" fill=\"#38bdf8\" font-size=\"9\">phy_tx_valid</text>\n  <line x1=\"400\" y1=\"125\" x2=\"500\" y2=\"125\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"120\" fill=\"#38bdf8\" font-size=\"9\">phy_tx_data[31:0]</text>\n  <line x1=\"400\" y1=\"160\" x2=\"500\" y2=\"160\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"155\" fill=\"#4ade80\" font-size=\"9\">credits_available[3:0]</text>\n</svg>",
+    "hints": [
+      "Initialize credits_available to 4'd8 on reset.",
+      "tx_ready is combinationally high when credits_available > 0.",
+      "A transmit happens when tx_valid && tx_ready. If credit_return_in happens on the same cycle, the net delta is 0."
+    ],
+    "explanation": "<h3>Why Chiplet Links Use Credit Flow Control</h3>\n<p>In on-chip buses (like AXI), valid-ready backpressure requires the consumer to immediately assert <code>READY = 0</code> to halt the producer. However, across a multi-die package (such as UCIe or optical chiplet interconnects), signal propagation latency can span multiple clock cycles.</p>\n<p>If a receiver ran out of buffer space, its <code>READY = 0</code> backpressure would arrive too late, causing buffer overflow and packet loss. <b>Credit-based flow control</b> solves this by granting the transmitter a known allowance of credits corresponding to physical buffer slots. The transmitter only sends when it possesses a credit, guaranteeing zero buffer overflows regardless of physical distance.</p>",
+    "timingReqs": "Clocked on rising edge of clk with active-low synchronous reset rst_n. tx_ready must immediately deassert when credit count reaches 0.",
+    "constraints": "No underflow below 0. Saturate at max credits (15). Synthesizable Verilog-2001.",
+    "commonMistakes": "Failing to handle simultaneous transmit and credit return, which causes credit loss or artificial stalls.",
+    "hwNotes": "Universal Chiplet Interconnect Express (UCIe) Flit Transfer protocols rely on credit-based flow control between the D2D Adapter and the remote die Die-to-Die controller.",
+    "relatedSlugs": [
+      "credit-return-manager",
+      "streaming-protocol-bridge",
+      "credit-based-flow-control-counter"
+    ]
+  },
+  {
+    "slug": "credit-return-manager",
+    "title": "Chiplet Ingress Buffer Credit Return Manager",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "credit-based-flow-control",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "Credit-Based Flow Control",
+    "isAdvancedSection": true,
+    "advancedIndex": 50,
+    "lede": "Design a receiver-side credit return accumulator that batches freed buffer credits to optimize sideband bandwidth in chiplet interfaces.",
+    "concept": "<b>Objective:</b> Implement a receiver-side credit return manager. As local downstream logic pops buffer entries (buf_release = 1), accumulate freed slots in an internal pool. When the pool reaches return_threshold (default 4) OR a flush timeout timer expires, pulse credit_return_strobe and output credits_to_return, ensuring zero credit leakage.<br><br><b>Prerequisites:</b> Credit-based flow control, sideband messaging, timeout timers, batched credit management.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>buf_release</code></td><td>input</td><td>1</td><td>Strobe when local FIFO entry is read and freed</td></tr>\n<tr><td><code>return_threshold[2:0]</code></td><td>input</td><td>3</td><td>Configurable batching limit (e.g. 4 credits)</td></tr>\n<tr><td><code>credit_return_strobe</code></td><td>output</td><td>1</td><td>Pulse alerting remote transmitter of freed slots</td></tr>\n<tr><td><code>credits_to_return[2:0]</code></td><td>output</td><td>3</td><td>Credit payload returned during the strobe</td></tr>\n<tr><td><code>pending_credits[3:0]</code></td><td>output</td><td>4</td><td>Current count of unreturned buffer slots</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        buf_release,\n  input  wire [2:0]  return_threshold,\n  output reg         credit_return_strobe,\n  output reg  [2:0]  credits_to_return,\n  output reg  [3:0]  pending_credits\n);\n\n  // Implement credit return manager:\n  // 1. Accumulate buf_release events into pending_credits.\n  // 2. When pending_credits >= return_threshold OR (pending_credits > 0 and idle for 8 cycles):\n  //    Assert credit_return_strobe = 1, credits_to_return = pending_credits, and clear pending_credits.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        buf_release,\n  input  wire [2:0]  return_threshold,\n  output reg         credit_return_strobe,\n  output reg  [2:0]  credits_to_return,\n  output reg  [3:0]  pending_credits\n);\n\n  reg [3:0] flush_timer;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      credit_return_strobe <= 1'b0;\n      credits_to_return    <= 3'd0;\n      pending_credits      <= 4'd0;\n      flush_timer          <= 4'd0;\n    end else begin\n      credit_return_strobe <= 1'b0;\n      credits_to_return    <= 3'd0;\n\n      // Calculate next unreturned credits\n      if (credit_return_strobe) begin\n        // Flush occurred on previous cycle: start fresh or add new incoming release\n        if (buf_release) begin\n          pending_credits <= 4'd1;\n          flush_timer     <= 4'd0;\n        end else begin\n          pending_credits <= 4'd0;\n          flush_timer     <= 4'd0;\n        end\n      end else begin\n        if (buf_release) begin\n          flush_timer <= 4'd0;\n          if ((pending_credits + 4'd1) >= {1'b0, return_threshold}) begin\n            credit_return_strobe <= 1'b1;\n            credits_to_return    <= (pending_credits + 4'd1);\n            pending_credits      <= 4'd0;\n          end else begin\n            pending_credits <= pending_credits + 4'd1;\n          end\n        end else if (pending_credits > 4'd0) begin\n          if (flush_timer >= 4'd7) begin // 8 cycles of idle flush\n            credit_return_strobe <= 1'b1;\n            credits_to_return    <= pending_credits[2:0];\n            pending_credits      <= 4'd0;\n            flush_timer          <= 4'd0;\n          end else begin\n            flush_timer <= flush_timer + 4'd1;\n          end\n        end else begin\n          flush_timer <= 4'd0;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, buf_release;\n  reg [2:0] return_threshold;\n  wire credit_return_strobe;\n  wire [2:0] credits_to_return;\n  wire [3:0] pending_credits;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .buf_release(buf_release), .return_threshold(return_threshold),\n    .credit_return_strobe(credit_return_strobe),\n    .credits_to_return(credits_to_return),\n    .pending_credits(pending_credits)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; buf_release = 0; return_threshold = 3'd4;\n    #15 rst_n = 1;\n\n    // Test 1: Accumulate exactly 4 releases to trigger threshold return\n    @(negedge clk);\n    buf_release = 1; @(negedge clk);\n    buf_release = 1; @(negedge clk);\n    buf_release = 1; @(negedge clk);\n    buf_release = 1;\n    @(negedge clk);\n    buf_release = 0;\n    if (!credit_return_strobe || credits_to_return !== 3'd4) begin\n      $display(\"FAIL: Expected threshold credit strobe with 4 credits, got strobe=%b, creds=%0d\", credit_return_strobe, credits_to_return);\n      errors = errors + 1;\n    end\n\n    // Test 2: Accumulate 2 releases and trigger timeout flush (idle 8 cycles)\n    repeat(2) @(negedge clk);\n    buf_release = 1; @(negedge clk);\n    buf_release = 1; @(negedge clk);\n    buf_release = 0;\n    \n    // Wait for flush timer (8 idle cycles)\n    repeat(8) @(negedge clk);\n    if (!credit_return_strobe || credits_to_return !== 3'd2) begin\n      $display(\"FAIL: Timeout flush failed to return 2 credits. strobe=%b, credits=%0d\", credit_return_strobe, credits_to_return);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "buf_release",
+      "return_threshold",
+      "credit_return_strobe",
+      "credits_to_return",
+      "pending_credits"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "buf_release",
+          "wave": "011110..."
+        },
+        {
+          "name": "pending_credits",
+          "wave": "=...==0..",
+          "data": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4"
+          ]
+        },
+        {
+          "name": "credit_return_strobe",
+          "wave": "0....10.."
+        },
+        {
+          "name": "credits_to_return",
+          "wave": "x....=.x.",
+          "data": [
+            "4"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Credit Return Manager</text>\n  \n  <rect x=\"160\" y=\"70\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"270\" y=\"90\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">Pending Credit Accumulator</text>\n  <text x=\"270\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Counts buf_release pulses</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"150\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Threshold &amp; Flush Timer</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Threshold >= 4 OR 8-cycle idle timeout</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">buf_release</text>\n  <line x1=\"40\" y1=\"140\" x2=\"140\" y2=\"140\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"135\" fill=\"#a78bfa\" font-size=\"9\">return_threshold[2:0]</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">credit_return_strobe</text>\n  <line x1=\"400\" y1=\"115\" x2=\"500\" y2=\"115\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"110\" fill=\"#38bdf8\" font-size=\"9\">credits_to_return[2:0]</text>\n  <line x1=\"400\" y1=\"150\" x2=\"500\" y2=\"150\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"145\" fill=\"#4ade80\" font-size=\"9\">pending_credits[3:0]</text>\n</svg>",
+    "hints": [
+      "Increment pending_credits whenever buf_release pulses.",
+      "If pending_credits reaches return_threshold, emit credit_return_strobe immediately.",
+      "Maintain a timeout timer so that if fewer than return_threshold credits are pending and no traffic arrives for 8 cycles, you flush them to prevent sender deadlock."
+    ],
+    "explanation": "<h3>Why Credit Returns Must Be Batched and Timed</h3>\n<p>Sending a credit return packet across a high-speed die-to-die sideband channel incurs packet overhead (framing, CRC). Returning 1 credit at a time for every single flit consumes excessive bandwidth.</p>\n<h4>Batching Strategy with Flush Timeout</h4>\n<ul>\n  <li><b>Batching:</b> The receiver waits until $N$ (e.g. 4) credits accumulate before sending a multi-credit notification.</li>\n  <li><b>The Starvation Risk:</b> If the sender transmits 2 flits and stops, and the receiver holds those 2 credits waiting for 4, the sender would remain blocked forever.</li>\n  <li><b>The Solution:</b> A <b>Flush Timeout Timer</b> monitors idle cycles. If credits remain unreturned for 8 cycles, they are flushed immediately.</li>\n</ul>",
+    "timingReqs": "Clocked on posedge clk with active-low rst_n. Flush timer ticks when unreturned credits > 0. Flush threshold = 8 cycles of idle.",
+    "constraints": "No duplicate or lost credits. Synthesizable Verilog-2001.",
+    "commonMistakes": "Omitting the timeout flush counter, leading to transmitter deadlock when transaction bursts do not align with the threshold.",
+    "hwNotes": "PCIe Gen 5/6 and UCIe D2D adapters use credit return accumulation with programmable timeout limits.",
+    "relatedSlugs": [
+      "credit-flow-control-controller",
+      "streaming-protocol-bridge",
+      "fifo-almost-full-flag"
+    ]
+  },
+  {
+    "slug": "streaming-protocol-bridge",
+    "title": "Chiplet Flit-to-Stream Elastic Protocol Bridge",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "protocol-bridges",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "Protocol Bridges",
+    "isAdvancedSection": true,
+    "advancedIndex": 51,
+    "lede": "Design an elastic streaming protocol bridge with 4-entry FIFO buffering, cut-through routing, and lossless backpressure.",
+    "concept": "<b>Objective:</b> Implement a protocol bridge interfacing a 64-bit ingress stream to a 64-bit egress stream. Incorporate a 4-deep elastic FIFO buffer. Forward flits with zero dropped beats, assert upstream ready only when buffer space is available, and cleanly transfer packet framing signals.<br><br><b>Prerequisites:</b> Elastic buffers, streaming FIFO architecture, valid-ready handshaking, cut-through forwarding.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>s_valid</code>, <code>s_ready</code></td><td>in/out</td><td>1</td><td>Ingress stream handshake</td></tr>\n<tr><td><code>s_data[63:0]</code>, <code>s_last</code></td><td>input</td><td>64, 1</td><td>Ingress 64-bit payload and end-of-packet flag</td></tr>\n<tr><td><code>m_valid</code>, <code>m_ready</code></td><td>out/in</td><td>1</td><td>Egress stream handshake</td></tr>\n<tr><td><code>m_data[63:0]</code>, <code>m_last</code></td><td>output</td><td>64, 1</td><td>Egress 64-bit payload and end-of-packet flag</td></tr>\n<tr><td><code>buffer_occupancy[2:0]</code></td><td>output</td><td>3</td><td>Number of valid flits currently held in bridge FIFO</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        s_valid,\n  output wire        s_ready,\n  input  wire [63:0] s_data,\n  input  wire        s_last,\n  output wire        m_valid,\n  input  wire        m_ready,\n  output wire [63:0] m_data,\n  output wire        m_last,\n  output reg  [2:0]  buffer_occupancy\n);\n\n  // Implement a 4-deep elastic streaming bridge:\n  // 1. Buffer storage for 4 x (64-bit data + 1-bit last).\n  // 2. s_ready = (buffer_occupancy < 3'd4).\n  // 3. m_valid = (buffer_occupancy > 3'd0).\n  // 4. Update read/write pointers and buffer_occupancy cleanly.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        s_valid,\n  output wire        s_ready,\n  input  wire [63:0] s_data,\n  input  wire        s_last,\n  output wire        m_valid,\n  input  wire        m_ready,\n  output wire [63:0] m_data,\n  output wire        m_last,\n  output reg  [2:0]  buffer_occupancy\n);\n\n  reg [64:0] mem [0:3];\n  reg [1:0] wr_ptr, rd_ptr;\n\n  assign s_ready = (buffer_occupancy < 3'd4);\n  assign m_valid = (buffer_occupancy > 3'd0);\n\n  wire [64:0] rd_entry = mem[rd_ptr];\n  assign m_data = rd_entry[63:0];\n  assign m_last = rd_entry[64];\n\n  wire push = s_valid && s_ready;\n  wire pop  = m_valid && m_ready;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      wr_ptr           <= 2'd0;\n      rd_ptr           <= 2'd0;\n      buffer_occupancy <= 3'd0;\n    end else begin\n      if (push) begin\n        mem[wr_ptr] <= {s_last, s_data};\n        wr_ptr      <= wr_ptr + 2'd1;\n      end\n\n      if (pop) begin\n        rd_ptr <= rd_ptr + 2'd1;\n      end\n\n      case ({push, pop})\n        2'b10: buffer_occupancy <= buffer_occupancy + 3'd1;\n        2'b01: buffer_occupancy <= buffer_occupancy - 3'd1;\n        default: ; // 2'b00 or 2'b11 -> unchanged\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, s_valid, s_last, m_ready;\n  reg [63:0] s_data;\n  wire s_ready, m_valid, m_last;\n  wire [63:0] m_data;\n  wire [2:0] buffer_occupancy;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .s_valid(s_valid), .s_ready(s_ready), .s_data(s_data), .s_last(s_last),\n    .m_valid(m_valid), .m_ready(m_ready), .m_data(m_data), .m_last(m_last),\n    .buffer_occupancy(buffer_occupancy)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; s_valid = 0; s_last = 0; s_data = 0; m_ready = 0;\n    #15 rst_n = 1;\n\n    // Test 1: Fill buffer to capacity (4 flits) while m_ready = 0\n    @(negedge clk);\n    s_valid = 1; s_data = 64'h1111222233334444; s_last = 0; @(negedge clk);\n    s_data = 64'h5555666677778888; s_last = 0; @(negedge clk);\n    s_data = 64'h9999AAAABBBBCCCC; s_last = 0; @(negedge clk);\n    s_data = 64'hDDDDDDDDEEEEEEEE; s_last = 1; @(negedge clk);\n    s_valid = 0;\n\n    if (buffer_occupancy !== 3'd4 || s_ready !== 0) begin\n      $display(\"FAIL: Expected buffer full. Got occ=%0d, rdy=%b\", buffer_occupancy, s_ready);\n      errors = errors + 1;\n    end\n\n    // Test 2: Drain with m_ready = 1\n    m_ready = 1;\n    #1;\n    if (m_data !== 64'h1111222233334444 || m_last !== 0) begin\n      $display(\"FAIL: Flit 0 mismatch\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (m_data !== 64'h5555666677778888 || m_last !== 0) begin\n      $display(\"FAIL: Flit 1 mismatch\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (m_data !== 64'h9999AAAABBBBCCCC || m_last !== 0) begin\n      $display(\"FAIL: Flit 2 mismatch\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (m_data !== 64'hDDDDDDDDEEEEEEEE || m_last !== 1) begin\n      $display(\"FAIL: Flit 3 (last) mismatch\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    m_ready = 0;\n\n    if (buffer_occupancy !== 3'd0) begin\n      $display(\"FAIL: Expected buffer empty after draining. Got occ=%0d\", buffer_occupancy);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "s_valid",
+      "s_ready",
+      "s_data",
+      "m_valid",
+      "m_ready",
+      "m_data",
+      "buffer_occupancy"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "s_valid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "s_ready",
+          "wave": "1...01..."
+        },
+        {
+          "name": "buffer_occupancy",
+          "wave": "=...===..",
+          "data": [
+            "0",
+            "1",
+            "4",
+            "3",
+            "0"
+          ]
+        },
+        {
+          "name": "m_valid",
+          "wave": "0.1...0.."
+        },
+        {
+          "name": "m_ready",
+          "wave": "0...1...."
+        },
+        {
+          "name": "m_data",
+          "wave": "x.====x..",
+          "data": [
+            "F0",
+            "F1",
+            "F2",
+            "F3"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Streaming Protocol Bridge</text>\n  \n  <rect x=\"160\" y=\"70\" width=\"220\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"93\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">4-Slot Elastic Flit Buffer</text>\n  <text x=\"270\" y=\"106\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">64-bit Data + 1-bit Last</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"270\" y=\"150\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">Flow Decoupling Logic</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Full-Bandwidth Concurrent Push/Pop</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">s_valid, s_data[63:0]</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">s_ready</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">m_valid, m_data[63:0]</text>\n  <line x1=\"500\" y1=\"145\" x2=\"400\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">m_ready</text>\n</svg>",
+    "hints": [
+      "Use an array of registers reg [64:0] mem [0:3] packing data and last.",
+      "Track circular write and read pointers: wr_ptr and rd_ptr.",
+      "Calculate buffer_occupancy: increment on push, decrement on pop, hold on both."
+    ],
+    "explanation": "<h3>Elastic Buffering in Multi-Die Systems</h3>\n<p>In multi-chiplet packaging, on-die protocols (AXI-Stream, AMBA CHI) operate at different bus widths and clock rates than off-die D2D physical layers. <b>Streaming Protocol Bridges</b> isolate these interfaces using elastic FIFO buffers.</p>\n<h4>Key Operational Guarantees</h4>\n<ul>\n  <li><b>Cut-Through Latency:</b> Data is available for reading as soon as it is buffered.</li>\n  <li><b>Backpressure Absorption:</b> If downstream temporarily deasserts <code>m_ready</code>, the bridge absorbs up to 4 flits before raising backpressure upstream (<code>s_ready = 0</code>).</li>\n  <li><b>Framing Preservation:</b> The end-of-packet boundary (<code>TLAST</code> / flit trailer) remains aligned with the payload.</li>\n</ul>",
+    "timingReqs": "Clocked on posedge clk, active-low rst_n. Ingress data beat consumed on posedge clk when s_valid && s_ready. Egress beat consumed when m_valid && m_ready.",
+    "constraints": "Strict FIFO ordering. Zero flit drop or corruption under backpressure.",
+    "commonMistakes": "Failing to allow simultaneous push and pop when buffer_occupancy is 4, which artificially reduces throughput.",
+    "hwNotes": "Silicon-proven protocol bridges use dual-port register arrays with clock gating for power conservation when empty.",
+    "relatedSlugs": [
+      "parameterized-sync-fifo",
+      "credit-flow-control-controller",
+      "axi-stream-register-slice-full"
+    ]
+  },
+  {
+    "slug": "multi-channel-packet-scheduler",
+    "title": "4-Channel Packet-Locked Chiplet Scheduler",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "arbitration-and-interconnect",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "Arbitration and Interconnect",
+    "isAdvancedSection": true,
+    "advancedIndex": 52,
+    "lede": "Design a 4-channel packet scheduler ensuring complete packet atomicity and fair round-robin scheduling across chiplet ingress queues.",
+    "concept": "<b>Objective:</b> Implement a packet scheduler serving 4 ingress queues. Each channel delivers flits with ch_valid, ch_sop (start-of-packet), and ch_eop (end-of-packet). Once granted, lock arbitration onto the active channel until ch_eop completes, preventing packet interleaving under downstream backpressure.<br><br><b>Prerequisites:</b> Packet boundary tracking (SOP/EOP), packet-level arbitration, round-robin fairness.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>ch_valid[3:0]</code>, <code>ch_ready[3:0]</code></td><td>in/out</td><td>4</td><td>Channel flow control handshake</td></tr>\n<tr><td><code>ch_sop[3:0]</code>, <code>ch_eop[3:0]</code></td><td>input</td><td>4</td><td>Packet boundary indicators per channel</td></tr>\n<tr><td><code>ch_data[127:0]</code></td><td>input</td><td>128</td><td>Packed channel data (ch0=[31:0], ch1=[63:32], ch2=[95:64], ch3=[127:96])</td></tr>\n<tr><td><code>out_valid</code>, <code>out_ready</code></td><td>out/in</td><td>1</td><td>Scheduled egress handshake</td></tr>\n<tr><td><code>out_sop</code>, <code>out_eop</code>, <code>out_data[31:0]</code></td><td>output</td><td>1, 1, 32</td><td>Egress packet stream framing and data</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire         clk,\n  input  wire         rst_n,\n  input  wire [3:0]   ch_valid,\n  output reg  [3:0]   ch_ready,\n  input  wire [3:0]   ch_sop,\n  input  wire [3:0]   ch_eop,\n  input  wire [127:0] ch_data,\n  output reg          out_valid,\n  input  wire         out_ready,\n  output reg          out_sop,\n  output reg          out_eop,\n  output reg  [31:0]  out_data\n);\n\n  // Implement 4-channel packet-locked scheduler:\n  // 1. When unlocked, arbitrate among active channels with ch_sop = 1 using round-robin.\n  // 2. Lock to the granted channel until out_valid && out_ready && out_eop.\n  // 3. Prevent packet interleaving; forward data/framing of locked channel only.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire         clk,\n  input  wire         rst_n,\n  input  wire [3:0]   ch_valid,\n  output reg  [3:0]   ch_ready,\n  input  wire [3:0]   ch_sop,\n  input  wire [3:0]   ch_eop,\n  input  wire [127:0] ch_data,\n  output reg          out_valid,\n  input  wire         out_ready,\n  output reg          out_sop,\n  output reg          out_eop,\n  output reg  [31:0]  out_data\n);\n\n  reg [1:0] active_ch;\n  reg [1:0] rr_ptr;\n  reg       locked;\n\n  wire [31:0] ch_in [0:3];\n  assign ch_in[0] = ch_data[31:0];\n  assign ch_in[1] = ch_data[63:32];\n  assign ch_in[2] = ch_data[95:64];\n  assign ch_in[3] = ch_data[127:96];\n\n  // Pick next candidate channel\n  reg [1:0] next_pick;\n  reg       has_candidate;\n\n  always @(*) begin\n    has_candidate = 1'b0;\n    next_pick     = rr_ptr;\n    if (ch_valid[rr_ptr] && ch_sop[rr_ptr]) begin\n      has_candidate = 1'b1;\n      next_pick     = rr_ptr;\n    end else if (ch_valid[(rr_ptr + 2'd1) & 2'd3] && ch_sop[(rr_ptr + 2'd1) & 2'd3]) begin\n      has_candidate = 1'b1;\n      next_pick     = (rr_ptr + 2'd1) & 2'd3;\n    end else if (ch_valid[(rr_ptr + 2'd2) & 2'd3] && ch_sop[(rr_ptr + 2'd2) & 2'd3]) begin\n      has_candidate = 1'b1;\n      next_pick     = (rr_ptr + 2'd2) & 2'd3;\n    end else if (ch_valid[(rr_ptr + 2'd3) & 2'd3] && ch_sop[(rr_ptr + 2'd3) & 2'd3]) begin\n      has_candidate = 1'b1;\n      next_pick     = (rr_ptr + 2'd3) & 2'd3;\n    end\n  end\n\n  // Combinational output muxing\n  always @(*) begin\n    ch_ready = 4'b0000;\n    if (locked) begin\n      out_valid           = ch_valid[active_ch];\n      out_sop             = ch_sop[active_ch];\n      out_eop             = ch_eop[active_ch];\n      out_data            = ch_in[active_ch];\n      ch_ready[active_ch] = out_ready;\n    end else if (has_candidate) begin\n      out_valid          = ch_valid[next_pick];\n      out_sop            = ch_sop[next_pick];\n      out_eop            = ch_eop[next_pick];\n      out_data           = ch_in[next_pick];\n      ch_ready[next_pick] = out_ready;\n    end else begin\n      out_valid = 1'b0;\n      out_sop   = 1'b0;\n      out_eop   = 1'b0;\n      out_data  = 32'h0;\n    end\n  end\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      active_ch <= 2'd0;\n      rr_ptr    <= 2'd0;\n      locked    <= 1'b0;\n    end else begin\n      if (!locked) begin\n        if (has_candidate) begin\n          active_ch <= next_pick;\n          if (out_valid && out_ready && out_eop) begin\n            // Single-beat packet (SOP && EOP same beat)\n            locked <= 1'b0;\n            rr_ptr <= (next_pick + 2'd1) & 2'd3;\n          end else if (out_valid && out_ready) begin\n            locked <= 1'b1;\n          end\n        end\n      end else begin\n        if (out_valid && out_ready && out_eop) begin\n          locked <= 1'b0;\n          rr_ptr <= (active_ch + 2'd1) & 2'd3;\n        end\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, out_ready;\n  reg [3:0] ch_valid, ch_sop, ch_eop;\n  reg [127:0] ch_data;\n  wire [3:0] ch_ready;\n  wire out_valid, out_sop, out_eop;\n  wire [31:0] out_data;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .ch_valid(ch_valid), .ch_ready(ch_ready), .ch_sop(ch_sop), .ch_eop(ch_eop),\n    .ch_data(ch_data), .out_valid(out_valid), .out_ready(out_ready),\n    .out_sop(out_sop), .out_eop(out_eop), .out_data(out_data)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; out_ready = 1;\n    ch_valid = 0; ch_sop = 0; ch_eop = 0; ch_data = 0;\n    #15 rst_n = 1;\n\n    // Test 1: Channel 0 sends 2-beat packet, Channel 1 starts requesting on beat 2\n    @(negedge clk);\n    ch_valid[0] = 1; ch_sop[0] = 1; ch_eop[0] = 0; ch_data[31:0] = 32'h00000001;\n    #1;\n    if (!out_valid || !out_sop || out_data !== 32'h1) begin\n      $display(\"FAIL: Ch0 SOP mismatch\");\n      errors = errors + 1;\n    end\n    \n    // Beat 2 (EOP) of Channel 0; Channel 1 asserts SOP\n    @(negedge clk);\n    ch_sop[0] = 0; ch_eop[0] = 1; ch_data[31:0] = 32'h00000002;\n    ch_valid[1] = 1; ch_sop[1] = 1; ch_eop[1] = 1; ch_data[63:32] = 32'h00000011;\n    #1;\n    if (!out_eop || out_data !== 32'h2) begin\n      $display(\"FAIL: Ch0 EOP mismatch\");\n      errors = errors + 1;\n    end\n\n    // Beat 3: Next cycle should grant Channel 1\n    @(negedge clk);\n    ch_valid[0] = 0; ch_eop[0] = 0;\n    #1;\n    if (out_data !== 32'h11 || !out_sop || !out_eop) begin\n      $display(\"FAIL: Ch1 failed to be granted\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    ch_valid[1] = 0;\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "ch_valid",
+      "ch_ready",
+      "out_valid",
+      "out_ready",
+      "out_sop",
+      "out_eop",
+      "out_data"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "ch_valid",
+          "wave": "0=...0...",
+          "data": [
+            "0x3"
+          ]
+        },
+        {
+          "name": "out_valid",
+          "wave": "01...0..."
+        },
+        {
+          "name": "out_sop",
+          "wave": "010.10..."
+        },
+        {
+          "name": "out_eop",
+          "wave": "0.1010..."
+        },
+        {
+          "name": "out_data",
+          "wave": "x====x...",
+          "data": [
+            "P0_B1",
+            "P0_B2",
+            "P1_B1",
+            "P2_B1"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Multi-Channel Packet Scheduler</text>\n  \n  <rect x=\"160\" y=\"70\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"90\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Packet-Locking State Register</text>\n  <text x=\"270\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Holds channel between SOP and EOP</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"150\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">Round-Robin Rotation Engine</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Rotates base pointer upon EOP</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">ch_valid[3:0], ch_sop[3:0]</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">ch_ready[3:0]</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">out_valid, out_sop, out_eop</text>\n  <line x1=\"500\" y1=\"145\" x2=\"400\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">out_ready</text>\n</svg>",
+    "hints": [
+      "Only consider a channel for arbitration if both ch_valid and ch_sop are high.",
+      "Once granted, set locked <= 1 and preserve active_ch until out_valid && out_ready && out_eop completes.",
+      "When locked, drive out_valid, out_data, out_sop, and out_eop exclusively from active_ch."
+    ],
+    "explanation": "<h3>Packet Framing and Head-of-Line Blocking</h3>\n<p>Packet multiplexers in PCIe, Ethernet, and UCIe architectures must guarantee packet atomicity: once a packet's Start of Packet (<code>SOP</code>) is emitted, no other channel may transmit until the End of Packet (<code>EOP</code>) is acknowledged.</p>\n<h4>Arbitration and Locking Cycle</h4>\n<ol>\n  <li><b>Channel Selection:</b> The arbiter identifies requesting channels that have <code>SOP = 1</code>. It uses round-robin fairness to select the next winner.</li>\n  <li><b>Atomicity Lock:</b> The arbiter enters the locked state, routing only the winning channel's data beats to the egress port.</li>\n  <li><b>Release:</b> When <code>EOP</code> handshakes with the consumer, the lock drops and the priority pointer advances.</li>\n</ol>",
+    "timingReqs": "Clocked on posedge clk with active-low rst_n. Grant locked strictly between SOP and EOP. Priority pointer advances on EOP transfer.",
+    "constraints": "Zero packet interleaving. Synthesizable Verilog-2001.",
+    "commonMistakes": "Allowing non-SOP beats to trigger arbitration, or failing to lock the grant when downstream pauses (out_ready = 0).",
+    "hwNotes": "Advanced NoCs use virtual channels (VCs) to prevent head-of-line blocking when one destination is congested.",
+    "relatedSlugs": [
+      "axi-stream-round-robin-arbiter",
+      "streaming-protocol-bridge",
+      "round-robin-arbiter"
+    ]
+  },
+  {
+    "slug": "chiplet-link-initialization-fsm",
+    "title": "Educational Chiplet Link Initialization & Sideband Training FSM",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 6,
+    "tags": [
+      "advanced-rtl",
+      "ucie-and-chiplet-architecture",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "UCIe and Chiplet Architecture",
+    "isAdvancedSection": true,
+    "advancedIndex": 53,
+    "lede": "Design an educational link-training finite state machine inspired by UCIe sideband handshaking, link configuration, and error recovery.",
+    "concept": "<b>Objective:</b> Implement a 7-state chiplet link initialization controller: RESET, INIT_REQ, LINK_TRAIN, CONFIG, ACTIVE, ERROR, and RECOVERY. Coordinate bidirectional handshaking with a partner die (partner_req, partner_ack, train_done), monitor link timeouts, and support fault recovery without full system reset.<br><br><b>Prerequisites:</b> UCIe / PCIe link training concepts, sideband state machines, timeout monitoring, hardware fault recovery.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>init_start</code></td><td>input</td><td>1</td><td>Host processor command to bring up chiplet link</td></tr>\n<tr><td><code>partner_req</code>, <code>partner_ack</code></td><td>input</td><td>1</td><td>Handshake signals received from opposite die</td></tr>\n<tr><td><code>train_pattern_ok</code></td><td>input</td><td>1</td><td>PHY signal indicating PRBS bit-lock achieved</td></tr>\n<tr><td><code>error_detected</code></td><td>input</td><td>1</td><td>Parity/CRC fault trigger</td></tr>\n<tr><td><code>link_req_out</code>, <code>link_ack_out</code></td><td>output</td><td>1</td><td>Handshake signals transmitted to opposite die</td></tr>\n<tr><td><code>link_active</code>, <code>link_error</code></td><td>output</td><td>1</td><td>Status flags for active transmission and error</td></tr>\n<tr><td><code>state_out[2:0]</code></td><td>output</td><td>3</td><td>Current FSM state: 0=RESET, 1=REQ, 2=TRAIN, 3=CFG, 4=ACTIVE, 5=ERR, 6=RECOVERY</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        init_start,\n  input  wire        partner_req,\n  input  wire        partner_ack,\n  input  wire        train_pattern_ok,\n  input  wire        error_detected,\n  output reg         link_req_out,\n  output reg         link_ack_out,\n  output wire        link_active,\n  output wire        link_error,\n  output reg  [2:0]  state_out\n);\n\n  // States:\n  // 3'd0: ST_RESET   - wait for init_start\n  // 3'd1: ST_REQ     - send link_req_out, wait for partner_ack\n  // 3'd2: ST_TRAIN   - train PHY (wait for train_pattern_ok; timeout after 8 cycles -> ST_ERROR)\n  // 3'd3: ST_CONFIG  - exchange sideband config (link_ack_out = 1, wait for partner_req)\n  // 3'd4: ST_ACTIVE  - link operational (link_active = 1). error_detected -> ST_ERROR\n  // 3'd5: ST_ERROR   - error flagged (link_error = 1). Next cycle -> ST_RECOVERY\n  // 3'd6: ST_RECOVERY- attempt soft retraining -> ST_REQ\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        clk,\n  input  wire        rst_n,\n  input  wire        init_start,\n  input  wire        partner_req,\n  input  wire        partner_ack,\n  input  wire        train_pattern_ok,\n  input  wire        error_detected,\n  output reg         link_req_out,\n  output reg         link_ack_out,\n  output wire        link_active,\n  output wire        link_error,\n  output reg  [2:0]  state_out\n);\n\n  localparam ST_RESET    = 3'd0;\n  localparam ST_REQ      = 3'd1;\n  localparam ST_TRAIN    = 3'd2;\n  localparam ST_CONFIG   = 3'd3;\n  localparam ST_ACTIVE   = 3'd4;\n  localparam ST_ERROR    = 3'd5;\n  localparam ST_RECOVERY = 3'd6;\n\n  reg [3:0] timeout_cnt;\n\n  assign link_active = (state_out == ST_ACTIVE);\n  assign link_error  = (state_out == ST_ERROR);\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      state_out    <= ST_RESET;\n      link_req_out <= 1'b0;\n      link_ack_out <= 1'b0;\n      timeout_cnt  <= 4'd0;\n    end else begin\n      case (state_out)\n        ST_RESET: begin\n          link_req_out <= 1'b0;\n          link_ack_out <= 1'b0;\n          timeout_cnt  <= 4'd0;\n          if (init_start) begin\n            state_out    <= ST_REQ;\n            link_req_out <= 1'b1;\n          end\n        end\n\n        ST_REQ: begin\n          link_req_out <= 1'b1;\n          if (partner_ack) begin\n            state_out    <= ST_TRAIN;\n            link_ack_out <= 1'b1;\n            timeout_cnt  <= 4'd0;\n          end\n        end\n\n        ST_TRAIN: begin\n          if (train_pattern_ok) begin\n            state_out   <= ST_CONFIG;\n            timeout_cnt <= 4'd0;\n          end else if (timeout_cnt >= 4'd7) begin\n            state_out   <= ST_ERROR;\n            timeout_cnt <= 4'd0;\n          end else begin\n            timeout_cnt <= timeout_cnt + 4'd1;\n          end\n        end\n\n        ST_CONFIG: begin\n          link_ack_out <= 1'b1;\n          if (partner_req) begin\n            state_out <= ST_ACTIVE;\n          end\n        end\n\n        ST_ACTIVE: begin\n          link_req_out <= 1'b1;\n          link_ack_out <= 1'b1;\n          if (error_detected) begin\n            state_out <= ST_ERROR;\n          end\n        end\n\n        ST_ERROR: begin\n          link_req_out <= 1'b0;\n          link_ack_out <= 1'b0;\n          state_out    <= ST_RECOVERY;\n        end\n\n        ST_RECOVERY: begin\n          state_out    <= ST_REQ;\n          link_req_out <= 1'b1;\n        end\n\n        default: state_out <= ST_RESET;\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, init_start, partner_req, partner_ack, train_pattern_ok, error_detected;\n  wire link_req_out, link_ack_out, link_active, link_error;\n  wire [2:0] state_out;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .init_start(init_start), .partner_req(partner_req), .partner_ack(partner_ack),\n    .train_pattern_ok(train_pattern_ok), .error_detected(error_detected),\n    .link_req_out(link_req_out), .link_ack_out(link_ack_out),\n    .link_active(link_active), .link_error(link_error), .state_out(state_out)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; init_start = 0; partner_req = 0; partner_ack = 0;\n    train_pattern_ok = 0; error_detected = 0;\n    #15 rst_n = 1;\n\n    // Test 1: Full successful link training sequence\n    @(negedge clk);\n    init_start = 1;\n    @(negedge clk);\n    init_start = 0;\n    if (state_out !== 3'd1 || !link_req_out) begin\n      $display(\"FAIL: Expected ST_REQ (state 1)\");\n      errors = errors + 1;\n    end\n\n    // Partner sends ACK\n    partner_ack = 1;\n    @(negedge clk);\n    partner_ack = 0;\n    if (state_out !== 3'd2) begin\n      $display(\"FAIL: Expected ST_TRAIN (state 2)\");\n      errors = errors + 1;\n    end\n\n    // PHY locks training pattern\n    train_pattern_ok = 1;\n    @(negedge clk);\n    train_pattern_ok = 0;\n    if (state_out !== 3'd3) begin\n      $display(\"FAIL: Expected ST_CONFIG (state 3)\");\n      errors = errors + 1;\n    end\n\n    // Partner exchanges config\n    partner_req = 1;\n    @(negedge clk);\n    partner_req = 0;\n    if (state_out !== 3'd4 || !link_active) begin\n      $display(\"FAIL: Expected ST_ACTIVE (state 4) with link_active=1\");\n      errors = errors + 1;\n    end\n\n    // Test 2: Error injection -> ERROR -> RECOVERY -> REQ\n    @(negedge clk);\n    error_detected = 1;\n    @(negedge clk);\n    error_detected = 0;\n    if (state_out !== 3'd5 || !link_error) begin\n      $display(\"FAIL: Expected ST_ERROR (state 5)\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (state_out !== 3'd6) begin\n      $display(\"FAIL: Expected ST_RECOVERY (state 6)\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (state_out !== 3'd1) begin\n      $display(\"FAIL: Expected return to ST_REQ for retraining\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "init_start",
+      "partner_ack",
+      "train_pattern_ok",
+      "link_active",
+      "link_error",
+      "state_out"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "init_start",
+          "wave": "010......"
+        },
+        {
+          "name": "partner_ack",
+          "wave": "0.10....."
+        },
+        {
+          "name": "train_pattern_ok",
+          "wave": "0..10...."
+        },
+        {
+          "name": "state_out",
+          "wave": "=..====..",
+          "data": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4"
+          ]
+        },
+        {
+          "name": "link_active",
+          "wave": "0....10.."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Chiplet Link Initialization FSM</text>\n  <text x=\"270\" y=\"60\" fill=\"#f59e0b\" font-size=\"9\" text-anchor=\"middle\">(Educational UCIe-Inspired State Machine)</text>\n  \n  <rect x=\"160\" y=\"70\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"90\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">RESET -&gt; REQ -&gt; TRAIN -&gt; CONFIG</text>\n  <text x=\"270\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Bidirectional Sideband Handshake</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f43f5e\"/>\n  <text x=\"270\" y=\"145\" fill=\"#f43f5e\" font-size=\"10\" text-anchor=\"middle\">ACTIVE &lt;-&gt; ERROR -&gt; RECOVERY</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Automatic Link Retraining without System Reset</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">init_start, partner_ack</text>\n  <line x1=\"40\" y1=\"135\" x2=\"140\" y2=\"135\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"130\" fill=\"#f43f5e\" font-size=\"9\">error_detected</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">link_req_out, link_ack_out</text>\n  <line x1=\"400\" y1=\"135\" x2=\"500\" y2=\"135\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"130\" fill=\"#4ade80\" font-size=\"9\">link_active, state_out[2:0]</text>\n</svg>",
+    "hints": [
+      "Use a 3-bit state register encoding states 0 through 6.",
+      "Increment timeout_cnt only while in ST_TRAIN. If it reaches 7 without train_pattern_ok, transition to ST_ERROR.",
+      "ST_ERROR transitions to ST_RECOVERY on the next clock, which in turn returns to ST_REQ to retry link training."
+    ],
+    "explanation": "<h3>UCIe and Multi-Die Link Bring-Up</h3>\n<p>Modern advanced packaging (TSMC CoWoS, Intel EMIB) connects multiple silicon dies through micro-bumps. Before high-speed main data lanes (32 Gbps+) can transmit, a low-speed <b>Sideband Channel</b> brings up and trains the interface.</p>\n<h4>Educational State Machine Overview</h4>\n<ul>\n  <li><b>Phase 1: Discovery (REQ / ACK):</b> Dies signal presence across dedicated sideband wires.</li>\n  <li><b>Phase 2: PHY Training:</b> Pseudorandom bit sequences (PRBS) calibrate receiver equalizers and per-lane delay locks.</li>\n  <li><b>Phase 3: Parameter Configuration:</b> Negotiate lane count, clock frequency, and CRC algorithms.</li>\n  <li><b>Phase 4: Active Operation &amp; Recovery:</b> Upon parity fault or signal loss, the controller enters <code>RECOVERY</code> to re-lock PHY equalizers without resetting the host CPU.</li>\n</ul>\n<p><i>Note: This module implements an educational abstraction of multi-die link training principles; actual UCIe specifications define detailed sub-states for lane repair and power management.</i></p>",
+    "timingReqs": "Clocked on posedge clk with active-low rst_n. Timeout counter fires after 8 consecutive cycles stuck in LINK_TRAIN without partner response.",
+    "constraints": "Clear educational protocol abstraction. Synthesizable Verilog-2001.",
+    "commonMistakes": "Staying in ST_TRAIN forever without a timeout mechanism, which locks up the chip if partner die fails to power up.",
+    "hwNotes": "Universal Chiplet Interconnect Express (UCIe) incorporates redundant spare micro-bumps per cluster that are dynamically swapped in during the training phase if physical faults are detected.",
+    "relatedSlugs": [
+      "credit-flow-control-controller",
+      "streaming-protocol-bridge",
+      "glitch-free-clock-switching-controller"
+    ]
+  },
+  {
+    "slug": "parameterized-sync-fifo",
+    "title": "Parameterized Synchronous FIFO with Simultaneous Read/Write",
+    "difficulty": "hard",
+    "difficultyLabel": "Expert",
+    "points": 50,
+    "level": 8,
+    "tags": [
+      "advanced-rtl",
+      "fifo-and-buffer-architecture",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "FIFO and Buffer Architecture",
+    "isAdvancedSection": true,
+    "advancedIndex": 54,
+    "lede": "Design a parameterized synchronous FIFO supporting simultaneous read and write operations without underflow or overflow hazards.",
+    "concept": "<b>Objective:</b> Implement a parameterizable single-clock FIFO (default DATA_WIDTH=32, DEPTH=8). Support circular read and write pointer mechanics, simultaneous push and pop when full (preserving contents), accurate count tracking, and overflow/underflow protection.<br><br><b>Prerequisites:</b> Synchronous FIFO architectures, circular buffers, pointer arithmetic, Verilog parameters.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>wr_en</code>, <code>wr_data[31:0]</code></td><td>input</td><td>1, 32</td><td>Push enable strobe and incoming data</td></tr>\n<tr><td><code>rd_en</code>, <code>rd_data[31:0]</code></td><td>in/out</td><td>1, 32</td><td>Pop enable strobe and outgoing read data</td></tr>\n<tr><td><code>full</code>, <code>empty</code></td><td>output</td><td>1, 1</td><td>Status flags for full and empty capacity</td></tr>\n<tr><td><code>count[3:0]</code></td><td>output</td><td>4</td><td>Current entry count (0 to 8)</td></tr>\n</tbody></table>",
+    "starter": "module top_module #(\n  parameter DATA_WIDTH = 32,\n  parameter DEPTH      = 8\n)(\n  input  wire                  clk,\n  input  wire                  rst_n,\n  input  wire                  wr_en,\n  input  wire [DATA_WIDTH-1:0] wr_data,\n  input  wire                  rd_en,\n  output reg  [DATA_WIDTH-1:0] rd_data,\n  output wire                  full,\n  output wire                  empty,\n  output reg  [3:0]            count\n);\n\n  // Implement parameterized synchronous FIFO:\n  // 1. circular write and read pointers.\n  // 2. count tracks number of valid items in FIFO (0 to DEPTH).\n  // 3. full = (count == DEPTH); empty = (count == 0).\n  // 4. Support simultaneous read and write (push && pop maintains count).\n\nendmodule\n",
+    "referenceRtl": "module top_module #(\n  parameter DATA_WIDTH = 32,\n  parameter DEPTH      = 8\n)(\n  input  wire                  clk,\n  input  wire                  rst_n,\n  input  wire                  wr_en,\n  input  wire [DATA_WIDTH-1:0] wr_data,\n  input  wire                  rd_en,\n  output reg  [DATA_WIDTH-1:0] rd_data,\n  output wire                  full,\n  output wire                  empty,\n  output reg  [3:0]            count\n);\n\n  reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];\n  reg [2:0] wr_ptr, rd_ptr;\n\n  assign full  = (count == DEPTH);\n  assign empty = (count == 4'd0);\n\n  wire valid_wr = wr_en && (!full || rd_en);\n  wire valid_rd = rd_en && !empty;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      wr_ptr  <= 3'd0;\n      rd_ptr  <= 3'd0;\n      count   <= 4'd0;\n      rd_data <= {DATA_WIDTH{1'b0}};\n    end else begin\n      if (valid_wr) begin\n        mem[wr_ptr] <= wr_data;\n        wr_ptr      <= (wr_ptr + 3'd1) % DEPTH;\n      end\n\n      if (valid_rd) begin\n        rd_data <= mem[rd_ptr];\n        rd_ptr  <= (rd_ptr + 3'd1) % DEPTH;\n      end\n\n      case ({valid_wr, valid_rd})\n        2'b10: count <= count + 4'd1;\n        2'b01: count <= count - 4'd1;\n        default: ; // 2'b00 or 2'b11 -> hold count\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, wr_en, rd_en;\n  reg [31:0] wr_data;\n  wire [31:0] rd_data;\n  wire full, empty;\n  wire [3:0] count;\n  integer errors = 0;\n\n  top_module #(.DATA_WIDTH(32), .DEPTH(8)) dut (\n    .clk(clk), .rst_n(rst_n),\n    .wr_en(wr_en), .wr_data(wr_data),\n    .rd_en(rd_en), .rd_data(rd_data),\n    .full(full), .empty(empty), .count(count)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; wr_en = 0; rd_en = 0; wr_data = 0;\n    #15 rst_n = 1;\n\n    // Check empty flag at reset\n    @(negedge clk);\n    if (!empty || full || count !== 0) begin\n      $display(\"FAIL: Reset state mismatch. empty=%b, full=%b, count=%0d\", empty, full, count);\n      errors = errors + 1;\n    end\n\n    // Fill to capacity (8 words)\n    repeat (8) begin\n      wr_en = 1; wr_data = wr_data + 32'h10;\n      @(negedge clk);\n    end\n    wr_en = 0;\n    @(negedge clk);\n    if (!full || empty || count !== 8) begin\n      $display(\"FAIL: Full flag mismatch. full=%b, count=%0d\", full, count);\n      errors = errors + 1;\n    end\n\n    // Simultaneous read and write when full (should maintain full without loss)\n    wr_en = 1; wr_data = 32'h99999999;\n    rd_en = 1;\n    @(negedge clk);\n    wr_en = 0; rd_en = 0;\n    @(negedge clk);\n    if (count !== 8 || !full) begin\n      $display(\"FAIL: Simultaneous read/write corrupted count: %0d\", count);\n      errors = errors + 1;\n    end\n\n    // Drain all 8 words\n    repeat (8) begin\n      rd_en = 1;\n      @(negedge clk);\n    end\n    rd_en = 0;\n    @(negedge clk);\n    if (!empty || count !== 0) begin\n      $display(\"FAIL: Empty state after drain mismatch: count=%0d\", count);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "wr_en",
+      "wr_data",
+      "rd_en",
+      "rd_data",
+      "full",
+      "empty",
+      "count"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "wr_en",
+          "wave": "01...0..."
+        },
+        {
+          "name": "wr_data",
+          "wave": "x====x...",
+          "data": [
+            "D0",
+            "D1",
+            "D2",
+            "D3"
+          ]
+        },
+        {
+          "name": "count",
+          "wave": "=...===..",
+          "data": [
+            "0",
+            "1",
+            "2",
+            "8",
+            "7",
+            "0"
+          ]
+        },
+        {
+          "name": "full",
+          "wave": "0...1.0.."
+        },
+        {
+          "name": "empty",
+          "wave": "10......1"
+        },
+        {
+          "name": "rd_en",
+          "wave": "0....10.."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Synchronous Parameterized FIFO</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"220\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"88\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Dual-Port Storage Array (DEPTH x WIDTH)</text>\n  <text x=\"270\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Circular wr_ptr &amp; rd_ptr</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"55\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"270\" y=\"145\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">Occupancy Counter &amp; Flag Generator</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">full = (count==DEPTH) | empty = (count==0)</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">wr_en, wr_data</text>\n  <line x1=\"40\" y1=\"145\" x2=\"140\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">rd_en</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">rd_data[31:0]</text>\n  <line x1=\"400\" y1=\"120\" x2=\"500\" y2=\"120\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"115\" fill=\"#f43f5e\" font-size=\"9\">full, empty</text>\n  <line x1=\"400\" y1=\"155\" x2=\"500\" y2=\"155\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"150\" fill=\"#4ade80\" font-size=\"9\">count[3:0]</text>\n</svg>",
+    "hints": [
+      "Maintain a separate count register to simplify full and empty generation.",
+      "When the FIFO is full, a write should only be permitted if a read is simultaneously occurring (valid_wr = wr_en && (!full || rd_en)).",
+      "Handle simultaneous read and write (push && pop) in the count case statement so count stays unchanged."
+    ],
+    "explanation": "<h3>Single-Clock FIFO Architecture</h3>\n<p>Synchronous FIFOs decouple data rate mismatches between modules running in the same clock domain.</p>\n<h4>Corner-Case Handling</h4>\n<ul>\n  <li><b>Simultaneous Read/Write when Full:</b> A well-designed FIFO allows a write when full if a read is concurrently popping an entry. The write overwrites the slot being freed, maintaining <code>count = DEPTH</code> without dropping data.</li>\n  <li><b>Underflow Protection:</b> If <code>rd_en</code> is asserted when <code>empty = 1</code>, read pointer advancement must be suppressed.</li>\n</ul>",
+    "timingReqs": "Clocked on rising edge of clk with active-low rst_n. Write updates on posedge clk when wr_en && !full (or wr_en && rd_en when full). Read data presents registered or cut-through.",
+    "constraints": "No underflow or memory corruption. Parameterized DATA_WIDTH and DEPTH. Synthesizable Verilog-2001.",
+    "commonMistakes": "Allowing count to overflow beyond DEPTH or underflow below 0 on invalid enable strobes.",
+    "hwNotes": "For small depths (DEPTH <= 32), synthesize to distributed flip-flops; for larger depths (DEPTH >= 64), infer block RAMs (BRAMs).",
+    "relatedSlugs": [
+      "fifo-synchronous",
+      "fifo-almost-full-empty-controller",
+      "dual-clock-async-fifo"
+    ]
+  },
+  {
+    "slug": "dual-clock-async-fifo",
+    "title": "Dual-Clock Asynchronous FIFO with Gray Pointer CDC Synchronization",
+    "difficulty": "hard",
+    "difficultyLabel": "Expert",
+    "points": 50,
+    "level": 7,
+    "tags": [
+      "advanced-rtl",
+      "cdc-and-rdc",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "CDC and RDC",
+    "isAdvancedSection": true,
+    "advancedIndex": 55,
+    "lede": "Design a dual-clock asynchronous FIFO with Gray-coded pointers, 2-flop CDC synchronizers, and safe full/empty flag generation.",
+    "concept": "<b>Objective:</b> Implement a production-grade dual-clock FIFO (wr_clk and rd_clk). Pointers are maintained in binary for memory indexing and converted to Gray code for domain crossing. Synchronize Gray pointers through 2-flop synchronizers. Detect full in the write domain and empty in the read domain safely.<br><br><b>Prerequisites:</b> Asynchronous FIFO design principles (Cummings paper), Gray coding, 2-flop synchronizer, MTBF considerations.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>wr_clk</code>, <code>wr_rst_n</code></td><td>input</td><td>1</td><td>Write domain clock and reset</td></tr>\n<tr><td><code>wr_en</code>, <code>wr_data[7:0]</code></td><td>input</td><td>1, 8</td><td>Write domain push handshake</td></tr>\n<tr><td><code>rd_clk</code>, <code>rd_rst_n</code></td><td>input</td><td>1</td><td>Read domain clock and reset</td></tr>\n<tr><td><code>rd_en</code>, <code>rd_data[7:0]</code></td><td>in/out</td><td>1, 8</td><td>Read domain pop handshake</td></tr>\n<tr><td><code>full</code></td><td>output</td><td>1</td><td>Full flag synchronous to wr_clk</td></tr>\n<tr><td><code>empty</code></td><td>output</td><td>1</td><td>Empty flag synchronous to rd_clk</td></tr>\n</tbody></table>",
+    "starter": "module top_module #(\n  parameter DATA_WIDTH = 8,\n  parameter ADDR_WIDTH = 3 // Depth = 8\n)(\n  input  wire                  wr_clk,\n  input  wire                  wr_rst_n,\n  input  wire                  wr_en,\n  input  wire [DATA_WIDTH-1:0] wr_data,\n  input  wire                  rd_clk,\n  input  wire                  rd_rst_n,\n  input  wire                  rd_en,\n  output wire [DATA_WIDTH-1:0] rd_data,\n  output wire                  full,\n  output wire                  empty\n);\n\n  // Implement Dual-Clock Async FIFO:\n  // 1. Dual-port RAM addressed by binary wr_ptr[2:0] and rd_ptr[2:0].\n  // 2. Convert (ADDR_WIDTH+1)-bit pointers to Gray code: bin ^ (bin >> 1).\n  // 3. Cross Gray pointers through 2-flop synchronizers into opposite clock domain.\n  // 4. full: wr_gray == {~rd_gray_sync[3:2], rd_gray_sync[1:0]}.\n  // 5. empty: rd_gray == wr_gray_sync.\n\nendmodule\n",
+    "referenceRtl": "module top_module #(\n  parameter DATA_WIDTH = 8,\n  parameter ADDR_WIDTH = 3 // Depth = 8\n)(\n  input  wire                  wr_clk,\n  input  wire                  wr_rst_n,\n  input  wire                  wr_en,\n  input  wire [DATA_WIDTH-1:0] wr_data,\n  input  wire                  rd_clk,\n  input  wire                  rd_rst_n,\n  input  wire                  rd_en,\n  output wire [DATA_WIDTH-1:0] rd_data,\n  output wire                  full,\n  output wire                  empty\n);\n\n  localparam DEPTH = 1 << ADDR_WIDTH;\n\n  reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];\n\n  // Binary and Gray pointers (ADDR_WIDTH+1 bits)\n  reg [ADDR_WIDTH:0] wr_bin, wr_gray;\n  reg [ADDR_WIDTH:0] rd_bin, rd_gray;\n\n  // 2-Flop CDC synchronizers\n  reg [ADDR_WIDTH:0] wr_gray_s1, wr_gray_s2; // into rd_clk domain\n  reg [ADDR_WIDTH:0] rd_gray_s1, rd_gray_s2; // into wr_clk domain\n\n  // Write operation\n  wire write_valid = wr_en && !full;\n  always @(posedge wr_clk) begin\n    if (write_valid) begin\n      mem[wr_bin[ADDR_WIDTH-1:0]] <= wr_data;\n    end\n  end\n\n  always @(posedge wr_clk or negedge wr_rst_n) begin\n    if (!wr_rst_n) begin\n      wr_bin  <= 0;\n      wr_gray <= 0;\n    end else if (write_valid) begin\n      wr_bin  <= wr_bin + 1'b1;\n      wr_gray <= (wr_bin + 1'b1) ^ ((wr_bin + 1'b1) >> 1);\n    end\n  end\n\n  // Synchronize rd_gray into wr_clk domain\n  always @(posedge wr_clk or negedge wr_rst_n) begin\n    if (!wr_rst_n) begin\n      rd_gray_s1 <= 0;\n      rd_gray_s2 <= 0;\n    end else begin\n      rd_gray_s1 <= rd_gray;\n      rd_gray_s2 <= rd_gray_s1;\n    end\n  end\n\n  // Full detection in wr_clk domain: MSB and 2nd MSB inverted, remaining bits equal\n  assign full = (wr_gray == {~rd_gray_s2[ADDR_WIDTH:ADDR_WIDTH-1], rd_gray_s2[ADDR_WIDTH-2:0]});\n\n  // Read operation\n  wire read_valid = rd_en && !empty;\n  assign rd_data = mem[rd_bin[ADDR_WIDTH-1:0]];\n\n  always @(posedge rd_clk or negedge rd_rst_n) begin\n    if (!rd_rst_n) begin\n      rd_bin  <= 0;\n      rd_gray <= 0;\n    end else if (read_valid) begin\n      rd_bin  <= rd_bin + 1'b1;\n      rd_gray <= (rd_bin + 1'b1) ^ ((rd_bin + 1'b1) >> 1);\n    end\n  end\n\n  // Synchronize wr_gray into rd_clk domain\n  always @(posedge rd_clk or negedge rd_rst_n) begin\n    if (!rd_rst_n) begin\n      wr_gray_s1 <= 0;\n      wr_gray_s2 <= 0;\n    end else begin\n      wr_gray_s1 <= wr_gray;\n      wr_gray_s2 <= wr_gray_s1;\n    end\n  end\n\n  // Empty detection in rd_clk domain\n  assign empty = (rd_gray == wr_gray_s2);\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg wr_clk, wr_rst_n, wr_en;\n  reg [7:0] wr_data;\n  reg rd_clk, rd_rst_n, rd_en;\n  wire [7:0] rd_data;\n  wire full, empty;\n  integer errors = 0;\n\n  top_module dut (\n    .wr_clk(wr_clk), .wr_rst_n(wr_rst_n), .wr_en(wr_en), .wr_data(wr_data),\n    .rd_clk(rd_clk), .rd_rst_n(rd_rst_n), .rd_en(rd_en), .rd_data(rd_data),\n    .full(full), .empty(empty)\n  );\n\n  // Independent asynchronous clocks (wr_clk = 100MHz / period 10ns, rd_clk = 66.6MHz / period 15ns)\n  always #5 wr_clk = ~wr_clk;\n  always #7.5 rd_clk = ~rd_clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    wr_clk = 0; wr_rst_n = 0; wr_en = 0; wr_data = 0;\n    rd_clk = 0; rd_rst_n = 0; rd_en = 0;\n    #25 wr_rst_n = 1; rd_rst_n = 1;\n\n    // Check empty at start\n    @(negedge rd_clk);\n    if (!empty) begin\n      $display(\"FAIL: Expected empty=1 at reset\");\n      errors = errors + 1;\n    end\n\n    // Burst write 8 words in wr_clk domain\n    repeat (8) begin\n      @(negedge wr_clk);\n      wr_en = 1; wr_data = wr_data + 8'h11;\n    end\n    @(negedge wr_clk);\n    wr_en = 0;\n\n    // Allow synchronizer pipeline delay to recognize full\n    repeat(4) @(negedge wr_clk);\n    if (!full) begin\n      $display(\"FAIL: Expected full=1 after 8 writes\");\n      errors = errors + 1;\n    end\n\n    // Allow read domain to see non-empty\n    repeat(4) @(negedge rd_clk);\n    if (empty) begin\n      $display(\"FAIL: Read domain still reporting empty after writes\");\n      errors = errors + 1;\n    end\n\n    // Read out words in rd_clk domain\n    repeat (8) begin\n      @(negedge rd_clk);\n      rd_en = 1;\n    end\n    @(negedge rd_clk);\n    rd_en = 0;\n\n    repeat(4) @(negedge rd_clk);\n    if (!empty) begin\n      $display(\"FAIL: Expected empty=1 after draining\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "wr_clk",
+      "wr_en",
+      "wr_data",
+      "full",
+      "rd_clk",
+      "rd_en",
+      "rd_data",
+      "empty"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "wr_clk",
+          "wave": "p........"
+        },
+        {
+          "name": "wr_en",
+          "wave": "01...0..."
+        },
+        {
+          "name": "wr_data",
+          "wave": "x====x...",
+          "data": [
+            "11",
+            "22",
+            "33",
+            "44"
+          ]
+        },
+        {
+          "name": "full",
+          "wave": "0...1.0.."
+        },
+        {
+          "name": "rd_clk",
+          "wave": "P...P...P"
+        },
+        {
+          "name": "empty",
+          "wave": "10......1"
+        },
+        {
+          "name": "rd_en",
+          "wave": "0....1.0."
+        },
+        {
+          "name": "rd_data",
+          "wave": "x....=.x.",
+          "data": [
+            "11"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Dual-Clock Asynchronous FIFO</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"88\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Write Domain</text>\n  <text x=\"212\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Binary -&gt; Gray Pointer</text>\n\n  <rect x=\"275\" y=\"65\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"327\" y=\"88\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Read Domain</text>\n  <text x=\"327\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Binary -&gt; Gray Pointer</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"145\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">2-Flop Cross-Domain Synchronizers</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Single-Bit Transition Guarantee</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">wr_clk, wr_en, wr_data</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#f43f5e\" font-size=\"9\">full (wr_clk)</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#2dd4bf\" font-size=\"9\">rd_clk, rd_en</text>\n  <line x1=\"500\" y1=\"120\" x2=\"400\" y2=\"120\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"115\" fill=\"#2dd4bf\" font-size=\"9\">rd_data[7:0]</text>\n  <line x1=\"400\" y1=\"155\" x2=\"500\" y2=\"155\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"150\" fill=\"#f43f5e\" font-size=\"9\">empty (rd_clk)</text>\n</svg>",
+    "hints": [
+      "Gray code conversion is: gray = bin ^ (bin >> 1).",
+      "To detect full, the write pointer has wrapped around while the read pointer has not. In Gray code, full condition occurs when the two most significant bits are inverted and all lower bits match.",
+      "Empty detection occurs in the read domain when rd_gray matches the synchronized wr_gray_s2 exactly."
+    ],
+    "explanation": "<h3>Classic Dual-Clock FIFO Architecture</h3>\n<p>Asynchronous FIFOs are ubiquitous in SoCs whenever data passes between independent oscillator domains (e.g. PCIe PHY, DDR controller, CPU core).</p>\n<h4>Why Gray Code is Mandatory</h4>\n<p>If binary pointers were synchronized across clock domains, a multi-bit change (e.g. <code>3'b011 -> 3'b100</code> where all 3 bits change simultaneously) would suffer from physical routing delay skew. The receiving synchronizer could sample intermediate corrupt codes (e.g. <code>3'b000</code> or <code>3'b111</code>), causing false full or empty flags.</p>\n<p><b>Gray code guarantees that exactly ONE bit changes between any two consecutive values</b> ($000 \to 001 \to 011 \to 010$). Even if the synchronizer samples during a metastable transition, it can only ever resolve to either the old value or the new value, never an erroneous random code.</p>\n<blockquote><b>Synthesis Note:</b> Real silicon implementations require the <code>(* ASYNC_REG = \"TRUE\" *)</code> attribute on synchronizer registers and a <code>set_max_delay -datapath_only</code> constraint in the SDC timing script.</blockquote>",
+    "timingReqs": "Completely independent wr_clk and rd_clk. Note: RTL simulation checks functional equivalence; physical CDC safety requires ASYNC_REG synthesis attributes and set_max_delay timing constraints.",
+    "constraints": "No multi-bit CDC crossing in binary. Use Gray code. Synthesizable Verilog-2001.",
+    "commonMistakes": "Checking full in the read clock domain or empty in the write clock domain. Full must be checked in wr_clk, empty in rd_clk.",
+    "hwNotes": "Async FIFO depth is restricted to powers of 2 ($2^N$) so that the Gray code sequence wraps around with a single-bit transition.",
+    "relatedSlugs": [
+      "parameterized-sync-fifo",
+      "async-fifo-pointer-sync",
+      "two-flop-synchronizer"
+    ]
+  },
+  {
+    "slug": "fifo-almost-full-empty-controller",
+    "title": "Programmable FIFO Watermark & Threshold Controller",
+    "difficulty": "hard",
+    "difficultyLabel": "Expert",
+    "points": 50,
+    "level": 8,
+    "tags": [
+      "advanced-rtl",
+      "fifo-and-buffer-architecture",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "FIFO and Buffer Architecture",
+    "isAdvancedSection": true,
+    "advancedIndex": 56,
+    "lede": "Design a programmable watermark controller generating almost-full and almost-empty interrupt thresholds for DMA flow control.",
+    "concept": "<b>Objective:</b> Implement a threshold watermark evaluator for a 16-entry buffer. Given programmable threshold inputs almost_full_thresh[3:0] and almost_empty_thresh[3:0], evaluate current occupancy count. Assert almost_full when count >= almost_full_thresh, and almost_empty when count <= almost_empty_thresh. Support concurrent push/pop with clean boundary handling.<br><br><b>Prerequisites:</b> Watermark indicators, DMA burst thresholds, FIFO occupancy counters.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Clock and active-low synchronous reset</td></tr>\n<tr><td><code>push</code>, <code>pop</code></td><td>input</td><td>1, 1</td><td>Enqueue and dequeue strobes</td></tr>\n<tr><td><code>almost_full_thresh[3:0]</code></td><td>input</td><td>4</td><td>Upper watermark threshold</td></tr>\n<tr><td><code>almost_empty_thresh[3:0]</code></td><td>input</td><td>4</td><td>Lower watermark threshold</td></tr>\n<tr><td><code>almost_full</code>, <code>almost_empty</code></td><td>output</td><td>1, 1</td><td>Programmable watermark status indicators</td></tr>\n<tr><td><code>full</code>, <code>empty</code></td><td>output</td><td>1, 1</td><td>Absolute capacity boundaries</td></tr>\n<tr><td><code>occupancy[4:0]</code></td><td>output</td><td>5</td><td>Exact item count (0 to 16)</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire       clk,\n  input  wire       rst_n,\n  input  wire       push,\n  input  wire       pop,\n  input  wire [3:0] almost_full_thresh,\n  input  wire [3:0] almost_empty_thresh,\n  output wire       almost_full,\n  output wire       almost_empty,\n  output wire       full,\n  output wire       empty,\n  output reg  [4:0] occupancy\n);\n\n  // Implement watermark evaluator:\n  // 1. Capacity = 16 words.\n  // 2. Track occupancy (0 to 16).\n  // 3. full = (occupancy == 16); empty = (occupancy == 0).\n  // 4. almost_full = (occupancy >= almost_full_thresh).\n  // 5. almost_empty = (occupancy <= almost_empty_thresh).\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire       clk,\n  input  wire       rst_n,\n  input  wire       push,\n  input  wire       pop,\n  input  wire [3:0] almost_full_thresh,\n  input  wire [3:0] almost_empty_thresh,\n  output wire       almost_full,\n  output wire       almost_empty,\n  output wire       full,\n  output wire       empty,\n  output reg  [4:0] occupancy\n);\n\n  assign full  = (occupancy == 5'd16);\n  assign empty = (occupancy == 5'd0);\n\n  assign almost_full  = (occupancy >= {1'b0, almost_full_thresh});\n  assign almost_empty = (occupancy <= {1'b0, almost_empty_thresh});\n\n  wire valid_push = push && (!full || pop);\n  wire valid_pop  = pop && !empty;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      occupancy <= 5'd0;\n    end else begin\n      case ({valid_push, valid_pop})\n        2'b10: occupancy <= occupancy + 5'd1;\n        2'b01: occupancy <= occupancy - 5'd1;\n        default: ; // 2'b00 or 2'b11 -> maintain count\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, push, pop;\n  reg [3:0] almost_full_thresh, almost_empty_thresh;\n  wire almost_full, almost_empty, full, empty;\n  wire [4:0] occupancy;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n),\n    .push(push), .pop(pop),\n    .almost_full_thresh(almost_full_thresh),\n    .almost_empty_thresh(almost_empty_thresh),\n    .almost_full(almost_full), .almost_empty(almost_empty),\n    .full(full), .empty(empty), .occupancy(occupancy)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; push = 0; pop = 0;\n    almost_full_thresh = 4'd12; almost_empty_thresh = 4'd2;\n    #15 rst_n = 1;\n\n    // Check empty & almost_empty at reset\n    @(negedge clk);\n    if (!empty || !almost_empty || occupancy !== 0) begin\n      $display(\"FAIL: Reset flags mismatch. empty=%b, almost_empty=%b\", empty, almost_empty);\n      errors = errors + 1;\n    end\n\n    // Push 3 entries (cross almost_empty boundary)\n    repeat (3) begin\n      push = 1; @(negedge clk);\n    end\n    push = 0;\n    @(negedge clk);\n    if (almost_empty || occupancy !== 3) begin\n      $display(\"FAIL: almost_empty should be 0 when occupancy=3 (thresh=2)\");\n      errors = errors + 1;\n    end\n\n    // Push until reaching 12 entries (almost_full threshold)\n    repeat (9) begin\n      push = 1; @(negedge clk);\n    end\n    push = 0;\n    @(negedge clk);\n    if (!almost_full || occupancy !== 12) begin\n      $display(\"FAIL: almost_full should be 1 when occupancy=12\");\n      errors = errors + 1;\n    end\n\n    // Fill to 16\n    repeat (4) begin\n      push = 1; @(negedge clk);\n    end\n    push = 0;\n    @(negedge clk);\n    if (!full || occupancy !== 16) begin\n      $display(\"FAIL: full should be 1 at 16\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "push",
+      "pop",
+      "occupancy",
+      "almost_full",
+      "almost_empty",
+      "full",
+      "empty"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........"
+        },
+        {
+          "name": "push",
+          "wave": "01...0..."
+        },
+        {
+          "name": "occupancy",
+          "wave": "=...===..",
+          "data": [
+            "0",
+            "1",
+            "3",
+            "12",
+            "16",
+            "15"
+          ]
+        },
+        {
+          "name": "almost_empty",
+          "wave": "10......."
+        },
+        {
+          "name": "almost_full",
+          "wave": "0...1...."
+        },
+        {
+          "name": "full",
+          "wave": "0....10.."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Programmable Watermark Controller</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"87\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">5-bit Occupancy Counter (0..16)</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"55\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"145\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Dual-Threshold Comparators</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">almost_full &gt;= thresh_af | almost_empty &lt;= thresh_ae</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">push, pop</text>\n  <line x1=\"40\" y1=\"145\" x2=\"140\" y2=\"145\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#a78bfa\" font-size=\"9\">thresholds[3:0]</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"75\" x2=\"500\" y2=\"75\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"70\" fill=\"#f43f5e\" font-size=\"9\">almost_full, full</text>\n  <line x1=\"400\" y1=\"120\" x2=\"500\" y2=\"120\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"115\" fill=\"#2dd4bf\" font-size=\"9\">almost_empty, empty</text>\n  <line x1=\"400\" y1=\"155\" x2=\"500\" y2=\"155\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"150\" fill=\"#4ade80\" font-size=\"9\">occupancy[4:0]</text>\n</svg>",
+    "hints": [
+      "Use a 5-bit register for occupancy so that it can hold values from 0 up to 16 inclusive.",
+      "Extend 4-bit thresholds to 5 bits before comparing with occupancy ({1'b0, almost_full_thresh}).",
+      "Handle concurrent push and pop without altering the count."
+    ],
+    "explanation": "<h3>DMA Flow Control Using Watermarks</h3>\n<p>Direct Memory Access (DMA) controllers cannot wait until a buffer is completely full or completely empty before issuing bus requests. Doing so leads to buffer under-run or bus under-utilization.</p>\n<h4>Watermark Thresholds</h4>\n<ul>\n  <li><b>Almost Full Watermark:</b> Warns the DMA scatter-gather engine that the buffer is reaching capacity (e.g. 12/16 slots), allowing it to throttle upstream producers before overflow occurs.</li>\n  <li><b>Almost Empty Watermark:</b> Signals that the buffer is nearly drained (e.g. 2/16 slots), prompting a burst read request to refill it before underflow occurs.</li>\n</ul>",
+    "timingReqs": "Clocked on posedge clk with active-low rst_n. Count increments on push, decrements on pop, holds on both.",
+    "constraints": "Synthesizable Verilog-2001. No latch inference.",
+    "commonMistakes": "Using a 4-bit counter for a depth-16 buffer, which wraps around from 15 to 0 instead of reaching 16.",
+    "hwNotes": "High-performance PCIe Root Complexes use programmable watermark thresholds to tune DMA burst lengths according to payload MTU.",
+    "relatedSlugs": [
+      "fifo-almost-full-flag",
+      "parameterized-sync-fifo",
+      "fifo-synchronous"
+    ]
+  },
+  {
+    "slug": "multi-bit-handshake-cdc",
+    "title": "Multi-Bit Bus Handshake Clock-Domain Crossing (CDC)",
+    "difficulty": "hard",
+    "difficultyLabel": "Expert",
+    "points": 50,
+    "level": 7,
+    "tags": [
+      "advanced-rtl",
+      "cdc-and-rdc",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "CDC and RDC",
+    "isAdvancedSection": true,
+    "advancedIndex": 57,
+    "lede": "Design a 4-phase REQ/ACK handshake synchronizer ensuring coherent multi-bit data bus transfer between asynchronous clock domains.",
+    "concept": "<b>Objective:</b> Implement a multi-bit handshake CDC synchronizer. Explain why synchronizing individual data bits independently across clock domains causes data incoherence (bus skew). Design a source controller and destination controller where multi-bit data is held stable while a 1-bit request line is synchronized through 2 flip-flops, followed by an acknowledge return.<br><br><b>Prerequisites:</b> Clock domain crossing principles, multi-bit bus coherence, 4-phase handshake protocol, metastability.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>src_clk</code>, <code>src_rst_n</code></td><td>input</td><td>1</td><td>Source clock domain and reset</td></tr>\n<tr><td><code>src_valid</code>, <code>src_data[15:0]</code></td><td>input</td><td>1, 16</td><td>Source payload transfer request</td></tr>\n<tr><td><code>src_ready</code></td><td>output</td><td>1</td><td>Source ready indicating previous transfer complete</td></tr>\n<tr><td><code>dst_clk</code>, <code>dst_rst_n</code></td><td>input</td><td>1</td><td>Destination clock domain and reset</td></tr>\n<tr><td><code>dst_valid</code>, <code>dst_data[15:0]</code></td><td>output</td><td>1, 16</td><td>Captured destination data and 1-cycle strobe</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire        src_clk,\n  input  wire        src_rst_n,\n  input  wire        src_valid,\n  input  wire [15:0] src_data,\n  output reg         src_ready,\n  input  wire        dst_clk,\n  input  wire        dst_rst_n,\n  output reg         dst_valid,\n  output reg  [15:0] dst_data\n);\n\n  // Implement 4-phase multi-bit handshake CDC:\n  // 1. Source registers src_data into holding register and asserts src_req = 1.\n  // 2. Cross src_req into dst_clk domain via 2-flop synchronizer -> dst_req_sync.\n  // 3. When dst_req_sync = 1, capture holding register into dst_data, pulse dst_valid, assert dst_ack = 1.\n  // 4. Cross dst_ack into src_clk domain via 2-flop synchronizer -> src_ack_sync.\n  // 5. When src_ack_sync = 1, lower src_req = 0.\n  // 6. When dst_req drops, lower dst_ack = 0; once src sees ack drop, assert src_ready = 1.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire        src_clk,\n  input  wire        src_rst_n,\n  input  wire        src_valid,\n  input  wire [15:0] src_data,\n  output reg         src_ready,\n  input  wire        dst_clk,\n  input  wire        dst_rst_n,\n  output reg         dst_valid,\n  output reg  [15:0] dst_data\n);\n\n  // Source domain state\n  reg [15:0] data_hold;\n  reg        src_req;\n\n  // Synchronize src_req to dst_clk\n  reg req_s1, req_s2;\n\n  // Destination domain state\n  reg dst_ack;\n  reg req_s2_d;\n\n  // Synchronize dst_ack to src_clk\n  reg ack_s1, ack_s2;\n\n  // Source domain logic\n  always @(posedge src_clk or negedge src_rst_n) begin\n    if (!src_rst_n) begin\n      src_ready <= 1'b1;\n      src_req   <= 1'b0;\n      data_hold <= 16'h0;\n      ack_s1    <= 1'b0;\n      ack_s2    <= 1'b0;\n    end else begin\n      ack_s1 <= dst_ack;\n      ack_s2 <= ack_s1;\n\n      if (src_ready && src_valid) begin\n        src_ready <= 1'b0;\n        src_req   <= 1'b1;\n        data_hold <= src_data;\n      end else if (src_req && ack_s2) begin\n        src_req <= 1'b0;\n      end else if (!src_req && !ack_s2 && !src_ready) begin\n        src_ready <= 1'b1; // Completed 4-phase handshake\n      end\n    end\n  end\n\n  // Destination domain logic\n  always @(posedge dst_clk or negedge dst_rst_n) begin\n    if (!dst_rst_n) begin\n      req_s1    <= 1'b0;\n      req_s2    <= 1'b0;\n      req_s2_d  <= 1'b0;\n      dst_ack   <= 1'b0;\n      dst_valid <= 1'b0;\n      dst_data  <= 16'h0;\n    end else begin\n      req_s1    <= src_req;\n      req_s2    <= req_s1;\n      req_s2_d  <= req_s2;\n      dst_valid <= 1'b0;\n\n      if (req_s2 && !req_s2_d) begin\n        // Rising edge of request in destination domain\n        dst_data  <= data_hold;\n        dst_valid <= 1'b1;\n        dst_ack   <= 1'b1;\n      end else if (!req_s2 && dst_ack) begin\n        dst_ack <= 1'b0;\n      end\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg src_clk, src_rst_n, src_valid;\n  reg [15:0] src_data;\n  wire src_ready;\n  reg dst_clk, dst_rst_n;\n  wire dst_valid;\n  wire [15:0] dst_data;\n  integer errors = 0;\n\n  top_module dut (\n    .src_clk(src_clk), .src_rst_n(src_rst_n),\n    .src_valid(src_valid), .src_data(src_data), .src_ready(src_ready),\n    .dst_clk(dst_clk), .dst_rst_n(dst_rst_n),\n    .dst_valid(dst_valid), .dst_data(dst_data)\n  );\n\n  // Asynchronous unrelated clocks (src_clk = 100MHz / 10ns, dst_clk = 66.6MHz / 15ns)\n  always #5 src_clk = ~src_clk;\n  always #7.5 dst_clk = ~dst_clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    src_clk = 0; src_rst_n = 0; src_valid = 0; src_data = 0;\n    dst_clk = 0; dst_rst_n = 0;\n    #25 src_rst_n = 1; dst_rst_n = 1;\n\n    // Test 1: Send word 0x1234\n    @(negedge src_clk);\n    src_valid = 1; src_data = 16'h1234;\n    @(negedge src_clk);\n    src_valid = 0;\n\n    // Await capture in dst domain\n    while (!dst_valid) @(negedge dst_clk);\n    if (dst_data !== 16'h1234) begin\n      $display(\"FAIL: Captured data mismatch. Expected 0x1234, got 0x%04x\", dst_data);\n      errors = errors + 1;\n    end\n\n    // Await handshake completion in src domain (src_ready = 1)\n    while (!src_ready) @(negedge src_clk);\n\n    // Test 2: Send word 0xABCD\n    @(negedge src_clk);\n    src_valid = 1; src_data = 16'hABCD;\n    @(negedge src_clk);\n    src_valid = 0;\n\n    while (!dst_valid) @(negedge dst_clk);\n    if (dst_data !== 16'hABCD) begin\n      $display(\"FAIL: Captured data mismatch. Expected 0xABCD, got 0x%04x\", dst_data);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "src_clk",
+      "src_valid",
+      "src_data",
+      "src_ready",
+      "dst_clk",
+      "dst_valid",
+      "dst_data"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "src_clk",
+          "wave": "p........"
+        },
+        {
+          "name": "src_valid",
+          "wave": "010......"
+        },
+        {
+          "name": "src_data",
+          "wave": "x=.x.....",
+          "data": [
+            "0x1234"
+          ]
+        },
+        {
+          "name": "src_ready",
+          "wave": "10.....1."
+        },
+        {
+          "name": "dst_clk",
+          "wave": "P...P...P"
+        },
+        {
+          "name": "dst_valid",
+          "wave": "0...10..."
+        },
+        {
+          "name": "dst_data",
+          "wave": "x...=.x..",
+          "data": [
+            "0x1234"
+          ]
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Multi-Bit Handshake CDC</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"85\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Source Domain</text>\n  <text x=\"212\" y=\"100\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Holds Data Stable</text>\n\n  <rect x=\"275\" y=\"65\" width=\"105\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"327\" y=\"85\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Dest Domain</text>\n  <text x=\"327\" y=\"100\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Captures Data on Req</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"145\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">4-Phase REQ / ACK Synchronization</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Guarantees Data Bus Coherence</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#38bdf8\" font-size=\"9\">src_valid, src_data</text>\n  <line x1=\"140\" y1=\"145\" x2=\"40\" y2=\"145\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#4ade80\" font-size=\"9\">src_ready</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"80\" x2=\"500\" y2=\"80\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"75\" fill=\"#2dd4bf\" font-size=\"9\">dst_valid</text>\n  <line x1=\"400\" y1=\"145\" x2=\"500\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">dst_data[15:0]</text>\n</svg>",
+    "hints": [
+      "Never pass multi-bit data directly through flip-flop synchronizers; physical wire delays cause bits to arrive in different destination clock cycles.",
+      "Hold src_data static in a register while a single 1-bit src_req signal crosses into the destination domain via a 2-flop synchronizer.",
+      "Once destination samples the synchronized request, it captures the stable data and returns an acknowledge (dst_ack) through another 2-flop synchronizer back to the source."
+    ],
+    "explanation": "<h3>Why Multi-Bit Buses Cannot Use Simple Synchronizers</h3>\n<p>If you connect a 16-bit data bus directly to 16 parallel 2-flop synchronizers across unrelated clock domains, differences in silicon routing delays (skew) and metastability resolution will cause some bits to arrive in clock cycle $N$ and others in cycle $N+1$. The destination would sample corrupted intermediate values.</p>\n<h4>The 4-Phase Handshake Protocol</h4>\n<ol>\n  <li><b>Phase 1:</b> Source latches <code>src_data</code> into a holding register and asserts <code>src_req = 1</code>.</li>\n  <li><b>Phase 2:</b> <code>src_req</code> crosses into <code>dst_clk</code> through a standard 2-flop synchronizer. Since data has been stable for multiple cycles, destination safely latches <code>dst_data</code> and asserts <code>dst_ack = 1</code>.</li>\n  <li><b>Phase 3:</b> <code>dst_ack</code> synchronizes back into <code>src_clk</code>. Source deasserts <code>src_req = 0</code>.</li>\n  <li><b>Phase 4:</b> Destination deasserts <code>dst_ack = 0</code>. Once source sees ack drop, it asserts <code>src_ready = 1</code>, ready for the next transfer.</li>\n</ol>",
+    "timingReqs": "Completely asynchronous src_clk and dst_clk. Data bus src_data must remain static throughout the transfer until src_ack is observed.",
+    "constraints": "Do NOT pass multi-bit data through flip-flop synchronizers directly. Synthesizable Verilog-2001.",
+    "commonMistakes": "Allowing src_data to change before the full 4-phase handshake completes.",
+    "hwNotes": "Although latency is 6-8 clock cycles, multi-bit handshakes consume minimal logic compared to an asynchronous FIFO when transmitting low-bandwidth configuration words.",
+    "relatedSlugs": [
+      "two-flop-synchronizer",
+      "pulse-cdc-controller",
+      "dual-clock-async-fifo"
+    ]
+  },
+  {
+    "slug": "pulse-cdc-controller",
+    "title": "Toggle-Based Pulse Synchronizer Across Asynchronous Clock Domains",
+    "difficulty": "hard",
+    "difficultyLabel": "Expert",
+    "points": 50,
+    "level": 7,
+    "tags": [
+      "advanced-rtl",
+      "cdc-and-rdc",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "CDC and RDC",
+    "isAdvancedSection": true,
+    "advancedIndex": 58,
+    "lede": "Design a toggle-based pulse synchronizer capable of reliably transferring 1-cycle event pulses between fast-to-slow and slow-to-fast clock domains.",
+    "concept": "<b>Objective:</b> Implement a pulse synchronizer. Directly synchronizing a 1-cycle pulse from a fast clock domain into a slower clock domain often fails because the pulse can vanish between slow clock edges. Use a toggle register in the source domain, cross the level signal through a 2-flop synchronizer in the destination domain, and use an edge detector (XOR) to generate an exact 1-cycle pulse in the destination domain.<br><br><b>Prerequisites:</b> Pulse swallowing problem in fast-to-slow CDC, toggle flip-flops, 2-flop synchronizers, edge detection.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>src_clk</code>, <code>src_rst_n</code></td><td>input</td><td>1</td><td>Source clock domain and reset</td></tr>\n<tr><td><code>src_pulse</code></td><td>input</td><td>1</td><td>1-cycle event pulse to be transmitted</td></tr>\n<tr><td><code>dst_clk</code>, <code>dst_rst_n</code></td><td>input</td><td>1</td><td>Destination clock domain and reset</td></tr>\n<tr><td><code>dst_pulse</code></td><td>output</td><td>1</td><td>Clean 1-cycle pulse reproduced in destination domain</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire src_clk,\n  input  wire src_rst_n,\n  input  wire src_pulse,\n  input  wire dst_clk,\n  input  wire dst_rst_n,\n  output reg  dst_pulse\n);\n\n  // Implement Toggle-Based Pulse Synchronizer:\n  // 1. In src_clk: toggle a register whenever src_pulse is high.\n  // 2. Synchronize toggle register into dst_clk through 2 flip-flops.\n  // 3. In dst_clk: detect any level change (using an XOR with a delayed flop) to generate 1-cycle dst_pulse.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire src_clk,\n  input  wire src_rst_n,\n  input  wire src_pulse,\n  input  wire dst_clk,\n  input  wire dst_rst_n,\n  output reg  dst_pulse\n);\n\n  reg src_toggle;\n  reg dst_s1, dst_s2, dst_s3;\n\n  // Source domain: Pulse-to-Toggle\n  always @(posedge src_clk or negedge src_rst_n) begin\n    if (!src_rst_n) begin\n      src_toggle <= 1'b0;\n    end else if (src_pulse) begin\n      src_toggle <= ~src_toggle;\n    end\n  end\n\n  // Destination domain: 2-Flop Sync + 3rd Flop for Edge Detection\n  always @(posedge dst_clk or negedge dst_rst_n) begin\n    if (!dst_rst_n) begin\n      dst_s1    <= 1'b0;\n      dst_s2    <= 1'b0;\n      dst_s3    <= 1'b0;\n      dst_pulse <= 1'b0;\n    end else begin\n      dst_s1    <= src_toggle;\n      dst_s2    <= dst_s1;\n      dst_s3    <= dst_s2;\n      dst_pulse <= dst_s2 ^ dst_s3; // Pulses on ANY transition (0->1 or 1->0)\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg src_clk, src_rst_n, src_pulse;\n  reg dst_clk, dst_rst_n;\n  wire dst_pulse;\n  integer errors = 0;\n  integer pulses_received = 0;\n\n  top_module dut (\n    .src_clk(src_clk), .src_rst_n(src_rst_n), .src_pulse(src_pulse),\n    .dst_clk(dst_clk), .dst_rst_n(dst_rst_n), .dst_pulse(dst_pulse)\n  );\n\n  // Fast source clock (100MHz / 10ns), slow destination clock (40MHz / 25ns)\n  always #5 src_clk = ~src_clk;\n  always #12.5 dst_clk = ~dst_clk;\n\n  always @(posedge dst_clk) begin\n    if (dst_pulse) pulses_received = pulses_received + 1;\n  end\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    src_clk = 0; src_rst_n = 0; src_pulse = 0;\n    dst_clk = 0; dst_rst_n = 0;\n    #30 src_rst_n = 1; dst_rst_n = 1;\n\n    // Send Pulse 1\n    @(negedge src_clk);\n    src_pulse = 1;\n    @(negedge src_clk);\n    src_pulse = 0;\n\n    // Wait for pulse in destination domain\n    repeat (6) @(negedge dst_clk);\n    if (pulses_received !== 1) begin\n      $display(\"FAIL: Expected 1 pulse received in destination domain, got %0d\", pulses_received);\n      errors = errors + 1;\n    end\n\n    // Send Pulse 2\n    @(negedge src_clk);\n    src_pulse = 1;\n    @(negedge src_clk);\n    src_pulse = 0;\n\n    repeat (6) @(negedge dst_clk);\n    if (pulses_received !== 2) begin\n      $display(\"FAIL: Expected 2 pulses received in destination domain, got %0d\", pulses_received);\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "src_clk",
+      "src_pulse",
+      "dst_clk",
+      "dst_pulse"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "src_clk",
+          "wave": "p........"
+        },
+        {
+          "name": "src_pulse",
+          "wave": "010.10..."
+        },
+        {
+          "name": "dst_clk",
+          "wave": "P...P...P"
+        },
+        {
+          "name": "dst_pulse",
+          "wave": "0..10.10."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Toggle-Based Pulse CDC</text>\n  \n  <rect x=\"160\" y=\"65\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"212\" y=\"88\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Source Domain</text>\n  <text x=\"212\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Pulse-to-Toggle (T-FF)</text>\n\n  <rect x=\"275\" y=\"65\" width=\"105\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#2dd4bf\"/>\n  <text x=\"327\" y=\"88\" fill=\"#e2e8f0\" font-size=\"10\" text-anchor=\"middle\">Dest Domain</text>\n  <text x=\"327\" y=\"103\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">2-Flop Sync + Edge Detect</text>\n\n  <rect x=\"160\" y=\"125\" width=\"220\" height=\"50\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f59e0b\"/>\n  <text x=\"270\" y=\"145\" fill=\"#f59e0b\" font-size=\"10\" text-anchor=\"middle\">Level-Crossing Safe Architecture</text>\n  <text x=\"270\" y=\"158\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Prevents Pulse Swallowing Across Fast-to-Slow CDC</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"90\" x2=\"140\" y2=\"90\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"85\" fill=\"#38bdf8\" font-size=\"9\">src_clk, src_pulse</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"90\" x2=\"500\" y2=\"90\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"85\" fill=\"#2dd4bf\" font-size=\"9\">dst_clk, dst_pulse</text>\n</svg>",
+    "hints": [
+      "A 1-cycle pulse in a fast domain can easily be swallowed if sampled directly by a slower clock.",
+      "Convert the pulse to a toggle: src_toggle <= ~src_toggle on every src_pulse.",
+      "Synchronize src_toggle into dst_clk using 2 flip-flops. Then an XOR between the 2nd and 3rd flip-flop outputs a clean 1-cycle pulse on every transition."
+    ],
+    "explanation": "<h3>The Pulse Swallowing Problem in CDC</h3>\n<p>When sending a 1-clock-cycle pulse from a fast clock domain (e.g. 500 MHz, 2 ns width) to a slow clock domain (e.g. 50 MHz, 20 ns period), the pulse frequently asserts and deasserts entirely between two rising edges of the slow clock. A direct 2-flop synchronizer will miss the pulse completely.</p>\n<h4>Toggle-Based Pulse Synchronization</h4>\n<ol>\n  <li><b>Pulse to Toggle:</b> In the source domain, a T-type flip-flop toggles its state ($0 \to 1$ or $1 \to 0$) whenever <code>src_pulse = 1</code> occurs. This transforms a transient pulse into a permanent DC level change.</li>\n  <li><b>Level Synchronization:</b> The toggle level crosses into the destination domain via a standard 2-flop synchronizer.</li>\n  <li><b>Edge Detection:</b> In the destination domain, a third register stores the delayed state. An <code>XOR</code> between the 2nd and 3rd flops detects any state transition, generating a clean 1-cycle pulse in the destination clock domain.</li>\n</ol>",
+    "timingReqs": "Completely asynchronous src_clk and dst_clk. Ensure consecutive pulses in src_clk are separated by at least 3 dst_clk periods to prevent pulse collisions.",
+    "constraints": "No missed pulses. Synthesizable Verilog-2001.",
+    "commonMistakes": "Using a simple rising-edge detector (in & ~in_d) instead of an XOR. Since the source toggles both 0->1 and 1->0, an XOR is required to detect every pulse.",
+    "hwNotes": "Consecutive source pulses must be separated by at least 2.5 destination clock periods to allow the toggle transition to propagate through the synchronizer chain.",
+    "relatedSlugs": [
+      "two-flop-synchronizer",
+      "pulse-synchronizer",
+      "multi-bit-handshake-cdc"
+    ]
+  },
+  {
+    "slug": "power-sequencing-controller",
+    "title": "SoC Multi-Rail Power Sequencing Controller",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 7,
+    "tags": [
+      "advanced-rtl",
+      "soc-controllers",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "SoC Controllers",
+    "isAdvancedSection": true,
+    "advancedIndex": 59,
+    "lede": "Design a deterministic hardware power-on and power-down sequencing controller with supply-good handshake monitoring and fault timeout protection.",
+    "concept": "<b>Objective:</b> Implement a multi-rail SoC power sequencer FSM. On pwr_req = 1, sequence voltage regulator enables (IO -> Core), monitor analog power-good flags, wait for PLL lock, enable clock gating, and deassert system reset after stabilization. Detect rail failure timeouts and execute an orderly shutdown.<br><br><b>Prerequisites:</b> SoC power management, PMIC power sequencing, power-good handshaking, FSM design, watchdog timers.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk</code>, <code>rst_n</code></td><td>input</td><td>1</td><td>Sequencer clock and active-low async reset</td></tr>\n<tr><td><code>pwr_req</code></td><td>input</td><td>1</td><td>Power-up request (1=ON, 0=OFF)</td></tr>\n<tr><td><code>vdd_io_ok</code>, <code>vdd_core_ok</code></td><td>input</td><td>1, 1</td><td>Power-good indicators from external PMIC / regulators</td></tr>\n<tr><td><code>pll_locked</code></td><td>input</td><td>1</td><td>Analog PLL frequency and phase lock status</td></tr>\n<tr><td><code>pwr_en_io</code>, <code>pwr_en_core</code></td><td>output</td><td>1, 1</td><td>Regulator enable controls (IO rail first, then Core)</td></tr>\n<tr><td><code>clk_enable</code></td><td>output</td><td>1</td><td>Clock distribution tree enable gate</td></tr>\n<tr><td><code>sys_rst_n_out</code></td><td>output</td><td>1</td><td>Deasserted (1) when system is operational</td></tr>\n<tr><td><code>seq_error</code></td><td>output</td><td>1</td><td>Latched high if any stage exceeds 15-cycle timeout</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire clk,\n  input  wire rst_n,\n  input  wire pwr_req,\n  input  wire vdd_io_ok,\n  input  wire vdd_core_ok,\n  input  wire pll_locked,\n  output reg  pwr_en_io,\n  output reg  pwr_en_core,\n  output reg  clk_enable,\n  output reg  sys_rst_n_out,\n  output reg  seq_error\n);\n\n  // Implement the multi-rail power sequencer FSM:\n  // 1. IDLE: Wait for pwr_req == 1.\n  // 2. EN_IO: Assert pwr_en_io. Wait for vdd_io_ok.\n  // 3. EN_CORE: Assert pwr_en_core. Wait for vdd_core_ok.\n  // 4. WAIT_PLL: Wait for pll_locked.\n  // 5. EN_CLK: Assert clk_enable. Wait 4 cycles for clock stabilization.\n  // 6. ACTIVE: Assert sys_rst_n_out = 1 while pwr_req == 1.\n  // 7. POWER_DOWN: If pwr_req == 0, deassert sys_rst_n_out -> clk_enable -> pwr_en_core -> pwr_en_io.\n  // 8. ERROR: If any wait state exceeds 15 cycles without its OK flag, assert seq_error = 1.\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire clk,\n  input  wire rst_n,\n  input  wire pwr_req,\n  input  wire vdd_io_ok,\n  input  wire vdd_core_ok,\n  input  wire pll_locked,\n  output reg  pwr_en_io,\n  output reg  pwr_en_core,\n  output reg  clk_enable,\n  output reg  sys_rst_n_out,\n  output reg  seq_error\n);\n\n  localparam S_IDLE        = 4'd0;\n  localparam S_EN_IO       = 4'd1;\n  localparam S_EN_CORE     = 4'd2;\n  localparam S_WAIT_PLL    = 4'd3;\n  localparam S_EN_CLK      = 4'd4;\n  localparam S_ACTIVE      = 4'd5;\n  localparam S_DOWN_RESET  = 4'd6;\n  localparam S_DOWN_CLK    = 4'd7;\n  localparam S_DOWN_CORE   = 4'd8;\n  localparam S_DOWN_IO     = 4'd9;\n  localparam S_ERROR       = 4'd10;\n\n  reg [3:0] state, next_state;\n  reg [3:0] timer;\n\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      state <= S_IDLE;\n      timer <= 4'd0;\n    end else begin\n      state <= next_state;\n      if (state != next_state) begin\n        timer <= 4'd0;\n      end else begin\n        timer <= timer + 4'd1;\n      end\n    end\n  end\n\n  always @(*) begin\n    next_state = state;\n    case (state)\n      S_IDLE: begin\n        if (pwr_req) next_state = S_EN_IO;\n      end\n\n      S_EN_IO: begin\n        if (!pwr_req) next_state = S_DOWN_IO;\n        else if (vdd_io_ok) next_state = S_EN_CORE;\n        else if (timer >= 4'd15) next_state = S_ERROR;\n      end\n\n      S_EN_CORE: begin\n        if (!pwr_req) next_state = S_DOWN_CORE;\n        else if (vdd_core_ok) next_state = S_WAIT_PLL;\n        else if (timer >= 4'd15) next_state = S_ERROR;\n      end\n\n      S_WAIT_PLL: begin\n        if (!pwr_req) next_state = S_DOWN_CORE;\n        else if (pll_locked) next_state = S_EN_CLK;\n        else if (timer >= 4'd15) next_state = S_ERROR;\n      end\n\n      S_EN_CLK: begin\n        if (!pwr_req) next_state = S_DOWN_CLK;\n        else if (timer >= 4'd3) next_state = S_ACTIVE; // 4 stabilization cycles\n      end\n\n      S_ACTIVE: begin\n        if (!pwr_req || !vdd_io_ok || !vdd_core_ok || !pll_locked) next_state = S_DOWN_RESET;\n      end\n\n      S_DOWN_RESET: next_state = S_DOWN_CLK;\n      S_DOWN_CLK:   next_state = S_DOWN_CORE;\n      S_DOWN_CORE:  next_state = S_DOWN_IO;\n      S_DOWN_IO:    next_state = S_IDLE;\n\n      S_ERROR: begin\n        if (!pwr_req) next_state = S_IDLE;\n      end\n\n      default: next_state = S_IDLE;\n    endcase\n  end\n\n  // Output registered decoding\n  always @(posedge clk or negedge rst_n) begin\n    if (!rst_n) begin\n      pwr_en_io     <= 1'b0;\n      pwr_en_core   <= 1'b0;\n      clk_enable    <= 1'b0;\n      sys_rst_n_out <= 1'b0;\n      seq_error     <= 1'b0;\n    end else begin\n      case (next_state)\n        S_IDLE: begin\n          pwr_en_io     <= 1'b0;\n          pwr_en_core   <= 1'b0;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_EN_IO: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b0;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_EN_CORE: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_WAIT_PLL: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_EN_CLK: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b1;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_ACTIVE: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b1;\n          sys_rst_n_out <= 1'b1;\n        end\n        S_DOWN_RESET: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b1;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_DOWN_CLK: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b1;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_DOWN_CORE: begin\n          pwr_en_io     <= 1'b1;\n          pwr_en_core   <= 1'b0;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_DOWN_IO: begin\n          pwr_en_io     <= 1'b0;\n          pwr_en_core   <= 1'b0;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n        end\n        S_ERROR: begin\n          pwr_en_io     <= 1'b0;\n          pwr_en_core   <= 1'b0;\n          clk_enable    <= 1'b0;\n          sys_rst_n_out <= 1'b0;\n          seq_error     <= 1'b1;\n        end\n      endcase\n    end\n  end\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk, rst_n, pwr_req, vdd_io_ok, vdd_core_ok, pll_locked;\n  wire pwr_en_io, pwr_en_core, clk_enable, sys_rst_n_out, seq_error;\n  integer errors = 0;\n\n  top_module dut (\n    .clk(clk), .rst_n(rst_n), .pwr_req(pwr_req),\n    .vdd_io_ok(vdd_io_ok), .vdd_core_ok(vdd_core_ok), .pll_locked(pll_locked),\n    .pwr_en_io(pwr_en_io), .pwr_en_core(pwr_en_core),\n    .clk_enable(clk_enable), .sys_rst_n_out(sys_rst_n_out),\n    .seq_error(seq_error)\n  );\n\n  always #5 clk = ~clk;\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk = 0; rst_n = 0; pwr_req = 0;\n    vdd_io_ok = 0; vdd_core_ok = 0; pll_locked = 0;\n    #15 rst_n = 1;\n\n    // Test 1: Successful Power-Up Sequence\n    @(negedge clk);\n    pwr_req = 1;\n    @(negedge clk);\n    if (!pwr_en_io || pwr_en_core) begin\n      $display(\"FAIL: IO rail should enable before Core\");\n      errors = errors + 1;\n    end\n\n    // Assert vdd_io_ok\n    vdd_io_ok = 1;\n    @(negedge clk);\n    if (!pwr_en_core) begin\n      $display(\"FAIL: Core rail should enable after vdd_io_ok\");\n      errors = errors + 1;\n    end\n\n    // Assert vdd_core_ok\n    vdd_core_ok = 1;\n    @(negedge clk);\n    // Wait for PLL\n    pll_locked = 1;\n    @(negedge clk);\n    if (!clk_enable || sys_rst_n_out) begin\n      $display(\"FAIL: clk_enable should assert while reset held\");\n      errors = errors + 1;\n    end\n\n    // Wait 4 clock cycles for clock stabilization\n    repeat(4) @(negedge clk);\n    if (!sys_rst_n_out) begin\n      $display(\"FAIL: sys_rst_n_out should deassert (active 1) after stabilization\");\n      errors = errors + 1;\n    end\n\n    // Test 2: Orderly Power-Down Sequence\n    pwr_req = 0;\n    @(negedge clk);\n    if (sys_rst_n_out !== 0) begin\n      $display(\"FAIL: sys_rst_n_out should drop immediately on power-down\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (clk_enable !== 0) begin\n      $display(\"FAIL: clk_enable should drop after reset\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (pwr_en_core !== 0) begin\n      $display(\"FAIL: core power should drop before IO\");\n      errors = errors + 1;\n    end\n    @(negedge clk);\n    if (pwr_en_io !== 0) begin\n      $display(\"FAIL: IO power should drop last\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk",
+      "rst_n",
+      "pwr_req",
+      "vdd_io_ok",
+      "vdd_core_ok",
+      "pll_locked",
+      "pwr_en_io",
+      "pwr_en_core",
+      "clk_enable",
+      "sys_rst_n_out"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk",
+          "wave": "p........."
+        },
+        {
+          "name": "pwr_req",
+          "wave": "01......0."
+        },
+        {
+          "name": "pwr_en_io",
+          "wave": "0.1.....0."
+        },
+        {
+          "name": "vdd_io_ok",
+          "wave": "0..1....0."
+        },
+        {
+          "name": "pwr_en_core",
+          "wave": "0...1...0."
+        },
+        {
+          "name": "vdd_core_ok",
+          "wave": "0....1..0."
+        },
+        {
+          "name": "clk_enable",
+          "wave": "0.....1.0."
+        },
+        {
+          "name": "sys_rst_n_out",
+          "wave": "0......10."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Power Sequencing Controller</text>\n  <text x=\"270\" y=\"62\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">PMIC / Multi-Rail Sequencer</text>\n\n  <rect x=\"160\" y=\"75\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"95\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">Orderly Rail Ramp &amp; Collapse FSM</text>\n  <text x=\"270\" y=\"108\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">IO -&gt; Core -&gt; PLL -&gt; Clk -&gt; Rst</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#f43f5e\"/>\n  <text x=\"270\" y=\"150\" fill=\"#f43f5e\" font-size=\"10\" text-anchor=\"middle\">15-Cycle Rail Fault Watchdog</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Auto-aborts on failed ramp</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"80\" x2=\"140\" y2=\"80\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"75\" fill=\"#a78bfa\" font-size=\"9\">pwr_req</text>\n  <line x1=\"40\" y1=\"110\" x2=\"140\" y2=\"110\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"105\" fill=\"#2dd4bf\" font-size=\"9\">vdd_io_ok, vdd_core_ok</text>\n  <line x1=\"40\" y1=\"145\" x2=\"140\" y2=\"145\" stroke=\"#f59e0b\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"140\" fill=\"#f59e0b\" font-size=\"9\">pll_locked</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"75\" x2=\"500\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"70\" fill=\"#38bdf8\" font-size=\"9\">pwr_en_io, pwr_en_core</text>\n  <line x1=\"400\" y1=\"110\" x2=\"500\" y2=\"110\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"105\" fill=\"#38bdf8\" font-size=\"9\">clk_enable</text>\n  <line x1=\"400\" y1=\"145\" x2=\"500\" y2=\"145\" stroke=\"#4ade80\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#4ade80\" font-size=\"9\">sys_rst_n_out</text>\n  <line x1=\"400\" y1=\"175\" x2=\"500\" y2=\"175\" stroke=\"#f43f5e\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"170\" fill=\"#f43f5e\" font-size=\"9\">seq_error</text>\n</svg>",
+    "hints": [
+      "Use a synchronous state machine with distinct states for power-up sequencing and reverse power-down collapse.",
+      "Include a 4-bit timer that increments each cycle in wait states and resets upon state transitions.",
+      "If the timer reaches 15 in any wait state, transition immediately to S_ERROR and deassert all enables."
+    ],
+    "explanation": "<h3>Why Modern SoCs Require Strict Power Sequencing</h3>\n<p>Modern System-on-Chips contain distinct power domains: I/O pads (1.8V/3.3V), analog PLLs (1.2V), and digital logic cores (0.75V - 0.9V). Violating the turn-on order can cause forward-biasing of parasitic PN junctions, leading to <b>destructive CMOS latch-up</b>.</p>\n<h4>Typical SoC Power-Up Sequence</h4>\n<ol>\n  <li><b>I/O Power First:</b> Turn on I/O rails so pads enter safe tri-state mode without driving floating voltages onto unpowered external interfaces.</li>\n  <li><b>Core Power Second:</b> Ramp the internal digital core voltage. Wait for external PMIC <code>power_good</code> assertion.</li>\n  <li><b>Analog Lock:</b> Enable analog PLLs and wait for lock status.</li>\n  <li><b>Clock Distribution:</b> Ungate internal clock trees, allowing flip-flops to stabilize under valid clock edges.</li>\n  <li><b>Reset Release:</b> Deassert synchronous reset cleanly aligned to clock edges.</li>\n</ol>",
+    "timingReqs": "Clocked on posedge clk with active-low async rst_n. Timeout limit = 15 cycles per state. Stabilization delay after clock enable = 4 cycles.",
+    "constraints": "No rail order violation (IO must precede Core on power-up; Core must drop before IO on power-down). Synthesizable Verilog-2001.",
+    "commonMistakes": "Deasserting reset before clocks stabilize, or shutting down I/O rails before the core logic has ceased activity.",
+    "hwNotes": "Silicon power sequencers are placed in an \"Always-On\" (AON) power domain powered by an auxiliary backup battery or low-dropout regulator (LDO).",
+    "relatedSlugs": [
+      "glitch-free-clock-switching-controller",
+      "apb-slave-controller",
+      "axi-stream-register-slice-full"
+    ]
+  },
+  {
+    "slug": "glitch-free-clock-switching-controller",
+    "title": "Glitch-Free Clock Multiplexer with Handshake Feedback",
+    "difficulty": "hard",
+    "difficultyLabel": "Industry Challenge",
+    "points": 50,
+    "level": 7,
+    "tags": [
+      "advanced-rtl",
+      "soc-controllers",
+      "systemverilog",
+      "asic",
+      "fpga"
+    ],
+    "category": "Advanced RTL & Protocol Design",
+    "subtopic": "SoC Controllers",
+    "isAdvancedSection": true,
+    "advancedIndex": 60,
+    "lede": "Design an industry-standard glitch-free clock switching controller that prevents runt pulses when dynamically alternating between asynchronous clock sources.",
+    "concept": "<b>Objective:</b> Implement a glitch-free dual-clock multiplexer. Use negative-edge flip-flop synchronizers with mutual exclusion feedback. When select changes, the currently active clock is first disabled when low, followed by enabling the target clock on its negative edge, guaranteeing zero runt pulses or glitches.<br><br><b>Prerequisites:</b> Clock gating, dynamic frequency scaling (DFS), negative-edge synchronizers, runt pulse hazards, CDC.",
+    "portsHtml": "<table><thead><tr><th>Port</th><th>Dir</th><th>Width</th><th>Description</th></tr></thead><tbody>\n<tr><td><code>clk_0</code>, <code>clk_1</code></td><td>input</td><td>1, 1</td><td>Independent, asynchronous clock inputs</td></tr>\n<tr><td><code>rst_n</code></td><td>input</td><td>1</td><td>Global asynchronous active-low reset</td></tr>\n<tr><td><code>sel</code></td><td>input</td><td>1</td><td>Clock select signal (0 = clk_0, 1 = clk_1)</td></tr>\n<tr><td><code>out_clk</code></td><td>output</td><td>1</td><td>Glitch-free multiplexed output clock</td></tr>\n<tr><td><code>active_clock</code></td><td>output</td><td>1</td><td>Status flag indicating currently driving clock</td></tr>\n</tbody></table>",
+    "starter": "module top_module (\n  input  wire clk_0,\n  input  wire clk_1,\n  input  wire rst_n,\n  input  wire sel,\n  output wire out_clk,\n  output wire active_clock\n);\n\n  // Implement glitch-free clock multiplexer:\n  // 1. Clock 0 enable logic clocked on negedge clk_0:\n  //    Takes (~sel & ~en_clk1_stage2) and registers it through 2 negedge clk_0 flops.\n  // 2. Clock 1 enable logic clocked on negedge clk_1:\n  //    Takes (sel & ~en_clk0_stage2) and registers it through 2 negedge clk_1 flops.\n  // 3. out_clk = (clk_0 & en_clk0) | (clk_1 & en_clk1).\n\nendmodule\n",
+    "referenceRtl": "module top_module (\n  input  wire clk_0,\n  input  wire clk_1,\n  input  wire rst_n,\n  input  wire sel,\n  output wire out_clk,\n  output wire active_clock\n);\n\n  reg en_clk0_d1, en_clk0_d2;\n  reg en_clk1_d1, en_clk1_d2;\n\n  // Domain 0: Negative edge flops for clock 0 enable\n  always @(negedge clk_0 or negedge rst_n) begin\n    if (!rst_n) begin\n      en_clk0_d1 <= 1'b1;\n      en_clk0_d2 <= 1'b1;\n    end else begin\n      en_clk0_d1 <= (~sel) & (~en_clk1_d2);\n      en_clk0_d2 <= en_clk0_d1;\n    end\n  end\n\n  // Domain 1: Negative edge flops for clock 1 enable\n  always @(negedge clk_1 or negedge rst_n) begin\n    if (!rst_n) begin\n      en_clk1_d1 <= 1'b0;\n      en_clk1_d2 <= 1'b0;\n    end else begin\n      en_clk1_d1 <= sel & (~en_clk0_d2);\n      en_clk1_d2 <= en_clk1_d1;\n    end\n  end\n\n  // Glitch-free clock gating and OR recombination\n  assign out_clk = (clk_0 & en_clk0_d2) | (clk_1 & en_clk1_d2);\n  assign active_clock = en_clk1_d2;\n\nendmodule\n",
+    "hiddenTb": "module tb;\n  reg clk_0, clk_1, rst_n, sel;\n  wire out_clk, active_clock;\n  integer errors = 0;\n  time last_edge_time = 0;\n  real min_pulse_width = 2.0;\n\n  top_module dut (\n    .clk_0(clk_0), .clk_1(clk_1), .rst_n(rst_n),\n    .sel(sel), .out_clk(out_clk), .active_clock(active_clock)\n  );\n\n  // clk_0: 100 MHz (period 10ns, high 5ns, low 5ns)\n  always #5 clk_0 = ~clk_0;\n\n  // clk_1: 66.6 MHz (period 15ns, high 7.5ns, low 7.5ns)\n  always #7.5 clk_1 = ~clk_1;\n\n  // Glitch detector: Check that pulse width on out_clk is never smaller than 4ns\n  always @(out_clk) begin\n    if (rst_n && $time > 20) begin\n      if (($time - last_edge_time) < 3.5 && last_edge_time > 0) begin\n        $display(\"FAIL: Runt pulse detected on out_clk! Pulse width = %0t ns\", $time - last_edge_time);\n        errors = errors + 1;\n      end\n      last_edge_time = $time;\n    end\n  end\n\n  initial begin\n    $dumpfile(\"dump.vcd\");\n    $dumpvars(0, tb);\n    clk_0 = 0; clk_1 = 0; rst_n = 0; sel = 0;\n    #12 rst_n = 1;\n\n    // Run on clk_0 for a while\n    #40;\n    if (active_clock !== 0) begin\n      $display(\"FAIL: Expected active_clock = 0 (clk_0)\");\n      errors = errors + 1;\n    end\n\n    // Switch to clk_1 at an arbitrary time (asynchronous switch)\n    #3 sel = 1;\n\n    // Wait for transition to complete\n    #80;\n    if (active_clock !== 1) begin\n      $display(\"FAIL: Expected active_clock = 1 (clk_1)\");\n      errors = errors + 1;\n    end\n\n    // Switch back to clk_0\n    #7 sel = 0;\n    #80;\n    if (active_clock !== 0) begin\n      $display(\"FAIL: Expected active_clock = 0 after switching back\");\n      errors = errors + 1;\n    end\n\n    if (errors == 0) $display(\"ALL_TESTS_PASSED\");\n    else $display(\"TESTS_FAILED with %0d errors\", errors);\n    $finish;\n  end\nendmodule\n",
+    "waveSignals": [
+      "clk_0",
+      "clk_1",
+      "rst_n",
+      "sel",
+      "dut.en_clk0_d2",
+      "dut.en_clk1_d2",
+      "out_clk",
+      "active_clock"
+    ],
+    "wavedrom": {
+      "signal": [
+        {
+          "name": "clk_0",
+          "wave": "p........"
+        },
+        {
+          "name": "clk_1",
+          "wave": "P........"
+        },
+        {
+          "name": "sel",
+          "wave": "0..1....."
+        },
+        {
+          "name": "en_clk0_d2",
+          "wave": "1...0...."
+        },
+        {
+          "name": "en_clk1_d2",
+          "wave": "0.....1.."
+        },
+        {
+          "name": "out_clk",
+          "wave": "p...P...."
+        },
+        {
+          "name": "active_clock",
+          "wave": "0.....1.."
+        }
+      ]
+    },
+    "circuitSvg": "<svg viewBox=\"0 0 540 220\" class=\"circuit-svg\" xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"140\" y=\"20\" width=\"260\" height=\"180\" rx=\"10\" fill=\"#0c1526\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"270\" y=\"45\" fill=\"#38bdf8\" font-size=\"13\" font-weight=\"700\" text-anchor=\"middle\">Glitch-Free Clock Multiplexer</text>\n  <text x=\"270\" y=\"62\" fill=\"#2dd4bf\" font-size=\"10\" text-anchor=\"middle\">Mutual-Exclusion Negative-Edge Gating</text>\n\n  <rect x=\"160\" y=\"75\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\"/>\n  <text x=\"270\" y=\"95\" fill=\"#38bdf8\" font-size=\"10\" text-anchor=\"middle\">clk_0 Negedge Sync Chain</text>\n  <text x=\"270\" y=\"108\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Disables clk_0 only while clk_0 is LOW</text>\n\n  <rect x=\"160\" y=\"130\" width=\"220\" height=\"45\" rx=\"5\" fill=\"#1e293b\" stroke=\"#a78bfa\"/>\n  <text x=\"270\" y=\"150\" fill=\"#a78bfa\" font-size=\"10\" text-anchor=\"middle\">clk_1 Negedge Sync Chain</text>\n  <text x=\"270\" y=\"163\" fill=\"#94a3b8\" font-size=\"8\" text-anchor=\"middle\">Enables clk_1 only after clk_0 is confirmed off</text>\n\n  <!-- Left Lines -->\n  <line x1=\"40\" y1=\"75\" x2=\"140\" y2=\"75\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"70\" fill=\"#38bdf8\" font-size=\"9\">clk_0</text>\n  <line x1=\"40\" y1=\"110\" x2=\"140\" y2=\"110\" stroke=\"#a78bfa\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"105\" fill=\"#a78bfa\" font-size=\"9\">clk_1</text>\n  <line x1=\"40\" y1=\"150\" x2=\"140\" y2=\"150\" stroke=\"#f59e0b\" stroke-width=\"2\"/>\n  <text x=\"45\" y=\"145\" fill=\"#f59e0b\" font-size=\"9\">sel</text>\n\n  <!-- Right Lines -->\n  <line x1=\"400\" y1=\"95\" x2=\"500\" y2=\"95\" stroke=\"#38bdf8\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"90\" fill=\"#38bdf8\" font-size=\"9\">out_clk</text>\n  <line x1=\"400\" y1=\"145\" x2=\"500\" y2=\"145\" stroke=\"#2dd4bf\" stroke-width=\"2\"/>\n  <text x=\"410\" y=\"140\" fill=\"#2dd4bf\" font-size=\"9\">active_clock</text>\n</svg>",
+    "hints": [
+      "Use negative-edge triggered flip-flops (always @(negedge clk_x)) to ensure the enable signal changes ONLY when the clock is low.",
+      "Feed the inverted enable of each clock domain into the D-input gating of the other domain to guarantee mutual exclusion.",
+      "Output is combinationally formed via (clk_0 & en_clk0) | (clk_1 & en_clk1)."
+    ],
+    "explanation": "<h3>Why Pure Combinational Multiplexers Cause Clock Glitches</h3>\n<p>If you switch between two asynchronous clocks using a simple multiplexer (<code>assign out_clk = sel ? clk_1 : clk_0;</code>), switching when one clock is high and the other is low produces a momentary narrow pulse called a <b>runt pulse</b>.</p>\n<p>Runt pulses violate setup and hold times of downstream flip-flops, causing chip-wide metastability and logic corruption.</p>\n<h4>The Glitch-Free Architecture Solution</h4>\n<ul>\n  <li><b>Negative-Edge Sampling:</b> Enabling or disabling a clock signal only when the clock is <i>low</i> ensures that rising edges are never truncated.</li>\n  <li><b>Cross-Feedback Handshaking:</b> The target clock cannot turn on until the current clock has verified that its enable is 0.</li>\n  <li><b>Metastability Hardening:</b> Dual flip-flops in each clock domain absorb any metastability from asynchronous <code>sel</code> changes.</li>\n</ul>",
+    "timingReqs": "Driven by asynchronous clock sources clk_0 and clk_1 with active-low async rst_n. Enables must toggle ONLY during clock low phases.",
+    "constraints": "Strictly zero runt pulses on out_clk. No glitches during select transitions. Synthesizable Verilog-2001.",
+    "commonMistakes": "Triggering enable registers on posedge clk instead of negedge clk, which causes glitches during high phases.",
+    "hwNotes": "Standard cell libraries often provide specialized ICG (Integrated Clock Gating) cells with integrated negative-edge latches to save power and area.",
+    "relatedSlugs": [
+      "power-sequencing-controller",
+      "pulse-cdc-controller",
+      "multi-bit-handshake-cdc"
+    ]
   }
-];
-
-  const LEVEL_META = [
+  ];
+const LEVEL_META = [
     { level: 1, name: 'Digital Logic Fundamentals', diff: 'Beginner', badge: 'L1', color: '#38bdf8', desc: 'Logic gates, truth tables, multiplexers, demux, decoders, and bitwise reductions.' },
     { level: 2, name: 'Combinational RTL Design', diff: 'Beginner to Intermediate', badge: 'L2', color: '#2dd4bf', desc: 'ALU, barrel shifters, priority selection, adders, arithmetic, and latch avoidance.' },
     { level: 3, name: 'Sequential RTL Design', diff: 'Intermediate', badge: 'L3', color: '#a78bfa', desc: 'Flip-flops, enable registers, shift registers, binary & ring counters, clock dividers, and edge detectors.' },
