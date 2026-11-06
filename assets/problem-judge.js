@@ -50,11 +50,20 @@
     return { passed, failed, log, raw };
   }
 
+  function binToHex(binStr) {
+    if (/^[xX]+$/.test(binStr)) return 'X';
+    if (/^[zZ]+$/.test(binStr)) return 'Z';
+    const val = parseInt(binStr, 2);
+    if (isNaN(val)) return binStr;
+    return '0x' + val.toString(16).toUpperCase();
+  }
+
   function parseVCDSignals(vcdText, wantedNames) {
     const nameToId = {};
     const idToName = {};
     const events = {};
-    wantedNames.forEach(n => { events[n] = []; });
+    const isBus = {};
+    wantedNames.forEach(n => { events[n] = []; isBus[n] = false; });
 
     let inDefs = true;
     let time = 0;
@@ -62,12 +71,17 @@
       const l = raw.trim();
       if (!l) continue;
       if (l.startsWith('$var')) {
-        const m = l.match(/^\$var\s+\S+\s+\d+\s+(\S+)\s+(\S+)/);
-        if (m) {
-          const [, id, name] = m;
-          if (wantedNames.includes(name) && !nameToId[name]) {
-            nameToId[name] = id;
-            idToName[id] = name;
+        const parts = l.split(/\s+/);
+        if (parts.length >= 5) {
+          const width = parseInt(parts[2], 10) || 1;
+          const id = parts[3];
+          const name = parts[4];
+          for (const w of wantedNames) {
+            if (w === name || name.startsWith(w + '[') || w.startsWith(name + '[')) {
+              nameToId[w] = id;
+              idToName[id] = w;
+              if (width > 1 || l.includes('[')) isBus[w] = true;
+            }
           }
         }
         continue;
@@ -80,46 +94,130 @@
       let m = l.match(/^([01xzXZ])(\S+)$/);
       if (m) {
         const name = idToName[m[2]];
-        if (name) events[name].push({ time, value: m[1].toLowerCase() });
+        if (name) events[name].push({ time, value: m[1].toLowerCase(), isBus: false });
         continue;
       }
       m = l.match(/^b([01xzXZ]+)\s+(\S+)$/);
       if (m) {
         const name = idToName[m[2]];
-        if (name) events[name].push({ time, value: (m[1].slice(-1) || '0').toLowerCase() });
+        if (name) {
+          const rawBin = m[1].toLowerCase();
+          const hexVal = binToHex(rawBin);
+          events[name].push({ time, value: hexVal, rawBin, isBus: true });
+          isBus[name] = true;
+        }
       }
     }
+    events._isBus = isBus;
     return events;
   }
 
-  function renderTimingDiagram(events, signalOrder, endTime) {
-    const cellW = 70, laneH = 46, labelW = 72, topPad = 24, botPad = 34;
-    const hiY = 12, loY = 34;
-    const width = labelW + (endTime + 1) * cellW + 20;
+  function renderTimingDiagram(events, signalOrder, endTime, zoomScale = 1) {
+    const baseCellW = 56;
+    const cellW = Math.max(36, Math.round(baseCellW * (zoomScale || 1)));
+    const laneH = 46, labelW = 86, topPad = 26, botPad = 32;
+    const hiY = 12, loY = 34, midY = 23;
+    const width = labelW + (endTime + 1) * cellW + 24;
     const height = topPad + signalOrder.length * laneH + botPad;
-    const yFor = v => (v === '1' ? hiY : loY);
+    const yFor = v => (v === '1' ? hiY : v === '0' ? loY : midY);
+    const busMap = events && events._isBus ? events._isBus : {};
 
-    let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono',monospace">`;
+    let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#020617;font-family:'JetBrains Mono',monospace;user-select:none;">`;
+    
+    // Pattern for undefined / high-impedance
+    svg += `<defs>
+      <pattern id="diagHatch" width="6" height="6" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(239,68,68,0.45)" stroke-width="1.5" />
+      </pattern>
+    </defs>`;
+
+    // Time grid ticks and vertical lines
     for (let t = 0; t <= endTime; t++) {
       const x = labelW + t * cellW;
-      svg += `<line x1="${x}" y1="${topPad - 6}" x2="${x}" y2="${height - botPad + 6}" stroke="#1e2b40" stroke-width="1"/>`;
-      svg += `<text x="${x}" y="${height - botPad + 20}" font-size="10" fill="#64748b" text-anchor="middle">${t}ns</text>`;
+      const isMajor = t % 5 === 0;
+      const stroke = isMajor ? 'rgba(148,163,184,0.22)' : 'rgba(148,163,184,0.08)';
+      svg += `<line x1="${x}" y1="${topPad - 6}" x2="${x}" y2="${height - botPad + 4}" stroke="${stroke}" stroke-width="1"/>`;
+      if (t % 2 === 0 || isMajor || cellW >= 60) {
+        svg += `<text x="${x}" y="${height - botPad + 18}" font-size="10" fill="#64748b" text-anchor="middle">${t}ns</text>`;
+      }
     }
+
     signalOrder.forEach((name, idx) => {
       const laneTop = topPad + idx * laneH;
-      const evs = (events[name] || []).slice().sort((a, b) => a.time - b.time);
-      svg += `<text x="8" y="${laneTop + 27}" font-size="12" fill="#e2e8f0" font-weight="700">${esc(name)}</text>`;
-      if (!evs.length) return;
-      let prevVal = evs[0].value;
-      let d = `M ${labelW} ${laneTop + yFor(prevVal)}`;
-      for (let i = 1; i < evs.length; i++) {
-        const xAt = labelW + evs[i].time * cellW;
-        d += ` L ${xAt} ${laneTop + yFor(prevVal)} L ${xAt} ${laneTop + yFor(evs[i].value)}`;
-        prevVal = evs[i].value;
+      const isBus = busMap[name] || (events[name] && events[name].some(e => e.isBus));
+      const isClk = /^(clk|clock)$/i.test(name);
+      const isRst = /^(rst|reset|rst_n)$/i.test(name);
+
+      // Alternating lane background
+      if (idx % 2 === 1) {
+        svg += `<rect x="0" y="${laneTop}" width="${width}" height="${laneH}" fill="rgba(255,255,255,0.015)"/>`;
       }
-      d += ` L ${labelW + endTime * cellW} ${laneTop + yFor(prevVal)}`;
-      svg += `<path d="${d}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linejoin="round"/>`;
+      svg += `<line x1="0" y1="${laneTop + laneH}" x2="${width}" y2="${laneTop + laneH}" stroke="rgba(148,163,184,0.08)" stroke-width="1"/>`;
+
+      // Signal Label
+      const labelColor = isClk ? '#38bdf8' : isRst ? '#f43f5e' : isBus ? '#fbbf24' : '#2dd4bf';
+      const busTag = isBus ? ' <tspan font-size="8.5" fill="#94a3b8">[bus]</tspan>' : '';
+      svg += `<text x="10" y="${laneTop + 27}" font-size="11" fill="${labelColor}" font-weight="700">${esc(name)}${busTag}</text>`;
+
+      const evs = (events[name] || []).slice().sort((a, b) => a.time - b.time);
+      if (!evs.length) return;
+
+      if (!isBus) {
+        // 1-Bit Digital Signal Rendering
+        const wireColor = isClk ? '#38bdf8' : isRst ? '#f43f5e' : '#2dd4bf';
+        let prevVal = typeof evs[0].value === 'string' ? evs[0].value : (evs[0].value ? '1' : '0');
+        let d = `M ${labelW} ${laneTop + yFor(prevVal)}`;
+        for (let i = 1; i < evs.length; i++) {
+          const xAt = labelW + evs[i].time * cellW;
+          const curVal = typeof evs[i].value === 'string' ? evs[i].value : (evs[i].value ? '1' : '0');
+          d += ` L ${xAt} ${laneTop + yFor(prevVal)} L ${xAt} ${laneTop + yFor(curVal)}`;
+          prevVal = curVal;
+        }
+        d += ` L ${labelW + endTime * cellW} ${laneTop + yFor(prevVal)}`;
+        svg += `<path d="${d}" fill="none" stroke="${wireColor}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      } else {
+        // Multi-Bit Hex Bus Envelopes
+        for (let i = 0; i < evs.length; i++) {
+          const tStart = evs[i].time;
+          const tEnd = (i < evs.length - 1) ? evs[i + 1].time : endTime;
+          if (tStart >= endTime) break;
+
+          const x1 = labelW + tStart * cellW;
+          const x2 = labelW + Math.min(endTime, tEnd) * cellW;
+          const spanW = x2 - x1;
+          if (spanW <= 0) continue;
+
+          const val = evs[i].value || '0x0';
+          const isX = String(val).toLowerCase().includes('x');
+          const fill = isX ? 'url(#diagHatch)' : 'rgba(245,158,11,0.12)';
+          const stroke = isX ? '#ef4444' : '#fbbf24';
+
+          const bevel = Math.min(4, spanW / 4);
+          const yH = laneTop + hiY;
+          const yL = laneTop + loY;
+          const yM = laneTop + midY;
+
+          const pts = [
+            `${x1 + bevel},${yH}`,
+            `${x2 - bevel},${yH}`,
+            `${x2},${yM}`,
+            `${x2 - bevel},${yL}`,
+            `${x1 + bevel},${yL}`,
+            `${x1},${yM}`
+          ].join(' ');
+
+          svg += `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-linejoin="round"/>`;
+
+          if (spanW > 20) {
+            const textX = (x1 + x2) / 2;
+            const textY = yM + 3.5;
+            const displayVal = spanW < 42 && String(val).length > 4 ? String(val).slice(0, 3) + '…' : String(val);
+            svg += `<text x="${textX}" y="${textY}" font-size="9.5" fill="#fef08a" font-weight="600" text-anchor="middle">${displayVal}</text>`;
+          }
+        }
+      }
     });
+
     svg += '</svg>';
     return svg;
   }
