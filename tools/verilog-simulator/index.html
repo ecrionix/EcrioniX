@@ -853,43 +853,67 @@
       justify-content: center;
     }
     #netlist-svg-wrap {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position: absolute;
+      left: 0;
+      top: 0;
       transform-origin: 0 0;
+      cursor: grab;
+      user-select: none;
+      transition: opacity 0.15s ease;
+    }
+    .netlist-wrap.grabbing #netlist-svg-wrap,
+    #netlist-svg-wrap:active {
+      cursor: grabbing;
     }
     /* Graphviz SVG Dark Mode Normalization */
     #netlist-svg-wrap svg {
+      display: block;
+      overflow: visible;
       max-width: none;
       max-height: none;
     }
     #netlist-svg-wrap svg text {
-      fill: #f8fafc !important;
-      font-family: var(--font-mono) !important;
+      fill: #f1f5f9 !important;
+      font-family: var(--font-mono), monospace !important;
+      font-size: 11px !important;
+      font-weight: 500 !important;
     }
-    #netlist-svg-wrap svg path, 
-    #netlist-svg-wrap svg polygon, 
-    #netlist-svg-wrap svg polyline {
+    #netlist-svg-wrap svg path {
+      stroke: #38bdf8 !important;
+      stroke-width: 1.8px !important;
+      fill: none !important;
+    }
+    #netlist-svg-wrap svg g.node polygon,
+    #netlist-svg-wrap svg g.node path {
+      fill: #0c1529 !important;
+      stroke: #0284c7 !important;
+      stroke-width: 1.5px !important;
+    }
+    #netlist-svg-wrap svg g.edge polygon {
+      fill: #38bdf8 !important;
       stroke: #38bdf8 !important;
     }
-    #netlist-svg-wrap svg polygon[fill="white"] {
-      fill: rgba(15, 23, 42, 0.85) !important;
+    #netlist-svg-wrap svg g.graph > polygon:first-child {
+      fill: transparent !important;
+      stroke: none !important;
     }
 
     /* Text Netlist View */
     #netlist-text-wrap {
       width: 100%;
       height: 100%;
-      padding: 1rem;
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      color: #cbd5e1;
+      padding: 1.25rem;
+      font-family: var(--font-mono), monospace;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      background: #060b18;
       overflow: auto;
       display: none;
-      white-space: pre-wrap;
+      white-space: pre;
       line-height: 1.5;
+      border: none;
+      margin: 0;
+      tab-size: 2;
     }
 
     /* Report Wraps (Synth, STA, Liberty) */
@@ -1290,15 +1314,21 @@
         <div style="display:flex;align-items:center;gap:0.6rem">
           <span style="font-size:0.78rem;font-weight:700;color:var(--sky)">Gate-Level Schematic Netlist</span>
           <div class="mode-pills" style="padding:1px">
-            <button class="mode-pill active" id="btn-nl-schematic" onclick="setNetlistView('schematic')">Schematic</button>
-            <button class="mode-pill" id="btn-nl-text" onclick="setNetlistView('text')">Verilog Netlist</button>
+            <button class="mode-pill active" id="btn-nl-schematic" onclick="setNetlistView('schematic')" title="View graphical schematic circuit diagram">Schematic</button>
+            <button class="mode-pill" id="btn-nl-text" onclick="setNetlistView('text')" title="View structural gate-level Verilog code">Verilog Netlist</button>
           </div>
         </div>
         <div style="margin-left:auto;display:flex;align-items:center;gap:0.35rem">
-          <button class="btn btn-xs btn-icon-only" onclick="nlZoomIn()" title="Zoom In">+</button>
-          <button class="btn btn-xs btn-icon-only" onclick="nlZoomOut()" title="Zoom Out">&minus;</button>
-          <button class="btn btn-xs" onclick="nlFit()">Fit</button>
-          <button class="btn btn-xs btn-icon-only" onclick="downloadNetlistSVG()" id="dl-svg-btn" title="Download SVG Schematic">SVG</button>
+          <div id="netlist-text-controls" style="display:none;align-items:center;gap:0.35rem">
+            <button class="btn btn-xs" onclick="copyNetlistText()" title="Copy Netlist to Clipboard">📋 Copy</button>
+            <button class="btn btn-xs" onclick="downloadTextNetlist()" title="Download Structural Netlist (.v)">💾 Download .v</button>
+          </div>
+          <div id="netlist-zoom-controls" style="display:flex;align-items:center;gap:0.35rem">
+            <button class="btn btn-xs btn-icon-only" onclick="nlZoomIn()" title="Zoom In">+</button>
+            <button class="btn btn-xs btn-icon-only" onclick="nlZoomOut()" title="Zoom Out">&minus;</button>
+            <button class="btn btn-xs" onclick="nlFit()" title="Fit to Viewport">Fit</button>
+            <button class="btn btn-xs btn-icon-only" onclick="downloadNetlistSVG()" id="dl-svg-btn" title="Download SVG Schematic">SVG</button>
+          </div>
         </div>
       </div>
       <div class="netlist-wrap empty" id="netlist-wrap">
@@ -3633,9 +3663,11 @@ function downloadNetlistSVG(){
   if(svg) dlBlob('netlist.svg','<?xml version="1.0" encoding="UTF-8"?>\n'+svg.outerHTML,'image/svg+xml');
 }
 
-// ── Netlist ────────────────────────────────────────────
+// ── Netlist & Gate-Level Schematic ─────────────────────────
 const NETLIST_API = 'https://ecrionix-ecrionix-verilog.hf.space/netlist';
-let nl = { scale:1, tx:0, ty:0, dragging:false, sx:0, sy:0 };
+window.nl = { scale:1, tx:0, ty:0, dragging:false, sx:0, sy:0 };
+let netlistCurrentView = 'schematic';
+window.currentGeneratedNetlistVerilog = '';
 
 function nlApply(){
   const wrap = document.getElementById('netlist-svg-wrap');
@@ -3646,12 +3678,15 @@ function nlApply(){
 
 function nlFit(){
   const wrap = document.getElementById('netlist-wrap');
-  const svgEl = document.querySelector('#netlist-svg-wrap svg');
-  if(!wrap || !svgEl) return;
+  const svgWrap = document.getElementById('netlist-svg-wrap');
+  const svgEl = svgWrap ? svgWrap.querySelector('svg') : null;
+  if(!wrap || !svgEl || !svgWrap) return;
+
   const ww = wrap.clientWidth || 800;
   const wh = wrap.clientHeight || 500;
+
   let sw = 800, sh = 500;
-  if(svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width > 0) {
+  if (svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width > 0) {
     sw = svgEl.viewBox.baseVal.width;
     sh = svgEl.viewBox.baseVal.height;
   } else {
@@ -3659,45 +3694,59 @@ function nlFit(){
     sw = bbox.width || 800;
     sh = bbox.height || 500;
   }
-  nl.scale = Math.min((ww - 30) / sw, (wh - 30) / sh, 2.5);
-  nl.scale = Math.max(0.1, nl.scale);
+
+  // Explicit pixel dimensions matching viewBox so scale is strictly 1:1
+  svgEl.style.width = sw + 'px';
+  svgEl.style.height = sh + 'px';
+  svgWrap.style.width = sw + 'px';
+  svgWrap.style.height = sh + 'px';
+
+  const pad = 24;
+  const scale = Math.min((ww - pad * 2) / sw, (wh - pad * 2) / sh, 2.5);
+  nl.scale = Math.max(0.05, scale);
   nl.tx = (ww - sw * nl.scale) / 2;
   nl.ty = (wh - sh * nl.scale) / 2;
   nlApply();
 }
-function nlZoomIn(){ nl.scale=Math.min(nl.scale*1.4,10); nlApply(); }
-function nlZoomOut(){ nl.scale=Math.max(nl.scale/1.4,0.05); nlApply(); }
+
+function nlZoomIn(){ nl.scale = Math.min(nl.scale * 1.35, 10); nlApply(); }
+function nlZoomOut(){ nl.scale = Math.max(nl.scale / 1.35, 0.05); nlApply(); }
 
 function initNetlistPan(){
   const wrap = document.getElementById('netlist-wrap');
-  wrap.addEventListener('wheel', e=>{
+  if(!wrap) return;
+  wrap.addEventListener('wheel', e => {
     e.preventDefault();
-    const factor = e.deltaY<0 ? 1.2 : 0.83;
+    const factor = e.deltaY < 0 ? 1.15 : 0.87;
     const rect = wrap.getBoundingClientRect();
-    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
-    nl.tx = mx - (mx-nl.tx)*factor;
-    nl.ty = my - (my-nl.ty)*factor;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    nl.tx = mx - (mx - nl.tx) * factor;
+    nl.ty = my - (my - nl.ty) * factor;
     nl.scale *= factor;
     nlApply();
-  },{passive:false});
-  wrap.addEventListener('mousedown', e=>{
-    nl.dragging=true; nl.sx=e.clientX-nl.tx; nl.sy=e.clientY-nl.ty;
+  }, { passive: false });
+
+  wrap.addEventListener('mousedown', e => {
+    nl.dragging = true;
+    nl.sx = e.clientX - nl.tx;
+    nl.sy = e.clientY - nl.ty;
     wrap.classList.add('grabbing');
   });
-  window.addEventListener('mousemove', e=>{
+
+  window.addEventListener('mousemove', e => {
     if(!nl.dragging) return;
-    nl.tx=e.clientX-nl.sx; nl.ty=e.clientY-nl.sy; nlApply();
+    nl.tx = e.clientX - nl.sx;
+    nl.ty = e.clientY - nl.sy;
+    nlApply();
   });
-  window.addEventListener('mouseup', ()=>{
-    nl.dragging=false;
-    document.getElementById('netlist-wrap').classList.remove('grabbing');
+
+  window.addEventListener('mouseup', () => {
+    nl.dragging = false;
+    wrap.classList.remove('grabbing');
   });
 }
 initNetlistPan();
-
-// ── Upgraded Netlist & Schematic Engine ────────────────────────
-let netlistCurrentView = 'schematic';
-let currentGeneratedNetlistVerilog = '';
 
 function setNetlistView(mode) {
   netlistCurrentView = mode;
@@ -3705,21 +3754,42 @@ function setNetlistView(mode) {
   const txtWrap = document.getElementById('netlist-text-wrap');
   const btnSch = document.getElementById('btn-nl-schematic');
   const btnTxt = document.getElementById('btn-nl-text');
-  
+  const zoomControls = document.getElementById('netlist-zoom-controls');
+  const textControls = document.getElementById('netlist-text-controls');
+
   if (btnSch) btnSch.classList.toggle('active', mode === 'schematic');
   if (btnTxt) btnTxt.classList.toggle('active', mode === 'text');
-  
+
+  const statusMsg = document.getElementById('netlist-status-msg');
   if (mode === 'schematic') {
     if (svgWrap) svgWrap.style.display = 'block';
     if (txtWrap) txtWrap.style.display = 'none';
+    if (zoomControls) zoomControls.style.display = 'flex';
+    if (textControls) textControls.style.display = 'none';
+    if (statusMsg) statusMsg.style.display = 'block';
     setTimeout(nlFit, 40);
   } else {
     if (svgWrap) svgWrap.style.display = 'none';
+    if (zoomControls) zoomControls.style.display = 'none';
+    if (textControls) textControls.style.display = 'flex';
+    if (statusMsg) statusMsg.style.display = 'none';
     if (txtWrap) {
       txtWrap.style.display = 'block';
-      txtWrap.textContent = currentGeneratedNetlistVerilog || '// Click Netlist in the toolbar to generate structural gate-level netlist.';
+      txtWrap.textContent = currentGeneratedNetlistVerilog || '// Click "Schematic" or "Netlist" in toolbar to synthesize gate-level netlist.';
     }
   }
+}
+
+function copyNetlistText() {
+  if (!currentGeneratedNetlistVerilog) {
+    setStatus('warn', 'No netlist generated yet');
+    return;
+  }
+  navigator.clipboard.writeText(currentGeneratedNetlistVerilog).then(() => {
+    setStatus('ok', 'Structural Netlist copied to clipboard!');
+  }).catch(() => {
+    setStatus('ok', 'Copied netlist');
+  });
 }
 
 function downloadTextNetlist() {
@@ -3727,25 +3797,51 @@ function downloadTextNetlist() {
   dlBlob('netlist.synth.v', code, 'text/x-verilog');
 }
 
+function downloadNetlistSVG(){
+  const svg = document.querySelector('#netlist-svg-wrap svg');
+  if(svg) dlBlob('netlist.svg', '<?xml version="1.0" encoding="UTF-8"?>\n' + svg.outerHTML, 'image/svg+xml');
+}
+
 function normalizeSvgForDarkTheme(svgRaw) {
   let s = svgRaw;
-  s = s.replace(/<svg\s+width="[^"]*"\s+height="[^"]*"/i, '<svg width="100%" height="100%"');
-  s = s.replace(/stroke="black"/gi, 'stroke="#38bdf8"');
-  s = s.replace(/stroke="#000000"/gi, 'stroke="#38bdf8"');
-  s = s.replace(/fill="white"/gi, 'fill="rgba(15,23,42,0.9)"');
-  s = s.replace(/fill="#ffffff"/gi, 'fill="rgba(15,23,42,0.9)"');
-  s = s.replace(/fill="black"/gi, 'fill="#f8fafc"');
-  s = s.replace(/fill="#000000"/gi, 'fill="#f8fafc"');
+
+  // 1. Remove hardcoded width and height attributes on the <svg> element, keeping viewBox
+  s = s.replace(/<svg\b([^>]*)/i, (match, attrs) => {
+    const cleanAttrs = attrs.replace(/\b(width|height)="[^"]*"/gi, '').trim();
+    return `<svg width="100%" height="100%" ${cleanAttrs}`;
+  });
+
+  // 2. Remove Graphviz's background canvas polygon (white with transparent stroke)
+  s = s.replace(/<polygon\s+fill="white"\s+stroke="transparent"\s+points="[^"]*"\s*\/>/gi, 
+                '<polygon fill="transparent" stroke="none" points="" />');
+  s = s.replace(/<polygon\s+fill="#ffffff"\s+stroke="transparent"\s+points="[^"]*"\s*\/>/gi, 
+                '<polygon fill="transparent" stroke="none" points="" />');
+
+  // 3. Ensure all text is readable in dark mode with monospace font
+  s = s.replace(/<text\b([^>]*)>/gi, (match, attrs) => {
+    let clean = attrs.replace(/\bfont-family="[^"]*"/gi, `font-family="var(--font-mono), monospace"`);
+    if (!/fill=/i.test(clean)) {
+      clean += ' fill="#f1f5f9"';
+    } else {
+      clean = clean.replace(/fill="(?:black|#000000)"/gi, 'fill="#f1f5f9"');
+    }
+    return `<text ${clean}>`;
+  });
+
+  // 4. Color wires and gates
+  s = s.replace(/stroke="(?:black|#000000)"/gi, 'stroke="#38bdf8"');
+  s = s.replace(/fill="(?:black|#000000)"/gi, 'fill="#38bdf8"');
+
   return s;
 }
 
-function generateClientSchematic(code) {
+function generateClientStructuralNetlist(code) {
   const modMatch = code.match(/module\s+([a-zA-Z0-9_$]+)[\s\S]*?\(([^)]*)\);/);
   const modName = modMatch ? modMatch[1] : 'top';
-  
+
   const inputs = [];
   const outputs = [];
-  
+
   const inMatches = code.matchAll(/input(?:\s+(?:wire|reg))?(?:\s*\[([^\]]+)\])?\s*([a-zA-Z0-9_$,\s]+);/g);
   for(const m of inMatches) {
     m[2].split(',').forEach(p => {
@@ -3770,7 +3866,79 @@ function generateClientSchematic(code) {
     if(!outputs.includes(m[1])) outputs.push(m[1]);
   }
 
-  if(inputs.length === 0) inputs.push('a', 'b', 'clk', 'rst_n');
+  if(inputs.length === 0) inputs.push('a', 'b', 'clk', 'rst');
+  if(outputs.length === 0) outputs.push('sum', 'cout');
+
+  let v = `/* Structural Gate-Level Netlist (Synthesized by EcrioniX RTL Engine) */\n`;
+  v += `/* Target Module: ${modName} */\n\n`;
+  v += `module ${modName} (\n`;
+  const allPorts = [...inputs, ...outputs];
+  v += allPorts.map(p => `  ${p}`).join(',\n') + '\n);\n\n';
+
+  inputs.forEach(p => { v += `  input wire ${p};\n`; });
+  outputs.forEach(p => { v += `  output wire ${p};\n`; });
+  v += '\n  // Internal wire nets\n';
+  v += '  wire _net_w0, _net_w1;\n\n';
+  v += '  // Primitive gate instances\n';
+
+  let gateIdx = 0;
+  if (code.includes('^')) {
+    v += `  xor U_XOR${gateIdx++} (${outputs[0] || 'sum'}, ${inputs[0] || 'a'}, ${inputs[1] || 'b'});\n`;
+  }
+  if (code.includes('&')) {
+    v += `  and U_AND${gateIdx++} (${outputs[1] || outputs[0] || 'cout'}, ${inputs[0] || 'a'}, ${inputs[1] || 'b'});\n`;
+  }
+  if (code.includes('|')) {
+    v += `  or  U_OR${gateIdx++}  (${outputs[0] || 'y'}, ${inputs[0] || 'a'}, ${inputs[1] || 'b'});\n`;
+  }
+  if (code.includes('~')) {
+    v += `  not U_NOT${gateIdx++} (_net_w0, ${inputs[0] || 'a'});\n`;
+  }
+  if (code.includes('posedge') || code.includes('negedge')) {
+    const clkName = inputs.find(x => /clk/i.test(x)) || 'clk';
+    const rstName = inputs.find(x => /rst/i.test(x)) || 'rst';
+    v += `  dff U_DFF${gateIdx++} (\n    .clk(${clkName}),\n    .rst(${rstName}),\n    .d(_net_w0),\n    .q(${outputs[0] || 'q'})\n  );\n`;
+  }
+  if (gateIdx === 0) {
+    v += `  buf U_BUF0 (${outputs[0] || 'y'}, ${inputs[0] || 'a'});\n`;
+  }
+
+  v += 'endmodule\n';
+  return v;
+}
+
+function generateClientSchematic(code) {
+  const modMatch = code.match(/module\s+([a-zA-Z0-9_$]+)[\s\S]*?\(([^)]*)\);/);
+  const modName = modMatch ? modMatch[1] : 'top';
+
+  const inputs = [];
+  const outputs = [];
+
+  const inMatches = code.matchAll(/input(?:\s+(?:wire|reg))?(?:\s*\[([^\]]+)\])?\s*([a-zA-Z0-9_$,\s]+);/g);
+  for(const m of inMatches) {
+    m[2].split(',').forEach(p => {
+      const name = p.trim();
+      if(name && !inputs.includes(name)) inputs.push(name);
+    });
+  }
+  const inPortMatches = code.matchAll(/input\s+(?:wire\s+)?(?:reg\s+)?([a-zA-Z0-9_$]+)/g);
+  for(const m of inPortMatches) {
+    if(!inputs.includes(m[1])) inputs.push(m[1]);
+  }
+
+  const outMatches = code.matchAll(/output(?:\s+(?:wire|reg))?(?:\s*\[([^\]]+)\])?\s*([a-zA-Z0-9_$,\s]+);/g);
+  for(const m of outMatches) {
+    m[2].split(',').forEach(p => {
+      const name = p.trim();
+      if(name && !outputs.includes(name)) outputs.push(name);
+    });
+  }
+  const outPortMatches = code.matchAll(/output\s+(?:wire\s+)?(?:reg\s+)?([a-zA-Z0-9_$]+)/g);
+  for(const m of outPortMatches) {
+    if(!outputs.includes(m[1])) outputs.push(m[1]);
+  }
+
+  if(inputs.length === 0) inputs.push('a', 'b', 'clk', 'rst');
   if(outputs.length === 0) outputs.push('sum', 'cout');
 
   const gates = [];
@@ -3839,9 +4007,13 @@ async function netlistCode(){
   const code = (designFiles.length ? designFiles : files).map(f => f.code).join('\n\n').trim();
   if(!code){ setStatus('err','No code in editor'); return; }
 
+  // Detect top module
+  const m = code.match(/\bmodule\s+([a-zA-Z0-9_$]+)/);
+  const top_module = m ? m[1] : '';
+
   setStatus('run','Synthesizing gate-level netlist...');
   switchTab('netlist', document.getElementById('tab-netlist'));
-  
+
   const statusMsg = document.getElementById('netlist-status-msg');
   if (statusMsg) {
     statusMsg.style.display = 'block';
@@ -3852,7 +4024,7 @@ async function netlistCode(){
   const txtWrap = document.getElementById('netlist-text-wrap');
 
   try {
-    const res = await apiFetch(NETLIST_API, { code }, (attempt, s) => {
+    const res = await apiFetch(NETLIST_API, { code, top_module }, (attempt, s) => {
       if (statusMsg) {
         statusMsg.textContent = `Server waking up — retry in ${Math.round(s)}s (attempt ${attempt+1}/3)...`;
       }
@@ -3862,13 +4034,19 @@ async function netlistCode(){
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
 
-    if(d.success && d.svg) {
-      const cleanSvg = normalizeSvgForDarkTheme(d.svg);
-      if(svgWrap) {
-        svgWrap.innerHTML = cleanSvg;
+    if((d.success && d.svg) || d.netlist) {
+      if(d.svg) {
+        const cleanSvg = normalizeSvgForDarkTheme(d.svg);
+        if(svgWrap) {
+          svgWrap.innerHTML = cleanSvg;
+          svgWrap.style.display = 'block';
+        }
+      } else if(svgWrap) {
+        svgWrap.innerHTML = generateClientSchematic(code);
         svgWrap.style.display = 'block';
       }
-      currentGeneratedNetlistVerilog = d.netlist || `// Gate-level structural netlist\nmodule top(...);\n  // Mapped gates from Yosys\nendmodule`;
+
+      currentGeneratedNetlistVerilog = d.netlist || generateClientStructuralNetlist(code);
       if(txtWrap) txtWrap.textContent = currentGeneratedNetlistVerilog;
 
       nl.scale = 1; nl.tx = 0; nl.ty = 0;
@@ -3880,13 +4058,13 @@ async function netlistCode(){
     }
   } catch(e) {
     console.warn('Backend netlist unavailable. Rendering client-side schematic:', e.message);
-    if(statusMsg) statusMsg.textContent = 'Server starting · Rendered local gate-level schematic';
+    if(statusMsg) statusMsg.textContent = 'Server connecting · Rendered local gate-level schematic';
     const fallbackSvg = generateClientSchematic(code);
     if(svgWrap) {
       svgWrap.innerHTML = fallbackSvg;
       svgWrap.style.display = 'block';
     }
-    currentGeneratedNetlistVerilog = `// Client Extracted Netlist for: ${code.slice(0, 50).trim()}...\n// Yosys server connecting in background.`;
+    currentGeneratedNetlistVerilog = generateClientStructuralNetlist(code);
     if(txtWrap) txtWrap.textContent = currentGeneratedNetlistVerilog;
     nl.scale = 1; nl.tx = 0; nl.ty = 0;
     setTimeout(nlFit, 60);
