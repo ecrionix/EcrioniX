@@ -1,6 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('ecrionix-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {}
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Free Online Verilog Simulator &amp; Compiler with Interactive Waveforms | EcrioniX</title>
@@ -2820,7 +2828,17 @@ endmodule`}
   systemverilog:[
     {name:'alu_sv.sv', code:
 `// SystemVerilog (IEEE 1800-2012) Example: Parameterized ALU & Enums
-package alu_pkg;
+module alu_sv #(
+  parameter int WIDTH = 8
+)(
+  input  logic             clk,
+  input  logic             rst_n,
+  input  logic [2:0]       op,
+  input  logic [WIDTH-1:0] a,
+  input  logic [WIDTH-1:0] b,
+  output logic [WIDTH-1:0] result,
+  output logic             zero
+);
   typedef enum logic [2:0] {
     ALU_ADD = 3'b000,
     ALU_SUB = 3'b001,
@@ -2830,22 +2848,6 @@ package alu_pkg;
     ALU_SLL = 3'b101,
     ALU_SRL = 3'b110
   } alu_op_t;
-endpackage
-
-import alu_pkg::*;
-
-// Parameter without default value (supported in SystemVerilog!)
-module alu_sv #(
-  parameter int WIDTH
-)(
-  input  logic             clk,
-  input  logic             rst_n,
-  input  alu_op_t          op,
-  input  logic [WIDTH-1:0] a,
-  input  logic [WIDTH-1:0] b,
-  output logic [WIDTH-1:0] result,
-  output logic             zero
-);
 
   logic [WIDTH-1:0] alu_comb;
 
@@ -2876,18 +2878,22 @@ module alu_sv #(
 
 endmodule`},
     {name:'tb_alu.sv', code:
-`import alu_pkg::*;
-
-module tb_alu;
+`module tb_alu;
   localparam int W = 8;
 
   logic         clk = 0;
   logic         rst_n = 0;
-  alu_op_t      op = ALU_ADD;
+  logic [2:0]   op = 3'b000;
   logic [W-1:0] a = '0;
   logic [W-1:0] b = '0;
   logic [W-1:0] result;
   logic         zero;
+
+  localparam [2:0] ALU_ADD = 3'b000;
+  localparam [2:0] ALU_SUB = 3'b001;
+  localparam [2:0] ALU_AND = 3'b010;
+  localparam [2:0] ALU_OR  = 3'b011;
+  localparam [2:0] ALU_XOR = 3'b100;
 
   // Instantiate parameterized SystemVerilog module
   alu_sv #(.WIDTH(W)) dut (
@@ -2930,17 +2936,10 @@ module tb_alu;
     op = ALU_SUB; a = 8'd42; b = 8'd42;
 
     #20;
-    $display("=== SystemVerilog Simulation Finished Successfully! ===");
+    $display("All SV ALU tests finished successfully.");
     $finish;
   end
-
-  always @(posedge clk) begin
-    if (rst_n)
-      $display("t=%0t | op=%0d a=%0d b=%0d => result=%0d (zero=%b)", $time, op, a, b, result, zero);
-  end
-
-endmodule`}
-  ],
+endmodule`}],
 
   spi:[
     {name:'spi_master.v', code:
@@ -3059,7 +3058,7 @@ module spi_master_tb;
   endtask
 
   initial begin
-    $dumpfile("spi.vcd"); $dumpvars(0, spi_master_tb);
+    $dumpfile("dump.vcd"); $dumpvars(0, spi_master_tb);
     rst_n = 0; start = 0; tx_data = 0;
     #25 rst_n = 1;
 
@@ -3444,6 +3443,7 @@ function renderProjectFilesList() {
         <span style="font-size:0.85rem">${icon}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:0.75rem">${f.name}</span>
         <span style="font-size:0.58rem;font-weight:700;padding:0.05rem 0.35rem;border-radius:3px;background:${badgeBg};color:${badgeColor}">${isTb ? 'TB' : 'RTL'}</span>
+        <span class="project-file-rename" onclick="event.stopPropagation();renameFile(${i})" title="Rename file" style="opacity:0.6;margin:0 4px;cursor:pointer;font-size:0.75rem">✎</span>
         ${files.length > 1 ? `<span class="project-file-del" onclick="event.stopPropagation();closeFile(${i})" title="Delete file">×</span>` : ''}
       </div>
     `;
@@ -3458,9 +3458,10 @@ function renderFileTabs(){
   function tabHtml({f,i}){
     const isActive = i===activeFile;
     const cls = isActive ? (f.type==='tb' ? 'ftab tb-active' : 'ftab rtl-active') : 'ftab';
-    return `<div class="${cls}" onclick="switchFile(${i})">
-      <span>${f.name}</span>
-      ${files.length>1?`<span class="ftab-x" onclick="event.stopPropagation();closeFile(${i})">×</span>`:''}
+    return `<div class="${cls}" onclick="switchFile(${i})" ondblclick="renameFile(${i})" title="${f.name} (Double-click to rename)">
+      <span class="ftab-name">${f.name}</span>
+      <span class="ftab-rename" onclick="event.stopPropagation();renameFile(${i})" title="Rename file" style="opacity:0.6;margin-left:5px;cursor:pointer;font-size:0.75rem">✎</span>
+      ${files.length>1?`<span class="ftab-x" onclick="event.stopPropagation();closeFile(${i})" title="Close file">×</span>`:''}
     </div>`;
   }
   let html = `<span class="ftab-section-label rtl-lbl">RTL</span>`;
@@ -4052,6 +4053,7 @@ ed.addEventListener('input', ()=>{
   if(errorLines.size){ errorLines=new Set(); fileErrors={}; }
   if(typeof files !== 'undefined' && files[activeFile]) files[activeFile].code = ed.value;
   updateLines(); updateHighlight();
+  debouncedAutoSave();
 });
 ed.addEventListener('scroll', ()=>{
   ln.scrollTop = ed.scrollTop;
@@ -4430,7 +4432,14 @@ function downloadNetlistSVG(){
   if(svg) dlBlob('netlist.svg', '<?xml version="1.0" encoding="UTF-8"?>\n' + svg.outerHTML, 'image/svg+xml');
 }
 
-function normalizeSvgForDarkTheme(svgRaw) {
+let lastNetlistRawSvg = null;
+
+function normalizeSvgForTheme(svgRaw) {
+  if (!svgRaw) return '';
+  lastNetlistRawSvg = svgRaw;
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const textColor = isLight ? '#0f172a' : '#f1f5f9';
+  const wireColor = isLight ? '#0284c7' : '#38bdf8';
   let s = svgRaw;
 
   // 1. Remove hardcoded width and height attributes on the <svg> element, keeping viewBox
@@ -4439,29 +4448,32 @@ function normalizeSvgForDarkTheme(svgRaw) {
     return `<svg width="100%" height="100%" ${cleanAttrs}`;
   });
 
-  // 2. Remove Graphviz's background canvas polygon (white with transparent stroke)
+  // 2. Remove Graphviz's background canvas polygon
   s = s.replace(/<polygon\s+fill="white"\s+stroke="transparent"\s+points="[^"]*"\s*\/>/gi, 
                 '<polygon fill="transparent" stroke="none" points="" />');
   s = s.replace(/<polygon\s+fill="#ffffff"\s+stroke="transparent"\s+points="[^"]*"\s*\/>/gi, 
                 '<polygon fill="transparent" stroke="none" points="" />');
 
-  // 3. Ensure all text is readable in dark mode with monospace font
+  // 3. Ensure all text is readable with monospace font
   s = s.replace(/<text\b([^>]*)>/gi, (match, attrs) => {
     let clean = attrs.replace(/\bfont-family="[^"]*"/gi, `font-family="var(--font-mono), monospace"`);
     if (!/fill=/i.test(clean)) {
-      clean += ' fill="#f1f5f9"';
+      clean += ` fill="${textColor}"`;
     } else {
-      clean = clean.replace(/fill="(?:black|#000000)"/gi, 'fill="#f1f5f9"');
+      clean = clean.replace(/fill="(?:black|#000000|#f1f5f9|#0f172a)"/gi, `fill="${textColor}"`);
     }
     return `<text ${clean}>`;
   });
 
   // 4. Color wires and gates
-  s = s.replace(/stroke="(?:black|#000000)"/gi, 'stroke="#38bdf8"');
-  s = s.replace(/fill="(?:black|#000000)"/gi, 'fill="#38bdf8"');
+  s = s.replace(/stroke="(?:black|#000000|#38bdf8|#0284c7)"/gi, `stroke="${wireColor}"`);
+  s = s.replace(/fill="(?:black|#000000|#38bdf8|#0284c7)"/gi, `fill="${wireColor}"`);
 
   return s;
 }
+
+// Backward compatibility alias
+function normalizeSvgForDarkTheme(svgRaw) { return normalizeSvgForTheme(svgRaw); }
 
 function generateClientStructuralNetlist(code) {
   const modMatch = code.match(/module\s+([a-zA-Z0-9_$]+)[\s\S]*?\(([^)]*)\);/);
@@ -4631,7 +4643,7 @@ function generateClientSchematic(code) {
 
 async function netlistCode(){
   files[activeFile].code = ed.value;
-  const designFiles = files.filter(f => !/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f => f.code).join('\n\n').trim();
   if(!code){ setStatus('err','No code in editor'); return; }
 
@@ -4664,7 +4676,7 @@ async function netlistCode(){
 
     if((d.success && d.svg) || d.netlist) {
       if(d.svg) {
-        const cleanSvg = normalizeSvgForDarkTheme(d.svg);
+        const cleanSvg = normalizeSvgForTheme(d.svg);
         if(svgWrap) {
           svgWrap.innerHTML = cleanSvg;
           svgWrap.style.display = 'block';
@@ -4726,7 +4738,7 @@ function fmtSynth(text){
 async function synthCode(){
   files[activeFile].code = ed.value;
   // Only synthesize design files — skip tb.v / testbench files
-  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
   const btn=document.getElementById('synth-btn');
@@ -4869,7 +4881,7 @@ function generateFloorplanSvg(dieSide, coreSide, areaUm2, utilPct, rows, sites, 
 
 async function libertyCode(){
   files[activeFile].code = ed.value;
-  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
   const btn = document.getElementById('liberty-btn') || document.getElementById('synth-btn');
@@ -4953,7 +4965,7 @@ function fmtSTA(text){
 
 async function staCode(){
   files[activeFile].code = ed.value;
-  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
   const btn = document.getElementById('sta-btn') || document.getElementById('synth-btn');
@@ -5043,7 +5055,7 @@ function fmtSKY130(text){
 
 async function sky130Code(){
   files[activeFile].code = ed.value;
-  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
   const btn = document.getElementById('sky130-btn') || document.getElementById('synth-btn');
@@ -5150,7 +5162,7 @@ function parseSTA(text){
 
 async function floorplanCode(){
   files[activeFile].code = ed.value;
-  const designFiles = files.filter(f=>!/^(tb|testbench|test)\.(v|sv)$/i.test(f.name));
+  const designFiles = files.filter(f => !isTbFile(f));
   const code = (designFiles.length ? designFiles : files).map(f=>f.code).join('\n\n').trim();
   if(!code){setStatus('err','No code');return;}
 
@@ -5389,21 +5401,22 @@ function drawWave(){
   cv.width=canW; cv.height=canH;
 
   const ctx=cv.getContext('2d');
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
 
   // background
-  ctx.fillStyle='#060c1a';
+  ctx.fillStyle = isLight ? '#f8fafc' : '#060c1a';
   ctx.fillRect(0,0,canW,canH);
 
   // alternating row backgrounds
   vn.forEach((_,i)=>{
     if(i%2===1){
-      ctx.fillStyle='rgba(15,23,42,0.45)';
+      ctx.fillStyle = isLight ? 'rgba(241,245,249,0.85)' : 'rgba(15,23,42,0.45)';
       ctx.fillRect(0,AX_H+i*ROW_H,canW,ROW_H);
     }
   });
 
   // row dividers
-  ctx.strokeStyle='rgba(148,163,184,0.05)';
+  ctx.strokeStyle = isLight ? 'rgba(203,213,225,0.7)' : 'rgba(148,163,184,0.05)';
   ctx.lineWidth=1;
   for(let i=1;i<=vn.length;i++){
     const y=AX_H+i*ROW_H;
@@ -5411,7 +5424,7 @@ function drawWave(){
   }
 
   // time axis background
-  ctx.fillStyle='#0a1020';
+  ctx.fillStyle = isLight ? '#f1f5f9' : '#0a1020';
   ctx.fillRect(0,0,canW,AX_H);
 
   // time ticks & grid
@@ -5422,19 +5435,19 @@ function drawWave(){
     const x=tt*W.ppt;
     if(x>canW) break;
     // grid line
-    ctx.strokeStyle='rgba(56,189,248,0.06)';
+    ctx.strokeStyle = isLight ? 'rgba(14,165,233,0.18)' : 'rgba(56,189,248,0.06)';
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(x,AX_H);ctx.lineTo(x,canH);ctx.stroke();
     // tick
-    ctx.strokeStyle='rgba(56,189,248,0.35)';
+    ctx.strokeStyle = isLight ? 'rgba(14,165,233,0.5)' : 'rgba(56,189,248,0.35)';
     ctx.beginPath();ctx.moveTo(x,AX_H-5);ctx.lineTo(x,AX_H);ctx.stroke();
     // label
-    ctx.fillStyle='#4a6680';
+    ctx.fillStyle = isLight ? '#334155' : '#4a6680';
     ctx.textAlign='left';
     ctx.fillText(fmtTime(tt),x+2,AX_H-8);
   }
   // axis bottom border
-  ctx.fillStyle='rgba(56,189,248,0.15)';
+  ctx.fillStyle = isLight ? 'rgba(14,165,233,0.25)' : 'rgba(56,189,248,0.15)';
   ctx.fillRect(0,AX_H-1,canW,1);
 
   // signals
@@ -5631,6 +5644,12 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next);
   try { localStorage.setItem('ecrionix-theme', next); } catch(e){}
   if (typeof W !== 'undefined' && W.names && W.names.length) drawWave();
+  if (typeof lastNetlistRawSvg !== 'undefined' && lastNetlistRawSvg) {
+    const svgWrap = document.getElementById('netlist-svg-wrap');
+    if (svgWrap && svgWrap.style.display !== 'none') {
+      svgWrap.innerHTML = normalizeSvgForTheme(lastNetlistRawSvg);
+    }
+  }
 }
 
 // ── Learning Mode Button Toggle ───────────────────────────
@@ -6087,23 +6106,164 @@ function updateLearningModeContent(exampleId) {
   `;
 }
 
-// ── Export Full Project as ZIP / Multi-file Bundle ─────────
-function downloadAllFilesZip() {
-  if(!files || files.length === 0) return;
-  let bundle = `// ================================================================\n`;
-  bundle += `//  EcrioniX Verilog Studio Project Export\n`;
-  bundle += `//  Generated: ${new Date().toUTCString()}\n`;
-  bundle += `// ================================================================\n\n`;
-  
-  files.forEach(f => {
-    bundle += `// ----------------------------------------------------------------\n`;
-    bundle += `//  FILE: ${f.name} (${f.type.toUpperCase()})\n`;
-    bundle += `// ----------------------------------------------------------------\n`;
-    bundle += f.code + `\n\n`;
+// ── File Renaming ──────────────────────────────────────────
+function renameFile(idx) {
+  if (idx < 0 || idx >= files.length) return;
+  const oldName = files[idx].name;
+  const newName = prompt('Enter new filename (e.g., module.v or tb_module.v):', oldName);
+  if (!newName || newName.trim() === '' || newName.trim() === oldName) return;
+
+  const cleanName = newName.trim();
+  if (!/\.(v|sv|vh)$/i.test(cleanName)) {
+    alert('Filename must end with .v, .sv, or .vh');
+    return;
+  }
+  if (files.some((f, i) => i !== idx && f.name.toLowerCase() === cleanName.toLowerCase())) {
+    alert(`A file named "${cleanName}" already exists.`);
+    return;
+  }
+
+  files[idx].name = cleanName;
+  files[idx].type = isTbFile(cleanName) ? 'tb' : 'rtl';
+  renderFileTabs();
+  renderProjectFilesList();
+  setStatus('idle', `Renamed "${oldName}" to "${cleanName}"`);
+  autoSaveProject();
+}
+
+// ── Pure JS Standards-Compliant ZIP Generator ──────────────
+function createZipBlob(fileList) {
+  const crcTable = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    crcTable[n] = c;
+  }
+  function getCrc32(bytes) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xff];
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  const textEncoder = new TextEncoder();
+  const fileEntries = [];
+  let offset = 0;
+
+  // Include README
+  const allEntries = [...fileList, {
+    name: 'README.txt',
+    code: `// ================================================================\n//  EcrioniX Verilog Studio Project Export\n//  Platform: https://ecrionix.org/tools/verilog-simulator/\n//  Generated: ${new Date().toUTCString()}\n// ================================================================\n\nIncluded Files:\n${fileList.map(f => ' - ' + f.name + ' (' + f.type.toUpperCase() + ')').join('\n')}\n`
+  }];
+
+  allEntries.forEach(f => {
+    const nameBytes = textEncoder.encode(f.name);
+    const dataBytes = textEncoder.encode(f.code || '');
+    const crc = getCrc32(dataBytes);
+    const len = dataBytes.length;
+
+    const header = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 0x0800, true); // UTF-8
+    view.setUint16(8, 0, true);      // Store
+    view.setUint16(10, 0, true);
+    view.setUint16(12, 0, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, len, true);
+    view.setUint32(22, len, true);
+    view.setUint16(26, nameBytes.length, true);
+    view.setUint16(28, 0, true);
+    header.set(nameBytes, 30);
+
+    fileEntries.push({ nameBytes, dataBytes, header, crc, len, offset });
+    offset += header.length + len;
   });
 
-  dlBlob('verilog_project_bundle.v', bundle, 'text/plain');
-  setStatus('idle', 'Project bundle downloaded successfully');
+  const cdOffset = offset;
+  const cdParts = [];
+  let cdSize = 0;
+
+  fileEntries.forEach(entry => {
+    const cdHeader = new Uint8Array(46 + entry.nameBytes.length);
+    const view = new DataView(cdHeader.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 20, true);
+    view.setUint16(8, 0x0800, true);
+    view.setUint16(10, 0, true);
+    view.setUint16(12, 0, true);
+    view.setUint16(14, 0, true);
+    view.setUint32(16, entry.crc, true);
+    view.setUint32(20, entry.len, true);
+    view.setUint32(24, entry.len, true);
+    view.setUint16(28, entry.nameBytes.length, true);
+    view.setUint16(30, 0, true);
+    view.setUint16(32, 0, true);
+    view.setUint16(34, 0, true);
+    view.setUint16(36, 0, true);
+    view.setUint32(38, 0, true);
+    view.setUint32(42, entry.offset, true);
+    cdHeader.set(entry.nameBytes, 46);
+
+    cdParts.push(cdHeader);
+    cdSize += cdHeader.length;
+  });
+
+  const eocd = new Uint8Array(22);
+  const eocdView = new DataView(eocd.buffer);
+  eocdView.setUint32(0, 0x06054b50, true);
+  eocdView.setUint16(4, 0, true);
+  eocdView.setUint16(6, 0, true);
+  eocdView.setUint16(8, fileEntries.length, true);
+  eocdView.setUint16(10, fileEntries.length, true);
+  eocdView.setUint32(12, cdSize, true);
+  eocdView.setUint32(16, cdOffset, true);
+  eocdView.setUint16(20, 0, true);
+
+  const blobParts = [];
+  fileEntries.forEach(e => {
+    blobParts.push(e.header);
+    blobParts.push(e.dataBytes);
+  });
+  cdParts.forEach(cd => blobParts.push(cd));
+  blobParts.push(eocd);
+
+  return new Blob(blobParts, { type: 'application/zip' });
+}
+
+// ── Export Full Project as Genuine .ZIP Archive ─────────────
+function downloadAllFilesZip() {
+  if(!files || files.length === 0) return;
+  files[activeFile].code = ed.value;
+
+  try {
+    const zipBlob = createZipBlob(files);
+    const projectName = (files[0].name.replace(/\.[^/.]+$/, '') || 'verilog_project') + '_ecrionix.zip';
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = projectName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus('idle', `Downloaded ${files.length} files as "${projectName}"`);
+  } catch (err) {
+    console.warn('ZIP generation error, fallback to bundle:', err);
+    let bundle = `// ================================================================\n`;
+    bundle += `//  EcrioniX Verilog Studio Project Export\n`;
+    bundle += `//  Generated: ${new Date().toUTCString()}\n`;
+    bundle += `// ================================================================\n\n`;
+    files.forEach(f => {
+      bundle += `// ----------------------------------------------------------------\n`;
+      bundle += `//  FILE: ${f.name} (${f.type.toUpperCase()})\n`;
+      bundle += `// ----------------------------------------------------------------\n`;
+      bundle += f.code + `\n\n`;
+    });
+    dlBlob('verilog_project_bundle.v', bundle, 'text/plain');
+    setStatus('idle', 'Project bundle downloaded');
+  }
 }
 
 // ── FAQ Accordion Toggle ──────────────────────────────────
@@ -6180,6 +6340,39 @@ function updateCursorPos() {
 
 
 // ── Guaranteed Complete Initialization ────────────────────
+// ── Project Auto-Save & Accidental Navigation Protection ────
+let isProjectDirty = false;
+let _autoSaveTimer = null;
+
+function debouncedAutoSave() {
+  isProjectDirty = true;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(autoSaveProject, 1000);
+}
+
+function autoSaveProject() {
+  try {
+    if (typeof files !== 'undefined' && files && files.length) {
+      if (typeof ed !== 'undefined' && ed.value !== undefined) {
+        files[activeFile].code = ed.value;
+      }
+      localStorage.setItem('ecrionix_verilog_autosave', JSON.stringify({
+        files,
+        activeFile,
+        timestamp: Date.now()
+      }));
+    }
+  } catch(e) {}
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (isProjectDirty) {
+    autoSaveProject();
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 (function initEcrioniXVerilogStudio() {
   renderExplorer('', 'all');
   
@@ -6214,6 +6407,27 @@ function updateCursorPos() {
       console.warn('Could not decode share parameter:', err);
     }
   }
+
+  // Check for auto-saved project session (< 7 days old)
+  try {
+    const saved = localStorage.getItem('ecrionix_verilog_autosave');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.files) && parsed.files.length && (Date.now() - (parsed.timestamp || 0) < 7 * 86400 * 1000)) {
+        files = parsed.files;
+        activeFile = (parsed.activeFile >= 0 && parsed.activeFile < files.length) ? parsed.activeFile : 0;
+        ed.value = files[activeFile].code;
+        updateLines();
+        updateHighlight();
+        renderFileTabs();
+        renderProjectFilesList();
+        calculateRtlQuality(files[activeFile].code);
+        renderRtlVisualizer(files[activeFile].code);
+        setStatus('idle', 'Restored previous session · Ready');
+        return;
+      }
+    }
+  } catch(e) {}
 
   // Default initial load:
   loadExample('counter', null);
