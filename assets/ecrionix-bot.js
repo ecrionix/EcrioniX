@@ -1,256 +1,1077 @@
-/* EcrioniX Assistant — lightweight, dependency-free topic recommender.
-   Asks what the visitor wants to learn and suggests relevant pages.
-   Static-site friendly: all matching happens in the browser. */
-(function(){
-  if (window.__ecxBot) return; window.__ecxBot = true;
+/* ==========================================================================
+   EcrioniX AI Engineering Assistant & Global Floating Community Controller (v4)
+   - 100% Client-Side / Local Knowledge Base (Zero External APIs, Zero Keys, Offline Ready)
+   - Intelligent Intent Parsing, Keyword & Synonym Matching, Contextual Follow-ups
+   - Synthesizable Verilog / SystemVerilog Code Generation & Copy Support
+   - Universal High-Contrast Light (Default) & Dark Mode Adaptation
+   - Integrated Global Floating WhatsApp Community Component (Audited across all pages)
+   ========================================================================== */
+(function () {
+  'use strict';
+  if (window.__ecxBotInitialized) return;
+  window.__ecxBotInitialized = true;
 
-  // ---- Theme: apply saved preference (DEFAULT: light) + load shared toggle ----
-  (function(){
-    try {
-      var t = localStorage.getItem('ecrionix-theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
-    } catch (e) {}
+  // ──────────────────────────────────────────────────────────────────────────
+  // 1. DYNAMIC KNOWLEDGE BASE LOADER (Instant Offline Fallback + Async Fetch)
+  // ──────────────────────────────────────────────────────────────────────────
+  var KB = window.__ECX_KB || null;
+  var currentContextTopicId = null;
 
-    function ensureStylesheet(href) {
-      if ([].some.call(document.styleSheets, function (s) { return s.href && s.href.indexOf(href) !== -1; })) return;
-      if (document.querySelector('link[href*="' + href + '"]')) return;
-      var link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = href;
-      document.head.appendChild(link);
+  function loadKnowledgeBase(callback) {
+    if (window.__ECX_KB && window.__ECX_KB.topics) {
+      KB = window.__ECX_KB;
+      if (callback) callback(KB);
+      return;
     }
-    ensureStylesheet('/assets/theme-toggle.css?v=4');
-    ensureStylesheet('/assets/site-theme.css?v=8');
-
-    function ensureToggleScript() {
-      if (document.getElementById('themeToggleBtn') || window.__ecxThemeToggleLoading) return;
-      if ([].some.call(document.scripts, function (s) { return s.src && s.src.indexOf('theme-toggle.js') !== -1; })) return;
-      window.__ecxThemeToggleLoading = true;
-      var s = document.createElement('script');
-      s.src = '/assets/theme-toggle.js?v=4';
-      s.defer = true;
-      document.head.appendChild(s);
-    }
-    ensureToggleScript();
-  })();
-
-  // ---- curated topic index ----
-  var IDX = [
-    {t:"Topics Directory", u:"/topics/", s:"Navigate", k:"topics directory category browse hubs courses tools"},
-    {t:"All Courses Roadmap", u:"/courses/", s:"Navigate", k:"courses roadmap learning path"},
-    // VLSI / physical
-    {t:"VLSI Hub — all chip-design topics", u:"/vlsi/", s:"VLSI", k:"vlsi chip design asic soc semiconductor"},
-    {t:"Physical Design — netlist to GDSII", u:"/physical-design/", s:"VLSI", k:"physical design floorplan placement routing pnr gdsii backend"},
-    {t:"VLSI Design Flow (animated)", u:"/vlsi-design-flow/", s:"VLSI", k:"rtl to gdsii flow design flow stages asic"},
-    {t:"Logic Synthesis — RTL to gates", u:"/synthesis/", s:"VLSI", k:"synthesis yosys netlist constraints sdc gates"},
-    {t:"Design for Test (DFT)", u:"/dft/", s:"VLSI", k:"dft scan atpg bist jtag fault coverage test"},
-    {t:"Low-Power VLSI Design", u:"/low-power/", s:"VLSI", k:"low power clock gating power gating leakage dvfs upf dynamic"},
-    {t:"FinFET vs GAA Transistors", u:"/finfet-vs-gaa/", s:"VLSI", k:"finfet gaa transistor nanosheet 2nm 3nm gate all around"},
-    {t:"Transistor Size Evolution", u:"/transistor-evolution/", s:"VLSI", k:"transistor scaling nm node moore history size"},
-    {t:"VLSI Career Roadmap", u:"/vlsi-career-roadmap/", s:"Career", k:"career roadmap job vlsi how to start domains salary"},
-    // Digital electronics
-    {t:"Digital Electronics Hub", u:"/digital-electronics/", s:"Digital", k:"digital electronics logic boolean basics gates combinational sequential"},
-    {t:"Logic Gates", u:"/digital-electronics/logic-gates/", s:"Digital", k:"logic gates and or not nand nor xor truth table"},
-    {t:"Boolean Algebra Laws", u:"/digital-electronics/boolean-law/", s:"Digital", k:"boolean algebra laws demorgan simplification"},
-    {t:"K-Map Solver (tool)", u:"/tools/kmap-solver/", s:"Digital", k:"karnaugh map kmap minimization sop boolean simplify"},
-    {t:"What is a GPU?", u:"/digital-electronics/what-is-gpu/", s:"Digital", k:"gpu graphics parallel cores"},
-    // Verilog / RTL
-    {t:"Verilog Tutorials", u:"/verilog/", s:"Verilog/RTL", k:"verilog hdl rtl coding always assign data types"},
-    {t:"RTL Design", u:"/rtl_design/", s:"Verilog/RTL", k:"rtl design fsm pipeline coding style"},
-    {t:"SystemVerilog", u:"/systemverilog/", s:"Verilog/RTL", k:"systemverilog uvm verification always_ff logic classes"},
-    {t:"Online Verilog Simulator", u:"/tools/verilog-simulator/", s:"Verilog/RTL", k:"verilog simulator compiler online iverilog run waveform vcd synthesis"},
-    {t:"Verilog Linter (tool)", u:"/tools/verilog-lint/", s:"Verilog/RTL", k:"lint verilog bugs latch sensitivity width mismatch"},
-    {t:"FSM Designer → Verilog (tool)", u:"/tools/fsm-designer/", s:"Verilog/RTL", k:"fsm state machine designer verilog moore mealy"},
-    {t:"Verilog Spot-the-Bug (game)", u:"/tools/verilog-spot-the-bug/", s:"Verilog/RTL", k:"verilog bug game debug rtl quiz"},
-    {t:"Register Map Generator (tool)", u:"/tools/regmap-gen/", s:"Verilog/RTL", k:"register map generator apb axi rtl ral ipxact datasheet"},
-    {t:"Logic Gate Simulator (tool)", u:"/tools/logic-sim/", s:"Verilog/RTL", k:"logic simulator gates circuit build seven segment counter"},
-    // STA / CDC
-    {t:"Static Timing Analysis (STA) Hub", u:"/sta/", s:"STA/CDC", k:"sta timing analysis setup hold slack path clock"},
-    {t:"Setup & Hold Time", u:"/sta/setup-hold/", s:"STA/CDC", k:"setup hold time violation timing"},
-    {t:"Clock Tree Synthesis", u:"/sta/clock-tree/", s:"STA/CDC", k:"clock tree cts skew latency"},
-    {t:"SDC Constraints", u:"/sta/sdc/", s:"STA/CDC", k:"sdc constraints create clock input output delay"},
-    {t:"Timing Closure", u:"/sta/timing-closure/", s:"STA/CDC", k:"timing closure fix violations slack"},
-    {t:"CDC Lab (tool)", u:"/tools/cdc-lab/", s:"STA/CDC", k:"cdc clock domain crossing metastability synchronizer fifo"},
-    {t:"Metastability & CDC FIFO", u:"/vlsi/metastability-cdc-fifo/", s:"STA/CDC", k:"metastability cdc fifo synchronizer mtbf"},
-    // Protocols
-    {t:"Hardware Protocols Hub", u:"/protocols/", s:"Protocols", k:"protocols amba axi apb ahb pcie ddr cxl jtag i2c spi bus"},
-    {t:"AXI Protocol", u:"/protocols/axi/", s:"Protocols", k:"axi amba burst channels handshake read write"},
-    {t:"APB Protocol", u:"/protocols/apb/", s:"Protocols", k:"apb peripheral bus amba low power"},
-    {t:"AHB Protocol", u:"/protocols/ahb/", s:"Protocols", k:"ahb bus pipelined burst"},
-    {t:"I2C Protocol", u:"/protocols/i2c/", s:"Protocols", k:"i2c two wire sda scl sensor"},
-    {t:"SPI Protocol", u:"/protocols/spi/", s:"Protocols", k:"spi mosi miso sclk full duplex"},
-    {t:"PCIe Protocol", u:"/protocols/pcie/", s:"Protocols", k:"pcie pci express lanes gen serial"},
-    {t:"AXI-to-APB Bridge (tool)", u:"/tools/axi-apb-bridge/", s:"Protocols", k:"axi apb bridge fsm timing block diagram"},
-    // ARM course
-    {t:"ARM Architecture from Scratch (course)", u:"/arm-architecture/", s:"ARM", k:"arm architecture course cortex registers instruction set mmu cache trustzone aarch64 beginner"},
-    {t:"ARM Day 1 — What is ARM?", u:"/arm-architecture/day-01-what-is-arm/", s:"ARM", k:"arm risc cisc start beginner day 1 what is arm"},
-    // AI hardware / future
-    {t:"What Is an AI Chip?", u:"/what-is-an-ai-chip/", s:"AI Hardware", k:"ai chip accelerator npu tpu systolic array gemm inference training"},
-    {t:"Beyond HBM — AI Memory Alternatives", u:"/ai-memory-alternatives/", s:"AI Hardware", k:"memory hbm pim in-memory compute memristor reram ai"},
-    {t:"Photonics Explained", u:"/photonics-explained/", s:"AI Hardware", k:"photonics light optical computing waveguide"},
-    {t:"Quantum Computing Explained", u:"/quantum-computing-explained/", s:"AI Hardware", k:"quantum computing qubit superposition entanglement chip"},
-    {t:"Is Moore's Law Dead? (animated)", u:"/is-moores-law-dead/", s:"AI Hardware", k:"moore law dead dennard scaling transistor count"},
-    {t:"RISC-V vs ARM", u:"/risc-v-vs-arm/", s:"AI Hardware", k:"risc-v vs arm isa open source comparison"},
-    {t:"The AI Semiconductor Boom", u:"/ai-semiconductor-boom/", s:"AI Hardware", k:"ai semiconductor boom memory demand hbm gpu chips"},
-    // Architecture labs / games
-    {t:"GPU Lab — How a GPU Works", u:"/tools/gpu-lab/", s:"Labs & Games", k:"gpu lab simt parallel cpu vs gpu interactive"},
-    {t:"Systolic Array Lab", u:"/tools/systolic-array-lab/", s:"Labs & Games", k:"systolic array matrix multiply dataflow ai accelerator"},
-    {t:"Cache Simulator", u:"/tools/cache-sim/", s:"Labs & Games", k:"cache simulator hit miss amat associativity"},
-    {t:"Booster Landing Game (SpaceX-style)", u:"/tools/booster-landing/", s:"Labs & Games", k:"rocket booster landing game spacex physics fun"},
-    {t:"Logic Forge (puzzle game)", u:"/tools/logic-forge/", s:"Labs & Games", k:"logic puzzle game gates build fun"},
-    {t:"All Tools & Labs", u:"/tools/", s:"Labs & Games", k:"tools labs games interactive all simulators"},
-    // Interview
-    {t:"Interview Prep", u:"/interview/", s:"Career", k:"interview questions vlsi prep placement digital"}
-  ];
-
-  var CHIPS = [
-    ["VLSI","vlsi physical design synthesis dft low power"],
-    ["Verilog & RTL","verilog rtl systemverilog simulator fsm"],
-    ["Protocols","protocols axi apb ahb i2c spi pcie"],
-    ["STA & CDC","sta timing setup hold clock cdc metastability"],
-    ["ARM course","arm architecture course cortex"],
-    ["AI chips","ai chip gpu quantum photonics moore memory"],
-    ["Tools & games","tools labs games simulator gpu cache booster"],
-    ["Interview prep","interview questions placement prep"]
-  ];
-
-  function search(q){
-    q=(q||"").toLowerCase();
-    var toks=q.split(/[^a-z0-9+]+/).filter(function(x){return x.length>1;});
-    if(!toks.length) return [];
-    var scored=IDX.map(function(e){
-      var hay=(e.t+" "+e.k+" "+e.s).toLowerCase();
-      var sc=0;
-      toks.forEach(function(tk){
-        if(e.t.toLowerCase().indexOf(tk)>=0) sc+=3;
-        else if(hay.indexOf(tk)>=0) sc+=1;
+    // Attempt fetch from JSON
+    fetch('/assets/ecrionix-kb.json')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        window.__ECX_KB = data;
+        KB = data;
+        if (callback) callback(KB);
+      })
+      .catch(function () {
+        // Fallback: inject ecrionix-kb.js script
+        var s = document.createElement('script');
+        s.src = '/assets/ecrionix-kb.js';
+        s.onload = function () {
+          KB = window.__ECX_KB;
+          if (callback) callback(KB);
+        };
+        document.head.appendChild(s);
       });
-      return {e:e,sc:sc};
-    }).filter(function(x){return x.sc>0;});
-    scored.sort(function(a,b){return b.sc-a.sc;});
-    return scored.slice(0,5).map(function(x){return x.e;});
   }
 
-  // ---- styles ----
-  var css = ''
-  +'#ecx-bot-btn{position:fixed;left:18px;bottom:18px;z-index:99998;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#1d4ed8,#0ea5e9);color:#fff;font-size:24px;box-shadow:0 6px 20px rgba(14,165,233,.4);transition:transform .15s}'
-  +'#ecx-bot-btn:hover{transform:scale(1.08)}'
-  +'#ecx-bot-btn .dot{position:absolute;top:-2px;right:-2px;width:14px;height:14px;background:#4ade80;border:2px solid #020617;border-radius:50%}'
-  +'#ecx-bot{position:fixed;left:18px;bottom:84px;z-index:99999;width:330px;max-width:calc(100vw - 36px);height:460px;max-height:calc(100vh - 120px);background:#0b1220;border:1px solid rgba(148,163,184,.18);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;flex-direction:column;overflow:hidden;font-family:Outfit,system-ui,sans-serif}'
-  +'#ecx-bot.open{display:flex}'
-  +'#ecx-bot .hd{background:linear-gradient(135deg,#0f1e3d,#0b2540);padding:12px 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid rgba(148,163,184,.15)}'
-  +'#ecx-bot .hd .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#2dd4bf);display:flex;align-items:center;justify-content:center;font-size:16px}'
-  +'#ecx-bot .hd b{color:#f1f5f9;font-size:14px;font-weight:700}#ecx-bot .hd span{color:#4ade80;font-size:11px;display:block}'
-  +'#ecx-bot .hd .x{margin-left:auto;background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1}'
-  +'#ecx-bot .body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px}'
-  +'#ecx-bot .msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5}'
-  +'#ecx-bot .bot{background:#15233b;color:#e2e8f0;border-bottom-left-radius:3px;align-self:flex-start}'
-  +'#ecx-bot .me{background:linear-gradient(135deg,#1d4ed8,#0ea5e9);color:#fff;border-bottom-right-radius:3px;align-self:flex-end}'
-  +'#ecx-bot .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}'
-  +'#ecx-bot .chip{background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.35);color:#7dd3fc;font-size:12px;padding:5px 10px;border-radius:999px;cursor:pointer}'
-  +'#ecx-bot .chip:hover{background:rgba(56,189,248,.22)}'
-  +'#ecx-bot .rec{display:block;background:#0e1a30;border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:8px 10px;text-decoration:none;margin-top:5px}'
-  +'#ecx-bot .rec:hover{border-color:#38bdf8}'
-  +'#ecx-bot .rec .rt{color:#38bdf8;font-size:12.5px;font-weight:600;display:block}'
-  +'#ecx-bot .rec .rs{color:#64748b;font-size:10.5px}'
-  +'#ecx-bot .ft{display:flex;gap:6px;padding:10px;border-top:1px solid rgba(148,163,184,.15);background:#0b1220}'
-  +'#ecx-bot .ft input{flex:1;background:#15233b;border:1px solid rgba(148,163,184,.2);border-radius:9px;padding:9px 11px;color:#e2e8f0;font-size:13px;outline:none}'
-  +'#ecx-bot .ft input:focus{border-color:#38bdf8}'
-  +'#ecx-bot .ft button{background:linear-gradient(135deg,#1d4ed8,#0ea5e9);border:none;color:#fff;border-radius:9px;padding:0 14px;cursor:pointer;font-size:15px}';
+  // Preload KB in background
+  loadKnowledgeBase();
 
-  var st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2. QUERY PARSER, INTENT ENGINE & SYNONYM DICTIONARY
+  // ──────────────────────────────────────────────────────────────────────────
+  var SYNONYMS = {
+    'setup': ['setup', 'setuptime', 'tsetup', 'max delay', 'max-delay'],
+    'hold': ['hold', 'holdtime', 'thold', 'min delay', 'min-delay'],
+    'blocking': ['blocking', 'blocking assignment', '='],
+    'nonblocking': ['non-blocking', 'nonblocking', '<=', 'nba'],
+    'metastability': ['metastability', 'metastable', 'mtbf', 'oscillate', 'intermediate voltage'],
+    'cdc': ['cdc', 'clock domain crossing', 'multi clock', 'cross clock', 'asynchronous clock', 'unsynchronized'],
+    'fifo': ['fifo', 'first in first out', 'async fifo', 'asynchronous fifo', 'sync fifo', 'dual clock fifo'],
+    'counter': ['counter', '4-bit counter', '4 bit counter', 'up counter', 'binary counter', 'four bit counter'],
+    'axi': ['axi', 'axi4', 'axi protocol', 'valid ready', 'axi stream', 'axi-stream', 'amba axi'],
+    'apb': ['apb', 'apb protocol', 'amba apb', 'peripheral bus'],
+    'ahb': ['ahb', 'ahb protocol', 'amba ahb'],
+    'cts': ['cts', 'clock tree synthesis', 'clock tree', 'clock skew', 'skew', 'clock balancing'],
+    'asic': ['asic', 'application specific integrated circuit', 'full custom'],
+    'fpga': ['fpga', 'field programmable gate array', 'lut', 'look up table', 'xilinx', 'altera'],
+    'ucie': ['ucie', 'universal chiplet interconnect express', 'chiplet', 'die to die', 'd2d'],
+    'gds': ['gds', 'gdsii', 'rtl to gds', 'rtl to gdsii', 'tapeout', 'backend flow', 'physical design flow', 'openlane'],
+    'gray': ['gray code', 'gray', 'binary to gray', 'gray to binary', 'gray counter'],
+    'vlsi': ['vlsi', 'very large scale integration', 'semiconductor', 'chip design', 'microchip'],
+    'dft': ['dft', 'design for test', 'scan chain', 'atpg', 'mbist', 'jtag', 'stuck at'],
+    'riscv': ['risc-v', 'riscv', 'rv32i', 'rv64i', 'open isa'],
+    'arm': ['arm', 'arm architecture', 'cortex', 'aarch64', 'cortex-m', 'cortex-a'],
+    'cache': ['cache', 'cache memory', 'amat', 'direct mapped', 'set associative', 'l1 cache', 'l2 cache'],
+    'pipeline': ['pipeline', 'pipelining', 'hazards', 'data hazard', 'forwarding', 'branch prediction', 'stalls', 'bubbles'],
+    'ai': ['ai chip', 'ai accelerator', 'npu', 'tpu', 'systolic array', 'matrix multiply', 'gemm', 'mac unit'],
+    'interview': ['interview', 'interview questions', '10 rtl interview questions', 'interview prep', 'interview q&a'],
+    'simulator': ['simulator', 'verilog simulator', 'compiler', 'practice verilog', 'run verilog', 'iverilog'],
+    'labs': ['labs', 'tools', 'interactive labs', 'simulators', 'all tools', 'all labs']
+  };
 
-  // ---- build DOM ----
-  var btn=document.createElement('button'); btn.id='ecx-bot-btn'; btn.title='Ask EcrioniX Assistant';
-  btn.innerHTML='💬<span class="dot"></span>';
-  var box=document.createElement('div'); box.id='ecx-bot';
-  box.innerHTML=''
-    +'<div class="hd"><div class="av">🤖</div><div><b>EcrioniX Assistant</b><span>● online</span></div><button class="x" aria-label="Close">×</button></div>'
-    +'<div class="body" id="ecx-body"></div>'
-    +'<div class="ft"><input id="ecx-in" type="text" placeholder="Type a topic… e.g. AXI, cache, ARM" autocomplete="off"><button id="ecx-send" aria-label="Send">➤</button></div>';
-  document.body.appendChild(btn); document.body.appendChild(box);
-
-  var body=box.querySelector('#ecx-body'), input=box.querySelector('#ecx-in');
-  function el(cls,html){var d=document.createElement('div');d.className=cls;d.innerHTML=html;body.appendChild(d);body.scrollTop=body.scrollHeight;return d;}
-  function botMsg(h){return el('msg bot',h);}
-  function meMsg(h){return el('msg me',h);}
-
-  function showChips(){
-    var wrap=document.createElement('div'); wrap.className='chips';
-    CHIPS.forEach(function(c){
-      var b=document.createElement('button'); b.className='chip'; b.textContent=c[0];
-      b.onclick=function(){ meMsg(c[0]); respond(c[1], c[0]); };
-      wrap.appendChild(b);
-    });
-    body.appendChild(wrap); body.scrollTop=body.scrollHeight;
+  function normalize(str) {
+    return (str || '')
+      .toLowerCase()
+      .replace(/[^\w\s\-+]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
-  function respond(query, label){
-    var res=search(query);
-    setTimeout(function(){
-      if(!res.length){
-        botMsg("Hmm, I didn't find a match for that. Try a keyword like <b>AXI</b>, <b>STA</b>, <b>cache</b>, <b>FinFET</b>, <b>ARM</b>, or tap a topic below 👇");
-        showChips(); return;
+  function detectIntent(text) {
+    var raw = normalize(text);
+    if (/^(hi|hello|hey|greetings|start|help)\b/i.test(raw)) return 'GREET';
+    if (/open|show me|take me to|where can i|navigate|link|launch|run|view/i.test(raw) && /simulator|lab|tool|course|hub|guide/i.test(raw)) return 'NAVIGATE';
+    if (/code|write|verilog|rtl|module|testbench|implement|coding|syntax/i.test(raw)) return 'CODE';
+    if (/diff|difference|vs|versus|compare|comparison/i.test(raw)) return 'COMPARE';
+    if (/why|cause|reason|violation|violate|fail|error/i.test(raw)) return 'CAUSE';
+    if (/how to fix|fix|resolve|mitigate|solution|repair|cure/i.test(raw)) return 'FIX';
+    if (/interview|question|questions|q&a|prep|quiz/i.test(raw)) return 'INTERVIEW';
+    if (/how it works|how does|explain|what is|tell me about|deep dive|architecture/i.test(raw)) return 'EXPLAIN';
+    return 'SEARCH';
+  }
+
+  function searchKnowledgeBase(query) {
+    if (!KB || !KB.topics || !KB.topics.length) return [];
+    var q = normalize(query);
+    var toks = q.split(' ').filter(function (t) { return t.length > 1; });
+    var intent = detectIntent(query);
+
+    // Context continuation check
+    if (currentContextTopicId && toks.length <= 4) {
+      if (/code|verilog|rtl|module/i.test(q)) {
+        var ctxMatch = KB.topics.find(function (t) { return t.id === currentContextTopicId; });
+        if (ctxMatch && ctxMatch.verilog_example) return [{ topic: ctxMatch, score: 500, intent: 'CODE' }];
       }
-      var m=botMsg("Here’s what I’d explore for <b>"+(label||query)+"</b>:");
-      res.forEach(function(e){
-        var a=document.createElement('a'); a.className='rec'; a.href=e.u;
-        a.innerHTML='<span class="rt">'+e.t+' →</span><span class="rs">'+e.s+'</span>';
-        body.appendChild(a);
+      if (/fix|violation|why/i.test(q)) {
+        var ctxMatch2 = KB.topics.find(function (t) { return t.id === currentContextTopicId; });
+        if (ctxMatch2 && ctxMatch2.violations_and_fixes) return [{ topic: ctxMatch2, score: 500, intent: 'FIX' }];
+      }
+    }
+
+    var scored = KB.topics.map(function (topic) {
+      var score = 0;
+      var titleNorm = normalize(topic.title);
+      var hay = (topic.title + ' ' + (topic.keywords || []).join(' ') + ' ' + topic.summary + ' ' + (topic.definition || '')).toLowerCase();
+
+      // Exact title or keyword match
+      if (q === titleNorm || topic.keywords.indexOf(q) !== -1) {
+        score += 300;
+      } else if (titleNorm.indexOf(q) !== -1) {
+        score += 180;
+      }
+
+      // Keyword & Synonym matching
+      toks.forEach(function (token) {
+        if (topic.keywords.some(function (k) { return k.indexOf(token) !== -1; })) score += 35;
+        if (titleNorm.indexOf(token) !== -1) score += 25;
+        if (hay.indexOf(token) !== -1) score += 8;
+
+        // Synonym expansion
+        for (var key in SYNONYMS) {
+          if (SYNONYMS[key].indexOf(token) !== -1) {
+            if (topic.keywords.indexOf(key) !== -1 || hay.indexOf(key) !== -1) {
+              score += 20;
+            }
+          }
+        }
       });
-      var more=botMsg("Want something else? Pick a topic or type another keyword.");
-      showChips();
-    }, 250);
+
+      // Intent boost
+      if (intent === 'CODE' && topic.verilog_example) score += 40;
+      if (intent === 'INTERVIEW' && topic.id.indexOf('interview') !== -1) score += 60;
+      if (intent === 'COMPARE' && topic.id.indexOf('vs') !== -1) score += 40;
+      if (intent === 'NAVIGATE' && topic.id.indexOf('nav-') !== -1) score += 50;
+
+      return { topic: topic, score: score, intent: intent };
+    }).filter(function (item) { return item.score > 0; });
+
+    scored.sort(function (a, b) { return b.score - a.score; });
+    return scored;
   }
 
-  var greeted=false;
-  function greet(){
-    if(greeted) return; greeted=true;
-    botMsg("👋 Hi! I’m the EcrioniX Assistant. <b>What are you trying to learn today?</b>");
-    botMsg("Pick a topic below, or type a keyword (e.g. <i>AXI, cache, FinFET, ARM, Moore’s law</i>).");
-    showChips();
+  // ──────────────────────────────────────────────────────────────────────────
+  // 3. MARKDOWN & RESPONSE FORMATTER
+  // ──────────────────────────────────────────────────────────────────────────
+  function escapeHTML(str) {
+    return (str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
-  function openBox(){ box.classList.add('open'); greet(); setTimeout(function(){input.focus();},100); }
-  function closeBox(){ box.classList.remove('open'); }
 
-  btn.onclick=function(){ box.classList.contains('open')?closeBox():openBox(); };
-  box.querySelector('.x').onclick=closeBox;
-  function send(){ var v=input.value.trim(); if(!v) return; meMsg(v.replace(/</g,'&lt;')); input.value=''; respond(v, v); }
-  box.querySelector('#ecx-send').onclick=send;
-  input.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
+  function formatMarkdown(text) {
+    if (!text) return '';
+    var out = escapeHTML(text);
 
-  // ---- Universal mobile menu fix ----
-  // 1) Repair pages where hamburger exists but JS never bound (script errors).
-  // 2) Inject a hamburger on pages that hide .nav-links with no toggle.
-  (function(){
-    var css = ''
-      +'html,body{max-width:100%;overflow-x:clip}'
-      +'.navbar,.nav,nav.navbar,nav{overflow:visible!important}'
-      +'.hamburger,.ecx-mnav-btn{display:none;background:none;border:none;cursor:pointer;padding:8px;flex-direction:column;gap:5px;flex-shrink:0;min-width:44px;min-height:44px;align-items:center;justify-content:center;z-index:120;position:relative}'
-      +'.hamburger span,.ecx-mnav-btn span{display:block;width:22px;height:2px;background:#e2e8f0;border-radius:2px}'
-      +'.mobile-menu,.mob-menu{display:none;flex-direction:column;background:#0c1526;border-top:1px solid rgba(148,163,184,.15);padding:.75rem 1.15rem 1rem;gap:0;position:absolute;left:0;right:0;top:100%;z-index:250;max-height:min(70vh,560px);overflow-y:auto;-webkit-overflow-scrolling:touch;box-shadow:0 16px 40px rgba(0,0,0,.45);list-style:none;margin:0}'
-      +'.mobile-menu.open,.mob-menu.open{display:flex!important}'
-      +'.mobile-menu a,.mob-menu a{color:#818cf8;text-decoration:none;font-size:.95rem;padding:.75rem 0;border-bottom:1px solid rgba(148,163,184,.1);min-height:44px;display:flex;align-items:center}'
-      +'.mobile-menu a:last-child,.mob-menu a:last-child{border-bottom:none}'
-      +'@media(max-width:768px){'
-        +'.nav-links:not(.ecx-mnav-open){display:none!important}'
-        +'.hamburger,.ecx-mnav-btn{display:flex!important}'
-        +'.nav-links.ecx-mnav-managed.ecx-mnav-open{display:flex!important;position:absolute;left:0;right:0;top:100%;flex-direction:column;background:#0c1526;border-bottom:1px solid rgba(148,163,184,.15);padding:.75rem 1.25rem;gap:0!important;z-index:250;list-style:none;margin:0;max-height:min(70vh,560px);overflow-y:auto}'
-        +'.nav-links.ecx-mnav-open a,.nav-links.ecx-mnav-open li{padding:.7rem 0;border-bottom:1px solid rgba(148,163,184,.1);display:block}'
-        +'.nav-links.ecx-mnav-open li:last-child,.nav-links.ecx-mnav-open a:last-child{border-bottom:none}'
-        +'.container,.wrap,.content,.page,.hero{padding-left:max(.9rem,env(safe-area-inset-left));padding-right:max(.9rem,env(safe-area-inset-right));box-sizing:border-box}'
-        +'img,svg,video,canvas,iframe{max-width:100%;height:auto}'
-        +'table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}'
-      +'}'
-      +'@media(max-width:480px){'
-        +'h1{font-size:clamp(1.25rem,6vw,1.75rem)!important;line-height:1.25}'
-        +'.cards-grid,.card-grid,.grid{grid-template-columns:1fr!important}'
-      +'}';
-    var st = document.createElement('style');
-    st.setAttribute('data-ecx-mnav','1');
-    st.textContent = css;
-    document.head.appendChild(st);
+    // Code blocks with syntax copy button
+    out = out.replace(/```(?:verilog|systemverilog|)([\s\S]*?)```/g, function (match, code) {
+      var raw = code.trim();
+      return '<div class="ecx-code-wrap">'
+        + '<div class="ecx-code-bar"><span>Verilog / SystemVerilog</span><button type="button" class="ecx-copy-btn" data-code="' + encodeURIComponent(raw) + '">📋 Copy Code</button></div>'
+        + '<pre class="ecx-code-pre"><code>' + raw + '</code></pre>'
+        + '</div>';
+    });
 
+    // Inline code `code`
+    out = out.replace(/`([^`]+)`/g, '<code class="ecx-inline-code">$1</code>');
+
+    // Bold **text**
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Italic *text*
+    out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Ordered / numbered lines
+    out = out.replace(/(?:^|\n)(\d+\.\s+[^\n]+)/g, '<div class="ecx-num-item">$1</div>');
+
+    // Bullet lines
+    out = out.replace(/(?:^|\n)(?:[-*]\s+[^\n]+)/g, function (m) {
+      return '<div class="ecx-bullet-item">' + m.replace(/^[\s\n]*[-*]\s+/, '• ') + '</div>';
+    });
+
+    // Line breaks
+    out = out.replace(/\n\n/g, '<div class="ecx-spacer"></div>');
+    out = out.replace(/\n/g, '<br>');
+
+    return out;
+  }
+
+  function renderTopicResponse(topic, intent) {
+    currentContextTopicId = topic.id;
+    var html = '';
+
+    // Header badge
+    html += '<div class="ecx-topic-badge">' + (topic.category ? topic.category.toUpperCase() : 'VLSI') + '</div>';
+    html += '<h3 class="ecx-res-title">' + topic.title + '</h3>';
+
+    // Summary / Definition
+    if (topic.definition) {
+      html += '<div class="ecx-section-block"><strong>Definition:</strong> ' + formatMarkdown(topic.definition) + '</div>';
+    } else if (topic.summary) {
+      html += '<div class="ecx-section-block">' + formatMarkdown(topic.summary) + '</div>';
+    }
+
+    // How it works / Deep dive
+    if (topic.how_it_works && intent !== 'CODE') {
+      html += '<div class="ecx-section-block"><div class="ecx-block-hd">⚙️ How It Works & Architecture</div>' + formatMarkdown(topic.how_it_works) + '</div>';
+    }
+
+    // Violations & Fixes (for STA/CDC)
+    if (topic.violations_and_fixes && (intent === 'CAUSE' || intent === 'FIX' || intent === 'EXPLAIN' || intent === 'SEARCH')) {
+      html += '<div class="ecx-section-block ecx-highlight-block"><div class="ecx-block-hd">🔧 Violations & Fixes</div>' + formatMarkdown(topic.violations_and_fixes) + '</div>';
+    }
+
+    // Verilog Code
+    if (topic.verilog_example) {
+      html += '<div class="ecx-section-block"><div class="ecx-block-hd">💻 Synthesizable Verilog / RTL Code</div>'
+        + formatMarkdown('```verilog\n' + topic.verilog_example + '\n```')
+        + '<div class="ecx-code-note">✓ Synthesizable RTL. Clock & asynchronous active-low reset included.</div>'
+        + '</div>';
+    }
+
+    // Hardware / Silicon Application
+    if (topic.silicon_example && intent !== 'CODE') {
+      html += '<div class="ecx-section-block ecx-silicon-block"><span class="ecx-chip-icon">🔬</span> <strong>Real-World Silicon:</strong> ' + formatMarkdown(topic.silicon_example) + '</div>';
+    }
+
+    // Common Mistakes / Gotchas
+    if (topic.common_mistakes && intent !== 'CODE') {
+      html += '<div class="ecx-section-block ecx-gotcha-block">⚠️ <strong>Common Interview Trap / Gotcha:</strong> ' + formatMarkdown(topic.common_mistakes) + '</div>';
+    }
+
+    // Internal Resources Links
+    if (topic.resources && topic.resources.length) {
+      html += '<div class="ecx-resources-block"><div class="ecx-res-hd">📚 EcrioniX Learning Resources & Tools:</div>';
+      topic.resources.forEach(function (r) {
+        html += '<a href="' + r.url + '" class="ecx-res-card" target="_self">'
+          + '<div class="ecx-res-card-title">' + r.title + ' →</div>'
+          + '<div class="ecx-res-card-desc">' + (r.desc || 'Explore guide on EcrioniX') + '</div>'
+          + '</a>';
+      });
+      html += '</div>';
+    }
+
+    // Follow-up Suggestion Chips
+    if (topic.follow_ups && topic.follow_ups.length) {
+      html += '<div class="ecx-followup-block"><div class="ecx-followup-hd">💡 Suggested Follow-Up Questions:</div><div class="ecx-chips-wrap">';
+      topic.follow_ups.forEach(function (fu) {
+        html += '<button type="button" class="ecx-fu-chip" data-query="' + encodeURIComponent(fu) + '">' + fu + '</button>';
+      });
+      html += '</div></div>';
+    }
+
+    return html;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 4. CHATBOT UI INJECTION & STYLES
+  // ──────────────────────────────────────────────────────────────────────────
+  var css = `
+    /* EcrioniX Assistant Unified Theme Styles */
+    #ecx-bot-btn {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      z-index: 100000;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 1px solid rgba(2, 132, 199, 0.3);
+      cursor: pointer;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #ffffff;
+      box-shadow: 0 4px 18px rgba(2, 132, 199, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      user-select: none;
+    }
+    #ecx-bot-btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 6px 24px rgba(2, 132, 199, 0.55);
+    }
+    #ecx-bot-btn .ecx-bot-dot {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 14px;
+      height: 14px;
+      background: #10b981;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+    }
+
+    /* Chat Container */
+    #ecx-bot-wrap {
+      position: fixed;
+      left: 20px;
+      bottom: 86px;
+      z-index: 100002;
+      width: 440px;
+      max-width: calc(100vw - 32px);
+      height: 620px;
+      max-height: calc(100vh - 110px);
+      border-radius: 18px;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.22);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #ecx-bot-wrap.open {
+      display: flex;
+      animation: ecxBotSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes ecxBotSlideUp {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Light Theme (Default) */
+    :root:not([data-theme="dark"]) #ecx-bot-wrap {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #0f172a;
+    }
+    :root:not([data-theme="dark"]) .ecx-hd {
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    :root:not([data-theme="dark"]) .ecx-hd-title { color: #0f172a; }
+    :root:not([data-theme="dark"]) .ecx-hd-sub { color: #64748b; }
+    :root:not([data-theme="dark"]) .ecx-chat-body { background: #f8fafc; }
+    :root:not([data-theme="dark"]) .ecx-msg.bot {
+      background: #ffffff;
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+    :root:not([data-theme="dark"]) .ecx-ft {
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+    }
+    :root:not([data-theme="dark"]) .ecx-input {
+      background: #f8fafc;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+    }
+
+    /* Dark Theme */
+    :root[data-theme="dark"] #ecx-bot-wrap {
+      background: #0d1424;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      box-shadow: 0 20px 56px rgba(0, 0, 0, 0.6);
+    }
+    :root[data-theme="dark"] .ecx-hd {
+      background: #111827;
+      border-bottom: 1px solid #1e293b;
+    }
+    :root[data-theme="dark"] .ecx-hd-title { color: #f8fafc; }
+    :root[data-theme="dark"] .ecx-hd-sub { color: #94a3b8; }
+    :root[data-theme="dark"] .ecx-chat-body { background: #070b14; }
+    :root[data-theme="dark"] .ecx-msg.bot {
+      background: #0d1424;
+      color: #e2e8f0;
+      border: 1px solid #1e293b;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+    :root[data-theme="dark"] .ecx-ft {
+      background: #0d1424;
+      border-top: 1px solid #1e293b;
+    }
+    :root[data-theme="dark"] .ecx-input {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #334155;
+    }
+
+    /* Header Bar */
+    .ecx-hd {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .ecx-av {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #0d9488);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 19px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .ecx-hd-info { flex: 1; min-width: 0; }
+    .ecx-hd-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.2;
+    }
+    .ecx-status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      color: #10b981;
+      background: rgba(16, 185, 129, 0.12);
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .ecx-hd-sub {
+      font-size: 11.5px;
+      line-height: 1.3;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ecx-hd-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ecx-icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s;
+    }
+    .ecx-icon-btn:hover {
+      background: rgba(148, 163, 184, 0.15);
+      color: #0f172a;
+    }
+    :root[data-theme="dark"] .ecx-icon-btn:hover { color: #f8fafc; }
+
+    /* Chat Area */
+    .ecx-chat-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+    .ecx-msg {
+      max-width: 92%;
+      padding: 12px 15px;
+      border-radius: 14px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      word-wrap: break-word;
+    }
+    .ecx-msg.me {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #ffffff;
+      border-bottom-right-radius: 3px;
+      align-self: flex-end;
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+    }
+    .ecx-msg.bot {
+      border-bottom-left-radius: 3px;
+      align-self: flex-start;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Content Elements Inside Messages */
+    .ecx-topic-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(2, 132, 199, 0.12);
+      color: #0284c7;
+      margin-bottom: 6px;
+    }
+    .ecx-res-title {
+      font-size: 16px;
+      font-weight: 800;
+      margin: 0 0 8px 0;
+      line-height: 1.3;
+    }
+    .ecx-section-block {
+      margin-top: 10px;
+    }
+    .ecx-block-hd {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: #0284c7;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    :root[data-theme="dark"] .ecx-block-hd { color: #38bdf8; }
+    .ecx-highlight-block {
+      background: rgba(2, 132, 199, 0.05);
+      border-left: 3px solid #0284c7;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+    }
+    .ecx-silicon-block {
+      background: rgba(16, 185, 129, 0.06);
+      border-left: 3px solid #10b981;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 12.5px;
+    }
+    .ecx-gotcha-block {
+      background: rgba(245, 158, 11, 0.08);
+      border-left: 3px solid #f59e0b;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 12.5px;
+    }
+
+    /* Code Block */
+    .ecx-code-wrap {
+      margin: 10px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #0b1120;
+      border: 1px solid #1e293b;
+    }
+    .ecx-code-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 10px;
+      background: #111827;
+      border-bottom: 1px solid #1e293b;
+      font-size: 11px;
+      color: #94a3b8;
+      font-family: monospace;
+    }
+    .ecx-copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #e2e8f0;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 10.5px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .ecx-copy-btn:hover { background: rgba(2, 132, 199, 0.4); color: #fff; }
+    .ecx-code-pre {
+      margin: 0;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: #f8fafc;
+    }
+    .ecx-inline-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(2, 132, 199, 0.1);
+      color: #0284c7;
+    }
+    :root[data-theme="dark"] .ecx-inline-code { color: #38bdf8; background: rgba(56, 189, 248, 0.15); }
+    .ecx-code-note {
+      font-size: 11px;
+      color: #10b981;
+      margin-top: 3px;
+    }
+
+    /* Resource Cards */
+    .ecx-resources-block {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ecx-res-hd {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ecx-res-card {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(2, 132, 199, 0.05);
+      border: 1px solid rgba(2, 132, 199, 0.18);
+      text-decoration: none;
+      transition: transform 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .ecx-res-card:hover {
+      transform: translateX(3px);
+      border-color: #0284c7;
+      background: rgba(2, 132, 199, 0.1);
+    }
+    .ecx-res-card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0284c7;
+    }
+    :root[data-theme="dark"] .ecx-res-card-title { color: #38bdf8; }
+    .ecx-res-card-desc {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* Chips */
+    .ecx-followup-block {
+      margin-top: 12px;
+    }
+    .ecx-followup-hd {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ecx-chips-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .ecx-fu-chip {
+      background: rgba(2, 132, 199, 0.08);
+      border: 1px solid rgba(2, 132, 199, 0.25);
+      color: #0284c7;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .ecx-fu-chip:hover {
+      background: #0284c7;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    :root[data-theme="dark"] .ecx-fu-chip {
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.3);
+      background: rgba(56, 189, 248, 0.1);
+    }
+    :root[data-theme="dark"] .ecx-fu-chip:hover {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    /* Footer & Input Area */
+    .ecx-ft {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .ecx-input-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ecx-input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      outline: none;
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    .ecx-input:focus { border-color: #0284c7; }
+    .ecx-send-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: background 0.15s, transform 0.15s;
+      flex-shrink: 0;
+    }
+    .ecx-send-btn:hover { background: #0369a1; transform: scale(1.04); }
+    .ecx-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* ─── GLOBAL FLOATING WHATSAPP BUTTON ─── */
+    #ecx-wa-btn {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 9980;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: #25d366;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 18px rgba(37, 211, 102, 0.45);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      cursor: pointer;
+      text-decoration: none;
+      user-select: none;
+    }
+    #ecx-wa-btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 6px 26px rgba(37, 211, 102, 0.65);
+    }
+    #ecx-wa-btn svg { width: 28px; height: 28px; fill: #ffffff; }
+
+    /* Pulse animation */
+    #ecx-wa-btn::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid #25d366;
+      animation: ecxWaPulse 2.4s infinite cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      pointer-events: none;
+    }
+    @keyframes ecxWaPulse {
+      0%   { transform: scale(0.95); opacity: 0.8; }
+      50%  { transform: scale(1.22); opacity: 0; }
+      100% { transform: scale(0.95); opacity: 0; }
+    }
+
+    /* Tooltip */
+    #ecx-wa-btn .ecx-wa-tooltip {
+      position: absolute;
+      right: 64px;
+      background: #0f172a;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(8px);
+      transition: opacity 0.2s, transform 0.2s;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+    #ecx-wa-btn:hover .ecx-wa-tooltip {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 600px) {
+      #ecx-bot-wrap {
+        left: 10px;
+        right: 10px;
+        bottom: 80px;
+        width: auto;
+        height: min(540px, calc(100vh - 120px));
+      }
+      #ecx-bot-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 22px;
+        left: 14px;
+        bottom: 14px;
+      }
+      #ecx-wa-btn {
+        width: 50px;
+        height: 50px;
+        right: 14px;
+        bottom: 14px;
+      }
+      #ecx-wa-btn svg { width: 25px; height: 25px; }
+      /* Adjust WhatsApp when bot is open on mobile */
+      body.ecx-bot-opened #ecx-wa-btn {
+        opacity: 0.2;
+        pointer-events: none;
+      }
+    }
+  `;
+
+  var styleEl = document.createElement('style');
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 5. DOM MOUNTING: CHATBOT WIDGET & GLOBAL WHATSAPP BUTTON
+  // ──────────────────────────────────────────────────────────────────────────
+  function setupUI() {
+    // 1. Launch Button
+    if (!document.getElementById('ecx-bot-btn')) {
+      var btn = document.createElement('button');
+      btn.id = 'ecx-bot-btn';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Open EcrioniX AI Assistant');
+      btn.title = 'Ask EcrioniX Engineering Assistant';
+      btn.innerHTML = '🤖<span class="ecx-bot-dot"></span>';
+      document.body.appendChild(btn);
+    }
+
+    // 2. Chatbot Window
+    if (!document.getElementById('ecx-bot-wrap')) {
+      var wrap = document.createElement('div');
+      wrap.id = 'ecx-bot-wrap';
+      wrap.innerHTML = `
+        <div class="ecx-hd">
+          <div class="ecx-av">🤖</div>
+          <div class="ecx-hd-info">
+            <div class="ecx-hd-title">
+              EcrioniX Assistant
+              <span class="ecx-status-pill">● Local AI / Offline</span>
+            </div>
+            <div class="ecx-hd-sub">Your VLSI & Engineering Learning Companion</div>
+          </div>
+          <div class="ecx-hd-actions">
+            <button type="button" class="ecx-icon-btn" id="ecxClearBtn" title="Clear conversation" aria-label="Clear chat">🗑</button>
+            <button type="button" class="ecx-icon-btn" id="ecxMinBtn" title="Minimize" aria-label="Minimize chat">_</button>
+            <button type="button" class="ecx-icon-btn" id="ecxCloseBtn" title="Close" aria-label="Close chat">✕</button>
+          </div>
+        </div>
+        <div class="ecx-chat-body" id="ecxChatBody"></div>
+        <div class="ecx-ft">
+          <div class="ecx-input-row">
+            <input type="text" id="ecxInput" class="ecx-input" placeholder="Ask: 'Setup time', 'AXI protocol', '4-bit counter'..." autocomplete="off">
+            <button type="button" id="ecxSendBtn" class="ecx-send-btn" aria-label="Send query">➤</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(wrap);
+    }
+
+    // 3. Global Floating WhatsApp Button
+    var existingWa = document.querySelector('a[href*="whatsapp.com/channel"]');
+    if (!existingWa) {
+      var waBtn = document.createElement('a');
+      waBtn.id = 'ecx-wa-btn';
+      waBtn.href = 'https://whatsapp.com/channel/0029Vb7U7jxKAwEmqonaUu2x';
+      waBtn.target = '_blank';
+      waBtn.rel = 'noopener noreferrer';
+      waBtn.setAttribute('aria-label', 'Join EcrioniX WhatsApp Community');
+      waBtn.title = 'Join EcrioniX Community on WhatsApp';
+      waBtn.innerHTML = `
+        <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        <span class="ecx-wa-tooltip">Join EcrioniX Community</span>
+      `;
+      document.body.appendChild(waBtn);
+    } else {
+      // Ensure ID and styling on existing WhatsApp button
+      existingWa.id = 'ecx-wa-btn';
+      if (!existingWa.querySelector('.ecx-wa-tooltip')) {
+        var span = document.createElement('span');
+        span.className = 'ecx-wa-tooltip';
+        span.textContent = 'Join EcrioniX Community';
+        existingWa.appendChild(span);
+      }
+    }
+
+    bindEvents();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 6. EVENT BINDING & INTERACTION
+  // ──────────────────────────────────────────────────────────────────────────
+  function bindEvents() {
+    var botBtn = document.getElementById('ecx-bot-btn');
+    var botWrap = document.getElementById('ecx-bot-wrap');
+    var closeBtn = document.getElementById('ecxCloseBtn');
+    var minBtn = document.getElementById('ecxMinBtn');
+    var clearBtn = document.getElementById('ecxClearBtn');
+    var input = document.getElementById('ecxInput');
+    var sendBtn = document.getElementById('ecxSendBtn');
+    var chatBody = document.getElementById('ecxChatBody');
+
+    function openBot() {
+      botWrap.classList.add('open');
+      document.body.classList.add('ecx-bot-opened');
+      if (!chatBody.children.length) {
+        showWelcome();
+      }
+      setTimeout(function () { input.focus(); }, 150);
+    }
+
+    function closeBot() {
+      botWrap.classList.remove('open');
+      document.body.classList.remove('ecx-bot-opened');
+    }
+
+    botBtn.onclick = function () {
+      botWrap.classList.contains('open') ? closeBot() : openBot();
+    };
+    closeBtn.onclick = closeBot;
+    minBtn.onclick = closeBot;
+
+    clearBtn.onclick = function () {
+      chatBody.innerHTML = '';
+      currentContextTopicId = null;
+      showWelcome();
+    };
+
+    function appendUserMessage(text) {
+      var msg = document.createElement('div');
+      msg.className = 'ecx-msg me';
+      msg.textContent = text;
+      chatBody.appendChild(msg);
+      chatBody.scrollTop = chatBody.scrollHeight;
+    }
+
+    function appendBotMessage(html) {
+      var msg = document.createElement('div');
+      msg.className = 'ecx-msg bot';
+      msg.innerHTML = html;
+      chatBody.appendChild(msg);
+      chatBody.scrollTop = chatBody.scrollHeight;
+
+      // Bind copy buttons inside this message
+      msg.querySelectorAll('.ecx-copy-btn').forEach(function (btn) {
+        btn.onclick = function () {
+          var code = decodeURIComponent(btn.getAttribute('data-code') || '');
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(code).then(function () {
+              var old = btn.textContent;
+              btn.textContent = '✓ Copied!';
+              setTimeout(function () { btn.textContent = old; }, 1800);
+            });
+          }
+        };
+      });
+
+      // Bind follow-up chips
+      msg.querySelectorAll('.ecx-fu-chip').forEach(function (chip) {
+        chip.onclick = function () {
+          var q = decodeURIComponent(chip.getAttribute('data-query') || chip.textContent);
+          handleUserQuery(q);
+        };
+      });
+    }
+
+    function showWelcome() {
+      var welcomeHTML = `
+        <div style="text-align:center;padding:10px 0 16px;">
+          <div style="font-size:32px;margin-bottom:6px;">👋</div>
+          <h2 style="font-size:18px;font-weight:800;margin:0 0 4px;color:var(--heading,#0f172a);">Welcome to EcrioniX Assistant!</h2>
+          <p style="font-size:13px;color:#64748b;margin:0 auto 12px;max-width:320px;">Your engineering learning companion. Explore VLSI, RTL Design, Verilog, SystemVerilog, STA, CDC, Physical Design, Computer Architecture and more.</p>
+          <div style="font-size:11.5px;font-weight:700;color:#0284c7;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Choose a topic shortcut or ask any question:</div>
+          <div class="ecx-chips-wrap" style="justify-content:center;">
+            <button type="button" class="ecx-fu-chip" data-query="What is VLSI?">⚡ VLSI Fundamentals</button>
+            <button type="button" class="ecx-fu-chip" data-query="Explain setup time">⏱️ Setup & Hold Time</button>
+            <button type="button" class="ecx-fu-chip" data-query="Difference between blocking and non-blocking">💻 Blocking vs Non-Blocking</button>
+            <button type="button" class="ecx-fu-chip" data-query="How does an asynchronous FIFO work?">🔄 Asynchronous FIFO</button>
+            <button type="button" class="ecx-fu-chip" data-query="Explain AXI protocol">🔌 AXI4 Protocol</button>
+            <button type="button" class="ecx-fu-chip" data-query="What is clock tree synthesis?">📐 Clock Tree Synthesis</button>
+            <button type="button" class="ecx-fu-chip" data-query="Difference between ASIC and FPGA">🔲 ASIC vs FPGA</button>
+            <button type="button" class="ecx-fu-chip" data-query="Write a Verilog 4-bit counter">🔢 4-Bit Counter Code</button>
+            <button type="button" class="ecx-fu-chip" data-query="Give me 10 RTL interview questions">🎯 10 RTL Interview Q&A</button>
+            <button type="button" class="ecx-fu-chip" data-query="Show me the Verilog simulator">🛠️ Verilog Simulator</button>
+            <button type="button" class="ecx-fu-chip" data-query="Explain Gray code with an example">🔀 Gray Code</button>
+            <button type="button" class="ecx-fu-chip" data-query="What is UCIe?">💡 UCIe Chiplets</button>
+            <button type="button" class="ecx-fu-chip" data-query="Explain the RTL-to-GDS flow">🏭 RTL-to-GDS Flow</button>
+          </div>
+        </div>
+      `;
+      appendBotMessage(welcomeHTML);
+    }
+
+    function handleUserQuery(query) {
+      if (!query || !query.trim()) return;
+      var q = query.trim();
+      appendUserMessage(q);
+      input.value = '';
+
+      // Ensure KB is loaded
+      loadKnowledgeBase(function () {
+        var results = searchKnowledgeBase(q);
+
+        if (!results.length) {
+          var fallback = '<div style="margin-bottom:8px;">Hmm, I couldn’t find an exact match for <strong>' + escapeHTML(q) + '</strong> in the local repository.</div>'
+            + '<div style="font-size:12.5px;color:#64748b;margin-bottom:10px;">Try asking about <strong>Setup time</strong>, <strong>Blocking vs Non-blocking</strong>, <strong>Async FIFO</strong>, <strong>AXI</strong>, <strong>CTS</strong>, or <strong>Verilog Counter</strong>, or tap a topic below:</div>'
+            + '<div class="ecx-chips-wrap">'
+            + '<button type="button" class="ecx-fu-chip" data-query="Explain setup time">Setup Time</button>'
+            + '<button type="button" class="ecx-fu-chip" data-query="What is metastability?">Metastability</button>'
+            + '<button type="button" class="ecx-fu-chip" data-query="Write a Verilog 4-bit counter">4-bit Counter Verilog</button>'
+            + '<button type="button" class="ecx-fu-chip" data-query="Explain AXI protocol">AXI Protocol</button>'
+            + '<button type="button" class="ecx-fu-chip" data-query="Give me 10 RTL interview questions">10 Interview Q&A</button>'
+            + '<button type="button" class="ecx-fu-chip" data-query="Show me the Verilog simulator">Open Simulator</button>'
+            + '</div>';
+          appendBotMessage(fallback);
+          return;
+        }
+
+        var top = results[0];
+        var responseHTML = renderTopicResponse(top.topic, top.intent);
+
+        // If there is a strong secondary match, surface it as a related exploration
+        if (results.length > 1 && results[1].score >= 80 && results[1].topic.id !== top.topic.id) {
+          var sec = results[1].topic;
+          responseHTML += '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(148,163,184,0.25);font-size:12px;color:#64748b;">'
+            + '🔗 <em>Also related:</em> <button type="button" class="ecx-fu-chip" data-query="' + encodeURIComponent(sec.title) + '" style="margin-left:4px;">' + sec.title + '</button>'
+            + '</div>';
+        }
+
+        appendBotMessage(responseHTML);
+      });
+    }
+
+    sendBtn.onclick = function () { handleUserQuery(input.value); };
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleUserQuery(input.value);
+      }
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 7. INITIALIZE ON DOM READY
+  // ──────────────────────────────────────────────────────────────────────────
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupUI);
+  } else {
+    setupUI();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 8. UNIVERSAL MOBILE NAVIGATION REPAIR
+  // ──────────────────────────────────────────────────────────────────────────
+  (function () {
     function findMenu(ham, nav) {
       return (nav && (nav.querySelector('.mobile-menu') || nav.querySelector('.mob-menu')))
         || document.getElementById('mobileMenu')
@@ -279,72 +1100,24 @@
       });
     }
 
-    // Repair existing hamburger + mobile-menu pairs (even if page JS failed)
-    document.querySelectorAll('.hamburger').forEach(function (ham) {
-      var nav = ham.closest('.navbar, .nav, nav') || ham.parentElement;
-      if (nav) {
-        var cs = getComputedStyle(nav);
-        if (cs.position === 'static') nav.style.position = 'relative';
-        nav.style.overflow = 'visible';
-      }
-      var menu = findMenu(ham, nav);
-      if (!menu) return;
-      // Replace node to drop any broken/duplicate page listeners, then bind once.
-      // Must strip inline onclick — cloneNode keeps it, which double-toggles .open (open then close).
-      // Also fixes broken patterns like this.nextElementSibling when menu is not a sibling.
-      if (ham.dataset.ecxBound !== '1') {
-        var fresh = ham.cloneNode(true);
-        fresh.removeAttribute('onclick');
-        ham.parentNode.replaceChild(fresh, ham);
-        bindHamburger(fresh, menu);
-      } else {
-        ham.removeAttribute('onclick');
-      }
-    });
-
-    // Inject hamburger for pages that only have .nav-links
-    document.querySelectorAll('.nav-links').forEach(function (links) {
-      var container = links.parentElement;
-      if (!container) return;
-      if (container.querySelector('.hamburger') || container.querySelector('.ecx-mnav-btn')) return;
-      // If a sibling mobile-menu exists under the outer nav, skip injection
-      var outer = container.closest('.navbar, .nav, nav') || container;
-      if ((outer.querySelector('.mobile-menu') || outer.querySelector('.mob-menu')) && outer.querySelector('.hamburger')) return;
-
-      var cs = getComputedStyle(container);
-      if (cs.position === 'static') container.style.position = 'relative';
-      container.style.overflow = 'visible';
-      links.classList.add('ecx-mnav-managed');
-
-      var mbtn = document.createElement('button');
-      mbtn.className = 'ecx-mnav-btn';
-      mbtn.type = 'button';
-      mbtn.setAttribute('aria-label', 'Toggle menu');
-      mbtn.innerHTML = '<span></span><span></span><span></span>';
-      mbtn.onclick = function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        links.classList.toggle('ecx-mnav-open');
-      };
-      container.appendChild(mbtn);
-      links.querySelectorAll('a').forEach(function (a) {
-        a.addEventListener('click', function () { links.classList.remove('ecx-mnav-open'); });
+    function repairNav() {
+      document.querySelectorAll('.hamburger').forEach(function (ham) {
+        var nav = ham.closest('.navbar, .nav, nav') || ham.parentElement;
+        var menu = findMenu(ham, nav);
+        if (!menu) return;
+        if (ham.dataset.ecxBound !== '1') {
+          var fresh = ham.cloneNode(true);
+          fresh.removeAttribute('onclick');
+          ham.parentNode.replaceChild(fresh, ham);
+          bindHamburger(fresh, menu);
+        }
       });
-    });
+    }
 
-    document.addEventListener('click', function (e) {
-      document.querySelectorAll('.mobile-menu.open, .mob-menu.open').forEach(function (menu) {
-        var nav = menu.closest('.navbar, .nav, nav') || menu.parentElement;
-        var ham = nav && nav.querySelector('.hamburger');
-        if (menu.contains(e.target) || (ham && ham.contains(e.target))) return;
-        menu.classList.remove('open');
-        if (ham) ham.setAttribute('aria-expanded', 'false');
-      });
-      document.querySelectorAll('.nav-links.ecx-mnav-open').forEach(function (links) {
-        var btn = links.parentElement && links.parentElement.querySelector('.ecx-mnav-btn');
-        if (links.contains(e.target) || (btn && btn.contains(e.target))) return;
-        links.classList.remove('ecx-mnav-open');
-      });
-    });
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', repairNav);
+    } else {
+      repairNav();
+    }
   })();
 })();

@@ -153,6 +153,19 @@
     }
 
     updateAllToggleButtons();
+
+    // Ensure EcrioniX Assistant & Global Floating WhatsApp Component are active
+    ensureBotScript();
+  }
+
+  function ensureBotScript() {
+    if (window.__ecxBotInitialized || window.__ecxBotLoading) return;
+    if ([].some.call(document.scripts, function (s) { return s.src && s.src.indexOf('ecrionix-bot.js') !== -1; })) return;
+    window.__ecxBotLoading = true;
+    var s = document.createElement('script');
+    s.src = '/assets/ecrionix-bot.js?v=4';
+    s.defer = true;
+    document.head.appendChild(s);
   }
 
   // Initial immediate application
