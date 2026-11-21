@@ -144,6 +144,14 @@
       modulePorts: document.getElementById('inspectModulePorts'),
       moduleRegisters: document.getElementById('inspectModuleRegisters'),
       moduleCode: document.getElementById('inspectModuleCode'),
+      moduleFileBadge: document.getElementById('moduleFileBadge'),
+      moduleMetaBadge: document.getElementById('moduleMetaBadge'),
+      btnDownloadModule: document.getElementById('btnDownloadModule'),
+      btnCopyModuleRtl: document.getElementById('btnCopyModuleRtl'),
+      btnOpenDownloadModal: document.getElementById('btnOpenDownloadModal'),
+      btnToolbarDownload: document.getElementById('btnToolbarDownload'),
+      btnCloseDownloadModal: document.getElementById('btnCloseDownloadModal'),
+      downloadModal: document.getElementById('downloadModal'),
       consoleBox: document.getElementById('simConsoleBox'),
       waveCanvas: document.getElementById('waveCanvas')
     };
@@ -499,8 +507,16 @@
 
     // RTL Code
     const sources = window.MINIGPU_RTL_SOURCES;
-    if (sources && sources[block.module]) {
-      els.moduleCode.textContent = sources[block.module];
+    const src = (sources && sources[block.module]) ? sources[block.module] : '';
+    if (src) {
+      els.moduleCode.textContent = src;
+      state.currentModuleFile = block.module;
+      state.currentModuleCode = src;
+      if (els.moduleFileBadge) els.moduleFileBadge.textContent = block.module;
+      if (els.moduleMetaBadge) {
+        const lineCount = src.split('\n').length;
+        els.moduleMetaBadge.textContent = `${lineCount} lines · Synthesizable Verilog RTL`;
+      }
     } else {
       els.moduleCode.textContent = '// RTL source not loaded.';
     }
@@ -950,6 +966,59 @@
   }
 
   function setupEvents() {
+    // Download Modal Listeners
+    function openDlModal() {
+      if (els.downloadModal) els.downloadModal.classList.add('active');
+    }
+    function closeDlModal() {
+      if (els.downloadModal) els.downloadModal.classList.remove('active');
+    }
+    if (els.btnOpenDownloadModal) els.btnOpenDownloadModal.addEventListener('click', openDlModal);
+    if (els.btnToolbarDownload) els.btnToolbarDownload.addEventListener('click', openDlModal);
+    if (els.btnCloseDownloadModal) els.btnCloseDownloadModal.addEventListener('click', closeDlModal);
+    if (els.downloadModal) {
+      els.downloadModal.addEventListener('click', (e) => {
+        if (e.target === els.downloadModal) closeDlModal();
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDlModal();
+    });
+
+    // Individual Module Download & Copy
+    if (els.btnDownloadModule) {
+      els.btnDownloadModule.addEventListener('click', () => {
+        const filename = state.currentModuleFile || 'minigpu_module.v';
+        const content = state.currentModuleCode || (els.moduleCode ? els.moduleCode.textContent : '');
+        if (!content) return;
+        const blob = new Blob([content], { type: 'text/x-verilog;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      });
+    }
+
+    if (els.btnCopyModuleRtl) {
+      els.btnCopyModuleRtl.addEventListener('click', () => {
+        const content = state.currentModuleCode || (els.moduleCode ? els.moduleCode.textContent : '');
+        if (!content) return;
+        navigator.clipboard.writeText(content).then(() => {
+          const btn = els.btnCopyModuleRtl;
+          const orig = btn.innerHTML;
+          btn.innerHTML = '✓ Copied!';
+          btn.style.color = 'var(--mgpu-success)';
+          setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.style.color = '';
+          }, 2000);
+        });
+      });
+    }
+
     // Toolbar buttons
     els.btnPlayPause.addEventListener('click', () => {
       const s = state.stepper;
